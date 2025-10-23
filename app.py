@@ -617,8 +617,9 @@ def api_dashboard_status_breakdown():
     return jsonify({"labels": categorias, "counts": conteos, "percentages": porcentajes, "total": total})
 
 # ---------------------------------------------------------
-# 12) CAMBIO DE ESTATUS + WhatsApp al/los ADMIN(s)
-# ---------------------------------------------------------
+# -----------------------------------------------------
+# 12) CAMBIO DE ESTATUS + WhatsApp a los ADMIN(s)
+# -----------------------------------------------------
 @app.route("/cotizaciones/<int:cot_id>/update_status", methods=["POST"])
 def update_cotizacion_status(cot_id):
     """Actualiza estatus y envía WhatsApp a ADMIN(s) con mensaje contextual."""
@@ -626,10 +627,44 @@ def update_cotizacion_status(cot_id):
     if nuevo_estatus not in ["PENDIENTE", "ENVIADA", "GANADA", "PERDIDA"]:
         flash("Estatus no válido.", "danger")
         return redirect(url_for("index"))
-        @app.route("/cotizaciones/<int:cot_id>/edit")
+
+    cot = Cotizacion.query.get_or_404(cot_id)
+    anterior = cot.estatus
+    cot.estatus = nuevo_estatus
+    db.session.commit()
+
+    try:
+        msg = None
+        if nuevo_estatus == "ENVIADA":
+            msg = (
+                "📤 *Cotización ENVIADA*\n"
+                f"Folio: *{cot.folio}*\n"
+                f"Total: ${cot.total:.2f}"
+            )
+        elif nuevo_estatus == "GANADA":
+            msg = (
+                "🏆 *Cotización GANADA*\n"
+                f"Folio: *{cot.folio}*\n"
+                f"Total cerrado: ${cot.total:.2f}"
+            )
+
+        if msg:
+            enviar_whatsapp(msg)
+
+    except Exception as e:
+        print(f"[WhatsApp Error]: {e}")
+
+    return redirect(url_for("index"))
+
+
+# -----------------------------------------------------
+# 13) EDITAR COTIZACIÓN
+# -----------------------------------------------------
+@app.route("/cotizaciones/<int:cot_id>/edit")
 def edit_cotizacion(cot_id):
     cot = Cotizacion.query.get_or_404(cot_id)
     return render_template("cotizacion_edit.html", c=cot)
+
 
 
     cot = Cotizacion.query.get_or_404(cot_id)
