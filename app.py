@@ -841,7 +841,7 @@ elems.append(Paragraph(
 ))
 
 
-    def set_title(canvas, doc_obj):
+def set_title(canvas, doc_obj):
         try: canvas.setTitle(c.folio or "Cotizacion")
         except: pass
 
