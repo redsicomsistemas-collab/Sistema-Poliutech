@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Editar Cotización {{ c.folio }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4 mb-5">
+  <div class="card shadow-sm border-0">
+    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">Editar Cotización <b>{{ c.folio }}</b></h5>
+      <a href="{{ url_for('index') }}" class="btn btn-light btn-sm">← Volver</a>
+    </div>
+
+    <div class="card-body">
+      <form method="POST" action="{{ url_for('update_cotizacion_status', cot_id=c.id) }}">
+
+        <!-- Estatus -->
+        <div class="mb-3">
+          <label for="estatus" class="form-label fw-bold">Estatus actual:</label>
+          <select class="form-select" id="estatus" name="estatus" required>
+            <option value="PENDIENTE" {% if c.estatus == 'PENDIENTE' %}selected{% endif %}>PENDIENTE</option>
+            <option value="ENVIADA" {% if c.estatus == 'ENVIADA' %}selected{% endif %}>ENVIADA</option>
+            <option value="GANADA" {% if c.estatus == 'GANADA' %}selected{% endif %}>GANADA</option>
+            <option value="PERDIDA" {% if c.estatus == 'PERDIDA' %}selected{% endif %}>PERDIDA</option>
+          </select>
+        </div>
+
+        <!-- Notas -->
+        <div class="mb-3">
+          <label for="notas" class="form-label fw-bold">Notas de la cotización:</label>
+          <textarea id="notas" name="notas" class="form-control" rows="4">{{ c.notas }}</textarea>
+        </div>
+
+        <!-- Totales (solo lectura) -->
+        <div class="row mb-3">
+          <div class="col-md-4">
+            <label class="form-label">Subtotal:</label>
+            <input type="text" readonly class="form-control-plaintext" value="${{ "%.2f"|format(c.subtotal) }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">IVA ({{ "%.2f"|format(c.iva_porc) }}%):</label>
+            <input type="text" readonly class="form-control-plaintext" value="${{ "%.2f"|format(c.iva_monto) }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Total:</label>
+            <input type="text" readonly class="form-control-plaintext fw-bold text-success" value="${{ "%.2f"|format(c.total) }}">
+          </div>
+        </div>
+
+        <!-- Botones -->
+        <div class="d-flex justify-content-end">
+          <button type="submit" class="btn btn-primary me-2">💾 Guardar cambios</button>
+          <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">Cancelar</a>
+        </div>
+
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
