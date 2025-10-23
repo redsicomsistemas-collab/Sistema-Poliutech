@@ -842,13 +842,19 @@ elems.append(Paragraph(
 
 
 def set_title(canvas, doc_obj):
-        try: canvas.setTitle(c.folio or "Cotizacion")
-        except: pass
+    try:
+        canvas.setTitle(c.folio or "Cotizacion")
+    except:
+        pass
 
     doc.build(elems, onFirstPage=set_title, onLaterPages=set_title)
     buf.seek(0)
-    return Response(buf.getvalue(), mimetype="application/pdf",
-        headers={"Content-Disposition": f"inline; filename={c.folio}.pdf"})
+    return Response(
+        buf.getvalue(),
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{c.folio}.pdf"'}
+    )
+
 
       
     
