@@ -585,6 +585,93 @@ def api_cotizaciones_search():
             "export_pdf": url_for("export_cotizacion_pdf", cot_id=c.id),
         })
     return jsonify(data)
+# -----------------------------------------------------
+# 11) GENERACIÓN DE PDF (cotización con logo y footer)
+# -----------------------------------------------------
+from io import BytesIO
+from flask import Response
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
+
+@app.route("/cotizaciones/<int:cot_id>/export.pdf")
+def exportar_pdf(cot_id):
+    """Genera el PDF de una cotización"""
+    c = Cotizacion.query.get_or_404(cot_id)
+    buf = BytesIO()
+
+    # Configurar documento PDF
+    doc = SimpleDocTemplate(buf, pagesize=letter)
+    elems = []  # Lista de elementos para el PDF
+    styles = getSampleStyleSheet()
+
+    # LOGO corporativo
+    try:
+        logo_path = os.path.join("static", "logo.jpg")
+        elems.append(Image(logo_path, width=100, height=60))
+    except Exception as e:
+        print(f"[PDF] Error cargando logo: {e}")
+
+    # ENCABEZADO
+    elems.append(Spacer(1, 10))
+    elems.append(Paragraph("<b>Cotización Poliutech</b>", styles["Title"]))
+    elems.append(Paragraph("Recubrimientos Especializados", styles["Normal"]))
+    elems.append(Spacer(1, 12))
+    elems.append(Paragraph(f"<b>Folio:</b> {c.folio}", styles["Normal"]))
+    elems.append(Paragraph(f"<b>Fecha:</b> {c.fecha.strftime('%Y-%m-%d %H:%M')}", styles["Normal"]))
+    elems.append(Paragraph(f"<b>Estatus:</b> {c.estatus}", styles["Normal"]))
+    elems.append(Spacer(1, 12))
+
+    # TABLA DE CONCEPTOS
+    data = [["Cant", "Unidad", "Concepto", "P. Unit", "Desc %", "Subtotal"]]
+    for item in c.detalles:
+        data.append([
+            str(item.cantidad),
+            item.unidad,
+            item.concepto,
+            f"${item.precio_unitario:.2f}",
+            f"{item.descuento}%",
+            f"${item.subtotal:.2f}"
+        ])
+
+    tabla = Table(data, hAlign="LEFT", colWidths=[50, 70, 200, 70, 60, 80])
+    tabla.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E6E6E6")),
+        ("ALIGN", (3, 1), (-1, -1), "RIGHT"),
+    ]))
+    elems.append(tabla)
+
+    elems.append(Spacer(1, 12))
+    elems.append(Paragraph(f"<b>Subtotal:</b> ${c.subtotal:.2f}", styles["Normal"]))
+    elems.append(Paragraph(f"<b>IVA (16%):</b> ${c.iva:.2f}", styles["Normal"]))
+    elems.append(Paragraph(f"<b>Total:</b> ${c.total:.2f}", styles["Normal"]))
+
+    elems.append(Spacer(1, 24))
+    elems.append(Paragraph(
+        "Campos Elíseos 223 Oficina 602 Col. Polanco V Sección C.P. 11560, "
+        "Alcaldía Miguel Hidalgo, CDMX<br/>"
+        "5559386530 – 5559380536<br/>"
+        "info@poliutech.com · www.poliutech.com",
+        styles["Normal"]
+    ))
+
+    def set_title(canvas, doc_obj):
+        try:
+            canvas.setTitle(c.folio or "Cotización")
+        except:
+            pass
+
+    # Construcción del PDF
+    doc.build(elems, onFirstPage=set_title, onLaterPages=set_title)
+    buf.seek(0)
+
+    return Response(
+        buf.getvalue(),
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{c.folio}.pdf"'}
+    )
 
 # ---------------------------------------------------------
 # 11) API: Métricas para gráficas de dashboard
