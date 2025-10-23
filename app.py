@@ -588,23 +588,24 @@ def api_cotizaciones_search():
 # -----------------------------------------------------
 # 11) GENERACIÓN DE PDF (cotización con logo y footer)
 # -----------------------------------------------------
-from io import BytesIO
-from flask import Response
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib import colors
-
 @app.route("/cotizaciones/<int:cot_id>/export.pdf")
 def exportar_pdf(cot_id):
     """Genera el PDF de una cotización"""
+    from io import BytesIO
+    from flask import Response
+    from reportlab.lib.pagesizes import letter
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib import colors
+    import os
+
     c = Cotizacion.query.get_or_404(cot_id)
     buf = BytesIO()
 
     # Configurar documento PDF
     doc = SimpleDocTemplate(buf, pagesize=letter)
-    elems = []  # Lista de elementos para el PDF
-    styles = getSampleStyleSheet()
+    elems = []  # 🔹 Se define antes de usarla
+    styles = getSampleStyleSheet()  # 🔹 También aquí
 
     # LOGO corporativo
     try:
