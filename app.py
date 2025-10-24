@@ -863,8 +863,8 @@ def export_cotizacion_pdf(cot_id):
                 ("ALIGN", (0, 0), (0, 0), "LEFT"),
                 ("ALIGN", (1, 0), (1, 0), "RIGHT")
         ]))
-        elems.append(header_table)
-        elems.append(Spacer(1, 12))
+            elems.append(header_table)
+            elems.append(Spacer(1, 12))
         except Exception as e:
             print(f"[PDF] Error cargando logo: {e}")
 
