@@ -411,6 +411,36 @@ def actualizar_cotizacion(cot_id: int):
     f = request.form
     
 # =========================================================
+#  EDITAR COTIZACIÓN
+# =========================================================
+@app.route("/cotizaciones/<int:cot_id>/editar")
+def editar_cotizacion(cot_id):
+    ...
+
+# =========================================================
+#  ACTUALIZAR COTIZACIÓN
+# =========================================================
+@app.route("/cotizaciones/<int:cot_id>/actualizar", methods=["POST"])
+def update_cotizacion_status(cot_id):
+    ...
+
+# =========================================================
+#  ELIMINAR COTIZACIÓN
+# =========================================================
+@app.route("/cotizaciones/<int:cot_id>/eliminar")
+def eliminar_cotizacion(cot_id):
+    ...
+
+# =========================================================
+#  VER COTIZACIÓN (Vista rápida)
+# =========================================================
+@app.route("/cotizaciones/<int:cot_id>/ver")
+def ver_cotizacion(cot_id):
+    cot = Cotizacion.query.get_or_404(cot_id)
+    return render_template("cotizacion_view.html", c=cot, title=f"Vista de {cot.folio}")
+    
+    
+# =========================================================
 #  ELIMINAR COTIZACIÓN
 # =========================================================
 @app.route("/cotizaciones/<int:cot_id>/eliminar")
