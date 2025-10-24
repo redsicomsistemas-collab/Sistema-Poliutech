@@ -182,6 +182,7 @@
 			  <td class="text-end">
 				<a href="{{ url_for('editar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-primary btn-sm">Editar</a>
 				<a href="{{ url_for('ver_cotizacion', cot_id=c.id) }}" class="btn btn-outline-secondary btn-sm">Ver</a>
+				
 				<button type="button" class="btn btn-outline-danger btn-sm" onclick="confirmarEliminacion('{{ c.id }}')">Eliminar</button>
 			  </td>
 			</tr>
