@@ -17,7 +17,6 @@ from datetime import datetime, timedelta
 from typing import Iterable, Optional, List
 
 from flask import (
-    stream_with_context,
     Flask, render_template, request, redirect, url_for,
     flash, jsonify, Response
 )
@@ -744,24 +743,26 @@ def export_cotizacion_pdf(cot_id: int):
         elems.append(Spacer(1, 10))
 
     # Build
-  
-@stream_with_context
-def generate_pdf():
-    buf_local = io.BytesIO()
-    doc.build(
+    from flask import stream_with_context
+
+    @stream_with_context
+    def generate_pdf():
+        buf_local = io.BytesIO()
+        doc.build(
         elems,
         onFirstPage=lambda canv, d: (encabezado(canv, d), footer(canv, d)),
         onLaterPages=lambda canv, d: (encabezado(canv, d), footer(canv, d))
     )
-    buf_local.seek(0)
-    yield buf_local.read()
 
-return Response(
-    generate_pdf(),
-    mimetype="application/pdf",
-    headers={'Content-Disposition': f'inline; filename="{c.folio}.pdf"'}
-)
+            buf_local.seek(0)
+        yield buf_local.read()
 
+    return Response(
+        generate_pdf(),
+        buf.getvalue(),
+        mimetype="application/pdf",
+        headers={'Content-Disposition': f'inline; filename="{c.folio}.pdf"'}
+    )
 
 # ---------------------------------------------------------
 # Admin: importación catálogos
