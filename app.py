@@ -528,38 +528,70 @@ window.location.href = "{detalle}";
 </body></html>"""
 
 # ---------------------------------------------------------
-# Cambio de estatus (con WhatsApp)
-# ---------------------------------------------------------
+# =========================================================
+#  ACTUALIZAR COTIZACIÓN COMPLETA
+# =========================================================
 @app.route("/cotizaciones/<int:cot_id>/update_status", methods=["POST"])
-def update_cotizacion_status(cot_id: int):
-    nuevo_estatus = (request.form.get("estatus") or "").upper()
-    if nuevo_estatus not in ["PENDIENTE", "ENVIADA", "GANADA", "PERDIDA"]:
-        flash("Estatus no válido.", "danger")
-        return redirect(url_for("index"))
-
+def update_cotizacion_status(cot_id):
     cot = Cotizacion.query.get_or_404(cot_id)
-    anterior = cot.estatus
-    cot.estatus = nuevo_estatus
-    db.session.commit()
+
+    # --- Datos generales ---
+    cot.estatus = request.form.get("estatus")
+    cot.notas = request.form.get("notas")
+
+    # --- Datos del cliente ---
+    cot.cliente_nombre = request.form.get("cliente_nombre")
+    cot.empresa = request.form.get("empresa")
+    cot.correo = request.form.get("correo")
+    cot.telefono = request.form.get("telefono")
+
+    # --- Limpiar detalles anteriores ---
+    for d in cot.detalles:
+        db.session.delete(d)
+
+    # --- Crear nuevos detalles desde el formulario ---
+    cantidades = request.form.getlist("cantidad[]")
+    unidades = request.form.getlist("unidad[]")
+    conceptos = request.form.getlist("concepto[]")
+    precios = request.form.getlist("precio_unitario[]")
+    descuentos = request.form.getlist("descuento[]")
+
+    subtotal_total = 0
+    for i in range(len(conceptos)):
+        if not conceptos[i].strip():
+            continue  # omitir filas vacías
+
+        cantidad = float(cantidades[i] or 0)
+        precio = float(precios[i] or 0)
+        descuento = float(descuentos[i] or 0)
+        sub = cantidad * precio * (1 - descuento / 100)
+        subtotal_total += sub
+
+        detalle = DetalleCotizacion(
+            cotizacion_id=cot.id,
+            cantidad=cantidad,
+            unidad=unidades[i],
+            nombre_concepto=conceptos[i],
+            precio_unitario=precio,
+            descuento=descuento,
+            subtotal=sub,
+        )
+        db.session.add(detalle)
+
+    # --- Recalcular totales ---
+    cot.subtotal = subtotal_total
+    cot.iva_monto = subtotal_total * (cot.iva_porc / 100)
+    cot.total = cot.subtotal + cot.iva_monto
 
     try:
-        msg = None
-        if nuevo_estatus == "ENVIADA":
-            msg = "📤 *Cotización ENVIADA*\\nFolio: *{0}*\\nTotal: ${1:.2f}".format(cot.folio, cot.total or 0)
-        elif nuevo_estatus == "GANADA":
-            msg = "🏆 *Cotización GANADA*\\nFolio: *{0}*\\nTotal cerrado: ${1:.2f}".format(cot.folio, cot.total or 0)
-        elif nuevo_estatus == "PERDIDA":
-            cliente_name = cot.cliente.nombre_cliente if cot.cliente else "N/A"
-            msg = "💸 *Cotización PERDIDA*\\nFolio: *{0}*\\nCliente: {1}".format(cot.folio, cliente_name)
-        elif nuevo_estatus == "PENDIENTE" and anterior != "PENDIENTE":
-            msg = "⏳ *Cotización en PENDIENTE*\\nFolio: *{0}*\\nSe enviarán recordatorios cada 24h.".format(cot.folio)
-        if msg:
-            send_whatsapp_multi(ADMIN_LIST, msg)
+        db.session.commit()
+        flash("✅ Cotización actualizada correctamente.", "success")
     except Exception as e:
-        print(f"[WARN] WhatsApp estatus ({cot.folio}): {e}", file=sys.stderr)
+        db.session.rollback()
+        flash(f"⚠️ Error al actualizar la cotización: {str(e)}", "danger")
 
-    flash(f"Estatus de {cot.folio} actualizado a {nuevo_estatus}.", "success")
-    return redirect(url_for("index"))
+    return redirect(url_for("editar_cotizacion", cot_id=cot.id))
+
 
 # ---------------------------------------------------------
 # Exportaciones (CSV / PDF con logo, footer y título folio)
