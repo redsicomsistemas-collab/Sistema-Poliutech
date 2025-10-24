@@ -758,11 +758,12 @@ def export_cotizacion_pdf(cot_id: int):
         yield buf_local.read()
 
     return Response(
-        generate_pdf(),
-        buf.getvalue(),
-        mimetype="application/pdf",
-        headers={'Content-Disposition': f'inline; filename="{c.folio}.pdf"'}
-    )
+    generate_pdf(),
+    status=200,
+    mimetype="application/pdf",
+    headers={'Content-Disposition': f'inline; filename="{c.folio}.pdf"'}
+)
+
 
 # ---------------------------------------------------------
 # Admin: importación catálogos
