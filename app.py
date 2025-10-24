@@ -409,14 +409,7 @@ def editar_cotizacion(cot_id: int):
 def actualizar_cotizacion(cot_id: int):
     c = Cotizacion.query.get_or_404(cot_id)
     f = request.form
-    
 
-# =========================================================
-#  ACTUALIZAR COTIZACIÓN
-# =========================================================
-@app.route("/cotizaciones/<int:cot_id>/actualizar", methods=["POST"])
-def update_cotizacion_status(cot_id):
-    ...
 
 # =========================================================
 #  VER COTIZACIÓN (Vista rápida)
