@@ -177,7 +177,8 @@
             <td>
 			<a href="{{ url_for('export_cotizacion_csv', cot_id=c.id) }}" class="btn btn-outline-secondary btn-sm">CSV</a>
 			<a href="{{ url_for('export_cotizacion_pdf', cot_id=c.id) }}" class="btn btn-outline-secondary btn-sm" target="_blank">PDF</a>
-			<a href="{{ url_for('edit_cotizacion', cot_id=c.id) }}" class="btn btn-outline-primary btn-sm">Editar</a>
+			<a href="{{ url_for('editar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-primary btn-sm">Editar</a>
+
 			</td>
 
           </tr>
