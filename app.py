@@ -637,38 +637,29 @@ def export_cotizacion_pdf(cot_id: int):
         canv.drawRightString(A4[0]-28, A4[1]-56, "Recubrimientos Especializados")
         canv.restoreState()
 
-    # Footer corporativo con división.png y 2 líneas
+    # Footer corporativo refinado con división y 2 líneas
     def footer(canv, doc_):
         canv.saveState()
-        # división gráfica
-        divider_path = os.path.join(app.static_folder or "static", "division.png")
-        if os.path.exists(divider_path):
+        # --- Línea divisoria ---
+        division_path = os.path.join(app.static_folder or "static", "division.png")
+        if os.path.exists(division_path):
             try:
-                div_img = ImageReader(divider_path)
-                iw, ih = div_img.getSize()
-                # ancho interior
-                left = 20*mm
-                right = A4[0] - 20*mm
-                target_w = right - left
-                scale = target_w / float(iw)
-                w = target_w
-                h = ih * scale
-                canv.drawImage(div_img, left, 40, width=w, height=h, mask="auto")
+                # ancho visual ~155mm para que no pegue a los márgenes
+                canv.drawImage(division_path, 25, 45, width=155*mm, height=3*mm, mask="auto")
             except Exception:
                 pass
 
+        # --- Texto corporativo: título en azul, detalle en gris ---
+        canv.setFont("Helvetica-Bold", 9)
+        canv.setFillColor(colors.HexColor("#0d47a1"))
+        canv.drawString(30, 35, "POLIUTECH – Recubrimientos Especializados")
+
         canv.setFont("Helvetica", 8)
-        canv.setFillColor(colors.HexColor("#555555"))
-        texto = (
-            "POLIUTECH – Recubrimientos Especializados\n"
-            "Campos Elíseos 223 Oficina 602 Col. Polanco V Sección, Miguel Hidalgo, CDMX 11560 · "
-            "Tel: 55 5938 6530 / 55 5938 0536 · info@poliutech.com · www.poliutech.com"
-        )
-        # 2 líneas
-        tobj = canv.beginText(20*mm, 28)
-        for line in texto.split("\n"):
-            tobj.textLine(line)
-        canv.drawText(tobj)
+        canv.setFillColor(colors.HexColor("#333333"))
+        line1 = "Campos Elíseos 223 Oficina 602 · Col. Polanco V Sección · Miguel Hidalgo, CDMX 11560"
+        line2 = "Tel: 55 5938 6530 / 55 5938 0536 · info@poliutech.com · www.poliutech.com"
+        canv.drawString(30, 25, line1)
+        canv.drawString(30, 15, line2)
 
         # título del documento (folio)
         try:
