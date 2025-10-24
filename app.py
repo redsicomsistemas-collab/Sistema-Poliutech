@@ -763,11 +763,11 @@ def generate_pdf():
     yield buf_local.read()
 
 # Retorna el PDF al navegador
-return Response(
-    generate_pdf(),
-    status=200,
-    mimetype="application/pdf",
-    headers={'Content-Disposition': f'inline; filename=\"{c.folio}.pdf\"'}
+            return Response(
+                generate_pdf(),
+                status=200,
+                mimetype="application/pdf",
+                headers={'Content-Disposition': f'inline; filename=\"{c.folio}.pdf\"'}
 )
 
 
