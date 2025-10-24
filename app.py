@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from typing import Iterable, Optional, List
 
 from flask import (
+    stream_with_context,
     Flask, render_template, request, redirect, url_for,
     flash, jsonify, Response
 )
@@ -743,14 +744,19 @@ def export_cotizacion_pdf(cot_id: int):
         elems.append(Spacer(1, 10))
 
     # Build
-    doc.build(
+    @stream_with_context
+    def generate_pdf():
+        buf_local = io.BytesIO()
+        doc.build(
         elems,
         onFirstPage=lambda canv, d: (encabezado(canv, d), footer(canv, d)),
         onLaterPages=lambda canv, d: (encabezado(canv, d), footer(canv, d))
     )
 
-    buf.seek(0)
-    return Response(
+            buf_local.seek(0)
+        yield buf_local.read()
+
+    return Response(generate_pdf(),
         buf.getvalue(),
         mimetype="application/pdf",
         headers={'Content-Disposition': f'inline; filename="{c.folio}.pdf"'}
