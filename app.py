@@ -860,18 +860,18 @@ if os.path.exists(logo_path):
         print(f"[PDF] Error cargando logo: {e}")
 
 
-    elems.append(Paragraph("<b>Cotización Poliutech</b>", styles["Title"]))
-    elems.append(Paragraph("Recubrimientos Especializados", styles["Normal"]))
-    elems.append(Spacer(1, 12))
-    logo_path = os.path.join(app.static_folder or "static", "logo.jpg")
-
-    elems.append(Paragraph(f"<b>Folio:</b> {c.folio}", styles["Heading3"]))
-    elems.append(Paragraph(
+        elems.append(Paragraph("<b>Cotización Poliutech</b>", styles["Title"]))
+        elems.append(Paragraph("Recubrimientos Especializados", styles["Normal"]))
+        elems.append(Spacer(1, 12))
+        logo_path = os.path.join(app.static_folder or "static", "logo.jpg")
+    
+        elems.append(Paragraph(f"<b>Folio:</b> {c.folio}", styles["Heading3"]))
+        elems.append(Paragraph(
         f"<b>Fecha:</b> {c.fecha.strftime('%Y-%m-%d %H:%M')} &nbsp;&nbsp; "
         f"<b>Estatus:</b> {c.estatus}", styles["Normal"]
     ))
-    elems.append(Spacer(1, 6))
-
+        elems.append(Spacer(1, 6))
+    
     # Cliente
     if c.cliente:
         for ln in [
