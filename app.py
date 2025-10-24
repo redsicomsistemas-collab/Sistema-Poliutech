@@ -601,20 +601,16 @@ def exportar_pdf(cot_id):
 
     c = Cotizacion.query.get_or_404(cot_id)
     buf = BytesIO()
-
-    # Configurar documento PDF
     doc = SimpleDocTemplate(buf, pagesize=letter)
-    elems = []  # 🔹 Se define antes de usarla
-    styles = getSampleStyleSheet()  # 🔹 También aquí
+    elems = []
+    styles = getSampleStyleSheet()
 
-    # LOGO corporativo
     try:
         logo_path = os.path.join("static", "logo.jpg")
         elems.append(Image(logo_path, width=100, height=60))
     except Exception as e:
         print(f"[PDF] Error cargando logo: {e}")
 
-    # ENCABEZADO
     elems.append(Spacer(1, 10))
     elems.append(Paragraph("<b>Cotización Poliutech</b>", styles["Title"]))
     elems.append(Paragraph("Recubrimientos Especializados", styles["Normal"]))
@@ -623,6 +619,9 @@ def exportar_pdf(cot_id):
     elems.append(Paragraph(f"<b>Fecha:</b> {c.fecha.strftime('%Y-%m-%d %H:%M')}", styles["Normal"]))
     elems.append(Paragraph(f"<b>Estatus:</b> {c.estatus}", styles["Normal"]))
     elems.append(Spacer(1, 12))
+
+    # ... resto del contenido de PDF ...
+
 
     # TABLA DE CONCEPTOS
     data = [["Cant", "Unidad", "Concepto", "P. Unit", "Desc %", "Subtotal"]]
