@@ -8,6 +8,8 @@ from __future__ import annotations
 # - Edición de cotizaciones en /cotizaciones/<int:cot_id>/editar.
 # - Título del PDF = folio (evitar "anonymous").
 # - Mantiene dashboard, métricas, filtros, importación, Twilio y scheduler.
+# - PDF: "Representante" en vez de "Estatus", logo a la izquierda sin deformar,
+#   footer de 2 líneas con división (static/division.png).
 # =========================================================
 
 import os, io, csv, sys, math, traceback
@@ -16,7 +18,7 @@ from typing import Iterable, Optional, List
 
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    flash, jsonify, Response, abort
+    flash, jsonify, Response
 )
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
@@ -25,11 +27,12 @@ from sqlalchemy import text
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import (
     Table, TableStyle, Paragraph, SimpleDocTemplate,
-    Spacer, Image
+    Spacer
 )
 from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.utils import ImageReader
 
 # Twilio + Scheduler
 from twilio.rest import Client as TwilioClient
@@ -111,6 +114,8 @@ class Cotizacion(db.Model):
     total = db.Column(db.Float, default=0.0)
     notas = db.Column(db.String(500))
     last_whatsapp_at = db.Column(db.DateTime, nullable=True)
+    # NUEVO: representante para el PDF
+    representante = db.Column(db.String(120))
 
     cliente = db.relationship("Cliente", backref="cotizaciones")
     detalles = db.relationship("CotizacionDetalle", backref="cotizacion",
@@ -156,6 +161,8 @@ def ensure_schema():
         adds.append("ALTER TABLE cotizacion ADD COLUMN notas VARCHAR(500)")
     if "last_whatsapp_at" not in cols:
         adds.append("ALTER TABLE cotizacion ADD COLUMN last_whatsapp_at TIMESTAMP NULL")
+    if "representante" not in cols:
+        adds.append("ALTER TABLE cotizacion ADD COLUMN representante VARCHAR(120)")
     for sql in adds:
         db.session.execute(text(sql))
     if adds:
@@ -318,7 +325,8 @@ def crear_cotizacion():
         cliente_id=cliente.id if cliente else None,
         estatus=(f.get("estatus") or "PENDIENTE").upper(),
         notas=f.get("notas"),
-        last_whatsapp_at=None
+        last_whatsapp_at=None,
+        representante=(f.get("representante") or "").strip() or None
     )
     db.session.add(cot)
     db.session.flush()
@@ -410,35 +418,6 @@ def actualizar_cotizacion(cot_id: int):
     c = Cotizacion.query.get_or_404(cot_id)
     f = request.form
 
-
-# =========================================================
-#  VER COTIZACIÓN (Vista rápida)
-# =========================================================
-@app.route("/cotizaciones/<int:cot_id>/ver")
-def ver_cotizacion(cot_id):
-    cot = Cotizacion.query.get_or_404(cot_id)
-    return render_template("cotizacion_view.html", c=cot, title=f"Vista de {cot.folio}")
-    
-    
-# =========================================================
-#  ELIMINAR COTIZACIÓN
-# =========================================================
-@app.route("/cotizaciones/<int:cot_id>/eliminar")
-def eliminar_cotizacion(cot_id):
-    cot = Cotizacion.query.get_or_404(cot_id)
-    try:
-        # Eliminar primero los detalles asociados (si existen)
-        for d in cot.detalles:
-            db.session.delete(d)
-        db.session.delete(cot)
-        db.session.commit()
-        flash(f"Cotización {cot.folio} eliminada correctamente.", "success")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Error al eliminar la cotización: {str(e)}", "danger")
-    return redirect(url_for("index"))
-    
-
     # Actualizar/crear cliente
     nombre_cliente = (f.get("cliente_nombre") or "").strip()
     empresa = (f.get("empresa") or "").strip()
@@ -460,6 +439,7 @@ def eliminar_cotizacion(cot_id):
 
     c.estatus = (f.get("estatus") or c.estatus).upper()
     c.notas = f.get("notas")
+    c.representante = (f.get("representante") or "").strip() or c.representante
     iva_porc = parse_float(f.get("iva_porc"), c.iva_porc or 16.0)
 
     # Borrar detalles y re-crear para simplificar
@@ -527,71 +507,50 @@ window.location.href = "{detalle}";
 <p>Abrir PDF: <a href="{pdf_url}" target="_blank">aquí</a>. Ver detalle: <a href="{detalle}">cotización</a>.</p>
 </body></html>"""
 
-# ---------------------------------------------------------
 # =========================================================
-#  ACTUALIZAR COTIZACIÓN COMPLETA
+#  VER COTIZACIÓN (Vista rápida)
 # =========================================================
-@app.route("/cotizaciones/<int:cot_id>/update_status", methods=["POST"])
-def update_cotizacion_status(cot_id):
+@app.route("/cotizaciones/<int:cot_id>/ver")
+def ver_cotizacion(cot_id):
     cot = Cotizacion.query.get_or_404(cot_id)
+    return render_template("cotizacion_view.html", c=cot, title=f"Vista de {cot.folio}")
 
-    # --- Datos generales ---
-    cot.estatus = request.form.get("estatus")
-    cot.notas = request.form.get("notas")
-
-    # --- Datos del cliente ---
-    cot.cliente_nombre = request.form.get("cliente_nombre")
-    cot.empresa = request.form.get("empresa")
-    cot.correo = request.form.get("correo")
-    cot.telefono = request.form.get("telefono")
-
-    # --- Limpiar detalles anteriores ---
-    for d in cot.detalles:
-        db.session.delete(d)
-
-    # --- Crear nuevos detalles desde el formulario ---
-    cantidades = request.form.getlist("cantidad[]")
-    unidades = request.form.getlist("unidad[]")
-    conceptos = request.form.getlist("concepto[]")
-    precios = request.form.getlist("precio_unitario[]")
-    descuentos = request.form.getlist("descuento[]")
-
-    subtotal_total = 0
-    for i in range(len(conceptos)):
-        if not conceptos[i].strip():
-            continue  # omitir filas vacías
-
-        cantidad = float(cantidades[i] or 0)
-        precio = float(precios[i] or 0)
-        descuento = float(descuentos[i] or 0)
-        sub = cantidad * precio * (1 - descuento / 100)
-        subtotal_total += sub
-
-        detalle = DetalleCotizacion(
-            cotizacion_id=cot.id,
-            cantidad=cantidad,
-            unidad=unidades[i],
-            nombre_concepto=conceptos[i],
-            precio_unitario=precio,
-            descuento=descuento,
-            subtotal=sub,
-        )
-        db.session.add(detalle)
-
-    # --- Recalcular totales ---
-    cot.subtotal = subtotal_total
-    cot.iva_monto = subtotal_total * (cot.iva_porc / 100)
-    cot.total = cot.subtotal + cot.iva_monto
-
+# =========================================================
+#  ELIMINAR COTIZACIÓN
+# =========================================================
+@app.route("/cotizaciones/<int:cot_id>/eliminar")
+def eliminar_cotizacion(cot_id):
+    cot = Cotizacion.query.get_or_404(cot_id)
     try:
+        for d in cot.detalles:
+            db.session.delete(d)
+        db.session.delete(cot)
         db.session.commit()
-        flash("✅ Cotización actualizada correctamente.", "success")
+        flash(f"Cotización {cot.folio} eliminada correctamente.", "success")
     except Exception as e:
         db.session.rollback()
-        flash(f"⚠️ Error al actualizar la cotización: {str(e)}", "danger")
+        flash(f"Error al eliminar la cotización: {str(e)}", "danger")
+    return redirect(url_for("index"))
 
-    return redirect(url_for("editar_cotizacion", cot_id=cot.id))
+# ---------------------------------------------------------
+# Listas / Detalle
+# ---------------------------------------------------------
+@app.route("/cotizaciones")
+def list_cotizaciones():
+    page = int(request.args.get("p", 1) or 1)
+    per_page = 25
+    q = Cotizacion.query.order_by(Cotizacion.fecha.desc())
+    total = q.count()
+    pages = max(1, math.ceil(total / per_page))
+    page = max(1, min(page, pages))
+    items = q.offset((page-1)*per_page).limit(per_page).all()
+    return render_template("cotizaciones_list.html", items=items, page=page, pages=pages,
+                           total=total, title="Cotizaciones · Sistema Poliutech")
 
+@app.route("/cotizaciones/<int:cot_id>")
+def view_cotizacion(cot_id: int):
+    c = Cotizacion.query.get_or_404(cot_id)
+    return render_template("cotizacion_view.html", c=c, title=f"Ver {c.folio}")
 
 # ---------------------------------------------------------
 # Exportaciones (CSV / PDF con logo, footer y título folio)
@@ -601,9 +560,9 @@ def export_cotizacion_csv(cot_id: int):
     c = Cotizacion.query.get_or_404(cot_id)
     output = io.StringIO()
     w = csv.writer(output)
-    w.writerow(["Folio","Fecha","Estatus","Cliente","Empresa","Subtotal","Desc Total","IVA %","IVA $","Total","Notas"])
+    w.writerow(["Folio","Fecha","Estatus","Representante","Cliente","Empresa","Subtotal","Desc Total","IVA %","IVA $","Total","Notas"])
     w.writerow([
-        c.folio, c.fecha.strftime("%Y-%m-%d %H:%M"), c.estatus,
+        c.folio, c.fecha.strftime("%Y-%m-%d %H:%M"), c.estatus, (c.representante or ""),
         c.cliente.nombre_cliente if c.cliente else "",
         c.cliente.empresa if c.cliente else "",
         f"{c.subtotal:.2f}", f"{c.descuento_total:.2f}",
@@ -632,12 +591,11 @@ def export_cotizacion_pdf(cot_id: int):
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
-        leftMargin=20*mm, rightMargin=20*mm, topMargin=45*mm, bottomMargin=25*mm
+        leftMargin=20*mm, rightMargin=20*mm, topMargin=58*mm, bottomMargin=28*mm
     )
     styles = getSampleStyleSheet()
     elems = []
 
-    from reportlab.pdfgen import canvas as _canvas
     from reportlab.lib.styles import ParagraphStyle
 
     # estilos extra
@@ -645,52 +603,84 @@ def export_cotizacion_pdf(cot_id: int):
     styles.add(ParagraphStyle(name="Encabezado", fontSize=9, leading=12, spaceAfter=4))
     styles.add(ParagraphStyle(name="NormalRight", fontSize=9, alignment=2))
 
-    # Encabezado corporativo
+    # Encabezado corporativo (logo grande a la izquierda SIN deformarse)
     def encabezado(canv, doc_):
         canv.saveState()
-        # franja azul
+        # franja azul superior
         canv.setFillColor(colors.HexColor("#0d47a1"))
-        canv.rect(0, A4[1]-20, A4[0], 20, stroke=0, fill=1)
+        canv.rect(0, A4[1]-22, A4[0], 22, stroke=0, fill=1)
 
-        # logo
+        # Logo
         logo_path = os.path.join(app.static_folder or "static", "logo.jpg")
+        x_logo = 20  # margen izquierdo
+        y_logo = A4[1] - 22 - 5  # debajo de la franja
         if os.path.exists(logo_path):
-            logo_w = 50*mm
-            logo_h = 50*mm * 0.35
-            canv.drawImage(logo_path, 25, A4[1]-logo_h-25, width=logo_w, height=logo_h, mask="auto")
+            try:
+                img = ImageReader(logo_path)
+                iw, ih = img.getSize()
+                max_w = 60*mm
+                # mantener relación de aspecto
+                scale = max_w / float(iw)
+                w = max_w
+                h = ih * scale
+                # ubicar el logo
+                canv.drawImage(img, x_logo, y_logo - h, width=w, height=h, mask="auto")
+            except Exception:
+                pass
 
-        # título
-        canv.setFont("Helvetica-Bold", 14)
+        # Títulos a la derecha
         canv.setFillColor(colors.HexColor("#0d47a1"))
-        canv.drawRightString(A4[0]-30, A4[1]-40, "COTIZACIÓN POLIUTECH")
+        canv.setFont("Helvetica-Bold", 14)
+        canv.drawRightString(A4[0]-28, A4[1]-40, "COTIZACIÓN POLIUTECH")
         canv.setFont("Helvetica", 10)
         canv.setFillColor(colors.black)
-        canv.drawRightString(A4[0]-30, A4[1]-55, "Recubrimientos Especializados")
+        canv.drawRightString(A4[0]-28, A4[1]-56, "Recubrimientos Especializados")
         canv.restoreState()
 
-    # Footer corporativo
+    # Footer corporativo con división.png y 2 líneas
     def footer(canv, doc_):
         canv.saveState()
+        # división gráfica
+        divider_path = os.path.join(app.static_folder or "static", "division.png")
+        if os.path.exists(divider_path):
+            try:
+                div_img = ImageReader(divider_path)
+                iw, ih = div_img.getSize()
+                # ancho interior
+                left = 20*mm
+                right = A4[0] - 20*mm
+                target_w = right - left
+                scale = target_w / float(iw)
+                w = target_w
+                h = ih * scale
+                canv.drawImage(div_img, left, 40, width=w, height=h, mask="auto")
+            except Exception:
+                pass
+
         canv.setFont("Helvetica", 8)
         canv.setFillColor(colors.HexColor("#555555"))
         texto = (
-            "Campos Elíseos 223 Oficina 602 Col. Polanco V Sección, Miguel Hidalgo, CDMX 11560\n"
-            "Tel: 55 5938 6530 · 55 5938 0536   |   info@poliutech.com   |   www.poliutech.com"
+            "POLIUTECH – Recubrimientos Especializados\n"
+            "Campos Elíseos 223 Oficina 602 Col. Polanco V Sección, Miguel Hidalgo, CDMX 11560 · "
+            "Tel: 55 5938 6530 / 55 5938 0536 · info@poliutech.com · www.poliutech.com"
         )
-        tobj = canv.beginText(30, 20)
-        for line in texto.split("\\n"):
+        # 2 líneas
+        tobj = canv.beginText(20*mm, 28)
+        for line in texto.split("\n"):
             tobj.textLine(line)
         canv.drawText(tobj)
-        # título de pestaña = folio
+
+        # título del documento (folio)
         try:
             canv.setTitle(c.folio or "Cotizacion")
         except Exception:
             pass
         canv.restoreState()
 
-    # Datos generales
+    # Datos generales (Representante en vez de Estatus)
     elems.append(Paragraph(f"<b>Folio:</b> {c.folio}", styles["Encabezado"]))
-    elems.append(Paragraph(f"<b>Fecha:</b> {c.fecha.strftime('%d/%m/%Y %H:%M')} | <b>Estatus:</b> {c.estatus}", styles["Encabezado"]))
+    elems.append(Paragraph(f"<b>Fecha:</b> {c.fecha.strftime('%d/%m/%Y %H:%M')} | "
+                           f"<b>Representante:</b> {c.representante or ''}", styles["Encabezado"]))
     elems.append(Spacer(1, 6))
 
     # Cliente
@@ -766,26 +756,6 @@ def export_cotizacion_pdf(cot_id: int):
         mimetype="application/pdf",
         headers={'Content-Disposition': f'inline; filename="{c.folio}.pdf"'}
     )
-
-# ---------------------------------------------------------
-# Listas / Detalle
-# ---------------------------------------------------------
-@app.route("/cotizaciones")
-def list_cotizaciones():
-    page = int(request.args.get("p", 1) or 1)
-    per_page = 25
-    q = Cotizacion.query.order_by(Cotizacion.fecha.desc())
-    total = q.count()
-    pages = max(1, math.ceil(total / per_page))
-    page = max(1, min(page, pages))
-    items = q.offset((page-1)*per_page).limit(per_page).all()
-    return render_template("cotizaciones_list.html", items=items, page=page, pages=pages,
-                           total=total, title="Cotizaciones · Sistema Poliutech")
-
-@app.route("/cotizaciones/<int:cot_id>")
-def view_cotizacion(cot_id: int):
-    c = Cotizacion.query.get_or_404(cot_id)
-    return render_template("cotizacion_view.html", c=c, title=f"Ver {c.folio}")
 
 # ---------------------------------------------------------
 # Admin: importación catálogos
@@ -1022,7 +992,7 @@ def render_template(name, **ctx):
 </body></html>"""
             return html
 
-        # cotizador fallback
+        # cotizador fallback (incluye REPRESENTANTE)
         if name == "cotizador.html":
             html = f"""<!DOCTYPE html>
 <html><head><meta charset='utf-8'><title>{escape(ctx.get('title','Cotizador'))}</title>
@@ -1038,6 +1008,7 @@ def render_template(name, **ctx):
   <p><label>Teléfono: <input name="telefono"></label></p>
   <p><label>Dirección: <input name="direccion"></label></p>
   <p><label>RFC: <input name="rfc"></label></p>
+  <p><label>Representante: <input name="representante" placeholder="Nombre del representante"></label></p>
 
   <h3>Items</h3>
   <div id="items">
@@ -1081,7 +1052,7 @@ function addItem(){{
 </body></html>"""
             return html
 
-        # editor fallback
+        # editor fallback (incluye REPRESENTANTE)
         if name == "cotizacion_edit.html":
             c = ctx["c"]
             def row(d):
@@ -1108,6 +1079,7 @@ function addItem(){{
   <p><label>Teléfono: <input name="telefono" value="{escape(c.cliente.telefono if c.cliente else '')}"></label></p>
   <p><label>Dirección: <input name="direccion" value="{escape(c.cliente.direccion if c.cliente else '')}"></label></p>
   <p><label>RFC: <input name="rfc" value="{escape(c.cliente.rfc if c.cliente else '')}"></label></p>
+  <p><label>Representante: <input name="representante" value="{escape(c.representante or '')}" placeholder="Nombre del representante"></label></p>
 
   <h3>Items</h3>
   <div id="items">{items_html}</div>
@@ -1180,7 +1152,7 @@ function addItem(){{
 <html><head><meta charset='utf-8'><title>{escape(ctx.get('title','Cotización'))}</title></head>
 <body>
 <h1>{escape(c.folio)}</h1>
-<p>Fecha: {c.fecha.strftime('%Y-%m-%d %H:%M')} · Estatus: {escape(c.estatus)}</p>
+<p>Fecha: {c.fecha.strftime('%Y-%m-%d %H:%M')} · Estatus: {escape(c.estatus)} · Representante: {escape(c.representante or '')}</p>
 <p><a target="_blank" href="{url_for('export_cotizacion_pdf', cot_id=c.id)}">Ver PDF</a> ·
 <a href="{url_for('export_cotizacion_csv', cot_id=c.id)}">Descargar CSV</a> ·
 <a href="{url_for('editar_cotizacion', cot_id=c.id)}">Editar</a></p>
