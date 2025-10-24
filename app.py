@@ -645,21 +645,21 @@ def export_cotizacion_pdf(cot_id: int):
         if os.path.exists(division_path):
             try:
                 # ancho visual ~155mm para que no pegue a los márgenes
-                canv.drawImage(division_path, 25, 45, width=155*mm, height=3*mm, mask="auto")
+                canv.drawImage(division_path, (A4[0]-155*mm)/2, 45, width=155*mm, height=3*mm, mask="auto")
             except Exception:
                 pass
 
         # --- Texto corporativo: título en azul, detalle en gris ---
         canv.setFont("Helvetica-Bold", 9)
         canv.setFillColor(colors.HexColor("#0d47a1"))
-        canv.drawString(30, 35, "POLIUTECH – Recubrimientos Especializados")
+        canv.drawCentredString(A4[0]/2, 35, "POLIUTECH – Recubrimientos Especializados")
 
         canv.setFont("Helvetica", 8)
         canv.setFillColor(colors.HexColor("#333333"))
         line1 = "Campos Elíseos 223 Oficina 602 · Col. Polanco V Sección · Miguel Hidalgo, CDMX 11560"
         line2 = "Tel: 55 5938 6530 / 55 5938 0536 · info@poliutech.com · www.poliutech.com"
-        canv.drawString(30, 25, line1)
-        canv.drawString(30, 15, line2)
+        canv.drawCentredString(A4[0]/2, 25, line1)
+        canv.drawCentredString(A4[0]/2, 15, line2)
 
         # título del documento (folio)
         try:
@@ -712,6 +712,14 @@ def export_cotizacion_pdf(cot_id: int):
     elems.append(Spacer(1, 12))
 
     # Totales
+    # Cantidad en letra
+    try:
+        from num2words import num2words
+        cantidad_letra = num2words(c.total, lang='es').capitalize() + ' pesos mexicanos'
+        elems.append(Paragraph(f'<b>Cantidad en letra:</b> {cantidad_letra}', styles['Encabezado']))
+        elems.append(Spacer(1, 8))
+    except Exception:
+        pass
     tot_data = [
         ["Subtotal:", f"${c.subtotal:.2f}"],
         [f"IVA ({c.iva_porc:.2f}%):", f"${c.iva_monto:.2f}"],
