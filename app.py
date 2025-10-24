@@ -754,7 +754,7 @@ def export_cotizacion_pdf(cot_id: int):
         onLaterPages=lambda canv, d: (encabezado(canv, d), footer(canv, d))
     )
 
-            buf_local.seek(0)
+        buf_local.seek(0)
         yield buf_local.read()
 
     return Response(
