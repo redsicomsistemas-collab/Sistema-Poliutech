@@ -409,6 +409,25 @@ def editar_cotizacion(cot_id: int):
 def actualizar_cotizacion(cot_id: int):
     c = Cotizacion.query.get_or_404(cot_id)
     f = request.form
+    
+# =========================================================
+#  ELIMINAR COTIZACIÓN
+# =========================================================
+@app.route("/cotizaciones/<int:cot_id>/eliminar")
+def eliminar_cotizacion(cot_id):
+    cot = Cotizacion.query.get_or_404(cot_id)
+    try:
+        # Eliminar primero los detalles asociados (si existen)
+        for d in cot.detalles:
+            db.session.delete(d)
+        db.session.delete(cot)
+        db.session.commit()
+        flash(f"Cotización {cot.folio} eliminada correctamente.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error al eliminar la cotización: {str(e)}", "danger")
+    return redirect(url_for("index"))
+    
 
     # Actualizar/crear cliente
     nombre_cliente = (f.get("cliente_nombre") or "").strip()
