@@ -745,24 +745,31 @@ def export_cotizacion_pdf(cot_id: int):
     # Build
     from flask import stream_with_context
 
-    @stream_with_context
-    def generate_pdf():
-        buf_local = io.BytesIO()
-        doc.build(
+from flask import stream_with_context
+
+@stream_with_context
+def generate_pdf():
+    buf_local = io.BytesIO()
+    doc = SimpleDocTemplate(buf_local, pagesize=A4)
+
+    # Construye el PDF directamente en el buffer correcto
+    doc.build(
         elems,
         onFirstPage=lambda canv, d: (encabezado(canv, d), footer(canv, d)),
         onLaterPages=lambda canv, d: (encabezado(canv, d), footer(canv, d))
     )
 
-        buf_local.seek(0)
-        yield buf_local.read()
+    buf_local.seek(0)
+    yield buf_local.read()
 
-    return Response(
+# Retorna el PDF al navegador
+return Response(
     generate_pdf(),
     status=200,
     mimetype="application/pdf",
-    headers={'Content-Disposition': f'inline; filename="{c.folio}.pdf"'}
+    headers={'Content-Disposition': f'inline; filename=\"{c.folio}.pdf\"'}
 )
+
 
 
 # ---------------------------------------------------------
