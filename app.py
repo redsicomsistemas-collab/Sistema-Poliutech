@@ -596,6 +596,7 @@ def exportar_pdf(cot_id):
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
     from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import mm
     from reportlab.lib import colors
     import os
 
@@ -605,20 +606,28 @@ def exportar_pdf(cot_id):
     elems = []
     styles = getSampleStyleSheet()
 
-    try:
-        logo_path = os.path.join("static", "logo.jpg")
-        elems.append(Image(logo_path, width=100, height=60))
-    except Exception as e:
-        print(f"[PDF] Error cargando logo: {e}")
+    # --- Logo corporativo ---
+    logo_path = os.path.join(app.static_folder or "static", "logo.jpg")
+    if os.path.exists(logo_path):
+        try:
+            from reportlab.platypus import Image as RLImage, Table, TableStyle
+            logo = RLImage(logo_path, width=45*mm, height=25*mm)
+            header_table = Table(
+                [[logo, Paragraph("<b>Cotización Poliutech</b><br/>Recubrimientos Especializados", styles["Title"])]],
+                colWidths=[50*mm, 120*mm]
+            )
+            header_table.setStyle(TableStyle([
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (0, 0), (0, 0), "LEFT"),
+                ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+            ]))
+            elems.append(header_table)
+            elems.append(Spacer(1, 12))
+        except Exception as e:
+            print(f"[PDF] Error cargando logo: {e}")
 
-    elems.append(Spacer(1, 10))
-    elems.append(Paragraph("<b>Cotización Poliutech</b>", styles["Title"]))
-    elems.append(Paragraph("Recubrimientos Especializados", styles["Normal"]))
-    elems.append(Spacer(1, 12))
-    elems.append(Paragraph(f"<b>Folio:</b> {c.folio}", styles["Normal"]))
-    elems.append(Paragraph(f"<b>Fecha:</b> {c.fecha.strftime('%Y-%m-%d %H:%M')}", styles["Normal"]))
-    elems.append(Paragraph(f"<b>Estatus:</b> {c.estatus}", styles["Normal"]))
-    elems.append(Spacer(1, 12))
+    # 🔹 Aquí sigue el resto del PDF...
+
 
     # ... resto del contenido de PDF ...
 
@@ -840,19 +849,19 @@ def export_cotizacion_pdf(cot_id):
 
     # Logo
 # --- Logo corporativo ---
-logo_path = os.path.join(app.static_folder or "static", "logo.jpg")
-if os.path.exists(logo_path):
-    try:
-        from reportlab.platypus import Image as RLImage, Table, TableStyle
-        logo = RLImage(logo_path, width=45*mm, height=25*mm)
-        header_table = Table(
-            [[logo, Paragraph("<b>Cotización Poliutech</b><br/>Recubrimientos Especializados", styles["Title"])]],
-            colWidths=[50*mm, 120*mm]
+    logo_path = os.path.join(app.static_folder or "static", "logo.jpg")
+    if os.path.exists(logo_path):
+        try:
+            from reportlab.platypus import Image as RLImage, Table, TableStyle
+            logo = RLImage(logo_path, width=45*mm, height=25*mm)
+            header_table = Table(
+                [[logo, Paragraph("<b>Cotización Poliutech</b><br/>Recubrimientos Especializados", styles["Title"])]],
+                colWidths=[50*mm, 120*mm]
         )
-        header_table.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("ALIGN", (0, 0), (0, 0), "LEFT"),
-            ("ALIGN", (1, 0), (1, 0), "RIGHT")
+            header_table.setStyle(TableStyle([
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (0, 0), (0, 0), "LEFT"),
+                ("ALIGN", (1, 0), (1, 0), "RIGHT")
         ]))
         elems.append(header_table)
         elems.append(Spacer(1, 12))
