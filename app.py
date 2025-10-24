@@ -910,9 +910,9 @@ def export_cotizacion_pdf(cot_id):
         ("ALIGN",(0,0),(0,-1),"RIGHT"),
         ("ALIGN",(3,1),(-1,-1),"RIGHT"),
     ]))
-    elems.append(tbl)
-    elems.append(Spacer(1,10))
-
+            elems.append(tbl)
+            elems.append(Spacer(1,10))
+        
     # Totales
     tot_data = [
         ["Subtotal:", f"${c.subtotal:.2f}"],
