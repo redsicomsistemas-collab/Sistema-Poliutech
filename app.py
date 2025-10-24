@@ -588,11 +588,6 @@ def export_cotizacion_csv(cot_id: int):
 def export_cotizacion_pdf(cot_id: int):
     c = Cotizacion.query.get_or_404(cot_id)
 
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buf, pagesize=A4,
-        leftMargin=20*mm, rightMargin=20*mm, topMargin=58*mm, bottomMargin=28*mm
-    )
     styles = getSampleStyleSheet()
     elems = []
 
@@ -711,8 +706,7 @@ def export_cotizacion_pdf(cot_id: int):
     elems.append(tbl)
     elems.append(Spacer(1, 12))
 
-    # Totales
-    # Cantidad en letra
+    # Totales y Cantidad en letra
     try:
         from num2words import num2words
         cantidad_letra = num2words(c.total, lang='es').capitalize() + ' pesos mexicanos'
@@ -742,35 +736,30 @@ def export_cotizacion_pdf(cot_id: int):
         elems.append(Paragraph(c.notas, styles["Normal"]))
         elems.append(Spacer(1, 10))
 
-    # Build
+    # -------- Streaming seguro --------
     from flask import stream_with_context
 
-from flask import stream_with_context
+    @stream_with_context
+    def generate_pdf():
+        buf_local = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buf_local, pagesize=A4,
+            leftMargin=20*mm, rightMargin=20*mm, topMargin=58*mm, bottomMargin=28*mm
+        )
+        doc.build(
+            elems,
+            onFirstPage=lambda canv, d: (encabezado(canv, d), footer(canv, d)),
+            onLaterPages=lambda canv, d: (encabezado(canv, d), footer(canv, d))
+        )
+        buf_local.seek(0)
+        yield buf_local.read()
 
-@stream_with_context
-def generate_pdf():
-    buf_local = io.BytesIO()
-    doc = SimpleDocTemplate(buf_local, pagesize=A4)
-
-    # Construye el PDF directamente en el buffer correcto
-    doc.build(
-        elems,
-        onFirstPage=lambda canv, d: (encabezado(canv, d), footer(canv, d)),
-        onLaterPages=lambda canv, d: (encabezado(canv, d), footer(canv, d))
+    return Response(
+        generate_pdf(),
+        status=200,
+        mimetype="application/pdf",
+        headers={'Content-Disposition': f'inline; filename="{c.folio}.pdf"'}
     )
-
-    buf_local.seek(0)
-    yield buf_local.read()
-
-# Retorna el PDF al navegador
-            return Response(
-                generate_pdf(),
-                status=200,
-                mimetype="application/pdf",
-                headers={'Content-Disposition': f'inline; filename=\"{c.folio}.pdf\"'}
-)
-
-
 
 # ---------------------------------------------------------
 # Admin: importación catálogos
