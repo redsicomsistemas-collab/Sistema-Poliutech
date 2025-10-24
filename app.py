@@ -374,10 +374,10 @@ def crear_cotizacion():
     # WhatsApp admins
     try:
         msg = (
-            "🧾 *Nueva Cotización Creada*\n"
-            f"Folio: *{cot.folio}*\n"
-            f"Estatus: *{cot.estatus}*\n"
-            f"Fecha (UTC): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\n"
+            "🧾 *Nueva Cotización Creada*\\n"
+            f"Folio: *{cot.folio}*\\n"
+            f"Estatus: *{cot.estatus}*\\n"
+            f"Fecha (UTC): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\\n"
             f"Total: ${cot.total:.2f}"
         )
         send_whatsapp_multi(ADMIN_LIST, msg)
@@ -624,6 +624,7 @@ def export_cotizacion_csv(cot_id: int):
         headers={'Content-Disposition': f'attachment; filename="{c.folio or "cotizacion"}.csv"'}
     )
 
+# ======= NUEVA VERSIÓN PDF EMPRESARIAL =======
 @app.route("/cotizaciones/<int:cot_id>/export.pdf")
 def export_cotizacion_pdf(cot_id: int):
     c = Cotizacion.query.get_or_404(cot_id)
@@ -631,73 +632,103 @@ def export_cotizacion_pdf(cot_id: int):
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
-        leftMargin=18*mm, rightMargin=18*mm, topMargin=16*mm, bottomMargin=16*mm
+        leftMargin=20*mm, rightMargin=20*mm, topMargin=45*mm, bottomMargin=25*mm
     )
     styles = getSampleStyleSheet()
     elems = []
 
-    # Logo
-    logo_path = os.path.join(app.static_folder or "static", "logo.jpg")
-    if os.path.exists(logo_path):
+    from reportlab.pdfgen import canvas as _canvas
+    from reportlab.lib.styles import ParagraphStyle
+
+    # estilos extra
+    styles.add(ParagraphStyle(name="Titulo", fontSize=14, leading=18, textColor=colors.HexColor("#0d47a1"), alignment=1))
+    styles.add(ParagraphStyle(name="Encabezado", fontSize=9, leading=12, spaceAfter=4))
+    styles.add(ParagraphStyle(name="NormalRight", fontSize=9, alignment=2))
+
+    # Encabezado corporativo
+    def encabezado(canv, doc_):
+        canv.saveState()
+        # franja azul
+        canv.setFillColor(colors.HexColor("#0d47a1"))
+        canv.rect(0, A4[1]-20, A4[0], 20, stroke=0, fill=1)
+
+        # logo
+        logo_path = os.path.join(app.static_folder or "static", "logo.jpg")
+        if os.path.exists(logo_path):
+            logo_w = 50*mm
+            logo_h = 50*mm * 0.35
+            canv.drawImage(logo_path, 25, A4[1]-logo_h-25, width=logo_w, height=logo_h, mask="auto")
+
+        # título
+        canv.setFont("Helvetica-Bold", 14)
+        canv.setFillColor(colors.HexColor("#0d47a1"))
+        canv.drawRightString(A4[0]-30, A4[1]-40, "COTIZACIÓN POLIUTECH")
+        canv.setFont("Helvetica", 10)
+        canv.setFillColor(colors.black)
+        canv.drawRightString(A4[0]-30, A4[1]-55, "Recubrimientos Especializados")
+        canv.restoreState()
+
+    # Footer corporativo
+    def footer(canv, doc_):
+        canv.saveState()
+        canv.setFont("Helvetica", 8)
+        canv.setFillColor(colors.HexColor("#555555"))
+        texto = (
+            "Campos Elíseos 223 Oficina 602 Col. Polanco V Sección, Miguel Hidalgo, CDMX 11560\n"
+            "Tel: 55 5938 6530 · 55 5938 0536   |   info@poliutech.com   |   www.poliutech.com"
+        )
+        tobj = canv.beginText(30, 20)
+        for line in texto.split("\\n"):
+            tobj.textLine(line)
+        canv.drawText(tobj)
+        # título de pestaña = folio
         try:
-            img = Image(logo_path)
-            img.drawHeight = 20*mm
-            img.drawWidth = 20*mm
-            elems.append(img)
+            canv.setTitle(c.folio or "Cotizacion")
         except Exception:
             pass
+        canv.restoreState()
 
-    # Título y subtítulo
-    elems.append(Paragraph("<b>Cotización Poliutech</b>", styles["Title"]))
-    elems.append(Paragraph("Recubrimientos Especializados", styles["Normal"]))
-    elems.append(Spacer(1, 8))
-
-    # Datos folio/estatus/fecha
-    elems.append(Paragraph(f"<b>Folio:</b> {c.folio}", styles["Heading3"]))
-    elems.append(Paragraph(
-        f"<b>Fecha:</b> {c.fecha.strftime('%Y-%m-%d %H:%M')} &nbsp;&nbsp; "
-        f"<b>Estatus:</b> {c.estatus}", styles["Normal"]
-    ))
-    elems.append(Spacer(1, 8))
+    # Datos generales
+    elems.append(Paragraph(f"<b>Folio:</b> {c.folio}", styles["Encabezado"]))
+    elems.append(Paragraph(f"<b>Fecha:</b> {c.fecha.strftime('%d/%m/%Y %H:%M')} | <b>Estatus:</b> {c.estatus}", styles["Encabezado"]))
+    elems.append(Spacer(1, 6))
 
     # Cliente
-    def _p(val: str) -> str: return val if val else ""
     if c.cliente:
-        cli_lines = [
-            f"<b>Cliente:</b> {_p(c.cliente.nombre_cliente)}",
-            f"<b>Empresa:</b> {_p(c.cliente.empresa)}",
-            f"<b>Responsable:</b> {_p(c.cliente.responsable)}",
-            f"<b>Correo:</b> {_p(c.cliente.correo)}",
-            f"<b>Teléfono:</b> {_p(c.cliente.telefono)}",
-            f"<b>Dirección:</b> {_p(c.cliente.direccion)}",
-            f"<b>RFC:</b> {_p(c.cliente.rfc)}",
-        ]
-        for ln in cli_lines:
-            elems.append(Paragraph(ln, styles["Normal"]))
+        cli = c.cliente
+        for txt in [
+            f"<b>Cliente:</b> {cli.nombre_cliente or ''}",
+            f"<b>Empresa:</b> {cli.empresa or ''}",
+            f"<b>Correo:</b> {cli.correo or ''}",
+            f"<b>Teléfono:</b> {cli.telefono or ''}",
+            f"<b>RFC:</b> {cli.rfc or ''}",
+        ]:
+            elems.append(Paragraph(txt, styles["Encabezado"]))
         elems.append(Spacer(1, 10))
 
     # Tabla de renglones
-    data = [["Cant", "Unidad", "Concepto", "P. Unit", "Desc %", "Subtotal"]]
+    data = [["Cant", "Unidad", "Concepto", "Precio Unit.", "Desc %", "Subtotal"]]
     for d in c.detalles:
         data.append([
             f"{d.cantidad:.2f}",
             d.unidad or "",
-            d.nombre_concepto,
+            Paragraph(d.nombre_concepto, styles["Normal"]),
             f"${d.precio_unitario:.2f}",
             f"{d.descuento:.2f}",
             f"${d.subtotal:.2f}",
         ])
-    tbl = Table(data, colWidths=[20*mm, 20*mm, 70*mm, 25*mm, 20*mm, 25*mm])
+    tbl = Table(data, colWidths=[18*mm, 20*mm, 70*mm, 25*mm, 20*mm, 25*mm], repeatRows=1)
     tbl.setStyle(TableStyle([
-        ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
-        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
-        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-        ("ALIGN", (0,0), (0,-1), "RIGHT"),
+        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#0d47a1")),
+        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
         ("ALIGN", (3,1), (-1,-1), "RIGHT"),
         ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
+        ("FONTSIZE", (0,0), (-1,-1), 9),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
     ]))
     elems.append(tbl)
-    elems.append(Spacer(1, 10))
+    elems.append(Spacer(1, 12))
 
     # Totales
     tot_data = [
@@ -707,30 +738,28 @@ def export_cotizacion_pdf(cot_id: int):
     ]
     t2 = Table(tot_data, colWidths=[40*mm, 35*mm], hAlign="RIGHT")
     t2.setStyle(TableStyle([
-        ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
-        ("FONTNAME", (0,-1), (-1,-1), "Helvetica-Bold"),
-        ("BACKGROUND", (0,-1), (-1,-1), colors.whitesmoke),
+        ("FONTNAME", (0,0), (-1,-1), "Helvetica-Bold"),
         ("ALIGN", (1,0), (1,-1), "RIGHT"),
+        ("LINEBELOW", (0,-1), (-1,-1), 0.5, colors.black),
+        ("BACKGROUND", (0,0), (-1,-1), colors.whitesmoke),
+        ("INNERGRID", (0,0), (-1,-1), 0.25, colors.lightgrey),
     ]))
     elems.append(t2)
+    elems.append(Spacer(1, 10))
 
-    # Pie de página corporativo solicitado
-    elems.append(Spacer(1, 14))
-    elems.append(Paragraph(
-        "Campos Elíseos 223 Oficina 602 Col. Polanco V Sección C.P. 11560, Alcaldía Miguel Hidalgo, CDMX",
-        styles["Normal"]
-    ))
-    elems.append(Paragraph("5559386530 – 5559380536", styles["Normal"]))
-    elems.append(Paragraph("info@poliutech.com · www.poliutech.com", styles["Normal"]))
+    # Notas
+    if c.notas:
+        elems.append(Paragraph("<b>Notas:</b>", styles["Encabezado"]))
+        elems.append(Paragraph(c.notas, styles["Normal"]))
+        elems.append(Spacer(1, 10))
 
-    # Título del documento PDF = folio (evita 'anonymous' en pestaña)
-    def _set_pdf_title(canvas, document):
-        try:
-            canvas.setTitle(c.folio or "Cotizacion")
-        except Exception:
-            pass
+    # Build
+    doc.build(
+        elems,
+        onFirstPage=lambda canv, d: (encabezado(canv, d), footer(canv, d)),
+        onLaterPages=lambda canv, d: (encabezado(canv, d), footer(canv, d))
+    )
 
-    doc.build(elems, onFirstPage=_set_pdf_title, onLaterPages=_set_pdf_title)
     buf.seek(0)
     return Response(
         buf.getvalue(),
