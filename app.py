@@ -419,13 +419,6 @@ def update_cotizacion_status(cot_id):
     ...
 
 # =========================================================
-#  ELIMINAR COTIZACIÓN
-# =========================================================
-@app.route("/cotizaciones/<int:cot_id>/eliminar")
-def eliminar_cotizacion(cot_id):
-    ...
-
-# =========================================================
 #  VER COTIZACIÓN (Vista rápida)
 # =========================================================
 @app.route("/cotizaciones/<int:cot_id>/ver")
