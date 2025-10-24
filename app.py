@@ -865,8 +865,8 @@ def export_cotizacion_pdf(cot_id):
         ]))
         elems.append(header_table)
         elems.append(Spacer(1, 12))
-    except Exception as e:
-        print(f"[PDF] Error cargando logo: {e}")
+        except Exception as e:
+            print(f"[PDF] Error cargando logo: {e}")
 
 
         elems.append(Paragraph("<b>Cotización Poliutech</b>", styles["Title"]))
