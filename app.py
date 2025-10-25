@@ -175,8 +175,13 @@ with app.app_context():
 # Helpers
 # ---------------------------------------------------------
 def generar_folio() -> str:
-    n = db.session.query(db.func.count(Cotizacion.id)).scalar() or 0
-    return f"PTCH-{n+1:04d}"
+    """
+    Genera un folio único basado en el ID máximo de la tabla cotizacion.
+    Evita colisiones incluso si se eliminan registros.
+    """
+    last = db.session.query(db.func.max(Cotizacion.id)).scalar() or 0
+    return f"PTCH-{last+1:04d}"
+
 
 def fmt(n: float) -> float:
     try:
