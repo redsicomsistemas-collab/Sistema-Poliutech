@@ -130,7 +130,7 @@ class CotizacionDetalle(db.Model):
     unidad = db.Column(db.String(50))
     cantidad = db.Column(db.Float, default=1)
     precio_unitario = db.Column(db.Float, default=0)
-    descuento = db.Column(db.Float, default=0)
+    sistema = db.Column(db.String(120))  # 🔹 nuevo campo
     descripcion = db.Column(db.String(500))
     subtotal = db.Column(db.Float, default=0)
 
@@ -687,29 +687,67 @@ def export_cotizacion_pdf(cot_id: int):
             elems.append(Paragraph(txt, styles["Encabezado"]))
         elems.append(Spacer(1, 10))
 
-    # Tabla de renglones
-    data = [["Cant", "Unidad", "Concepto", "Precio Unit.", "Desc %", "Subtotal"]]
-    for d in c.detalles:
-        data.append([
-            f"{d.cantidad:.2f}",
-            d.unidad or "",
-            Paragraph(d.nombre_concepto, styles["Normal"]),
-            f"${d.precio_unitario:.2f}",
-            f"{d.descuento:.2f}",
-            f"${d.subtotal:.2f}",
-        ])
-    tbl = Table(data, colWidths=[18*mm, 20*mm, 70*mm, 25*mm, 20*mm, 25*mm], repeatRows=1)
-    tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#0d47a1")),
-        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
-        ("ALIGN", (3,1), (-1,-1), "RIGHT"),
-        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-        ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
-        ("FONTSIZE", (0,0), (-1,-1), 9),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
-    ]))
-    elems.append(tbl)
+    # Nueva tabla con "Sistema" en vez de descuento
+data = [["Cant", "Unidad", "Concepto", "Sistema", "Precio Unit.", "Subtotal"]]
+for d in c.detalles:
+    data.append([
+        f"{d.cantidad:.2f}",
+        d.unidad or "",
+        Paragraph(d.nombre_concepto, styles["Normal"]),
+        Paragraph(d.sistema or "", styles["Normal"]),
+        f"${d.precio_unitario:.2f}",
+        f"${d.subtotal:.2f}",
+    ])
+tbl = Table(data, colWidths=[18*mm, 20*mm, 60*mm, 30*mm, 25*mm, 25*mm], repeatRows=1)
+tbl.setStyle(TableStyle([
+    ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#0d47a1")),
+    ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+    ("ALIGN", (3,1), (-1,-1), "RIGHT"),
+    ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+    ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
+    ("FONTSIZE", (0,0), (-1,-1), 9),
+    ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+]))
+elems.append(tbl)
+elems.append(Spacer(1, 12))
+
+# Totales y cantidad en letra
+try:
+    from num2words import num2words
+    cantidad_letra = num2words(c.total, lang='es').capitalize() + ' pesos mexicanos'
+except Exception:
+    cantidad_letra = f"{c.total:.2f} pesos mexicanos"
+
+elems.append(Spacer(1, 6))
+elems.append(Paragraph(f"<b>Cantidad en letra:</b> {cantidad_letra}", styles["Encabezado"]))
+elems.append(Spacer(1, 8))
+
+tot_data = [
+    ["Subtotal:", f"${c.subtotal:.2f}"],
+    [f"IVA ({c.iva_porc:.2f}%):", f"${c.iva_monto:.2f}"],
+    ["Total:", f"${c.total:.2f}"],
+]
+t2 = Table(tot_data, colWidths=[40*mm, 35*mm], hAlign="RIGHT")
+t2.setStyle(TableStyle([
+    ("FONTNAME", (0,0), (-1,-1), "Helvetica-Bold"),
+    ("ALIGN", (1,0), (1,-1), "RIGHT"),
+    ("LINEBELOW", (0,-1), (-1,-1), 0.5, colors.black),
+    ("BACKGROUND", (0,0), (-1,-1), colors.whitesmoke),
+    ("INNERGRID", (0,0), (-1,-1), 0.25, colors.lightgrey),
+]))
+elems.append(t2)
+elems.append(Spacer(1, 10))
+
+# Notas con saltos de línea respetados
+if c.notas:
+    notas_html = "<br/>".join(c.notas.splitlines())
+    elems.append(Paragraph("<b>Notas:</b>", styles["Encabezado"]))
+    elems.append(Paragraph(notas_html, styles["Normal"]))
     elems.append(Spacer(1, 12))
+
+# Firma
+elems.append(Paragraph("Atte.<br/>Ing. César Antonio Garza Guerrero<br/>DIRECTOR GENERAL", styles["Encabezado"]))
+
 
     # Totales y Cantidad en letra
     try:
@@ -1026,7 +1064,7 @@ def render_template(name, **ctx):
       <p><label>Unidad: <input name="item_unidad[]"></label></p>
       <p><label>Cantidad: <input name="item_cantidad[]" value="1"></label></p>
       <p><label>Precio: <input name="item_precio[]" value="0"></label></p>
-      <p><label>Desc %: <input name="item_descuento[]" value="0"></label></p>
+      <p><label>Sistema: <input name="item_sistema[]" placeholder="Nombre del sistema aplicado"></label></p>
       <p><label>Descripción:<br><textarea name="item_descripcion[]"></textarea></label></p>
     </div>
   </div>
