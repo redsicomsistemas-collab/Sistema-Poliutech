@@ -650,9 +650,26 @@ def api_update_estatus(cot_id):
     if nuevo not in ["PENDIENTE", "ENVIADA", "GANADA", "PERDIDA"]:
         return jsonify({"ok": False, "error": "Estatus inválido"}), 400
 
+    anterior = c.estatus
     c.estatus = nuevo
     db.session.commit()
+
+    # 🔔 Enviar WhatsApp de notificación si cambió
+    try:
+        if twilio_client and nuevo != anterior:
+            body = (
+                f"🔄 *Actualización de estatus*\n"
+                f"Folio: *{c.folio}*\n"
+                f"Anterior: {anterior}\n"
+                f"Nuevo: *{nuevo}*\n"
+                f"Total: ${c.total:,.2f}"
+            )
+            send_whatsapp_multi(ADMIN_LIST, body)
+    except Exception as e:
+        print(f"[Twilio] Error al enviar notificación de estatus: {e}")
+
     return jsonify({"ok": True, "estatus": nuevo})
+
 
 
 # ---------------------------------------------------------
@@ -712,10 +729,11 @@ def export_cotizacion_excel(cot_id: int):
     ws["A6"], ws["B6"] = "Representante:", c.representante or ""
     ws["A7"], ws["B7"] = "Estatus:", c.estatus
 
-    # Tabla de detalles
-    headers = ["Cant", "Unidad", "Concepto", "Precio Unitario", "Desc %", "Subtotal"]
+       # Tabla de detalles
+    headers = ["Cant", "Unidad", "Concepto", "Sistema", "Precio Unitario", "Subtotal"]
     ws.append([])
     ws.append(headers)
+
     header_fill = PatternFill("solid", fgColor="0D47A1")
     header_font = Font(bold=True, color="FFFFFF")
     for col in range(1, len(headers) + 1):
@@ -727,10 +745,15 @@ def export_cotizacion_excel(cot_id: int):
     row = 10
     for d in c.detalles:
         ws.append([
-            d.cantidad, d.unidad or "", d.nombre_concepto,
-            d.precio_unitario, d.descuento, d.subtotal
+            d.cantidad,
+            d.unidad or "",
+            d.nombre_concepto,
+            getattr(d, "sistema", ""),  # <- en caso de que exista el campo nuevo
+            d.precio_unitario,
+            d.subtotal
         ])
         row += 1
+
 
     # Totales
     ws.append([])
