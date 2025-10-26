@@ -30,7 +30,7 @@
   document.getElementById('frm-import').addEventListener('submit', async (e)=>{
     e.preventDefault();
     const fd = new FormData(e.target);
-    const res = await fetch('/catalogos/import', {method:'POST', body:fd}).then(r=>r.json());
+    const res = await fetch('/api/catalogos/import', {method:'POST', body:fd}).then(r=>r.json());
     alert('Importados: '+(res.inserted||0));
     load();
   });
