@@ -1,17 +1,5 @@
 from __future__ import annotations
 
-# =========================================================
-# MARWHATS - Sistema Poliutech (COMPLETO)
-# - "Sistema" en renglones (sin "Descuento")
-# - Autocreación de clientes y conceptos
-# - PDF: logo izq sin deformar, footer centrado con división,
-#        firma al final, cantidad en letra correcta, miles con coma
-# - Excel (.xlsx) con hoja "Cotización" y nombre = folio
-# - Estatus editable por API (notifica por WhatsApp)
-# - Generador de folio robusto
-# - Fallbacks de templates para funcionar sin HTMLs
-# =========================================================
-
 import os, io, csv, sys, math, re, traceback
 from datetime import datetime, timedelta
 from typing import Iterable, Optional, List
@@ -191,10 +179,6 @@ with app.app_context():
 # Helpers
 # ---------------------------------------------------------
 def generar_folio() -> str:
-    """
-    Busca el mayor PTCH-#### y suma 1.
-    Si aún chocara por carrera, intenta los 10 siguientes; si falla, usa timestamp.
-    """
     prefix = "PTCH-"
     maxn = 0
     rows = db.session.execute(text("SELECT folio FROM cotizacion WHERE folio LIKE 'PTCH-%'")).fetchall()
@@ -235,9 +219,6 @@ def money(n: float) -> str:
         return "${:,.2f}".format(0)
 
 def cantidad_en_letra_mn(total: float) -> str:
-    """
-    En palabras + 'XX/100 M.N.' sin dígitos en la parte entera.
-    """
     try:
         from num2words import num2words
     except Exception:
@@ -247,7 +228,6 @@ def cantidad_en_letra_mn(total: float) -> str:
     entero = int(total)
     cents = int(round((total - entero) * 100)) % 100
     palabras = num2words(entero, lang="es").strip()
-    # "uno peso" -> "un peso"
     if palabras.endswith(" uno"):
         palabras = palabras[:-4] + " un"
     if palabras:
@@ -352,13 +332,12 @@ def api_conceptos_suggest():
     } for c in res])
 
 # ---------------------------------------------------------
-# Crear cotización (abre PDF en nueva pestaña)
+# Crear/Editar/Ver/Exportar Cotizaciones
 # ---------------------------------------------------------
 @app.route("/cotizaciones/crear", methods=["POST"])
 def crear_cotizacion():
     f = request.form
 
-    # Cliente (crear si no existe)
     nombre_cliente = (f.get("cliente_nombre") or "").strip()
     empresa = (f.get("empresa") or "").strip()
     cliente = None
@@ -379,7 +358,6 @@ def crear_cotizacion():
 
     iva_porc = parse_float(f.get("iva_porc"), 16.0)
 
-    # Crear cotización
     cot = Cotizacion(
         folio=generar_folio(),
         cliente_id=cliente.id if cliente else None,
@@ -391,7 +369,6 @@ def crear_cotizacion():
     db.session.add(cot)
     db.session.flush()
 
-    # Detalles
     nombres = f.getlist("item_nombre_concepto[]")
     unidades = f.getlist("item_unidad[]")
     cantidades = f.getlist("item_cantidad[]")
@@ -414,7 +391,6 @@ def crear_cotizacion():
         line_subtotal = cant * pu
         subtotal += line_subtotal
 
-        # Autocrear concepto si no existe
         concepto = Concepto.query.filter_by(nombre_concepto=nom).first()
         if not concepto:
             concepto = Concepto(
@@ -447,7 +423,6 @@ def crear_cotizacion():
     cot.total = fmt(total)
     db.session.commit()
 
-    # WhatsApp admins
     try:
         msg = (
             "🧾 *Nueva Cotización Creada*\n"
@@ -460,7 +435,6 @@ def crear_cotizacion():
     except Exception as e:
         print(f"[WARN] WhatsApp creación ({cot.folio}): {e}", file=sys.stderr)
 
-    # Abrir PDF y volver
     pdf_url = url_for("export_cotizacion_pdf", cot_id=cot.id)
     volver = url_for("cotizador")
     return f"""<!DOCTYPE html>
@@ -473,9 +447,6 @@ window.location.href = "{volver}";
 <p>Abrir PDF: <a href="{pdf_url}" target="_blank">aquí</a>. Volver: <a href="{volver}">cotizador</a>.</p>
 </body></html>"""
 
-# ---------------------------------------------------------
-# Editar / Actualizar
-# ---------------------------------------------------------
 @app.route("/cotizaciones/<int:cot_id>/editar")
 def editar_cotizacion(cot_id: int):
     c = Cotizacion.query.get_or_404(cot_id)
@@ -486,7 +457,6 @@ def actualizar_cotizacion(cot_id: int):
     c = Cotizacion.query.get_or_404(cot_id)
     f = request.form
 
-    # Cliente (crear si no existe)
     nombre_cliente = (f.get("cliente_nombre") or "").strip()
     empresa = (f.get("empresa") or "").strip()
     if nombre_cliente:
@@ -510,7 +480,6 @@ def actualizar_cotizacion(cot_id: int):
     c.representante = (f.get("representante") or "").strip() or c.representante
     iva_porc = parse_float(f.get("iva_porc"), c.iva_porc or 16.0)
 
-    # Reset detalles
     for d in list(c.detalles):
         db.session.delete(d)
 
@@ -536,7 +505,6 @@ def actualizar_cotizacion(cot_id: int):
         line_subtotal = cant * pu
         subtotal += line_subtotal
 
-        # Autocrear concepto
         concepto = Concepto.query.filter_by(nombre_concepto=nom).first()
         if not concepto:
             concepto = Concepto(
@@ -570,7 +538,6 @@ def actualizar_cotizacion(cot_id: int):
 
     db.session.commit()
 
-    # Abrir PDF y mostrar vista
     pdf_url = url_for("export_cotizacion_pdf", cot_id=c.id)
     detalle = url_for("view_cotizacion", cot_id=c.id)
     return f"""<!DOCTYPE html>
@@ -583,9 +550,6 @@ window.location.href = "{detalle}";
 <p>Abrir PDF: <a href="{pdf_url}" target="_blank">aquí</a>. Ver detalle: <a href="{detalle}">cotización</a>.</p>
 </body></html>"""
 
-# ---------------------------------------------------------
-# Ver / Eliminar / Listar
-# ---------------------------------------------------------
 @app.route("/cotizaciones/<int:cot_id>/ver")
 def ver_cotizacion(cot_id):
     cot = Cotizacion.query.get_or_404(cot_id)
@@ -644,7 +608,6 @@ def api_update_estatus(cot_id):
     c.estatus = nuevo
     db.session.commit()
 
-    # Notificar si cambió
     try:
         if twilio_client and nuevo != anterior:
             body = (
@@ -699,7 +662,6 @@ def export_cotizacion_xlsx(cot_id: int):
     ws = wb.active
     ws.title = "Cotización"
 
-    # Estilos
     bold = Font(bold=True)
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
     right = Alignment(horizontal="right", vertical="center")
@@ -777,14 +739,11 @@ def export_cotizacion_pdf(cot_id: int):
 
     elems = []
 
-    # ===== Encabezado =====
     def encabezado(canv, doc_):
         canv.saveState()
-        # franja azul superior
         canv.setFillColor(colors.HexColor("#0d47a1"))
         canv.rect(0, A4[1]-22, A4[0], 22, stroke=0, fill=1)
 
-        # Logo
         logo_path = os.path.join(app.static_folder or "static", "logo.jpg")
         x_logo = 20
         y_logo = A4[1] - 22 - 5
@@ -800,7 +759,6 @@ def export_cotizacion_pdf(cot_id: int):
             except Exception:
                 pass
 
-        # Títulos a la derecha
         canv.setFillColor(colors.HexColor("#0d47a1"))
         canv.setFont("Helvetica-Bold", 14)
         canv.drawRightString(A4[0]-28, A4[1]-40, "COTIZACIÓN POLIUTECH")
@@ -809,11 +767,8 @@ def export_cotizacion_pdf(cot_id: int):
         canv.drawRightString(A4[0]-28, A4[1]-56, "Recubrimientos Especializados")
         canv.restoreState()
 
-    # ===== Footer + firma =====
     def footer(canv, doc_):
         canv.saveState()
-
-        # Firma centrada justo arriba del footer
         canv.setFont("Helvetica", 9)
         canv.setFillColor(colors.black)
         y_firma = 80
@@ -823,7 +778,6 @@ def export_cotizacion_pdf(cot_id: int):
         canv.setFont("Helvetica", 9)
         canv.drawCentredString(A4[0]/2, y_firma - 6, "DIRECTOR GENERAL")
 
-        # División
         division_path = os.path.join(app.static_folder or "static", "division.png")
         if os.path.exists(division_path):
             try:
@@ -831,7 +785,6 @@ def export_cotizacion_pdf(cot_id: int):
             except Exception:
                 pass
 
-        # Texto footer
         canv.setFont("Helvetica-Bold", 9)
         canv.setFillColor(colors.HexColor("#0d47a1"))
         canv.drawCentredString(A4[0]/2, 35, "POLIUTECH – Recubrimientos Especializados")
@@ -849,13 +802,11 @@ def export_cotizacion_pdf(cot_id: int):
             pass
         canv.restoreState()
 
-    # ===== Datos generales =====
     elems.append(Paragraph(f"<b>Folio:</b> {c.folio}", styles["Encabezado"]))
     elems.append(Paragraph(f"<b>Fecha:</b> {c.fecha.strftime('%d/%m/%Y %H:%M')} | "
                            f"<b>Representante:</b> {c.representante or ''}", styles["Encabezado"]))
     elems.append(Spacer(1, 6))
 
-    # Cliente
     if c.cliente:
         cli = c.cliente
         for txt in [
@@ -868,7 +819,6 @@ def export_cotizacion_pdf(cot_id: int):
             elems.append(Paragraph(txt, styles["Encabezado"]))
         elems.append(Spacer(1, 10))
 
-    # ===== Tabla =====
     data = [["Cant", "Unidad", "Concepto", "Sistema", "Precio Unit.", "Subtotal"]]
     for d in c.detalles:
         data.append([
@@ -892,7 +842,6 @@ def export_cotizacion_pdf(cot_id: int):
     elems.append(tbl)
     elems.append(Spacer(1, 10))
 
-    # ===== Cantidad en letra =====
     try:
         from num2words import num2words
         total = float(c.total or 0)
@@ -909,7 +858,6 @@ def export_cotizacion_pdf(cot_id: int):
     except Exception as e:
         print(f"[PDF] num2words error: {e}", file=sys.stderr)
 
-    # ===== Totales =====
     tot_data = [
         ["Subtotal:", money(c.subtotal)],
         [f"IVA ({c.iva_porc:.2f}%):", money(c.iva_monto)],
@@ -926,7 +874,6 @@ def export_cotizacion_pdf(cot_id: int):
     elems.append(t2)
     elems.append(Spacer(1, 8))
 
-    # ===== Notas con saltos =====
     if c.notas:
         elems.append(Paragraph("<b>Notas:</b>", styles["Encabezado"]))
         for line in str(c.notas).replace("\r\n", "\n").split("\n"):
@@ -934,7 +881,6 @@ def export_cotizacion_pdf(cot_id: int):
                 elems.append(Paragraph(line.strip(), styles["Normal"]))
         elems.append(Spacer(1, 8))
 
-    # Build + respuesta
     doc.build(
         elems,
         onFirstPage=lambda canv, d: (encabezado(canv, d), footer(canv, d)),
@@ -1059,7 +1005,6 @@ def enviar_notificaciones_pendientes():
                 except Exception as e:
                     print(f"[Scheduler] ERROR recordatorio ({cot.folio}): {e}", file=sys.stderr)
 
-# Evitar doble scheduler en debug
 scheduler: Optional[BackgroundScheduler] = None
 try:
     if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
@@ -1072,7 +1017,7 @@ except Exception as e:
     print(f"[Scheduler] No pudo iniciar: {e}", file=sys.stderr)
 
 # ---------------------------------------------------------
-# Fallbacks de templates mínimos (sin romper diseño base)
+# Fallbacks de templates mínimos
 # ---------------------------------------------------------
 from jinja2 import TemplateNotFound
 from markupsafe import escape
@@ -1082,7 +1027,6 @@ def render_template(name, **ctx):
     try:
         return _real_render_template(name, **ctx)
     except TemplateNotFound:
-        # Dashboard fallback
         if name == "dashboard.html":
             total_cotizaciones = ctx.get("total_cotizaciones", 0)
             total_importe = ctx.get("total_importe", 0.0)
@@ -1127,7 +1071,6 @@ a{{text-decoration:none}}
 </body></html>"""
             return html
 
-        # Cotizador fallback
         if name == "cotizador.html":
             html = f"""<!DOCTYPE html>
 <html><head><meta charset='utf-8'><title>{escape(ctx.get('title','Cotizador'))}</title>
@@ -1187,7 +1130,6 @@ function addItem(){{
 </body></html>"""
             return html
 
-        # Editor fallback
         if name == "cotizacion_edit.html":
             c = ctx["c"]
             def row(d):
@@ -1249,7 +1191,6 @@ function addItem(){{
 </body></html>"""
             return html
 
-        # Listado fallback
         if name == "cotizaciones_list.html":
             items = ctx.get("items", [])
             page = ctx.get("page", 1); pages = ctx.get("pages", 1); total = ctx.get("total", 0)
@@ -1276,7 +1217,6 @@ function addItem(){{
 <p><a href="{url_for('index')}">Volver</a></p>
 </body></html>"""
 
-        # View fallback
         if name == "cotizacion_view.html":
             c = ctx.get("c")
             det_rows = "".join(
@@ -1304,61 +1244,20 @@ function addItem(){{
 <p><a href="{url_for('index')}">Volver</a></p>
 </body></html>"""
 
-        # fallback genérico
         return f"Vista {escape(name)} no disponible", 200
 
-# Reemplazar render_template con el shim
 import types as _types
 render_template = _types.FunctionType(render_template.__code__, globals(), "render_template")
 
 # ---------------------------------------------------------
+# Blueprints (Catálogos)
+# ---------------------------------------------------------
+from catalogos_routes import bp as catalogos_bp
+app.register_blueprint(catalogos_bp, url_prefix="/catalogos")
+
+# ---------------------------------------------------------
 # Main
 # ---------------------------------------------------------
-
-# ---------------------------------------------------------
-# API: Importar catálogos (Clientes/Conceptos) - CSV/XLSX
-# ---------------------------------------------------------
-@app.route("/api/catalogos/import", methods=["POST"])
-def api_catalogos_import():
-    from flask import jsonify, request, redirect, url_for, flash
-    import pandas as pd
-
-    file = request.files.get("file")
-    if not file:
-        return jsonify({"ok": False, "error": "No se recibió archivo"}), 400
-
-    try:
-        if file.filename.endswith(".csv"):
-            df = pd.read_csv(file)
-        else:
-            df = pd.read_excel(file)
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
-
-    df.columns = [c.strip().lower() for c in df.columns]
-    importados = 0
-    for _, r in df.iterrows():
-        nombre = r.get("nombre_concepto") or r.get("nombre")
-        if not nombre:
-            continue
-        if Concepto.query.filter_by(nombre_concepto=nombre).first():
-            continue
-        c = Concepto(
-            nombre_concepto=nombre,
-            unidad=r.get("unidad"),
-            precio_unitario=float(r.get("precio_unitario") or r.get("precio") or 0),
-            descripcion=r.get("descripcion"),
-        )
-        db.session.add(c)
-        importados += 1
-    db.session.commit()
-
-    if request.accept_mimetypes.best == "application/json":
-        return jsonify({"ok": True, "importados": importados})
-    flash(f"Se importaron {importados} registros correctamente.", "success")
-    return redirect(url_for("admin_catalogos"))
-
-
 if __name__ == "__main__":
     try:
         os.makedirs(app.static_folder or "static", exist_ok=True)
