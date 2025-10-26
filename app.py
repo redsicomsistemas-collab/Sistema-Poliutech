@@ -638,15 +638,22 @@ def view_cotizacion(cot_id: int):
 # ---------------------------------------------------------
 # API: actualizar estatus (Dashboard inline)
 # ---------------------------------------------------------
+# =========================================================
+# ACTUALIZACIÓN DE ESTATUS DESDE DASHBOARD (inline)
+# =========================================================
 @app.route("/api/cotizaciones/<int:cot_id>/estatus", methods=["POST"])
-def api_update_estatus(cot_id: int):
+def api_update_estatus(cot_id):
     c = Cotizacion.query.get_or_404(cot_id)
-    nuevo = (request.form.get("estatus") or "").upper().strip()
-    if nuevo not in {"PENDIENTE", "ENVIADA", "GANADA", "PERDIDA"}:
-        return jsonify({"ok": False, "error": "estatus inválido"}), 400
+    data = request.get_json(force=True)
+    nuevo = (data.get("estatus") or "").upper().strip()
+
+    if nuevo not in ["PENDIENTE", "ENVIADA", "GANADA", "PERDIDA"]:
+        return jsonify({"ok": False, "error": "Estatus inválido"}), 400
+
     c.estatus = nuevo
     db.session.commit()
-    return jsonify({"ok": True, "estatus": c.estatus})
+    return jsonify({"ok": True, "estatus": nuevo})
+
 
 # ---------------------------------------------------------
 # Exportaciones (CSV / Excel / PDF)
