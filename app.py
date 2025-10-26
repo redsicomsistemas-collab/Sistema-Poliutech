@@ -996,9 +996,36 @@ def export_cotizacion_pdf(cot_id: int):
     elems.append(tbl)
     elems.append(Spacer(1, 12))
 
-    # Cantidad en letra (palabras + XX/100 M.N.)
-    elems.append(Paragraph(cantidad_en_letra_mn(c.total), styles["Encabezado"]))
+    # -----------------------------------------------------
+# 🔠 CANTIDAD EN LETRA (correctamente escrita en español)
+# -----------------------------------------------------
+try:
+    from num2words import num2words
+
+    total = float(c.total or 0)
+    enteros = int(total)
+    centavos = int(round((total - enteros) * 100))
+
+    # Convertir parte entera a texto (num2words en español)
+    palabras = num2words(enteros, lang='es')
+
+    # Ajuste de estilo: "uno peso" -> "un peso"
+    if palabras.endswith(" uno"):
+        palabras = palabras[:-4] + " un"
+
+    # Determinar singular/plural
+    palabra_peso = "peso" if enteros == 1 else "pesos"
+
+    # Crear el texto final
+    cantidad_letra = f"{palabras.capitalize()} {palabra_peso} {centavos:02d}/100 M.N."
+
     elems.append(Spacer(1, 8))
+    elems.append(Paragraph(f"<b>Cantidad en letra:</b> {cantidad_letra}", styles["Normal"]))
+    elems.append(Spacer(1, 6))
+
+except Exception as e:
+    print(f"[PDF] Error generando cantidad en letra: {e}")
+
 
     # Totales
     tot_data = [
