@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 # =========================================================
-# MARWHATS - Sistema Poliutech
-# Cambios:
-# - "Sistema" en renglones (se elimina "Descuento")
-# - Autocreación de clientes y conceptos si no existen
-# - PDF: logo izq sin deformar, footer centrado con división, firma abajo,
-#   cantidad en letra con “XX/100 M.N.”, separadores de miles
-# - Exportación a Excel (.xlsx) con hoja "Cotización" y nombre = folio
-# - Estatus editable vía API sin cambiar vistas
-# - Generador de folio robusto (evita UNIQUE)
+# MARWHATS - Sistema Poliutech (COMPLETO)
+# - "Sistema" en renglones (sin "Descuento")
+# - Autocreación de clientes y conceptos
+# - PDF: logo izq sin deformar, footer centrado con división,
+#        firma al final, cantidad en letra correcta, miles con coma
+# - Excel (.xlsx) con hoja "Cotización" y nombre = folio
+# - Estatus editable por API (notifica por WhatsApp)
+# - Generador de folio robusto
+# - Fallbacks de templates para funcionar sin HTMLs
 # =========================================================
 
 import os, io, csv, sys, math, re, traceback
@@ -21,25 +21,25 @@ from flask import (
     flash, jsonify, Response, abort
 )
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import text, func
+from sqlalchemy import text
 
 # ReportLab (PDF)
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import (
     Table, TableStyle, Paragraph, SimpleDocTemplate,
-    Spacer, Image
+    Spacer
 )
 from reportlab.lib import colors
 from reportlab.lib.units import mm
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.utils import ImageReader
 
 # Excel
 try:
     from openpyxl import Workbook
-    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side, NamedStyle
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 except Exception:
-    Workbook = None  # para que la app arranque aunque no esté openpyxl
+    Workbook = None  # la app sigue arrancando aunque falte openpyxl
 
 # Twilio + Scheduler
 from twilio.rest import Client as TwilioClient
@@ -62,7 +62,6 @@ ADMIN_WHATSAPP_RECIPIENTS = os.getenv(
     "ADMIN_WHATSAPP_RECIPIENTS",
     DEFAULT_ADMIN_WHATSAPP_RECIPIENTS
 ).strip()
-
 ADMIN_LIST: List[str] = [x.strip() for x in ADMIN_WHATSAPP_RECIPIENTS.split(",") if x.strip()]
 
 # Flask + DB
@@ -100,10 +99,10 @@ class Cliente(db.Model):
 class Concepto(db.Model):
     __tablename__ = "concepto"
     id = db.Column(db.Integer, primary_key=True)
-    nombre_concepto = db.Column(db.String(200), nullable=False)
+    nombre_concepto = db.Column(db.String(500), nullable=False)
     unidad = db.Column(db.String(50))
     precio_unitario = db.Column(db.Float, default=0)
-    descripcion = db.Column(db.String(500))
+    descripcion = db.Column(db.String(1000))
 
 class Cotizacion(db.Model):
     __tablename__ = "cotizacion"
@@ -113,7 +112,7 @@ class Cotizacion(db.Model):
     fecha = db.Column(db.DateTime, default=datetime.utcnow)
     estatus = db.Column(db.String(20), default="PENDIENTE")
     subtotal = db.Column(db.Float, default=0.0)
-    descuento_total = db.Column(db.Float, default=0.0)  # legado (no se usa)
+    descuento_total = db.Column(db.Float, default=0.0)  # legado
     iva_porc = db.Column(db.Float, default=16.0)
     iva_monto = db.Column(db.Float, default=0.0)
     total = db.Column(db.Float, default=0.0)
@@ -134,7 +133,6 @@ class CotizacionDetalle(db.Model):
     unidad = db.Column(db.String(50))
     cantidad = db.Column(db.Float, default=1)
     precio_unitario = db.Column(db.Float, default=0)
-    # descuento = db.Column(db.Float, default=0)  # legado
     sistema = db.Column(db.String(200))  # NUEVO
     descripcion = db.Column(db.String(1000))
     subtotal = db.Column(db.Float, default=0)
@@ -142,7 +140,7 @@ class CotizacionDetalle(db.Model):
     concepto = db.relationship("Concepto")
 
 # ---------------------------------------------------------
-# Migración simple
+# Migraciones mínimas
 # ---------------------------------------------------------
 def _table_columns(table_name: str) -> set[str]:
     rows = db.session.execute(text(f"PRAGMA table_info('{table_name}')")).mappings().all()
@@ -151,7 +149,7 @@ def _table_columns(table_name: str) -> set[str]:
 def ensure_schema():
     db.create_all()
 
-    # columnas en cotizacion
+    # Cotizacion
     cols = _table_columns("cotizacion")
     adds = []
     if "subtotal" not in cols:
@@ -173,7 +171,7 @@ def ensure_schema():
     for sql in adds:
         db.session.execute(text(sql))
 
-    # columnas en detalle
+    # CotizacionDetalle
     dcols = _table_columns("cotizacion_detalle")
     dadds = []
     if "sistema" not in dcols:
@@ -194,15 +192,12 @@ with app.app_context():
 # ---------------------------------------------------------
 def generar_folio() -> str:
     """
-    Robustez: obtiene el número máximo de PTCH-#### y suma 1.
-    Si aún existe por carrera, intenta siguientes 10 valores.
+    Busca el mayor PTCH-#### y suma 1.
+    Si aún chocara por carrera, intenta los 10 siguientes; si falla, usa timestamp.
     """
     prefix = "PTCH-"
-    # Buscar el mayor consecutivo actual
     maxn = 0
-    rows = db.session.execute(text(
-        "SELECT folio FROM cotizacion WHERE folio LIKE 'PTCH-%'"
-    )).fetchall()
+    rows = db.session.execute(text("SELECT folio FROM cotizacion WHERE folio LIKE 'PTCH-%'")).fetchall()
     for (folio,) in rows:
         m = re.match(r"PTCH-(\d{4})$", str(folio))
         if m:
@@ -211,12 +206,9 @@ def generar_folio() -> str:
                 maxn = n
     for i in range(1, 11):
         cand = f"{prefix}{maxn+i:04d}"
-        exists = db.session.execute(text(
-            "SELECT 1 FROM cotizacion WHERE folio=:f LIMIT 1"
-        ), {"f": cand}).fetchone()
+        exists = db.session.execute(text("SELECT 1 FROM cotizacion WHERE folio=:f LIMIT 1"), {"f": cand}).fetchone()
         if not exists:
             return cand
-    # fallback timestamp
     return f"{prefix}{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
 
 def fmt(n: float) -> float:
@@ -237,7 +229,6 @@ def parse_float(v, default=0.0) -> float:
         return default
 
 def money(n: float) -> str:
-    # separador de miles con coma, 2 decimales
     try:
         return "${:,.2f}".format(float(n or 0))
     except Exception:
@@ -245,19 +236,20 @@ def money(n: float) -> str:
 
 def cantidad_en_letra_mn(total: float) -> str:
     """
-    En palabras + 'XX/100 M.N.' sin mostrar el número como dígito (salvo fracción XX/100).
+    En palabras + 'XX/100 M.N.' sin dígitos en la parte entera.
     """
     try:
         from num2words import num2words
     except Exception:
-        # Fallback muy básico
         entero = int(total)
         cents = int(round((total - entero) * 100)) % 100
         return f"Cantidad en letra: {entero} pesos {cents:02d}/100 M.N."
     entero = int(total)
     cents = int(round((total - entero) * 100)) % 100
-    palabras = num2words(entero, lang="es").replace(" y cero", "").strip()
-    # Capitalizar primera letra
+    palabras = num2words(entero, lang="es").strip()
+    # "uno peso" -> "un peso"
+    if palabras.endswith(" uno"):
+        palabras = palabras[:-4] + " un"
     if palabras:
         palabras = palabras[0].upper() + palabras[1:]
     return f"Cantidad en letra: {palabras} pesos {cents:02d}/100 M.N."
@@ -282,7 +274,7 @@ def send_whatsapp_multi(to_list: Iterable[str], body: str) -> None:
     if not to_list:
         return
     if not can_send_whatsapp():
-        print("[Twilio] Configuración incompleta; omito envío.")
+        print("[Twilio] Config incompleta; omito envío.")
         return
     for to in to_list:
         to_norm = normalize_whatsapp(to)
@@ -360,7 +352,7 @@ def api_conceptos_suggest():
     } for c in res])
 
 # ---------------------------------------------------------
-# Crear cotización (abre PDF en nueva pestaña al terminar)
+# Crear cotización (abre PDF en nueva pestaña)
 # ---------------------------------------------------------
 @app.route("/cotizaciones/crear", methods=["POST"])
 def crear_cotizacion():
@@ -468,7 +460,7 @@ def crear_cotizacion():
     except Exception as e:
         print(f"[WARN] WhatsApp creación ({cot.folio}): {e}", file=sys.stderr)
 
-    # Abrir PDF en nueva pestaña y regresar al cotizador
+    # Abrir PDF y volver
     pdf_url = url_for("export_cotizacion_pdf", cot_id=cot.id)
     volver = url_for("cotizador")
     return f"""<!DOCTYPE html>
@@ -482,7 +474,7 @@ window.location.href = "{volver}";
 </body></html>"""
 
 # ---------------------------------------------------------
-# Edición de cotización
+# Editar / Actualizar
 # ---------------------------------------------------------
 @app.route("/cotizaciones/<int:cot_id>/editar")
 def editar_cotizacion(cot_id: int):
@@ -518,7 +510,7 @@ def actualizar_cotizacion(cot_id: int):
     c.representante = (f.get("representante") or "").strip() or c.representante
     iva_porc = parse_float(f.get("iva_porc"), c.iva_porc or 16.0)
 
-    # Borrar detalles y re-crear
+    # Reset detalles
     for d in list(c.detalles):
         db.session.delete(d)
 
@@ -544,6 +536,7 @@ def actualizar_cotizacion(cot_id: int):
         line_subtotal = cant * pu
         subtotal += line_subtotal
 
+        # Autocrear concepto
         concepto = Concepto.query.filter_by(nombre_concepto=nom).first()
         if not concepto:
             concepto = Concepto(
@@ -577,7 +570,7 @@ def actualizar_cotizacion(cot_id: int):
 
     db.session.commit()
 
-    # Abrir PDF en nueva pestaña y mostrar vista
+    # Abrir PDF y mostrar vista
     pdf_url = url_for("export_cotizacion_pdf", cot_id=c.id)
     detalle = url_for("view_cotizacion", cot_id=c.id)
     return f"""<!DOCTYPE html>
@@ -590,17 +583,14 @@ window.location.href = "{detalle}";
 <p>Abrir PDF: <a href="{pdf_url}" target="_blank">aquí</a>. Ver detalle: <a href="{detalle}">cotización</a>.</p>
 </body></html>"""
 
-# =========================================================
-#  VER COTIZACIÓN (Vista rápida)
-# =========================================================
+# ---------------------------------------------------------
+# Ver / Eliminar / Listar
+# ---------------------------------------------------------
 @app.route("/cotizaciones/<int:cot_id>/ver")
 def ver_cotizacion(cot_id):
     cot = Cotizacion.query.get_or_404(cot_id)
     return render_template("cotizacion_view.html", c=cot, title=f"Vista de {cot.folio}")
 
-# =========================================================
-#  ELIMINAR COTIZACIÓN
-# =========================================================
 @app.route("/cotizaciones/<int:cot_id>/eliminar")
 def eliminar_cotizacion(cot_id):
     cot = Cotizacion.query.get_or_404(cot_id)
@@ -615,9 +605,6 @@ def eliminar_cotizacion(cot_id):
         flash(f"Error al eliminar la cotización: {str(e)}", "danger")
     return redirect(url_for("index"))
 
-# ---------------------------------------------------------
-# Listas / Detalle
-# ---------------------------------------------------------
 @app.route("/cotizaciones")
 def list_cotizaciones():
     page = int(request.args.get("p", 1) or 1)
@@ -636,16 +623,19 @@ def view_cotizacion(cot_id: int):
     return render_template("cotizacion_view.html", c=c, title=f"Ver {c.folio}")
 
 # ---------------------------------------------------------
-# API: actualizar estatus (Dashboard inline)
+# API: actualizar estatus (inline)
 # ---------------------------------------------------------
-# =========================================================
-# ACTUALIZACIÓN DE ESTATUS DESDE DASHBOARD (inline)
-# =========================================================
 @app.route("/api/cotizaciones/<int:cot_id>/estatus", methods=["POST"])
 def api_update_estatus(cot_id):
     c = Cotizacion.query.get_or_404(cot_id)
-    data = request.get_json(force=True)
-    nuevo = (data.get("estatus") or "").upper().strip()
+
+    nuevo = None
+    ct = request.headers.get("Content-Type","")
+    if "application/json" in ct:
+        data = request.get_json(silent=True) or {}
+        nuevo = (data.get("estatus") or "").upper().strip()
+    else:
+        nuevo = (request.form.get("estatus") or "").upper().strip()
 
     if nuevo not in ["PENDIENTE", "ENVIADA", "GANADA", "PERDIDA"]:
         return jsonify({"ok": False, "error": "Estatus inválido"}), 400
@@ -654,7 +644,7 @@ def api_update_estatus(cot_id):
     c.estatus = nuevo
     db.session.commit()
 
-    # 🔔 Enviar WhatsApp de notificación si cambió
+    # Notificar si cambió
     try:
         if twilio_client and nuevo != anterior:
             body = (
@@ -662,18 +652,16 @@ def api_update_estatus(cot_id):
                 f"Folio: *{c.folio}*\n"
                 f"Anterior: {anterior}\n"
                 f"Nuevo: *{nuevo}*\n"
-                f"Total: ${c.total:,.2f}"
+                f"Total: {money(c.total)}"
             )
             send_whatsapp_multi(ADMIN_LIST, body)
     except Exception as e:
-        print(f"[Twilio] Error al enviar notificación de estatus: {e}")
+        print(f"[Twilio] Error al enviar notificación de estatus: {e}", file=sys.stderr)
 
     return jsonify({"ok": True, "estatus": nuevo})
 
-
-
 # ---------------------------------------------------------
-# Exportaciones (CSV / Excel / PDF)
+# Exportaciones CSV / Excel
 # ---------------------------------------------------------
 @app.route("/cotizaciones/<int:cot_id>/export.csv")
 def export_cotizacion_csv(cot_id: int):
@@ -701,93 +689,6 @@ def export_cotizacion_csv(cot_id: int):
         mimetype="text/csv",
         headers={'Content-Disposition': f'attachment; filename="{c.folio or "cotizacion"}.csv"'}
     )
-# =========================================================
-# EXPORTAR COTIZACIÓN A EXCEL (formato similar al PDF)
-# =========================================================
-@app.route("/cotizaciones/<int:cot_id>/export.xlsx")
-def export_cotizacion_excel(cot_id: int):
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-    from io import BytesIO
-
-    c = Cotizacion.query.get_or_404(cot_id)
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Cotización"
-
-    # Encabezado principal
-    ws.merge_cells("A1:F1")
-    ws["A1"] = f"COTIZACIÓN POLIUTECH - {c.folio}"
-    ws["A1"].font = Font(bold=True, size=14, color="0D47A1")
-    ws["A1"].alignment = Alignment(horizontal="center")
-
-    # Datos generales
-    ws["A3"], ws["B3"] = "Cliente:", c.cliente.nombre_cliente if c.cliente else ""
-    ws["A4"], ws["B4"] = "Empresa:", c.cliente.empresa if c.cliente else ""
-    ws["A5"], ws["B5"] = "Fecha:", c.fecha.strftime("%d/%m/%Y %H:%M")
-    ws["A6"], ws["B6"] = "Representante:", c.representante or ""
-    ws["A7"], ws["B7"] = "Estatus:", c.estatus
-
-       # Tabla de detalles
-    headers = ["Cant", "Unidad", "Concepto", "Sistema", "Precio Unitario", "Subtotal"]
-    ws.append([])
-    ws.append(headers)
-
-    header_fill = PatternFill("solid", fgColor="0D47A1")
-    header_font = Font(bold=True, color="FFFFFF")
-    for col in range(1, len(headers) + 1):
-        cell = ws.cell(row=9, column=col)
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal="center")
-
-    row = 10
-    for d in c.detalles:
-        ws.append([
-            d.cantidad,
-            d.unidad or "",
-            d.nombre_concepto,
-            getattr(d, "sistema", ""),  # <- en caso de que exista el campo nuevo
-            d.precio_unitario,
-            d.subtotal
-        ])
-        row += 1
-
-
-    # Totales
-    ws.append([])
-    ws.append(["", "", "", "Subtotal", "", c.subtotal])
-    ws.append(["", "", "", f"IVA {c.iva_porc}%", "", c.iva_monto])
-    ws.append(["", "", "", "Total", "", c.total])
-
-    # Notas
-    ws.append([])
-    if c.notas:
-        ws.append(["Notas:", c.notas])
-
-    # Formato general
-    thin = Side(border_style="thin", color="CCCCCC")
-    for r in ws.iter_rows(min_row=9, max_col=6):
-        for cell in r:
-            cell.border = Border(top=thin, left=thin, right=thin, bottom=thin)
-            cell.alignment = Alignment(vertical="center")
-
-    # Ajuste de anchos
-    widths = [8, 12, 50, 15, 10, 15]
-    for i, w in enumerate(widths, start=1):
-        ws.column_dimensions[chr(64+i)].width = w
-
-    # Guardar a memoria
-    output = BytesIO()
-    wb.save(output)
-    output.seek(0)
-
-    return Response(
-        output.getvalue(),
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={'Content-Disposition': f'attachment; filename="{c.folio}.xlsx"'}
-    )
 
 @app.route("/cotizaciones/<int:cot_id>/export.xlsx")
 def export_cotizacion_xlsx(cot_id: int):
@@ -803,50 +704,46 @@ def export_cotizacion_xlsx(cot_id: int):
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
     right = Alignment(horizontal="right", vertical="center")
     left = Alignment(horizontal="left", vertical="top", wrap_text=True)
-    header_fill = PatternFill("solid", fgColor="0D47A1")  # azul
+    header_fill = PatternFill("solid", fgColor="0D47A1")
     white = Font(color="FFFFFF", bold=True)
     thin = Side(style="thin", color="DDDDDD")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
     ws.merge_cells("A1:F1"); ws["A1"] = f"COTIZACIÓN {c.folio}"
-    ws["A1"].font = Font(bold=True, size=14)
-    ws["A1"].alignment = center
+    ws["A1"].font = Font(bold=True, size=14); ws["A1"].alignment = center
 
     ws.append(["Folio", c.folio, "", "Fecha", c.fecha.strftime("%d/%m/%Y %H:%M"), ""])
     ws.append(["Cliente", (c.cliente.nombre_cliente if c.cliente else ""), "", "Empresa", (c.cliente.empresa if c.cliente else ""), ""])
     ws.append(["Representante", c.representante or "", "", "Estatus", c.estatus, ""])
     ws.append([])
-    # Encabezados tabla
+
     headers = ["Cant", "Unidad", "Concepto", "Sistema", "Precio Unit.", "Subtotal"]
     ws.append(headers)
-    for col, name in enumerate(headers, 1):
+    for col in range(1, 7):
         cell = ws.cell(row=ws.max_row, column=col)
         cell.fill = header_fill; cell.font = white; cell.alignment = center; cell.border = border
 
     for d in c.detalles:
-        ws.append([d.cantidad, d.unidad or "", d.nombre_concepto, d.sistema or "", float(d.precio_unitario or 0), float(d.subtotal or 0)])
+        ws.append([d.cantidad, d.unidad or "", d.nombre_concepto, d.sistema or "",
+                   float(d.precio_unitario or 0), float(d.subtotal or 0)])
+        r = ws.max_row
         for col in range(1, 7):
-            ws.cell(row=ws.max_row, column=col).border = border
-            if col in (5, 6):
-                ws.cell(row=ws.max_row, column=col).number_format = '"$"#,##0.00'
-            if col in (1,):
-                ws.cell(row=ws.max_row, column=col).number_format = '0.00'
-            if col in (3,):
-                ws.cell(row=ws.max_row, column=col).alignment = left
+            ws.cell(row=r, column=col).border = border
+        ws.cell(row=r, column=1).number_format = '0.00'
+        ws.cell(row=r, column=5).number_format = '"$"#,##0.00'
+        ws.cell(row=r, column=6).number_format = '"$"#,##0.00'
+        ws.cell(row=r, column=3).alignment = left
 
     ws.append([])
-    start = ws.max_row + 1
     ws.append(["", "", cantidad_en_letra_mn(c.total)])
     ws.append(["", "Subtotal:", float(c.subtotal or 0)])
     ws.append(["", f"IVA ({c.iva_porc:.2f}%):", float(c.iva_monto or 0)])
     ws.append(["", "Total:", float(c.total or 0)])
-    # Formatos totales
-    for r in range(start+1, start+4):
+    for r in range(ws.max_row-2, ws.max_row+1):
         ws.cell(row=r, column=2).font = bold
         ws.cell(row=r, column=3).number_format = '"$"#,##0.00'
         ws.cell(row=r, column=3).alignment = right
 
-    # Anchos
     ws.column_dimensions["A"].width = 10
     ws.column_dimensions["B"].width = 10
     ws.column_dimensions["C"].width = 70
@@ -855,15 +752,16 @@ def export_cotizacion_xlsx(cot_id: int):
     ws.column_dimensions["F"].width = 15
 
     bio = io.BytesIO()
-    wb.save(bio)
-    bio.seek(0)
+    wb.save(bio); bio.seek(0)
     return Response(
         bio.getvalue(),
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{c.folio}.xlsx"'}
     )
 
-# ======= PDF =======
+# ---------------------------------------------------------
+# PDF
+# ---------------------------------------------------------
 @app.route("/cotizaciones/<int:cot_id>/export.pdf")
 def export_cotizacion_pdf(cot_id: int):
     c = Cotizacion.query.get_or_404(cot_id)
@@ -874,13 +772,12 @@ def export_cotizacion_pdf(cot_id: int):
         leftMargin=20*mm, rightMargin=20*mm, topMargin=58*mm, bottomMargin=36*mm
     )
     styles = getSampleStyleSheet()
-    elems = []
-
-    from reportlab.lib.styles import ParagraphStyle
     styles.add(ParagraphStyle(name="Encabezado", fontSize=9, leading=12, spaceAfter=4))
     styles.add(ParagraphStyle(name="NormalRight", fontSize=9, alignment=2))
 
-    # Encabezado corporativo
+    elems = []
+
+    # ===== Encabezado =====
     def encabezado(canv, doc_):
         canv.saveState()
         # franja azul superior
@@ -912,19 +809,19 @@ def export_cotizacion_pdf(cot_id: int):
         canv.drawRightString(A4[0]-28, A4[1]-56, "Recubrimientos Especializados")
         canv.restoreState()
 
-    # Footer corporativo + firma (firma justo arriba del pie)
+    # ===== Footer + firma =====
     def footer(canv, doc_):
         canv.saveState()
 
         # Firma centrada justo arriba del footer
         canv.setFont("Helvetica", 9)
         canv.setFillColor(colors.black)
-        y_firma = 80  # un poco encima del pie
-        canv.drawCentredString(A4[0]/2, y_firma + 20, "Atte.")
+        y_firma = 80
+        canv.drawCentredString(A4[0]/2, y_firma + 18, "Atte.")
         canv.setFont("Helvetica-Bold", 9)
-        canv.drawCentredString(A4[0]/2, y_firma + 8, "Ing. César Antonio Garza Guerrero")
+        canv.drawCentredString(A4[0]/2, y_firma + 6, "Ing. César Antonio Garza Guerrero")
         canv.setFont("Helvetica", 9)
-        canv.drawCentredString(A4[0]/2, y_firma - 4, "DIRECTOR GENERAL")
+        canv.drawCentredString(A4[0]/2, y_firma - 6, "DIRECTOR GENERAL")
 
         # División
         division_path = os.path.join(app.static_folder or "static", "division.png")
@@ -946,14 +843,13 @@ def export_cotizacion_pdf(cot_id: int):
         canv.drawCentredString(A4[0]/2, 25, line1)
         canv.drawCentredString(A4[0]/2, 15, line2)
 
-        # título del documento
         try:
             canv.setTitle(c.folio or "Cotizacion")
         except Exception:
             pass
         canv.restoreState()
 
-    # Datos generales
+    # ===== Datos generales =====
     elems.append(Paragraph(f"<b>Folio:</b> {c.folio}", styles["Encabezado"]))
     elems.append(Paragraph(f"<b>Fecha:</b> {c.fecha.strftime('%d/%m/%Y %H:%M')} | "
                            f"<b>Representante:</b> {c.representante or ''}", styles["Encabezado"]))
@@ -972,7 +868,7 @@ def export_cotizacion_pdf(cot_id: int):
             elems.append(Paragraph(txt, styles["Encabezado"]))
         elems.append(Spacer(1, 10))
 
-    # Tabla
+    # ===== Tabla =====
     data = [["Cant", "Unidad", "Concepto", "Sistema", "Precio Unit.", "Subtotal"]]
     for d in c.detalles:
         data.append([
@@ -983,7 +879,7 @@ def export_cotizacion_pdf(cot_id: int):
             money(d.precio_unitario),
             money(d.subtotal),
         ])
-    tbl = Table(data, colWidths=[18*mm, 20*mm, 70*mm, 30*mm, 25*mm, 25*mm], repeatRows=1)
+    tbl = Table(data, colWidths=[18*mm, 20*mm, 70*mm, 30*mm, 25*mm, 25*mm], repeatRows=1, hAlign="LEFT")
     tbl.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#0d47a1")),
         ("TEXTCOLOR", (0,0), (-1,0), colors.white),
@@ -994,40 +890,26 @@ def export_cotizacion_pdf(cot_id: int):
         ("BOTTOMPADDING", (0,0), (-1,-1), 4),
     ]))
     elems.append(tbl)
-    elems.append(Spacer(1, 12))
+    elems.append(Spacer(1, 10))
 
-    # -----------------------------------------------------
-# 🔠 CANTIDAD EN LETRA (correctamente escrita en español)
-# -----------------------------------------------------
-try:
-    from num2words import num2words
+    # ===== Cantidad en letra =====
+    try:
+        from num2words import num2words
+        total = float(c.total or 0)
+        enteros = int(total)
+        centavos = int(round((total - enteros) * 100)) % 100
+        palabras = num2words(enteros, lang='es').strip()
+        if palabras.endswith(" uno"):
+            palabras = palabras[:-4] + " un"
+        if palabras:
+            palabras = palabras[0].upper() + palabras[1:]
+        cantidad_letra = f"{palabras} pesos {centavos:02d}/100 M.N."
+        elems.append(Paragraph(f"<b>Cantidad en letra:</b> {cantidad_letra}", styles["Encabezado"]))
+        elems.append(Spacer(1, 6))
+    except Exception as e:
+        print(f"[PDF] num2words error: {e}", file=sys.stderr)
 
-    total = float(c.total or 0)
-    enteros = int(total)
-    centavos = int(round((total - enteros) * 100))
-
-    # Convertir parte entera a texto (num2words en español)
-    palabras = num2words(enteros, lang='es')
-
-    # Ajuste de estilo: "uno peso" -> "un peso"
-    if palabras.endswith(" uno"):
-        palabras = palabras[:-4] + " un"
-
-    # Determinar singular/plural
-    palabra_peso = "peso" if enteros == 1 else "pesos"
-
-    # Crear el texto final
-    cantidad_letra = f"{palabras.capitalize()} {palabra_peso} {centavos:02d}/100 M.N."
-
-    elems.append(Spacer(1, 8))
-    elems.append(Paragraph(f"<b>Cantidad en letra:</b> {cantidad_letra}", styles["Normal"]))
-    elems.append(Spacer(1, 6))
-
-except Exception as e:
-    print(f"[PDF] Error generando cantidad en letra: {e}")
-
-
-    # Totales
+    # ===== Totales =====
     tot_data = [
         ["Subtotal:", money(c.subtotal)],
         [f"IVA ({c.iva_porc:.2f}%):", money(c.iva_monto)],
@@ -1042,17 +924,17 @@ except Exception as e:
         ("INNERGRID", (0,0), (-1,-1), 0.25, colors.lightgrey),
     ]))
     elems.append(t2)
-    elems.append(Spacer(1, 6))
+    elems.append(Spacer(1, 8))
 
-    # Notas (respetar saltos de línea)
+    # ===== Notas con saltos =====
     if c.notas:
         elems.append(Paragraph("<b>Notas:</b>", styles["Encabezado"]))
         for line in str(c.notas).replace("\r\n", "\n").split("\n"):
             if line.strip():
                 elems.append(Paragraph(line.strip(), styles["Normal"]))
-        elems.append(Spacer(1, 10))
+        elems.append(Spacer(1, 8))
 
-    # Build
+    # Build + respuesta
     doc.build(
         elems,
         onFirstPage=lambda canv, d: (encabezado(canv, d), footer(canv, d)),
@@ -1067,75 +949,7 @@ except Exception as e:
     )
 
 # ---------------------------------------------------------
-# Admin: importación catálogos
-# ---------------------------------------------------------
-@app.route("/admin/catalogos/upload", methods=["POST"])
-def upload_catalogo():
-    tipo = (request.form.get("tipo") or "").strip()
-    file = request.files.get("archivo")
-    if not tipo or not file or not getattr(file, "filename", ""):
-        flash("Debe seleccionar un tipo y un archivo válido.", "danger")
-        return redirect(url_for("admin_catalogos"))
-
-    import pandas as pd
-    ext = os.path.splitext(file.filename)[1].lower()
-    try:
-        if ext == ".csv":
-            df = pd.read_csv(file)
-        elif ext in [".xlsx", ".xls"]:
-            df = pd.read_excel(file)
-        else:
-            flash("Formato no compatible. Usa CSV o XLSX.", "danger")
-            return redirect(url_for("admin_catalogos"))
-    except Exception as e:
-        flash(f"Error leyendo archivo: {e}", "danger")
-        return redirect(url_for("admin_catalogos"))
-
-    try:
-        registros = 0
-        if tipo == "Clientes":
-            for _, r in df.iterrows():
-                nombre_cliente = str(r.get("nombre_cliente","")).strip()
-                if not nombre_cliente:
-                    continue
-                c = Cliente(
-                    nombre_cliente=nombre_cliente,
-                    empresa=str(r.get("empresa","")).strip() or None,
-                    responsable=str(r.get("responsable","")).strip() or None,
-                    correo=str(r.get("correo","")).strip() or None,
-                    telefono=str(r.get("telefono","")).strip() or None,
-                    direccion=str(r.get("direccion","")).strip() or None,
-                    rfc=str(r.get("rfc","")).strip() or None,
-                )
-                db.session.add(c); registros += 1
-        elif tipo == "Conceptos":
-            for _, r in df.iterrows():
-                nombre_concepto = str(r.get("nombre_concepto","")).strip()
-                if not nombre_concepto:
-                    continue
-                pu = r.get("precio_unitario", 0)
-                try:
-                    pu = float(str(pu).replace("$","").replace(",","")) if pu not in [None,""] else 0
-                except Exception:
-                    pu = 0
-                c = Concepto(
-                    nombre_concepto=nombre_concepto,
-                    unidad=str(r.get("unidad","")).strip() or None,
-                    precio_unitario=pu,
-                    descripcion=str(r.get("descripcion","")).strip() or None,
-                )
-                db.session.add(c); registros += 1
-
-        db.session.commit()
-        flash(f"Catálogo de {tipo.lower()} cargado correctamente ({registros} registros).", "success")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Error al importar: {e}", "danger")
-
-    return redirect(url_for("admin_catalogos"))
-
-# ---------------------------------------------------------
-# API Datos Dashboard
+# API Dashboard (series / kpis / breakdown)
 # ---------------------------------------------------------
 @app.route("/api/cotizaciones/search")
 def api_cotizaciones_search():
@@ -1258,17 +1072,17 @@ except Exception as e:
     print(f"[Scheduler] No pudo iniciar: {e}", file=sys.stderr)
 
 # ---------------------------------------------------------
-# Fallbacks de templates mínimos (si no existen)
+# Fallbacks de templates mínimos (sin romper diseño base)
 # ---------------------------------------------------------
 from jinja2 import TemplateNotFound
-from markupsafe import escape, Markup
+from markupsafe import escape
 
 _real_render_template = render_template
 def render_template(name, **ctx):
     try:
         return _real_render_template(name, **ctx)
     except TemplateNotFound:
-        # dashboard fallback
+        # Dashboard fallback
         if name == "dashboard.html":
             total_cotizaciones = ctx.get("total_cotizaciones", 0)
             total_importe = ctx.get("total_importe", 0.0)
@@ -1296,17 +1110,16 @@ def render_template(name, **ctx):
 <style>
 body{{font-family:system-ui; margin:24px}}
 table{{border-collapse:collapse;width:100%}} th,td{{border:1px solid #ddd;padding:8px}}
+a{{text-decoration:none}}
+.header{{display:flex;align-items:center;gap:12px;margin-bottom:12px}}
+.header img{{height:36px}}
 </style>
-<script>
-async function setEstatus(id, est){{
-  const fd = new FormData(); fd.append('estatus', est);
-  const r = await fetch('/api/cotizaciones/'+id+'/estatus', {{method:'POST', body:fd}});
-  if(r.ok) location.reload(); else alert('Error al cambiar estatus');
-}}
-</script>
 </head><body>
-<h1>MARWHATS · Dashboard</h1>
-<p> Cotizaciones: <b>{total_cotizaciones}</b> · Importe total: <b>${total_importe:.2f}</b> · Conceptos: <b>{total_catalogo}</b></p>
+<div class="header">
+  <img src="/static/logo.jpg" alt="logo" onerror="this.style.display='none'">
+  <h1 style="margin:0">M.A.R - Sistema Poliutech</h1>
+</div>
+<p> Cotizaciones: <b>{total_cotizaciones}</b> · Importe total: <b>{'${:,.2f}'.format(total_importe)}</b> · Conceptos: <b>{total_catalogo}</b></p>
 <p><a href="{url_for('cotizador')}">Crear nueva</a> · <a href="{url_for('admin_catalogos')}">Admin catálogos</a></p>
 <table>
 <thead><tr><th>Folio</th><th>Fecha</th><th>Estatus</th><th>Total</th><th>Acciones</th></tr></thead>
@@ -1314,7 +1127,7 @@ async function setEstatus(id, est){{
 </body></html>"""
             return html
 
-        # cotizador fallback (incluye REPRESENTANTE y SISTEMA)
+        # Cotizador fallback
         if name == "cotizador.html":
             html = f"""<!DOCTYPE html>
 <html><head><meta charset='utf-8'><title>{escape(ctx.get('title','Cotizador'))}</title>
@@ -1355,7 +1168,7 @@ async function setEstatus(id, est){{
       <option value="PERDIDA">PERDIDA</option>
     </select>
   </label></p>
-  <p><label>Notas:<br><textarea name="notas" rows="6" placeholder="Puedes pegar aquí las CONDICIONES COMERCIALES y se respetarán los saltos de línea."></textarea></label></p>
+  <p><label>Notas:<br><textarea name="notas" rows="6" placeholder="Pega aquí las CONDICIONES COMERCIALES (se respetan los saltos de línea)."></textarea></label></p>
 
   <p><button>Guardar cotización</button> <a href="{url_for('index')}">Volver</a></p>
 </form>
@@ -1374,7 +1187,7 @@ function addItem(){{
 </body></html>"""
             return html
 
-        # editor fallback (incluye SISTEMA)
+        # Editor fallback
         if name == "cotizacion_edit.html":
             c = ctx["c"]
             def row(d):
@@ -1436,6 +1249,7 @@ function addItem(){{
 </body></html>"""
             return html
 
+        # Listado fallback
         if name == "cotizaciones_list.html":
             items = ctx.get("items", [])
             page = ctx.get("page", 1); pages = ctx.get("pages", 1); total = ctx.get("total", 0)
@@ -1462,6 +1276,7 @@ function addItem(){{
 <p><a href="{url_for('index')}">Volver</a></p>
 </body></html>"""
 
+        # View fallback
         if name == "cotizacion_view.html":
             c = ctx.get("c")
             det_rows = "".join(
