@@ -1,138 +1,213 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ title or "Sistema Poliutech" }}</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard · Sistema Poliutech</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #f7f8fa; }
+    .card { border-radius: 10px; }
+    .status-select {
+      border: none;
+      background: transparent;
+      font-weight: 500;
+      color: #0d47a1;
+    }
+  </style>
 </head>
-<body class="bg-light">
-<div class="container-fluid py-4">
+<body class="container-fluid py-4">
 
-    <!-- Header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3 class="fw-bold text-primary">Dashboard · Sistema Poliutech</h3>
-        <div>
-            <a href="{{ url_for('cotizador') }}" class="btn btn-success btn-sm">➕ Nueva Cotización</a>
-            <a href="{{ url_for('admin_catalogos') }}" class="btn btn-secondary btn-sm">📚 Catálogos</a>
+  <div class="row mb-4 text-center">
+    <div class="col-md-4">
+      <div class="card border-success shadow-sm">
+        <div class="card-body">
+          <h6 class="text-success">Importe Total</h6>
+          <h3 class="fw-bold text-dark">${{ "{:,.2f}".format(total_importe) }}</h3>
         </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card border-primary shadow-sm">
+        <div class="card-body">
+          <h6 class="text-primary">Cotizaciones Totales</h6>
+          <h3 class="fw-bold text-dark">{{ total_cotizaciones }}</h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card border-info shadow-sm">
+        <div class="card-body">
+          <h6 class="text-info">Conceptos Registrados</h6>
+          <h3 class="fw-bold text-dark">{{ total_catalogo }}</h3>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gráficas -->
+  <div class="row mt-4">
+    <div class="col-md-8">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">Evolución Mensual de Cotizaciones</h5>
+          <canvas id="chartMensual"></canvas>
+        </div>
+      </div>
     </div>
 
-    <!-- Métricas -->
-    <div class="row g-3 mb-4">
-        <div class="col-md-4">
-            <div class="card border-primary shadow-sm">
-                <div class="card-body text-center">
-                    <h5 class="card-title text-primary mb-2">Total Cotizaciones</h5>
-                    <h2 class="fw-bold">{{ total_cotizaciones }}</h2>
-                </div>
-            </div>
+    <div class="col-md-4">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">Distribución por Estatus</h5>
+          <canvas id="chartEstatus"></canvas>
         </div>
-        <div class="col-md-4">
-            <div class="card border-success shadow-sm">
-                <div class="card-body text-center">
-                    <h5 class="card-title text-success mb-2">Importe Total</h5>
-                    <h2 class="fw-bold">${{ "%.2f"|format(total_importe) }}</h2>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card border-info shadow-sm">
-                <div class="card-body text-center">
-                    <h5 class="card-title text-info mb-2">Conceptos Registrados</h5>
-                    <h2 class="fw-bold">{{ total_catalogo }}</h2>
-                </div>
-            </div>
-        </div>
+      </div>
     </div>
+  </div>
 
-    <!-- Tabla de cotizaciones -->
+  <!-- Tabla de cotizaciones -->
+  <div class="mt-5">
     <div class="card shadow-sm">
-        <div class="card-header bg-primary text-white fw-bold">
-            Cotizaciones recientes
+      <div class="card-body">
+        <h5 class="card-title mb-3">Últimas Cotizaciones</h5>
+        <div class="table-responsive">
+          <table class="table table-bordered align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>Folio</th>
+                <th>Fecha</th>
+                <th>Cliente</th>
+                <th>Empresa</th>
+                <th>Total</th>
+                <th>Estatus</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tablaCotizaciones">
+              {% for c in cotizaciones %}
+              <tr data-id="{{ c.id }}" class="status-row {{ c.estatus|lower }}">
+                <td>{{ c.folio }}</td>
+                <td>{{ c.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>{{ c.cliente.nombre_cliente if c.cliente else '' }}</td>
+                <td>{{ c.cliente.empresa if c.cliente else '' }}</td>
+                <td>${{ "{:,.2f}".format(c.total) }}</td>
+                <td>
+                  <select class="status-select" onchange="cambiarEstatus({{ c.id }}, this)">
+                    {% for estado in ['PENDIENTE','ENVIADA','GANADA','PERDIDA'] %}
+                      <option value="{{ estado }}" {% if c.estatus == estado %}selected{% endif %}>{{ estado }}</option>
+                    {% endfor %}
+                  </select>
+                </td>
+                <td>
+                  <a href="{{ url_for('view_cotizacion', cot_id=c.id) }}" class="btn btn-outline-primary btn-sm">👁️ Ver</a>
+                  <a href="{{ url_for('export_cotizacion_pdf', cot_id=c.id) }}" target="_blank" class="btn btn-outline-danger btn-sm">📄 PDF</a>
+                  <a href="{{ url_for('export_cotizacion_excel', cot_id=c.id) }}" class="btn btn-outline-success btn-sm">📊 Excel</a>
+                  <a href="{{ url_for('editar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-warning btn-sm">✏️ Editar</a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
         </div>
-        <div class="card-body bg-white">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle">
-                    <thead class="table-light">
-                        <tr>
-                            <th>Folio</th>
-                            <th>Fecha</th>
-                            <th>Cliente</th>
-                            <th>Empresa</th>
-                            <th>Estatus</th>
-                            <th>Total</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody id="cotizaciones-table">
-                        {% for c in cotizaciones %}
-                        <tr class="status-row {{ 'table-warning' if c.estatus=='PENDIENTE' else
-                                                 'table-info' if c.estatus=='ENVIADA' else
-                                                 'table-success' if c.estatus=='GANADA' else
-                                                 'table-danger' if c.estatus=='PERDIDA' else '' }}">
-                            <td>{{ c.folio }}</td>
-                            <td>{{ c.fecha.strftime("%Y-%m-%d %H:%M") }}</td>
-                            <td>{{ c.cliente.nombre_cliente if c.cliente else '' }}</td>
-                            <td>{{ c.cliente.empresa if c.cliente else '' }}</td>
-                            <td>
-                                <select class="form-select form-select-sm estatus-select" 
-                                        data-id="{{ c.id }}" style="min-width:130px">
-                                    {% for e in ['PENDIENTE','ENVIADA','GANADA','PERDIDA'] %}
-                                        <option value="{{ e }}" {% if c.estatus==e %}selected{% endif %}>{{ e }}</option>
-                                    {% endfor %}
-                                </select>
-                            </td>
-                            <td>${{ "%.2f"|format(c.total) }}</td>
-                            <td>
-                                <a href="{{ url_for('view_cotizacion', cot_id=c.id) }}" class="btn btn-outline-primary btn-sm">👁️ Ver</a>
-                                <a href="{{ url_for('editar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-secondary btn-sm">✏️ Editar</a>
-                                <a href="{{ url_for('export_cotizacion_pdf', cot_id=c.id) }}" target="_blank" class="btn btn-outline-danger btn-sm">📄 PDF</a>
-                                <a href="{{ url_for('export_cotizacion_excel', cot_id=c.id) }}" class="btn btn-outline-success btn-sm">📊 Excel</a>
-
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+      </div>
     </div>
+  </div>
 
-</div>
-
-<!-- Script de actualización inline -->
-<script>
-document.querySelectorAll('.estatus-select').forEach(select => {
-    select.addEventListener('change', async (e) => {
-        const id = e.target.dataset.id;
-        const nuevoEstatus = e.target.value;
-        try {
-            const resp = await fetch(`/api/cotizaciones/${id}/estatus`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({estatus: nuevoEstatus})
-            });
-            if (resp.ok) {
-                const fila = e.target.closest('tr');
-                fila.classList.remove('table-warning','table-info','table-success','table-danger');
-                if (nuevoEstatus === 'PENDIENTE') fila.classList.add('table-warning');
-                else if (nuevoEstatus === 'ENVIADA') fila.classList.add('table-info');
-                else if (nuevoEstatus === 'GANADA') fila.classList.add('table-success');
-                else if (nuevoEstatus === 'PERDIDA') fila.classList.add('table-danger');
-                alert('✅ Estatus actualizado correctamente');
-            } else {
-                alert('⚠️ Error al actualizar estatus');
-            }
-        } catch (err) {
-            console.error(err);
-            alert('❌ Error de conexión');
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script>
+    // === CAMBIO DE ESTATUS INLINE ===
+    async function cambiarEstatus(id, select) {
+      const nuevo = select.value;
+      try {
+        const res = await fetch(`/api/cotizaciones/${id}/estatus`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ estatus: nuevo }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          Swal.fire({
+            icon: "success",
+            title: "Estatus actualizado",
+            text: `Nuevo estatus: ${nuevo}`,
+            timer: 1200,
+            showConfirmButton: false
+          });
+          actualizarColorFila(select.closest("tr"), nuevo);
         }
-    });
-});
-</script>
+      } catch (err) {
+        console.error(err);
+      }
+    }
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    function actualizarColorFila(row, estatus) {
+      row.classList.remove("table-success", "table-warning", "table-info", "table-danger");
+      switch (estatus) {
+        case "GANADA": row.classList.add("table-success"); break;
+        case "PENDIENTE": row.classList.add("table-warning"); break;
+        case "ENVIADA": row.classList.add("table-info"); break;
+        case "PERDIDA": row.classList.add("table-danger"); break;
+      }
+    }
+
+    // === GRÁFICAS ===
+    async function cargarGraficas() {
+      try {
+        const res1 = await fetch("/api/dashboard/metrics");
+        const data1 = await res1.json();
+
+        const labels = data1.series.map(x => x.mes);
+        const totales = data1.series.map(x => x.total);
+        const cotizaciones = data1.series.map(x => x.cotizaciones);
+
+        new Chart(document.getElementById("chartMensual"), {
+          type: "bar",
+          data: {
+            labels,
+            datasets: [
+              {
+                label: "Importe Total ($)",
+                data: totales,
+                backgroundColor: "#0d47a1",
+                borderRadius: 6,
+              },
+              {
+                label: "Cotizaciones",
+                data: cotizaciones,
+                backgroundColor: "#4caf50",
+                borderRadius: 6,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            scales: { y: { beginAtZero: true } },
+          },
+        });
+
+        const res2 = await fetch("/api/dashboard/status_breakdown");
+        const data2 = await res2.json();
+
+        new Chart(document.getElementById("chartEstatus"), {
+          type: "doughnut",
+          data: {
+            labels: data2.labels,
+            datasets: [{
+              data: data2.counts,
+              backgroundColor: ["#4caf50", "#ffeb3b", "#2196f3", "#f44336"],
+            }],
+          },
+          options: { plugins: { legend: { position: "bottom" } } },
+        });
+      } catch (err) {
+        console.error("Error cargando gráficas", err);
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", cargarGraficas);
+  </script>
+
 </body>
 </html>
