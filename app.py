@@ -684,6 +684,87 @@ def export_cotizacion_csv(cot_id: int):
         mimetype="text/csv",
         headers={'Content-Disposition': f'attachment; filename="{c.folio or "cotizacion"}.csv"'}
     )
+# =========================================================
+# EXPORTAR COTIZACIÓN A EXCEL (formato similar al PDF)
+# =========================================================
+@app.route("/cotizaciones/<int:cot_id>/export.xlsx")
+def export_cotizacion_excel(cot_id: int):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from io import BytesIO
+
+    c = Cotizacion.query.get_or_404(cot_id)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Cotización"
+
+    # Encabezado principal
+    ws.merge_cells("A1:F1")
+    ws["A1"] = f"COTIZACIÓN POLIUTECH - {c.folio}"
+    ws["A1"].font = Font(bold=True, size=14, color="0D47A1")
+    ws["A1"].alignment = Alignment(horizontal="center")
+
+    # Datos generales
+    ws["A3"], ws["B3"] = "Cliente:", c.cliente.nombre_cliente if c.cliente else ""
+    ws["A4"], ws["B4"] = "Empresa:", c.cliente.empresa if c.cliente else ""
+    ws["A5"], ws["B5"] = "Fecha:", c.fecha.strftime("%d/%m/%Y %H:%M")
+    ws["A6"], ws["B6"] = "Representante:", c.representante or ""
+    ws["A7"], ws["B7"] = "Estatus:", c.estatus
+
+    # Tabla de detalles
+    headers = ["Cant", "Unidad", "Concepto", "Precio Unitario", "Desc %", "Subtotal"]
+    ws.append([])
+    ws.append(headers)
+    header_fill = PatternFill("solid", fgColor="0D47A1")
+    header_font = Font(bold=True, color="FFFFFF")
+    for col in range(1, len(headers) + 1):
+        cell = ws.cell(row=9, column=col)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center")
+
+    row = 10
+    for d in c.detalles:
+        ws.append([
+            d.cantidad, d.unidad or "", d.nombre_concepto,
+            d.precio_unitario, d.descuento, d.subtotal
+        ])
+        row += 1
+
+    # Totales
+    ws.append([])
+    ws.append(["", "", "", "Subtotal", "", c.subtotal])
+    ws.append(["", "", "", f"IVA {c.iva_porc}%", "", c.iva_monto])
+    ws.append(["", "", "", "Total", "", c.total])
+
+    # Notas
+    ws.append([])
+    if c.notas:
+        ws.append(["Notas:", c.notas])
+
+    # Formato general
+    thin = Side(border_style="thin", color="CCCCCC")
+    for r in ws.iter_rows(min_row=9, max_col=6):
+        for cell in r:
+            cell.border = Border(top=thin, left=thin, right=thin, bottom=thin)
+            cell.alignment = Alignment(vertical="center")
+
+    # Ajuste de anchos
+    widths = [8, 12, 50, 15, 10, 15]
+    for i, w in enumerate(widths, start=1):
+        ws.column_dimensions[chr(64+i)].width = w
+
+    # Guardar a memoria
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    return Response(
+        output.getvalue(),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={'Content-Disposition': f'attachment; filename="{c.folio}.xlsx"'}
+    )
 
 @app.route("/cotizaciones/<int:cot_id>/export.xlsx")
 def export_cotizacion_xlsx(cot_id: int):
