@@ -1375,4 +1375,4 @@ def api_catalogos_import():
         return jsonify({"ok": True, "importados": registros})
 
     flash(f"Se importaron {registros} registros correctamente.", "success")
-    return redirect(url_for("admin_catalogos"))
+    return redirect(url_for("api_admin_catalogos"))
