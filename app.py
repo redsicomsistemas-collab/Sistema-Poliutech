@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 # =========================================================
-# MARWHATS (checkpoint) - Sistema Poliutech
-# Integración solicitada:
-# - Logo en PDF (static/logo.jpg) y pie de página corporativo.
-# - Abrir PDF en nueva pestaña al GUARDAR/ACTUALIZAR cotización.
-# - Edición de cotizaciones en /cotizaciones/<int:cot_id>/editar.
-# - Título del PDF = folio (evitar "anonymous").
-# - Mantiene dashboard, métricas, filtros, importación, Twilio y scheduler.
-# - PDF: "Representante" en vez de "Estatus", logo a la izquierda sin deformar,
-#   footer de 2 líneas con división (static/division.png).
+# MARWHATS (checkpoint) - Sistema Poliutech · FULL
+# Cambios:
+# - Campo "sistema" (no se usa descuento)
+# - Auto-alta de Cliente y Concepto al escribir uno nuevo
+# - PDF: cantidad en letra, saltos de línea en notas, firma; logo izq; footer centrado
+# - Dashboard: columna Estatus + cambio de estatus en línea
+# - Folio único seguro (MAX(id)+1)
+# - Mantiene: abrir PDF en nueva pestaña, CSV, métricas, Twilio+Scheduler
 # =========================================================
 
 import os, io, csv, sys, math, traceback
@@ -18,7 +17,7 @@ from typing import Iterable, Optional, List
 
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    flash, jsonify, Response
+    flash, jsonify, Response, abort
 )
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
@@ -95,7 +94,7 @@ class Cliente(db.Model):
 class Concepto(db.Model):
     __tablename__ = "concepto"
     id = db.Column(db.Integer, primary_key=True)
-    nombre_concepto = db.Column(db.String(200), nullable=False)
+    nombre_concepto = db.Column(db.String(200), nullable=False, unique=True)
     unidad = db.Column(db.String(50))
     precio_unitario = db.Column(db.Float, default=0)
     descripcion = db.Column(db.String(500))
@@ -108,13 +107,12 @@ class Cotizacion(db.Model):
     fecha = db.Column(db.DateTime, default=datetime.utcnow)
     estatus = db.Column(db.String(20), default="PENDIENTE")
     subtotal = db.Column(db.Float, default=0.0)
-    descuento_total = db.Column(db.Float, default=0.0)
+    descuento_total = db.Column(db.Float, default=0.0)  # legado (no se usa ya)
     iva_porc = db.Column(db.Float, default=16.0)
     iva_monto = db.Column(db.Float, default=0.0)
     total = db.Column(db.Float, default=0.0)
-    notas = db.Column(db.String(500))
+    notas = db.Column(db.String(1000))
     last_whatsapp_at = db.Column(db.DateTime, nullable=True)
-    # NUEVO: representante para el PDF
     representante = db.Column(db.String(120))
 
     cliente = db.relationship("Cliente", backref="cotizaciones")
@@ -130,7 +128,8 @@ class CotizacionDetalle(db.Model):
     unidad = db.Column(db.String(50))
     cantidad = db.Column(db.Float, default=1)
     precio_unitario = db.Column(db.Float, default=0)
-    sistema = db.Column(db.String(120))  # 🔹 nuevo campo
+    # descuento = db.Column(db.Float, default=0)  # ELIMINADO del uso
+    sistema = db.Column(db.String(120))           # NUEVO campo
     descripcion = db.Column(db.String(500))
     subtotal = db.Column(db.Float, default=0)
 
@@ -145,28 +144,36 @@ def _table_columns(table_name: str) -> set[str]:
 
 def ensure_schema():
     db.create_all()
-    cols = _table_columns("cotizacion")
+
+    # Agregar columnas que falten en cotizacion
+    cols_cot = _table_columns("cotizacion")
     adds = []
-    if "subtotal" not in cols:
+    if "subtotal" not in cols_cot:
         adds.append("ALTER TABLE cotizacion ADD COLUMN subtotal FLOAT DEFAULT 0.0")
-    if "descuento_total" not in cols:
+    if "descuento_total" not in cols_cot:
         adds.append("ALTER TABLE cotizacion ADD COLUMN descuento_total FLOAT DEFAULT 0.0")
-    if "iva_porc" not in cols:
+    if "iva_porc" not in cols_cot:
         adds.append("ALTER TABLE cotizacion ADD COLUMN iva_porc FLOAT DEFAULT 16.0")
-    if "iva_monto" not in cols:
+    if "iva_monto" not in cols_cot:
         adds.append("ALTER TABLE cotizacion ADD COLUMN iva_monto FLOAT DEFAULT 0.0")
-    if "total" not in cols:
+    if "total" not in cols_cot:
         adds.append("ALTER TABLE cotizacion ADD COLUMN total FLOAT DEFAULT 0.0")
-    if "notas" not in cols:
-        adds.append("ALTER TABLE cotizacion ADD COLUMN notas VARCHAR(500)")
-    if "last_whatsapp_at" not in cols:
+    if "notas" not in cols_cot:
+        adds.append("ALTER TABLE cotizacion ADD COLUMN notas VARCHAR(1000)")
+    if "last_whatsapp_at" not in cols_cot:
         adds.append("ALTER TABLE cotizacion ADD COLUMN last_whatsapp_at TIMESTAMP NULL")
-    if "representante" not in cols:
+    if "representante" not in cols_cot:
         adds.append("ALTER TABLE cotizacion ADD COLUMN representante VARCHAR(120)")
+
     for sql in adds:
         db.session.execute(text(sql))
-    if adds:
-        db.session.commit()
+
+    # Agregar 'sistema' en detalle si no existe
+    cols_det = _table_columns("cotizacion_detalle")
+    if "sistema" not in cols_det:
+        db.session.execute(text("ALTER TABLE cotizacion_detalle ADD COLUMN sistema VARCHAR(120)"))
+
+    db.session.commit()
 
 with app.app_context():
     ensure_schema()
@@ -175,13 +182,9 @@ with app.app_context():
 # Helpers
 # ---------------------------------------------------------
 def generar_folio() -> str:
-    """
-    Genera un folio único basado en el ID máximo de la tabla cotizacion.
-    Evita colisiones incluso si se eliminan registros.
-    """
+    # Evita colisiones aun si se borran cotizaciones
     last = db.session.query(db.func.max(Cotizacion.id)).scalar() or 0
     return f"PTCH-{last+1:04d}"
-
 
 def fmt(n: float) -> float:
     try:
@@ -304,7 +307,7 @@ def api_conceptos_suggest():
 def crear_cotizacion():
     f = request.form
 
-    # Cliente
+    # Cliente: crear si no existe
     nombre_cliente = (f.get("cliente_nombre") or "").strip()
     empresa = (f.get("empresa") or "").strip()
     cliente = None
@@ -336,17 +339,16 @@ def crear_cotizacion():
     db.session.add(cot)
     db.session.flush()
 
-    # Detalles
+    # Detalles (auto-alta de conceptos)
     nombres = f.getlist("item_nombre_concepto[]")
     unidades = f.getlist("item_unidad[]")
     cantidades = f.getlist("item_cantidad[]")
     precios = f.getlist("item_precio[]")
-    descuentos = f.getlist("item_descuento[]")
+    sistemas = f.getlist("item_sistema[]")
     descripciones = f.getlist("item_descripcion[]")
 
     subtotal = 0.0
-    descuento_total = 0.0
-    n = max(len(nombres), len(unidades), len(cantidades), len(precios), len(descuentos))
+    n = max(len(nombres), len(unidades), len(cantidades), len(precios), len(sistemas))
     for i in range(n):
         nom = (nombres[i] if i < len(nombres) else "").strip()
         if not nom:
@@ -354,14 +356,24 @@ def crear_cotizacion():
         uni = (unidades[i] if i < len(unidades) else "").strip()
         cant = parse_float(cantidades[i] if i < len(cantidades) else 0, 0.0)
         pu   = parse_float(precios[i] if i < len(precios) else 0, 0.0)
-        dsc  = parse_float(descuentos[i] if i < len(descuentos) else 0, 0.0)
-        dsc  = max(0.0, min(dsc, 100.0))
+        sis  = (sistemas[i] if i < len(sistemas) else "").strip()
+        desc_txt = (descripciones[i] if i < len(descripciones) else "") or ""
 
-        line_subtotal = cant * pu * (1 - dsc/100)
-        subtotal += line_subtotal
-        descuento_total += cant * pu * (dsc/100)
-
+        # Concepto: crear si no existe
         concepto = Concepto.query.filter_by(nombre_concepto=nom).first()
+        if not concepto:
+            concepto = Concepto(
+                nombre_concepto=nom,
+                unidad=uni or None,
+                precio_unitario=pu,
+                descripcion=desc_txt or None
+            )
+            db.session.add(concepto)
+            db.session.flush()
+
+        line_subtotal = cant * pu
+        subtotal += line_subtotal
+
         det = CotizacionDetalle(
             cotizacion_id=cot.id,
             concepto_id=concepto.id if concepto else None,
@@ -369,8 +381,8 @@ def crear_cotizacion():
             unidad=uni,
             cantidad=cant,
             precio_unitario=pu,
-            descuento=dsc,
-            descripcion=(descripciones[i] if i < len(descripciones) else "") or "",
+            sistema=sis or None,
+            descripcion=desc_txt,
             subtotal=line_subtotal
         )
         db.session.add(det)
@@ -378,19 +390,19 @@ def crear_cotizacion():
     iva_monto = subtotal * (iva_porc/100.0)
     total = subtotal + iva_monto
     cot.subtotal = fmt(subtotal)
-    cot.descuento_total = fmt(descuento_total)
+    cot.descuento_total = 0.0
     cot.iva_porc = fmt(iva_porc)
     cot.iva_monto = fmt(iva_monto)
     cot.total = fmt(total)
     db.session.commit()
 
-    # WhatsApp admins
+    # WhatsApp admins (best effort)
     try:
         msg = (
-            "🧾 *Nueva Cotización Creada*\\n"
-            f"Folio: *{cot.folio}*\\n"
-            f"Estatus: *{cot.estatus}*\\n"
-            f"Fecha (UTC): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\\n"
+            "🧾 *Nueva Cotización Creada*\n"
+            f"Folio: *{cot.folio}*\n"
+            f"Estatus: *{cot.estatus}*\n"
+            f"Fecha (UTC): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\n"
             f"Total: ${cot.total:.2f}"
         )
         send_whatsapp_multi(ADMIN_LIST, msg)
@@ -423,7 +435,7 @@ def actualizar_cotizacion(cot_id: int):
     c = Cotizacion.query.get_or_404(cot_id)
     f = request.form
 
-    # Actualizar/crear cliente
+    # Cliente: crear/actualizar si no existe
     nombre_cliente = (f.get("cliente_nombre") or "").strip()
     empresa = (f.get("empresa") or "").strip()
     if nombre_cliente:
@@ -447,7 +459,7 @@ def actualizar_cotizacion(cot_id: int):
     c.representante = (f.get("representante") or "").strip() or c.representante
     iva_porc = parse_float(f.get("iva_porc"), c.iva_porc or 16.0)
 
-    # Borrar detalles y re-crear para simplificar
+    # Borrar detalles y re-crear
     for d in list(c.detalles):
         db.session.delete(d)
 
@@ -455,12 +467,11 @@ def actualizar_cotizacion(cot_id: int):
     unidades = f.getlist("item_unidad[]")
     cantidades = f.getlist("item_cantidad[]")
     precios = f.getlist("item_precio[]")
-    descuentos = f.getlist("item_descuento[]")
+    sistemas = f.getlist("item_sistema[]")
     descripciones = f.getlist("item_descripcion[]")
 
     subtotal = 0.0
-    descuento_total = 0.0
-    n = max(len(nombres), len(unidades), len(cantidades), len(precios), len(descuentos))
+    n = max(len(nombres), len(unidades), len(cantidades), len(precios), len(sistemas))
     for i in range(n):
         nom = (nombres[i] if i < len(nombres) else "").strip()
         if not nom:
@@ -468,14 +479,24 @@ def actualizar_cotizacion(cot_id: int):
         uni = (unidades[i] if i < len(unidades) else "").strip()
         cant = parse_float(cantidades[i] if i < len(cantidades) else 0, 0.0)
         pu   = parse_float(precios[i] if i < len(precios) else 0, 0.0)
-        dsc  = parse_float(descuentos[i] if i < len(descuentos) else 0, 0.0)
-        dsc  = max(0.0, min(dsc, 100.0))
+        sis  = (sistemas[i] if i < len(sistemas) else "").strip()
+        desc_txt = (descripciones[i] if i < len(descripciones) else "") or ""
 
-        line_subtotal = cant * pu * (1 - dsc/100)
-        subtotal += line_subtotal
-        descuento_total += cant * pu * (dsc/100)
-
+        # Concepto: crear si no existe
         concepto = Concepto.query.filter_by(nombre_concepto=nom).first()
+        if not concepto:
+            concepto = Concepto(
+                nombre_concepto=nom,
+                unidad=uni or None,
+                precio_unitario=pu,
+                descripcion=desc_txt or None
+            )
+            db.session.add(concepto)
+            db.session.flush()
+
+        line_subtotal = cant * pu
+        subtotal += line_subtotal
+
         det = CotizacionDetalle(
             cotizacion_id=c.id,
             concepto_id=concepto.id if concepto else None,
@@ -483,8 +504,8 @@ def actualizar_cotizacion(cot_id: int):
             unidad=uni,
             cantidad=cant,
             precio_unitario=pu,
-            descuento=dsc,
-            descripcion=(descripciones[i] if i < len(descripciones) else "") or "",
+            sistema=sis or None,
+            descripcion=desc_txt,
             subtotal=line_subtotal
         )
         db.session.add(det)
@@ -492,7 +513,7 @@ def actualizar_cotizacion(cot_id: int):
     iva_monto = subtotal * (iva_porc/100.0)
     total = subtotal + iva_monto
     c.subtotal = fmt(subtotal)
-    c.descuento_total = fmt(descuento_total)
+    c.descuento_total = 0.0
     c.iva_porc = fmt(iva_porc)
     c.iva_monto = fmt(iva_monto)
     c.total = fmt(total)
@@ -537,6 +558,19 @@ def eliminar_cotizacion(cot_id):
         flash(f"Error al eliminar la cotización: {str(e)}", "danger")
     return redirect(url_for("index"))
 
+# =========================================================
+#  CAMBIAR ESTATUS (Dashboard, in-line)
+# =========================================================
+@app.route("/api/cotizaciones/<int:cot_id>/estatus", methods=["POST"])
+def api_cambiar_estatus(cot_id: int):
+    c = Cotizacion.query.get_or_404(cot_id)
+    nuevo = (request.form.get("estatus") or request.json.get("estatus") or "").strip().upper()
+    if nuevo not in {"PENDIENTE","ENVIADA","GANADA","PERDIDA"}:
+        return jsonify({"ok": False, "error": "Estatus inválido"}), 400
+    c.estatus = nuevo
+    db.session.commit()
+    return jsonify({"ok": True, "estatus": c.estatus})
+
 # ---------------------------------------------------------
 # Listas / Detalle
 # ---------------------------------------------------------
@@ -565,21 +599,21 @@ def export_cotizacion_csv(cot_id: int):
     c = Cotizacion.query.get_or_404(cot_id)
     output = io.StringIO()
     w = csv.writer(output)
-    w.writerow(["Folio","Fecha","Estatus","Representante","Cliente","Empresa","Subtotal","Desc Total","IVA %","IVA $","Total","Notas"])
+    w.writerow(["Folio","Fecha","Estatus","Representante","Cliente","Empresa","Subtotal","IVA %","IVA $","Total","Notas"])
     w.writerow([
         c.folio, c.fecha.strftime("%Y-%m-%d %H:%M"), c.estatus, (c.representante or ""),
         c.cliente.nombre_cliente if c.cliente else "",
         c.cliente.empresa if c.cliente else "",
-        f"{c.subtotal:.2f}", f"{c.descuento_total:.2f}",
+        f"{c.subtotal:.2f}",
         f"{c.iva_porc:.2f}", f"{c.iva_monto:.2f}",
         f"{c.total:.2f}", (c.notas or "")
     ])
     w.writerow([])
-    w.writerow(["Cant","Unidad","Concepto","PU","Desc %","Subtotal","Descripción"])
+    w.writerow(["Cant","Unidad","Concepto","Sistema","PU","Subtotal","Descripción"])
     for d in c.detalles:
         w.writerow([
-            d.cantidad, d.unidad or "", d.nombre_concepto,
-            f"{d.precio_unitario:.2f}", f"{d.descuento:.2f}",
+            d.cantidad, d.unidad or "", d.nombre_concepto, (d.sistema or ""),
+            f"{d.precio_unitario:.2f}",
             f"{d.subtotal:.2f}", (d.descripcion or "")
         ])
     return Response(
@@ -588,42 +622,44 @@ def export_cotizacion_csv(cot_id: int):
         headers={'Content-Disposition': f'attachment; filename="{c.folio or "cotizacion"}.csv"'}
     )
 
-# ======= NUEVA VERSIÓN PDF EMPRESARIAL =======
+# ======= PDF =======
 @app.route("/cotizaciones/<int:cot_id>/export.pdf")
 def export_cotizacion_pdf(cot_id: int):
     c = Cotizacion.query.get_or_404(cot_id)
 
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=20*mm, rightMargin=20*mm, topMargin=58*mm, bottomMargin=28*mm
+    )
     styles = getSampleStyleSheet()
     elems = []
 
     from reportlab.lib.styles import ParagraphStyle
 
-    # estilos extra
     styles.add(ParagraphStyle(name="Titulo", fontSize=14, leading=18, textColor=colors.HexColor("#0d47a1"), alignment=1))
     styles.add(ParagraphStyle(name="Encabezado", fontSize=9, leading=12, spaceAfter=4))
     styles.add(ParagraphStyle(name="NormalRight", fontSize=9, alignment=2))
+    styles.add(ParagraphStyle(name="NormalCenter", fontSize=9, alignment=1))
 
-    # Encabezado corporativo (logo grande a la izquierda SIN deformarse)
     def encabezado(canv, doc_):
         canv.saveState()
         # franja azul superior
         canv.setFillColor(colors.HexColor("#0d47a1"))
         canv.rect(0, A4[1]-22, A4[0], 22, stroke=0, fill=1)
 
-        # Logo
+        # Logo grande a la izquierda SIN deformar
         logo_path = os.path.join(app.static_folder or "static", "logo.jpg")
-        x_logo = 20  # margen izquierdo
-        y_logo = A4[1] - 22 - 5  # debajo de la franja
+        x_logo = 20
+        y_logo = A4[1] - 22 - 5
         if os.path.exists(logo_path):
             try:
                 img = ImageReader(logo_path)
                 iw, ih = img.getSize()
                 max_w = 60*mm
-                # mantener relación de aspecto
                 scale = max_w / float(iw)
                 w = max_w
                 h = ih * scale
-                # ubicar el logo
                 canv.drawImage(img, x_logo, y_logo - h, width=w, height=h, mask="auto")
             except Exception:
                 pass
@@ -637,19 +673,16 @@ def export_cotizacion_pdf(cot_id: int):
         canv.drawRightString(A4[0]-28, A4[1]-56, "Recubrimientos Especializados")
         canv.restoreState()
 
-    # Footer corporativo refinado con división y 2 líneas
     def footer(canv, doc_):
         canv.saveState()
-        # --- Línea divisoria ---
+        # línea/división
         division_path = os.path.join(app.static_folder or "static", "division.png")
         if os.path.exists(division_path):
             try:
-                # ancho visual ~155mm para que no pegue a los márgenes
                 canv.drawImage(division_path, (A4[0]-155*mm)/2, 45, width=155*mm, height=3*mm, mask="auto")
             except Exception:
                 pass
 
-        # --- Texto corporativo: título en azul, detalle en gris ---
         canv.setFont("Helvetica-Bold", 9)
         canv.setFillColor(colors.HexColor("#0d47a1"))
         canv.drawCentredString(A4[0]/2, 35, "POLIUTECH – Recubrimientos Especializados")
@@ -661,14 +694,13 @@ def export_cotizacion_pdf(cot_id: int):
         canv.drawCentredString(A4[0]/2, 25, line1)
         canv.drawCentredString(A4[0]/2, 15, line2)
 
-        # título del documento (folio)
         try:
             canv.setTitle(c.folio or "Cotizacion")
         except Exception:
             pass
         canv.restoreState()
 
-    # Datos generales (Representante en vez de Estatus)
+    # Datos generales (Representante visible)
     elems.append(Paragraph(f"<b>Folio:</b> {c.folio}", styles["Encabezado"]))
     elems.append(Paragraph(f"<b>Fecha:</b> {c.fecha.strftime('%d/%m/%Y %H:%M')} | "
                            f"<b>Representante:</b> {c.representante or ''}", styles["Encabezado"]))
@@ -687,76 +719,40 @@ def export_cotizacion_pdf(cot_id: int):
             elems.append(Paragraph(txt, styles["Encabezado"]))
         elems.append(Spacer(1, 10))
 
-    # Nueva tabla con "Sistema" en vez de descuento
-data = [["Cant", "Unidad", "Concepto", "Sistema", "Precio Unit.", "Subtotal"]]
-for d in c.detalles:
-    data.append([
-        f"{d.cantidad:.2f}",
-        d.unidad or "",
-        Paragraph(d.nombre_concepto, styles["Normal"]),
-        Paragraph(d.sistema or "", styles["Normal"]),
-        f"${d.precio_unitario:.2f}",
-        f"${d.subtotal:.2f}",
-    ])
-tbl = Table(data, colWidths=[18*mm, 20*mm, 60*mm, 30*mm, 25*mm, 25*mm], repeatRows=1)
-tbl.setStyle(TableStyle([
-    ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#0d47a1")),
-    ("TEXTCOLOR", (0,0), (-1,0), colors.white),
-    ("ALIGN", (3,1), (-1,-1), "RIGHT"),
-    ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-    ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
-    ("FONTSIZE", (0,0), (-1,-1), 9),
-    ("BOTTOMPADDING", (0,0), (-1,-1), 4),
-]))
-elems.append(tbl)
-elems.append(Spacer(1, 12))
-
-# Totales y cantidad en letra
-try:
-    from num2words import num2words
-    cantidad_letra = num2words(c.total, lang='es').capitalize() + ' pesos mexicanos'
-except Exception:
-    cantidad_letra = f"{c.total:.2f} pesos mexicanos"
-
-elems.append(Spacer(1, 6))
-elems.append(Paragraph(f"<b>Cantidad en letra:</b> {cantidad_letra}", styles["Encabezado"]))
-elems.append(Spacer(1, 8))
-
-tot_data = [
-    ["Subtotal:", f"${c.subtotal:.2f}"],
-    [f"IVA ({c.iva_porc:.2f}%):", f"${c.iva_monto:.2f}"],
-    ["Total:", f"${c.total:.2f}"],
-]
-t2 = Table(tot_data, colWidths=[40*mm, 35*mm], hAlign="RIGHT")
-t2.setStyle(TableStyle([
-    ("FONTNAME", (0,0), (-1,-1), "Helvetica-Bold"),
-    ("ALIGN", (1,0), (1,-1), "RIGHT"),
-    ("LINEBELOW", (0,-1), (-1,-1), 0.5, colors.black),
-    ("BACKGROUND", (0,0), (-1,-1), colors.whitesmoke),
-    ("INNERGRID", (0,0), (-1,-1), 0.25, colors.lightgrey),
-]))
-elems.append(t2)
-elems.append(Spacer(1, 10))
-
-# Notas con saltos de línea respetados
-if c.notas:
-    notas_html = "<br/>".join(c.notas.splitlines())
-    elems.append(Paragraph("<b>Notas:</b>", styles["Encabezado"]))
-    elems.append(Paragraph(notas_html, styles["Normal"]))
+    # Tabla (con "Sistema" en vez de descuento)
+    data = [["Cant", "Unidad", "Concepto", "Sistema", "Precio Unit.", "Subtotal"]]
+    for d in c.detalles:
+        data.append([
+            f"{d.cantidad:.2f}",
+            d.unidad or "",
+            Paragraph(d.nombre_concepto, styles["Normal"]),
+            Paragraph(d.sistema or "", styles["Normal"]),
+            f"${d.precio_unitario:.2f}",
+            f"${d.subtotal:.2f}",
+        ])
+    tbl = Table(data, colWidths=[18*mm, 20*mm, 60*mm, 30*mm, 25*mm, 25*mm], repeatRows=1)
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#0d47a1")),
+        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+        ("ALIGN", (4,1), (-1,-1), "RIGHT"),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
+        ("FONTSIZE", (0,0), (-1,-1), 9),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+    ]))
+    elems.append(tbl)
     elems.append(Spacer(1, 12))
 
-# Firma
-elems.append(Paragraph("Atte.<br/>Ing. César Antonio Garza Guerrero<br/>DIRECTOR GENERAL", styles["Encabezado"]))
-
-
-    # Totales y Cantidad en letra
+    # Cantidad en letra
     try:
         from num2words import num2words
         cantidad_letra = num2words(c.total, lang='es').capitalize() + ' pesos mexicanos'
-        elems.append(Paragraph(f'<b>Cantidad en letra:</b> {cantidad_letra}', styles['Encabezado']))
-        elems.append(Spacer(1, 8))
     except Exception:
-        pass
+        cantidad_letra = f"{c.total:.2f} pesos mexicanos"
+    elems.append(Paragraph(f"<b>Cantidad en letra:</b> {cantidad_letra}", styles["Encabezado"]))
+    elems.append(Spacer(1, 8))
+
+    # Totales
     tot_data = [
         ["Subtotal:", f"${c.subtotal:.2f}"],
         [f"IVA ({c.iva_porc:.2f}%):", f"${c.iva_monto:.2f}"],
@@ -773,33 +769,26 @@ elems.append(Paragraph("Atte.<br/>Ing. César Antonio Garza Guerrero<br/>DIRECTO
     elems.append(t2)
     elems.append(Spacer(1, 10))
 
-    # Notas
+    # Notas con saltos de línea
     if c.notas:
+        notas_html = "<br/>".join((c.notas or "").splitlines())
         elems.append(Paragraph("<b>Notas:</b>", styles["Encabezado"]))
-        elems.append(Paragraph(c.notas, styles["Normal"]))
-        elems.append(Spacer(1, 10))
+        elems.append(Paragraph(notas_html, styles["Normal"]))
+        elems.append(Spacer(1, 12))
 
-    # -------- Streaming seguro --------
-    from flask import stream_with_context
+    # Firma
+    elems.append(Paragraph("Atte.<br/>Ing. César Antonio Garza Guerrero<br/>DIRECTOR GENERAL", styles["NormalCenter"]))
 
-    @stream_with_context
-    def generate_pdf():
-        buf_local = io.BytesIO()
-        doc = SimpleDocTemplate(
-            buf_local, pagesize=A4,
-            leftMargin=20*mm, rightMargin=20*mm, topMargin=58*mm, bottomMargin=28*mm
-        )
-        doc.build(
-            elems,
-            onFirstPage=lambda canv, d: (encabezado(canv, d), footer(canv, d)),
-            onLaterPages=lambda canv, d: (encabezado(canv, d), footer(canv, d))
-        )
-        buf_local.seek(0)
-        yield buf_local.read()
+    # Build
+    doc.build(
+        elems,
+        onFirstPage=lambda canv, d: (encabezado(canv, d), footer(canv, d)),
+        onLaterPages=lambda canv, d: (encabezado(canv, d), footer(canv, d))
+    )
 
+    buf.seek(0)
     return Response(
-        generate_pdf(),
-        status=200,
+        buf.getvalue(),
         mimetype="application/pdf",
         headers={'Content-Disposition': f'inline; filename="{c.folio}.pdf"'}
     )
@@ -971,9 +960,9 @@ def enviar_notificaciones_pendientes():
             if cot.last_whatsapp_at is None or cot.last_whatsapp_at <= hace_24h:
                 try:
                     body = (
-                        "🔔 *Recordatorio: Cotización PENDIENTE*\\n"
-                        f"Folio: *{cot.folio}*\\n"
-                        f"Fecha (UTC): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\\n"
+                        "🔔 *Recordatorio: Cotización PENDIENTE*\n"
+                        f"Folio: *{cot.folio}*\n"
+                        f"Fecha (UTC): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\n"
                         f"Total: ${cot.total:.2f}"
                     )
                     send_whatsapp_multi(ADMIN_LIST, body)
@@ -1005,7 +994,7 @@ def render_template(name, **ctx):
     try:
         return _real_render_template(name, **ctx)
     except TemplateNotFound:
-        # dashboard fallback
+        # dashboard fallback (con Estatus editable)
         if name == "dashboard.html":
             total_cotizaciones = ctx.get("total_cotizaciones", 0)
             total_importe = ctx.get("total_importe", 0.0)
@@ -1017,7 +1006,15 @@ def render_template(name, **ctx):
                     "<tr>"
                     f"<td>{escape(c.folio)}</td>"
                     f"<td>{c.fecha.strftime('%Y-%m-%d %H:%M')}</td>"
-                    f"<td><span>{escape(c.estatus)}</span></td>"
+                    f"<td>{escape(c.cliente.nombre_cliente if c.cliente else '')}</td>"
+                    f"<td>"
+                    f"<select onchange=\"chg(this,{c.id})\">"
+                    + "".join(
+                        f"<option value='{st}' {'selected' if c.estatus==st else ''}>{st}</option>"
+                        for st in ["PENDIENTE","ENVIADA","GANADA","PERDIDA"]
+                    )
+                    + "</select>"
+                    f"</td>"
                     f"<td>${c.total:.2f}</td>"
                     f"<td>"
                     f"<a href='{url_for('view_cotizacion', cot_id=c.id)}'>Ver</a> · "
@@ -1029,17 +1026,29 @@ def render_template(name, **ctx):
                 )
             html = f"""<!DOCTYPE html>
 <html><head><meta charset='utf-8'><title>{escape(ctx.get('title','Dashboard'))}</title>
-<style>body{{font-family:system-ui; margin:24px}} table{{border-collapse:collapse;width:100%}} th,td{{border:1px solid #ddd;padding:8px}}</style>
+<style>
+body{{font-family:system-ui; margin:24px}}
+table{{border-collapse:collapse;width:100%}}
+th,td{{border:1px solid #ddd;padding:8px}}
+</style>
 </head><body>
 <h1>MARWHATS · Dashboard</h1>
 <p> Cotizaciones: <b>{total_cotizaciones}</b> · Importe total: <b>${total_importe:.2f}</b> · Conceptos: <b>{total_catalogo}</b></p>
 <p><a href="{url_for('cotizador')}">Crear nueva</a> · <a href="{url_for('admin_catalogos')}">Admin catálogos</a></p>
-<table><thead><tr><th>Folio</th><th>Fecha</th><th>Estatus</th><th>Total</th><th>Acciones</th></tr></thead>
+<table><thead><tr><th>Folio</th><th>Fecha</th><th>Cliente</th><th>Estatus</th><th>Total</th><th>Acciones</th></tr></thead>
 <tbody>{rows}</tbody></table>
+<script>
+function chg(sel, id){{
+  const fd = new FormData(); fd.append('estatus', sel.value);
+  fetch('/api/cotizaciones/'+id+'/estatus', {{method:'POST', body:fd}})
+    .then(r=>r.json()).then(j=>{{ if(!j.ok) alert('Error: '+(j.error||'desconocido')); }})
+    .catch(()=>alert('Error de red'));
+}}
+</script>
 </body></html>"""
             return html
 
-        # cotizador fallback (incluye REPRESENTANTE)
+        # cotizador fallback (incluye SISTEMA)
         if name == "cotizador.html":
             html = f"""<!DOCTYPE html>
 <html><head><meta charset='utf-8'><title>{escape(ctx.get('title','Cotizador'))}</title>
@@ -1080,7 +1089,7 @@ def render_template(name, **ctx):
       <option value="PERDIDA">PERDIDA</option>
     </select>
   </label></p>
-  <p><label>Notas:<br><textarea name="notas"></textarea></label></p>
+  <p><label>Notas:<br><textarea name="notas" placeholder="Condiciones comerciales..."></textarea></label></p>
 
   <p><button>Guardar cotización</button> <a href="{url_for('index')}">Volver</a></p>
 </form>
@@ -1091,7 +1100,7 @@ function addItem(){{
   <p><label>Unidad: <input name="item_unidad[]"></label></p>
   <p><label>Cantidad: <input name="item_cantidad[]" value="1"></label></p>
   <p><label>Precio: <input name="item_precio[]" value="0"></label></p>
-  <p><label>Desc %: <input name="item_descuento[]" value="0"></label></p>
+  <p><label>Sistema: <input name="item_sistema[]" placeholder="Nombre del sistema aplicado"></label></p>
   <p><label>Descripción:<br><textarea name="item_descripcion[]"></textarea></label></p>`;
   document.getElementById('items').appendChild(d);
 }}
@@ -1099,7 +1108,7 @@ function addItem(){{
 </body></html>"""
             return html
 
-        # editor fallback (incluye REPRESENTANTE)
+        # editor fallback (incluye SISTEMA)
         if name == "cotizacion_edit.html":
             c = ctx["c"]
             def row(d):
@@ -1108,7 +1117,7 @@ function addItem(){{
 <p><label>Unidad: <input name="item_unidad[]" value="{escape(d.unidad or '')}"></label></p>
 <p><label>Cantidad: <input name="item_cantidad[]" value="{d.cantidad}"></label></p>
 <p><label>Precio: <input name="item_precio[]" value="{d.precio_unitario}"></label></p>
-<p><label>Desc %: <input name="item_descuento[]" value="{d.descuento}"></label></p>
+<p><label>Sistema: <input name="item_sistema[]" value="{escape(d.sistema or '')}"></label></p>
 <p><label>Descripción:<br><textarea name="item_descripcion[]">{escape(d.descripcion or '')}</textarea></label></p>
 </div>"""
             items_html = "".join(row(d) for d in c.detalles)
@@ -1153,7 +1162,7 @@ function addItem(){{
   <p><label>Unidad: <input name="item_unidad[]"></label></p>
   <p><label>Cantidad: <input name="item_cantidad[]" value="1"></label></p>
   <p><label>Precio: <input name="item_precio[]" value="0"></label></p>
-  <p><label>Desc %: <input name="item_descuento[]" value="0"></label></p>
+  <p><label>Sistema: <input name="item_sistema[]"></label></p>
   <p><label>Descripción:<br><textarea name="item_descripcion[]"></textarea></label></p>`;
   document.getElementById('items').appendChild(d);
 }}
@@ -1191,8 +1200,8 @@ function addItem(){{
             c = ctx.get("c")
             det_rows = "".join(
                 f"<tr><td>{d.cantidad:.2f}</td><td>{escape(d.unidad or '')}</td>"
-                f"<td>{escape(d.nombre_concepto)}</td><td>${d.precio_unitario:.2f}</td>"
-                f"<td>{d.descuento:.2f}</td><td>${d.subtotal:.2f}</td></tr>"
+                f"<td>{escape(d.nombre_concepto)}</td><td>{escape(d.sistema or '')}</td>"
+                f"<td>${d.precio_unitario:.2f}</td><td>${d.subtotal:.2f}</td></tr>"
                 for d in c.detalles
             )
             return f"""<!DOCTYPE html>
@@ -1205,7 +1214,7 @@ function addItem(){{
 <a href="{url_for('editar_cotizacion', cot_id=c.id)}">Editar</a></p>
 <h3>Renglones</h3>
 <table border="1" cellspacing="0" cellpadding="6">
-<thead><tr><th>Cant</th><th>Unidad</th><th>Concepto</th><th>P.U.</th><th>Desc %</th><th>Subtotal</th></tr></thead>
+<thead><tr><th>Cant</th><th>Unidad</th><th>Concepto</th><th>Sistema</th><th>P.U.</th><th>Subtotal</th></tr></thead>
 <tbody>{det_rows}</tbody></table>
 <h3>Totales</h3>
 <p>Subtotal: ${c.subtotal:.2f} · IVA ({c.iva_porc:.2f}%): ${c.iva_monto:.2f} · <b>Total: ${c.total:.2f}</b></p>
