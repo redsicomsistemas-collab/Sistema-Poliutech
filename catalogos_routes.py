@@ -4,25 +4,26 @@ import os
 from datetime import datetime
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash
 
-# Evitar problemas de import dependiendo de la estructura
-try:
-    from app import db, Concepto, Cliente
-except Exception:
-    from models import db, Concepto, Cliente  # fallback si existe models.py
+# ✅ Importamos directamente desde app.py (no de models.py)
+from app import db, Concepto, Cliente
 
 bp = Blueprint("catalogos", __name__, template_folder="templates")
 
+# --- Configuración de formatos permitidos ---
 ALLOWED_XLS = {".xlsx", ".xls"}
 ALLOWED_TXT = {".csv", ".txt"}
 
-# --- Utilidades de normalización ---
+# =========================================================
+# 🔧 FUNCIONES DE UTILIDAD
+# =========================================================
 def _normalize_header(h: str) -> str:
+    """Normaliza nombres de columnas del archivo"""
     if not h:
         return ""
     s = str(h).strip().lower()
     s = (
         s.replace("á", "a").replace("é", "e").replace("í", "i")
-        .replace("ó", "o").replace("ú", "u").replace("ñ", "n")
+         .replace("ó", "o").replace("ú", "u").replace("ñ", "n")
     )
     s = s.replace("precio unitario", "precio_unitario")
     s = s.replace("concepto/servicio", "concepto")
@@ -33,7 +34,9 @@ def _normalize_header(h: str) -> str:
     s = "_".join(s.split())
     return s
 
+
 def _to_float(x, default=0.0):
+    """Convierte a número flotante con manejo de errores"""
     if x is None:
         return default
     s = str(x).replace(",", ".").replace("$", "").strip()
@@ -42,7 +45,9 @@ def _to_float(x, default=0.0):
     except Exception:
         return default
 
+
 def _read_text_table(text):
+    """Lee archivos CSV, TXT, delimitados por coma o tabulación"""
     for delim in (",", ";", "|", "\t"):
         sio = io.StringIO(text)
         try:
@@ -60,7 +65,9 @@ def _read_text_table(text):
             continue
     return []
 
+
 def _read_xlsx(file_storage):
+    """Lee archivos Excel (xlsx, xls) usando pandas"""
     try:
         import pandas as pd
         df = pd.read_excel(file_storage, sheet_name=0, dtype=str)
@@ -70,14 +77,20 @@ def _read_xlsx(file_storage):
     except Exception:
         return []
 
-# --- Vistas ---
+
+# =========================================================
+# 🌐 RUTAS DEL MÓDULO
+# =========================================================
+
 @bp.route("/")
 def home():
-    # Esta ruta sirve como placeholder; el admin real está en /admin/catalogos
+    """Redirige al panel principal de administración de catálogos"""
     return redirect(url_for("admin_catalogos"))
+
 
 @bp.get("/list")
 def list_catalogo():
+    """API para listar conceptos (usada por el front en JS)"""
     page = int(request.args.get("page", 1))
     per_page = int(request.args.get("per_page", 50))
     qtext = (request.args.get("q") or "").strip()
@@ -85,7 +98,10 @@ def list_catalogo():
     query = Concepto.query
     if qtext:
         like = f"%{qtext}%"
-        query = query.filter((Concepto.nombre_concepto.ilike(like)) | (Concepto.descripcion.ilike(like)))
+        query = query.filter(
+            (Concepto.nombre_concepto.ilike(like)) |
+            (Concepto.descripcion.ilike(like))
+        )
 
     total = query.count()
     items = (
@@ -111,10 +127,15 @@ def list_catalogo():
         ]
     })
 
+
 @bp.post("/import")
 def import_catalogo():
-    # Soporta formulario (con flash + redirect) y también retorno JSON (API)
-    tipo = (request.form.get("tipo") or request.args.get("tipo") or "").strip()
+    """
+    Importa un archivo de catálogo (Clientes o Conceptos)
+    Soporta tanto formularios HTML (con flash messages)
+    como llamadas JSON (API).
+    """
+    tipo = (request.form.get("tipo") or request.args.get("tipo") or "").strip().lower()
     file = request.files.get("archivo") or request.files.get("file")
 
     if not file or file.filename == "":
@@ -123,10 +144,9 @@ def import_catalogo():
         flash("No se adjuntó archivo.", "danger")
         return redirect(url_for("admin_catalogos"))
 
-    filename = file.filename
-    ext = os.path.splitext(filename)[1].lower()
-
+    ext = os.path.splitext(file.filename)[1].lower()
     rows = []
+
     if ext in ALLOWED_XLS:
         rows = _read_xlsx(file)
     else:
@@ -140,7 +160,9 @@ def import_catalogo():
         return redirect(url_for("admin_catalogos"))
 
     inserted = 0
-    if tipo.lower() == "clientes":
+
+    # --- CLIENTES ---
+    if tipo == "clientes":
         for r in rows:
             nombre = (r.get("nombre_cliente") or r.get("cliente") or r.get("nombre") or "").strip()
             if not nombre:
@@ -154,9 +176,11 @@ def import_catalogo():
                 direccion=(r.get("direccion") or "").strip() or None,
                 rfc=(r.get("rfc") or "").strip() or None,
             )
-            db.session.add(cli); inserted += 1
+            db.session.add(cli)
+            inserted += 1
+
+    # --- CONCEPTOS ---
     else:
-        # Conceptos por default
         for r in rows:
             nombre = (r.get("nombre") or r.get("concepto") or r.get("nombre_concepto") or "").strip()
             if not nombre:
@@ -171,14 +195,22 @@ def import_catalogo():
                 unidad=unidad or None,
                 precio_unitario=precio_val
             )
-            db.session.add(c); inserted += 1
+            db.session.add(c)
+            inserted += 1
 
-    db.session.commit()
+    # --- GUARDAR ---
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        if request.accept_mimetypes.accept_json:
+            return jsonify({"ok": False, "error": str(e)}), 500
+        flash(f"Error al guardar en base de datos: {e}", "danger")
+        return redirect(url_for("admin_catalogos"))
 
-    # Formulario (HTML) => flash + redirect
+    # --- RESPUESTAS ---
     if request.accept_mimetypes.accept_html:
         flash(f"Importación exitosa: {inserted} registro(s) agregados.", "success")
         return redirect(url_for("admin_catalogos"))
 
-    # API JSON
     return jsonify({"ok": True, "inserted": inserted})
