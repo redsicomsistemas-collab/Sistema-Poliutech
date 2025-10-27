@@ -20,15 +20,19 @@
       margin-right: 20px;
       font-weight: 500;
     }
-    nav a:hover {
-      text-decoration: underline;
+    nav a:hover { text-decoration: underline; }
+
+    /* ✨ Efecto de movimiento suave del header */
+    .navbar {
+      transition: transform 0.25s ease-out;
+      will-change: transform;
     }
   </style>
 </head>
 <body class="container-fluid py-4">
 
   <!-- 🔵 HEADER -->
-  <nav class="navbar navbar-expand-lg navbar-dark bg-primary rounded shadow-sm mb-4 px-4">
+  <nav class="navbar navbar-expand-lg navbar-dark bg-primary rounded shadow-sm mb-4 px-4" id="navbarMove">
     <div class="container-fluid">
       <div class="d-flex align-items-center">
         <img src="{{ url_for('static', filename='logo.jpg') }}" alt="Logo" height="45" class="me-3 rounded">
@@ -233,6 +237,14 @@
     }
 
     document.addEventListener("DOMContentLoaded", cargarGraficas);
+
+    // === EFECTO DE MOVIMIENTO EN HEADER ===
+    const navbar = document.getElementById('navbarMove');
+    document.addEventListener('mousemove', (e) => {
+      const moveX = (e.clientX - window.innerWidth / 2) * 0.01;
+      const moveY = (e.clientY - window.innerHeight / 2) * 0.01;
+      navbar.style.transform = `translate(${moveX}px, ${moveY}px)`;
+    });
   </script>
 
 </body>
