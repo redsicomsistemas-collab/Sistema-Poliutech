@@ -1,8 +1,12 @@
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 
+# ✅ NO creamos la app aquí, solo definimos la instancia
 db = SQLAlchemy()
 
+# ==========================================================
+# MODELOS
+# ==========================================================
 class Cliente(db.Model):
     __tablename__ = "cliente"
     id = db.Column(db.Integer, primary_key=True)
@@ -14,6 +18,7 @@ class Cliente(db.Model):
     direccion = db.Column(db.String(200))
     rfc = db.Column(db.String(50))
 
+
 class Concepto(db.Model):
     __tablename__ = "concepto"
     id = db.Column(db.Integer, primary_key=True)
@@ -21,6 +26,7 @@ class Concepto(db.Model):
     unidad = db.Column(db.String(50))
     precio_unitario = db.Column(db.Float, default=0)
     descripcion = db.Column(db.String(500))
+
 
 class Cotizacion(db.Model):
     __tablename__ = "cotizacion"
@@ -37,7 +43,12 @@ class Cotizacion(db.Model):
     notas = db.Column(db.String(500))
 
     cliente = db.relationship("Cliente", backref="cotizaciones")
-    detalles = db.relationship("CotizacionDetalle", backref="cotizacion", cascade="all, delete-orphan")
+    detalles = db.relationship(
+        "CotizacionDetalle",
+        backref="cotizacion",
+        cascade="all, delete-orphan"
+    )
+
 
 class CotizacionDetalle(db.Model):
     __tablename__ = "cotizacion_detalle"
