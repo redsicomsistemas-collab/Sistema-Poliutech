@@ -15,8 +15,28 @@
 
   <style>
     /* ====== NAVBAR RESPONSIVO ====== */
+    .navbar {
+      transition: background-color 0.3s ease;
+    }
+
     .navbar-brand span {
       font-size: 1.05rem;
+    }
+
+    .navbar-toggler {
+      border: none;
+      background: transparent !important;
+    }
+
+    .navbar-toggler:focus {
+      outline: none;
+      box-shadow: none;
+    }
+
+    .navbar-toggler-icon {
+      width: 1.6rem;
+      height: 1.6rem;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='%23fff' viewBox='0 0 30 30'%3E%3Cpath stroke='rgba(255,255,255,0.8)' stroke-width='2' stroke-linecap='round' d='M4 7h22M4 15h22M4 23h22'/%3E%3C/svg%3E");
     }
 
     .navbar-nav .nav-link {
@@ -31,15 +51,24 @@
     }
 
     @media (max-width: 768px) {
-      .navbar-nav .nav-link {
-        padding: 0.5rem 1rem;
-        font-size: 1rem;
+      .navbar-nav {
+        background-color: #0d47a1;
+        border-radius: 12px;
+        margin-top: 10px;
+        padding: 8px 0;
       }
+
+      .navbar-nav .nav-link {
+        padding: 0.6rem 1rem;
+        font-size: 1.05rem;
+      }
+
       .navbar-brand span {
         font-size: 0.95rem;
       }
-      .navbar {
-        text-align: center;
+
+      .navbar-collapse.show {
+        animation: fadeDown 0.25s ease-in-out;
       }
     }
 
@@ -49,7 +78,7 @@
       inset: 0;
       background: #ffffff;
       display: none;
-      z-index: 5000;
+      z-index: 9999;
     }
 
     #mar-splash .wrap {
@@ -96,8 +125,8 @@
     @keyframes splashFadeIn { from { opacity: 0 } to { opacity: 1 } }
     @keyframes splashFadeOut { from { opacity: 1 } to { opacity: 0 } }
 
-    #mar-splash.fade-in { animation: splashFadeIn .25s ease-out both; }
-    #mar-splash.fade-out { animation: splashFadeOut .35s ease-in both; }
+    #mar-splash.fade-in { animation: splashFadeIn .3s ease-out both; }
+    #mar-splash.fade-out { animation: splashFadeOut .4s ease-in both; }
 
     /* ====== FIX SUGERENCIAS DE AUTOCOMPLETAR ====== */
     .table-responsive { overflow: visible !important; }
@@ -139,7 +168,7 @@
   </div>
 
   <!-- ====== Navbar ====== -->
-  <header class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
+  <nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
     <div class="container-fluid px-3">
       <!-- Logo y título -->
       <a class="navbar-brand d-flex align-items-center" href="{{ url_for('index') }}">
@@ -153,15 +182,15 @@
       </button>
 
       <!-- Enlaces -->
-      <div class="collapse navbar-collapse" id="mainNavbar">
-        <ul class="navbar-nav ms-auto mb-2 mb-lg-0 text-center">
+      <div class="collapse navbar-collapse justify-content-end" id="mainNavbar">
+        <ul class="navbar-nav mb-2 mb-lg-0 text-center">
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('index') }}">🏠 Dashboard</a></li>
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('cotizador') }}">💰 Cotizador</a></li>
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('admin_catalogos') }}">📚 Catálogos</a></li>
         </ul>
       </div>
     </div>
-  </header>
+  </nav>
 
   <!-- ====== Contenido dinámico ====== -->
   <main class="container mb-5">
@@ -199,8 +228,8 @@
       setTimeout(() => {
         splash.remove();
         sessionStorage.setItem('marSplashShown', '1');
-      }, 350);
-    }, 1650);
+      }, 400);
+    }, 1800);
   })();
   </script>
 </body>
