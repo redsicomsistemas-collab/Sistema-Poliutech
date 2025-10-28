@@ -692,7 +692,7 @@ def export_cotizacion_xlsx(cot_id: int):
     return Response(
         bio.getvalue(),
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{c.folio}.xlsx"'}
+        headers={"Content-Disposition": f'attachment; filename="{c.folio}.xlsx'"}
     )
 
 # ---------------------------------------------------------
@@ -776,6 +776,7 @@ def export_cotizacion_pdf(cot_id: int):
             pass
         canv.restoreState()
 
+    # Encabezado de datos
     elems.append(Paragraph(f"<b>Folio:</b> {c.folio}", styles["Encabezado"]))
     elems.append(Paragraph(f"<b>Fecha:</b> {c.fecha.strftime('%d/%m/%Y %H:%M')} | "
                            f"<b>Representante:</b> {c.representante or ''}", styles["Encabezado"]))
@@ -793,35 +794,34 @@ def export_cotizacion_pdf(cot_id: int):
             elems.append(Paragraph(txt, styles["Encabezado"]))
         elems.append(Spacer(1, 10))
 
-    # --- TABLA DE CONCEPTOS (actualizada con “Sistema”) ---
-data = [["Concepto", "Unidad", "Cantidad", "Precio Unitario", "Sistema", "Subtotal"]]
+    # --- TABLA DE CONCEPTOS (con “Sistema”) ---
+    data = [["Concepto", "Unidad", "Cantidad", "Precio Unitario", "Sistema", "Subtotal"]]
+    for d in c.detalles:
+        data.append([
+            Paragraph(d.nombre_concepto, styles["Normal"]),
+            d.unidad or "",
+            f"{d.cantidad:.2f}",
+            money(d.precio_unitario),
+            Paragraph(d.sistema or "", styles["Normal"]),
+            money(d.subtotal),
+        ])
 
-for d in c.detalles:
-    data.append([
-        Paragraph(d.nombre_concepto, styles["Normal"]),
-        d.unidad or "",
-        f"{d.cantidad:.2f}",
-        money(d.precio_unitario),
-        Paragraph(d.sistema or "", styles["Normal"]),
-        money(d.subtotal),
-    ])
+    tbl = Table(data, colWidths=[70*mm, 25*mm, 25*mm, 30*mm, 30*mm, 30*mm], repeatRows=1, hAlign="LEFT")
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0d47a1")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("ALIGN", (1, 1), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    elems.append(tbl)
+    elems.append(Spacer(1, 10))
 
-tbl = Table(data, colWidths=[70*mm, 25*mm, 25*mm, 30*mm, 30*mm, 30*mm], repeatRows=1, hAlign="LEFT")
-tbl.setStyle(TableStyle([
-    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0d47a1")),
-    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-    ("ALIGN", (1, 1), (-1, -1), "CENTER"),
-    ("VALIGN", (0, 0), (-1, -1), "TOP"),
-    ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-    ("FONTSIZE", (0, 0), (-1, -1), 9),
-    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-]))
-elems.append(tbl)
-elems.append(Spacer(1, 10))
-
-
- try:
+    # Cantidad en letra (corregido: try alineado)
+    try:
         from num2words import num2words
         total = float(c.total or 0)
         enteros = int(total)
@@ -837,6 +837,7 @@ elems.append(Spacer(1, 10))
     except Exception as e:
         print(f"[PDF] num2words error: {e}", file=sys.stderr)
 
+    # Totales
     tot_data = [
         ["Subtotal:", money(c.subtotal)],
         [f"IVA ({c.iva_porc:.2f}%):", money(c.iva_monto)],
@@ -853,6 +854,7 @@ elems.append(Spacer(1, 10))
     elems.append(t2)
     elems.append(Spacer(1, 8))
 
+    # Notas
     if c.notas:
         elems.append(Paragraph("<b>Notas:</b>", styles["Encabezado"]))
         for line in str(c.notas).replace("\r\n", "\n").split("\n"):
@@ -1095,7 +1097,7 @@ a{{text-decoration:none}}
   <p><button>Guardar cotización</button> <a href="{url_for('index')}">Volver</a></p>
 </form>
 <script>
-function addItem(){{
+function addItem(){
   const d=document.createElement('div'); d.className='item';
   d.innerHTML=`<p><label>Concepto: <input name="item_nombre_concepto[]"></label></p>
   <p><label>Unidad: <input name="item_unidad[]"></label></p>
@@ -1104,7 +1106,7 @@ function addItem(){{
   <p><label>Precio: <input name="item_precio[]" value="0"></label></p>
   <p><label>Descripción:<br><textarea name="item_descripcion[]"></textarea></label></p>`;
   document.getElementById('items').appendChild(d);
-}}
+}
 </script>
 </body></html>"""
             return html
@@ -1156,7 +1158,7 @@ function addItem(){{
   <p><button>Guardar cambios</button> <a href="{url_for('view_cotizacion', cot_id=c.id)}">Cancelar</a></p>
 </form>
 <script>
-function addItem(){{
+function addItem(){
   const d=document.createElement('div'); d.className='item';
   d.innerHTML=`<p><label>Concepto: <input name="item_nombre_concepto[]"></label></p>
   <p><label>Unidad: <input name="item_unidad[]"></label></p>
@@ -1165,7 +1167,7 @@ function addItem(){{
   <p><label>Precio: <input name="item_precio[]" value="0"></label></p>
   <p><label>Descripción:<br><textarea name="item_descripcion[]"></textarea></label></p>`;
   document.getElementById('items').appendChild(d);
-}}
+}
 </script>
 </body></html>"""
             return html
