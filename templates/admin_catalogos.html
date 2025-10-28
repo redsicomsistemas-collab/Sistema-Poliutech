@@ -44,6 +44,7 @@
 
 <h4 class="mb-3">Registros cargados recientemente</h4>
 
+<!-- 🟢 CLIENTES -->
 {% if clientes %}
   <h5>Clientes</h5>
   <div class="table-responsive mb-4">
@@ -65,11 +66,25 @@
       </tbody>
     </table>
   </div>
+
+  <!-- 🔹 PAGINACIÓN CLIENTES -->
+  {% if clientes_pag.pages > 1 %}
+  <nav aria-label="Clientes navigation">
+    <ul class="pagination justify-content-center">
+      {% for p in range(1, clientes_pag.pages + 1) %}
+        <li class="page-item {% if p == clientes_pag.page %}active{% endif %}">
+          <a class="page-link" href="{{ url_for('catalogos.catalogos_index', page_clientes=p) }}">{{ p }}</a>
+        </li>
+      {% endfor %}
+    </ul>
+  </nav>
+  {% endif %}
 {% endif %}
 
+<!-- 🟡 CONCEPTOS -->
 {% if conceptos %}
-  <h5>Conceptos</h5>
-  <div class="table-responsive">
+  <h5 class="mt-5">Conceptos</h5>
+  <div class="table-responsive mb-4">
     <table class="table table-sm table-striped">
       <thead>
         <tr><th>Concepto</th><th>Unidad</th><th>Precio Unitario</th><th>Descripción</th></tr>
@@ -86,6 +101,19 @@
       </tbody>
     </table>
   </div>
+
+  <!-- 🔹 PAGINACIÓN CONCEPTOS -->
+  {% if conceptos_pag.pages > 1 %}
+  <nav aria-label="Conceptos navigation">
+    <ul class="pagination justify-content-center">
+      {% for p in range(1, conceptos_pag.pages + 1) %}
+        <li class="page-item {% if p == conceptos_pag.page %}active{% endif %}">
+          <a class="page-link" href="{{ url_for('catalogos.catalogos_index', page_conceptos=p) }}">{{ p }}</a>
+        </li>
+      {% endfor %}
+    </ul>
+  </nav>
+  {% endif %}
 {% endif %}
 
 {% if not clientes and not conceptos %}
