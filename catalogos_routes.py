@@ -4,20 +4,18 @@ import os
 from datetime import datetime
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash
 
-# ✅ Importamos directamente desde app.py (no de models.py)
+# ✅ Import directo desde app.py (usa la MISMA instancia de db)
 from app import db, Concepto, Cliente
 
 bp = Blueprint("catalogos", __name__, template_folder="templates")
 
-# --- Configuración de formatos permitidos ---
 ALLOWED_XLS = {".xlsx", ".xls"}
 ALLOWED_TXT = {".csv", ".txt"}
 
-# =========================================================
-# 🔧 FUNCIONES DE UTILIDAD
-# =========================================================
+# ==========================================================
+# 🔧 Funciones auxiliares
+# ==========================================================
 def _normalize_header(h: str) -> str:
-    """Normaliza nombres de columnas del archivo"""
     if not h:
         return ""
     s = str(h).strip().lower()
@@ -36,7 +34,6 @@ def _normalize_header(h: str) -> str:
 
 
 def _to_float(x, default=0.0):
-    """Convierte a número flotante con manejo de errores"""
     if x is None:
         return default
     s = str(x).replace(",", ".").replace("$", "").strip()
@@ -47,7 +44,6 @@ def _to_float(x, default=0.0):
 
 
 def _read_text_table(text):
-    """Lee archivos CSV, TXT, delimitados por coma o tabulación"""
     for delim in (",", ";", "|", "\t"):
         sio = io.StringIO(text)
         try:
@@ -67,7 +63,6 @@ def _read_text_table(text):
 
 
 def _read_xlsx(file_storage):
-    """Lee archivos Excel (xlsx, xls) usando pandas"""
     try:
         import pandas as pd
         df = pd.read_excel(file_storage, sheet_name=0, dtype=str)
@@ -77,20 +72,17 @@ def _read_xlsx(file_storage):
     except Exception:
         return []
 
-
-# =========================================================
-# 🌐 RUTAS DEL MÓDULO
-# =========================================================
-
+# ==========================================================
+# 🌐 Rutas del Blueprint
+# ==========================================================
 @bp.route("/")
 def home():
-    """Redirige al panel principal de administración de catálogos"""
+    # Redirige al panel principal
     return redirect(url_for("admin_catalogos"))
 
 
 @bp.get("/list")
 def list_catalogo():
-    """API para listar conceptos (usada por el front en JS)"""
     page = int(request.args.get("page", 1))
     per_page = int(request.args.get("per_page", 50))
     qtext = (request.args.get("q") or "").strip()
@@ -99,8 +91,7 @@ def list_catalogo():
     if qtext:
         like = f"%{qtext}%"
         query = query.filter(
-            (Concepto.nombre_concepto.ilike(like)) |
-            (Concepto.descripcion.ilike(like))
+            (Concepto.nombre_concepto.ilike(like)) | (Concepto.descripcion.ilike(like))
         )
 
     total = query.count()
@@ -130,23 +121,19 @@ def list_catalogo():
 
 @bp.post("/import")
 def import_catalogo():
-    """
-    Importa un archivo de catálogo (Clientes o Conceptos)
-    Soporta tanto formularios HTML (con flash messages)
-    como llamadas JSON (API).
-    """
-    tipo = (request.form.get("tipo") or request.args.get("tipo") or "").strip().lower()
+    """Importa catálogos desde CSV o Excel"""
+    tipo = (request.form.get("tipo") or request.args.get("tipo") or "").strip()
     file = request.files.get("archivo") or request.files.get("file")
 
     if not file or file.filename == "":
-        if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html:
-            return jsonify({"ok": False, "error": "No file"}), 400
-        flash("No se adjuntó archivo.", "danger")
+        flash("⚠️ No se adjuntó archivo.", "danger")
         return redirect(url_for("admin_catalogos"))
 
-    ext = os.path.splitext(file.filename)[1].lower()
-    rows = []
+    filename = file.filename
+    ext = os.path.splitext(filename)[1].lower()
 
+    # Leer archivo
+    rows = []
     if ext in ALLOWED_XLS:
         rows = _read_xlsx(file)
     else:
@@ -154,15 +141,13 @@ def import_catalogo():
         rows = _read_text_table(raw)
 
     if not rows:
-        if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html:
-            return jsonify({"ok": False, "error": "No se pudo leer el archivo"}), 400
-        flash("No se pudo leer el archivo. Verifique cabeceras y formato.", "danger")
+        flash("❌ No se pudo leer el archivo. Verifique cabeceras y formato.", "danger")
         return redirect(url_for("admin_catalogos"))
 
     inserted = 0
 
-    # --- CLIENTES ---
-    if tipo == "clientes":
+    # --- Clientes ---
+    if tipo.lower() == "clientes":
         for r in rows:
             nombre = (r.get("nombre_cliente") or r.get("cliente") or r.get("nombre") or "").strip()
             if not nombre:
@@ -179,7 +164,7 @@ def import_catalogo():
             db.session.add(cli)
             inserted += 1
 
-    # --- CONCEPTOS ---
+    # --- Conceptos ---
     else:
         for r in rows:
             nombre = (r.get("nombre") or r.get("concepto") or r.get("nombre_concepto") or "").strip()
@@ -198,19 +183,12 @@ def import_catalogo():
             db.session.add(c)
             inserted += 1
 
-    # --- GUARDAR ---
+    # Guardar en la base
     try:
         db.session.commit()
+        flash(f"✅ Importación exitosa: {inserted} registro(s) agregados.", "success")
     except Exception as e:
         db.session.rollback()
-        if request.accept_mimetypes.accept_json:
-            return jsonify({"ok": False, "error": str(e)}), 500
-        flash(f"Error al guardar en base de datos: {e}", "danger")
-        return redirect(url_for("admin_catalogos"))
+        flash(f"❌ Error al importar: {e}", "danger")
 
-    # --- RESPUESTAS ---
-    if request.accept_mimetypes.accept_html:
-        flash(f"Importación exitosa: {inserted} registro(s) agregados.", "success")
-        return redirect(url_for("admin_catalogos"))
-
-    return jsonify({"ok": True, "inserted": inserted})
+    return redirect(url_for("admin_catalogos"))
