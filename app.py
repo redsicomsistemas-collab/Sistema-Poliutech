@@ -692,7 +692,7 @@ def export_cotizacion_xlsx(cot_id: int):
     return Response(
         bio.getvalue(),
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{c.folio}.xlsx'"}
+        headers={"Content-Disposition": f'attachment; filename="{c.folio}.xlsx"'}
     )
 
 # ---------------------------------------------------------
