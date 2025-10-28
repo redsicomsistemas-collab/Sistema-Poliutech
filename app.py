@@ -821,7 +821,7 @@ elems.append(tbl)
 elems.append(Spacer(1, 10))
 
 
-    try:
+ try:
         from num2words import num2words
         total = float(c.total or 0)
         enteros = int(total)
