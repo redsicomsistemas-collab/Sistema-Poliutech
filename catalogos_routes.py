@@ -5,7 +5,7 @@ from datetime import datetime
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash
 
 # ✅ Import directo desde app.py (usa la MISMA instancia de db)
-from app import db, Concepto, Cliente
+from models import db, Concepto, Cliente
 
 bp = Blueprint("catalogos", __name__, template_folder="templates")
 
