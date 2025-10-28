@@ -230,12 +230,17 @@ def index():
     total_importe = db.session.query(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar() or 0
     total_catalogo = Concepto.query.count()
     cotizaciones = Cotizacion.query.order_by(Cotizacion.fecha.desc()).limit(100).all()
-    return render_template("dashboard.html",
-                           title="Sistema Poliutech",
-                           total_cotizaciones=total_cotizaciones,
-                           total_importe=float(total_importe),
-                           total_catalogo=total_catalogo,
-                           cotizaciones=cotizaciones)
+
+    return render_template(
+        "dashboard.html",
+        title="Sistema Poliutech",
+        total_cotizaciones=total_cotizaciones,
+        total_importe=float(total_importe),
+        total_catalogo=total_catalogo,
+        cotizaciones=cotizaciones,
+        show_splash=True  # 👈 ESTA LÍNEA ACTIVA EL SPLASH SOLO AQUÍ
+    )
+
 
 @app.route("/cotizador")
 def cotizador():
