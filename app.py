@@ -243,10 +243,24 @@ def cotizador():
 
 @app.route("/admin/catalogos")
 def admin_catalogos():
-    clientes = Cliente.query.order_by(Cliente.id.desc()).limit(10).all()
-    conceptos = Concepto.query.order_by(Concepto.id.desc()).limit(10).all()
-    return render_template("admin_catalogos.html", title="Admin Catálogos",
-                           clientes=clientes, conceptos=conceptos)
+    # Paginación: toma el número de página desde la URL (por ejemplo, ?page_clientes=2)
+    page_clientes = request.args.get("page_clientes", 1, type=int)
+    page_conceptos = request.args.get("page_conceptos", 1, type=int)
+
+    # Obtiene clientes y conceptos con paginación
+    clientes_pag = Cliente.query.order_by(Cliente.id.desc()).paginate(page=page_clientes, per_page=10, error_out=False)
+    conceptos_pag = Concepto.query.order_by(Concepto.id.desc()).paginate(page=page_conceptos, per_page=10, error_out=False)
+
+    # Renderiza con las variables necesarias
+    return render_template(
+        "admin_catalogos.html",
+        title="Admin Catálogos",
+        clientes=clientes_pag.items,          # Lista visible
+        clientes_pag=clientes_pag,            # Objeto con info de páginas
+        conceptos=conceptos_pag.items,        # Lista visible
+        conceptos_pag=conceptos_pag           # Objeto con info de páginas
+    )
+
 
 # ---------------------------------------------------------
 # Autocompletar
