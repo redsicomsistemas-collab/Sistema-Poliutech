@@ -52,12 +52,17 @@ ADMIN_WHATSAPP_RECIPIENTS = os.getenv(
 ).strip()
 ADMIN_LIST: List[str] = [x.strip() for x in ADMIN_WHATSAPP_RECIPIENTS.split(",") if x.strip()]
 
+from models import db, Cliente, Concepto, Cotizacion, CotizacionDetalle  # ✅ Importas desde models
+
 # Flask + DB
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", DEFAULT_SECRET_KEY)
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-db = SQLAlchemy(app)
+
+# Inicializa la instancia del db que ya existe en models.py
+db.init_app(app)
+
 
 
 # Twilio (opcional)
