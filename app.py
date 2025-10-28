@@ -59,6 +59,7 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", DEFAULT_DATABA
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
+
 # Twilio (opcional)
 twilio_client: Optional[TwilioClient] = None
 if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
