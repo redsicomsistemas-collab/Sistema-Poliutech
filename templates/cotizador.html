@@ -8,14 +8,47 @@
   <section class="panel mb-4">
     <h5 class="mb-3 text-secondary">Datos del Cliente</h5>
     <div class="row g-3">
-      <div class="col-md-6">
-        <label for="cliente" class="form-label fw-semibold">Cliente</label>
-        <input type="text" id="cliente" name="cliente" class="form-control" required placeholder="Nombre del cliente" autocomplete="off">
-        <div id="cliente_suggestions" class="list-group position-absolute w-100"></div>
+      <div class="col-md-6 position-relative">
+        <label for="cliente_input" class="form-label fw-semibold">Cliente</label>
+        <input type="text" id="cliente_input" name="cliente" class="form-control" required
+               placeholder="Escribe para buscar cliente..." autocomplete="off">
+        <div id="cliente_suggestions" class="list-group position-absolute w-100" 
+             style="z-index:1000; max-height:200px; overflow:auto;"></div>
       </div>
+
       <div class="col-md-6">
         <label for="empresa" class="form-label fw-semibold">Empresa</label>
         <input type="text" id="empresa" name="empresa" class="form-control" placeholder="Empresa o razón social">
+      </div>
+    </div>
+
+    <div class="row g-3 mt-2">
+      <div class="col-md-4">
+        <label for="responsable" class="form-label fw-semibold">Responsable</label>
+        <input type="text" id="responsable" name="responsable" class="form-control">
+      </div>
+      <div class="col-md-4">
+        <label for="correo" class="form-label fw-semibold">Correo</label>
+        <input type="email" id="correo" name="correo" class="form-control">
+      </div>
+      <div class="col-md-4">
+        <label for="telefono" class="form-label fw-semibold">Teléfono</label>
+        <input type="text" id="telefono" name="telefono" class="form-control">
+      </div>
+    </div>
+
+    <div class="row g-3 mt-2">
+      <div class="col-md-6">
+        <label for="direccion" class="form-label fw-semibold">Dirección</label>
+        <input type="text" id="direccion" name="direccion" class="form-control">
+      </div>
+      <div class="col-md-3">
+        <label for="rfc" class="form-label fw-semibold">RFC</label>
+        <input type="text" id="rfc" name="rfc" class="form-control">
+      </div>
+      <div class="col-md-3">
+        <label for="representante" class="form-label fw-semibold">Representante</label>
+        <input type="text" id="representante" name="representante" class="form-control">
       </div>
     </div>
   </section>
@@ -24,38 +57,25 @@
   <section class="panel mb-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h5 class="text-secondary mb-0">Conceptos de Cotización</h5>
-      <button type="button" class="btn btn-outline-primary btn-sm" id="btn-add-item">➕ Agregar Concepto</button>
+      <button type="button" id="btn-add-row" class="btn btn-outline-primary btn-sm">➕ Agregar Concepto</button>
     </div>
 
     <div class="table-responsive">
-      <table class="table table-bordered align-middle" id="tbl-items">
+      <table class="table table-bordered align-middle">
         <thead class="table-light">
           <tr>
             <th>Concepto</th>
             <th>Unidad</th>
             <th>Cantidad</th>
             <th>Precio Unitario</th>
-            <th>Sistema</th>
+            <th>Descuento (%)</th>
             <th>Subtotal</th>
+            <th>Descripción</th>
             <th></th>
           </tr>
         </thead>
-        <tbody>
-          {% if cotizacion and cotizacion.detalles %}
-            {% for item in cotizacion.detalles %}
-            <tr>
-              <td><input type="text" name="concepto[]" value="{{ item.nombre_concepto }}" class="form-control concepto" required></td>
-              <td><input type="text" name="unidad[]" value="{{ item.unidad }}" class="form-control"></td>
-              <td><input type="number" name="cantidad[]" step="0.01" value="{{ item.cantidad }}" class="form-control cantidad"></td>
-              <td><input type="number" name="precio_unitario[]" step="0.01" value="{{ item.precio_unitario }}" class="form-control precio_unitario"></td>
-              <td><input type="number" name="descuento[]" step="0.01" value="{{ item.descuento }}" class="form-control" placeholder="Sistema"></td>
-              <td><input type="text" name="subtotal[]" readonly value="{{ item.subtotal }}" class="form-control-plaintext subtotal"></td>
-              <td class="text-center">
-                <button type="button" class="btn btn-sm btn-outline-danger btn-del">✖</button>
-              </td>
-            </tr>
-            {% endfor %}
-          {% endif %}
+        <tbody id="items-body">
+          <!-- Las filas se generan dinámicamente por cotizador.js -->
         </tbody>
       </table>
     </div>
@@ -64,17 +84,21 @@
   <!-- TOTALES -->
   <section class="panel mb-4">
     <div class="row g-3 text-end">
-      <div class="col-md-4 ms-auto">
+      <div class="col-md-3 ms-auto">
+        <label class="form-label fw-semibold">IVA %:</label>
+        <input type="number" id="iva_porc" name="iva_porc" class="form-control text-end" value="16">
+      </div>
+      <div class="col-md-3">
         <label class="form-label fw-semibold">Subtotal:</label>
-        <input type="text" id="subtotal" name="subtotal" readonly class="form-control-plaintext text-end" value="0.00">
+        <div id="ui-subtotal" class="form-control-plaintext text-end">$0.00</div>
       </div>
-      <div class="col-md-4 ms-auto">
-        <label class="form-label fw-semibold">IVA (16%):</label>
-        <input type="text" id="iva" name="iva" readonly class="form-control-plaintext text-end" value="0.00">
+      <div class="col-md-3">
+        <label class="form-label fw-semibold">IVA:</label>
+        <div id="ui-iva" class="form-control-plaintext text-end">$0.00</div>
       </div>
-      <div class="col-md-4 ms-auto">
+      <div class="col-md-3">
         <label class="form-label fw-semibold">Total:</label>
-        <input type="text" id="total" name="total" readonly class="form-control-plaintext fw-bold text-success text-end" value="0.00">
+        <div id="ui-total" class="form-control-plaintext fw-bold text-success text-end">$0.00</div>
       </div>
     </div>
   </section>
@@ -89,63 +113,5 @@
 <!-- SCRIPTS -->
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="{{ url_for('static', filename='js/cotizador.js') }}"></script>
-<script>
-document.addEventListener("DOMContentLoaded", () => {
-  const table = document.getElementById("tbl-items");
-  const btnAdd = document.getElementById("btn-add-item");
-
-  // === AGREGAR NUEVA FILA ===
-  btnAdd.addEventListener("click", () => {
-    const row = document.createElement("tr");
-    row.innerHTML = `
-      <td><input type="text" name="concepto[]" class="form-control concepto" required></td>
-      <td><input type="text" name="unidad[]" class="form-control"></td>
-      <td><input type="number" name="cantidad[]" step="0.01" value="1" class="form-control cantidad"></td>
-      <td><input type="number" name="precio_unitario[]" step="0.01" value="0.00" class="form-control precio_unitario"></td>
-      <td><input type="number" name="descuento[]" step="0.01" value="0.00" class="form-control" placeholder="Sistema"></td>
-      <td><input type="text" name="subtotal[]" readonly value="0.00" class="form-control-plaintext subtotal"></td>
-      <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger btn-del">✖</button></td>
-    `;
-    table.querySelector("tbody").appendChild(row);
-  });
-
-  // === ELIMINAR FILA ===
-  table.addEventListener("click", e => {
-    if (e.target.classList.contains("btn-del")) {
-      e.target.closest("tr").remove();
-      recalcularTotales();
-    }
-  });
-
-  // === RECALCULAR AUTOMÁTICO ===
-  table.addEventListener("input", e => {
-    if (["cantidad", "precio_unitario", "descuento"].some(c => e.target.classList.contains(c))) {
-      recalcularTotales();
-    }
-  });
-
-  function recalcularTotales() {
-    let subtotal = 0;
-    table.querySelectorAll("tbody tr").forEach(tr => {
-      const cant = parseFloat(tr.querySelector(".cantidad")?.value) || 0;
-      const precio = parseFloat(tr.querySelector(".precio_unitario")?.value) || 0;
-      const descuento = parseFloat(tr.querySelector("[name='descuento[]']")?.value) || 0;
-      const sub = (cant * precio) - descuento;
-      const subtotalField = tr.querySelector(".subtotal");
-      if (subtotalField) subtotalField.value = sub.toFixed(2);
-      subtotal += sub;
-    });
-
-    const iva = subtotal * 0.16;
-    const total = subtotal + iva;
-
-    document.getElementById("subtotal").value = subtotal.toFixed(2);
-    document.getElementById("iva").value = iva.toFixed(2);
-    document.getElementById("total").value = total.toFixed(2);
-  }
-
-  recalcularTotales();
-});
-</script>
 
 {% endblock %}
