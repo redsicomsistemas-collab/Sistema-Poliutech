@@ -8,7 +8,7 @@ from flask import (
     render_template, flash, jsonify, Response
 )
 from sqlalchemy import text
-from models import db, Cliente, Concepto  # ✅ Import directo desde models, sin app.py
+from models import db, Cliente, Concepto  # ✅ Import directo desde models
 
 bp = Blueprint("catalogos", __name__)
 
@@ -72,7 +72,8 @@ def export_conceptos_csv():
 @bp.route("/import", methods=["GET", "POST"])
 def import_catalogo():
     if request.method == "POST":
-        tipo = request.form.get("tipo")
+        # 🔧 Normalizamos el valor a minúsculas para evitar errores por capitalización
+        tipo = (request.form.get("tipo") or "").strip().lower()
         file = request.files.get("archivo")
 
         if not tipo or tipo not in ["clientes", "conceptos"]:
@@ -84,17 +85,27 @@ def import_catalogo():
             return redirect(url_for("catalogos.catalogos_index"))
 
         try:
-            data = file.read().decode("utf-8").splitlines()
-            reader = csv.DictReader(data)
+            # Detecta si es Excel o CSV
+            filename = file.filename.lower()
+            if filename.endswith(".xlsx") or filename.endswith(".xls"):
+                import pandas as pd
+                df = pd.read_excel(file)
+                data = df.to_dict(orient="records")
+            else:
+                data = file.read().decode("utf-8").splitlines()
+                reader = csv.DictReader(data)
+                data = list(reader)
 
             count = 0
+
+            # --- CLIENTES ---
             if tipo == "clientes":
-                for row in reader:
+                for row in data:
                     nombre = (row.get("Nombre") or row.get("nombre_cliente") or "").strip()
                     if not nombre:
                         continue
-                    cliente = Cliente.query.filter_by(nombre_cliente=nombre).first()
-                    if not cliente:
+                    existente = Cliente.query.filter_by(nombre_cliente=nombre).first()
+                    if not existente:
                         cliente = Cliente(
                             nombre_cliente=nombre,
                             empresa=row.get("Empresa") or row.get("empresa"),
@@ -107,17 +118,18 @@ def import_catalogo():
                         db.session.add(cliente)
                         count += 1
 
+            # --- CONCEPTOS ---
             elif tipo == "conceptos":
-                for row in reader:
+                for row in data:
                     nombre = (row.get("Nombre") or row.get("nombre_concepto") or "").strip()
                     if not nombre:
                         continue
-                    concepto = Concepto.query.filter_by(nombre_concepto=nombre).first()
-                    if not concepto:
+                    existente = Concepto.query.filter_by(nombre_concepto=nombre).first()
+                    if not existente:
                         concepto = Concepto(
                             nombre_concepto=nombre,
                             unidad=row.get("Unidad") or row.get("unidad"),
-                            precio_unitario=float(row.get("Precio Unitario") or 0),
+                            precio_unitario=float(row.get("Precio Unitario") or row.get("precio_unitario") or 0),
                             descripcion=row.get("Descripción") or row.get("descripcion")
                         )
                         db.session.add(concepto)
@@ -125,6 +137,7 @@ def import_catalogo():
 
             db.session.commit()
             flash(f"Catálogo '{tipo}' importado correctamente ({count} nuevos registros).", "success")
+
         except Exception as e:
             db.session.rollback()
             print("[IMPORT ERROR]", e)
@@ -141,6 +154,8 @@ def import_catalogo():
 # ---------------------------------------------------------
 @bp.route("/eliminar/<tipo>/<int:item_id>")
 def eliminar_catalogo(tipo, item_id):
+    tipo = (tipo or "").strip().lower()
+
     if tipo == "clientes":
         obj = Cliente.query.get_or_404(item_id)
     elif tipo == "conceptos":
