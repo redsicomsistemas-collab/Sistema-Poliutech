@@ -793,28 +793,33 @@ def export_cotizacion_pdf(cot_id: int):
             elems.append(Paragraph(txt, styles["Encabezado"]))
         elems.append(Spacer(1, 10))
 
-    data = [["Cant", "Unidad", "Concepto", "Sistema", "Precio Unit.", "Subtotal"]]
-    for d in c.detalles:
-        data.append([
-            f"{d.cantidad:.2f}",
-            d.unidad or "",
-            Paragraph(d.nombre_concepto, styles["Normal"]),
-            Paragraph(d.sistema or "", styles["Normal"]),
-            money(d.precio_unitario),
-            money(d.subtotal),
-        ])
-    tbl = Table(data, colWidths=[18*mm, 20*mm, 70*mm, 30*mm, 25*mm, 25*mm], repeatRows=1, hAlign="LEFT")
-    tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#0d47a1")),
-        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
-        ("ALIGN", (4,1), (-1,-1), "RIGHT"),
-        ("VALIGN", (0,0), (-1,-1), "TOP"),
-        ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
-        ("FONTSIZE", (0,0), (-1,-1), 9),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
-    ]))
-    elems.append(tbl)
-    elems.append(Spacer(1, 10))
+    # --- TABLA DE CONCEPTOS (actualizada con “Sistema”) ---
+data = [["Concepto", "Unidad", "Cantidad", "Precio Unitario", "Sistema", "Subtotal"]]
+
+for d in c.detalles:
+    data.append([
+        Paragraph(d.nombre_concepto, styles["Normal"]),
+        d.unidad or "",
+        f"{d.cantidad:.2f}",
+        money(d.precio_unitario),
+        Paragraph(d.sistema or "", styles["Normal"]),
+        money(d.subtotal),
+    ])
+
+tbl = Table(data, colWidths=[70*mm, 25*mm, 25*mm, 30*mm, 30*mm, 30*mm], repeatRows=1, hAlign="LEFT")
+tbl.setStyle(TableStyle([
+    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0d47a1")),
+    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+    ("ALIGN", (1, 1), (-1, -1), "CENTER"),
+    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+    ("FONTSIZE", (0, 0), (-1, -1), 9),
+    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+]))
+elems.append(tbl)
+elems.append(Spacer(1, 10))
+
 
     try:
         from num2words import num2words
