@@ -52,20 +52,23 @@ ADMIN_WHATSAPP_RECIPIENTS = os.getenv(
 ).strip()
 ADMIN_LIST: List[str] = [x.strip() for x in ADMIN_WHATSAPP_RECIPIENTS.split(",") if x.strip()]
 
-from models import db, Cliente, Concepto, Cotizacion, CotizacionDetalle  # ✅ Importas desde models
+# Usa SIEMPRE los modelos desde models.py para evitar duplicados
+from models import db, Cliente, Concepto, Cotizacion, CotizacionDetalle
 
+# ---------------------------------------------------------
 # Flask + DB
+# ---------------------------------------------------------
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", DEFAULT_SECRET_KEY)
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-# Inicializa la instancia del db que ya existe en models.py
+# Vincula la instancia global de db (creada en models.py) a este app
 db.init_app(app)
 
-
-
+# ---------------------------------------------------------
 # Twilio (opcional)
+# ---------------------------------------------------------
 twilio_client: Optional[TwilioClient] = None
 if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
     try:
@@ -77,63 +80,6 @@ else:
     print("[Twilio] SIN credenciales. Envío WhatsApp deshabilitado.", file=sys.stderr)
 
 # ---------------------------------------------------------
-# Modelos
-# ---------------------------------------------------------
-class Cliente(db.Model):
-    __tablename__ = "cliente"
-    id = db.Column(db.Integer, primary_key=True)
-    nombre_cliente = db.Column(db.String(120), nullable=False)
-    empresa = db.Column(db.String(120))
-    responsable = db.Column(db.String(120))
-    correo = db.Column(db.String(120))
-    telefono = db.Column(db.String(50))
-    direccion = db.Column(db.String(200))
-    rfc = db.Column(db.String(50))
-
-class Concepto(db.Model):
-    __tablename__ = "concepto"
-    id = db.Column(db.Integer, primary_key=True)
-    nombre_concepto = db.Column(db.String(500), nullable=False)
-    unidad = db.Column(db.String(50))
-    precio_unitario = db.Column(db.Float, default=0)
-    descripcion = db.Column(db.String(1000))
-
-class Cotizacion(db.Model):
-    __tablename__ = "cotizacion"
-    id = db.Column(db.Integer, primary_key=True)
-    folio = db.Column(db.String(40), unique=True)
-    cliente_id = db.Column(db.Integer, db.ForeignKey("cliente.id"))
-    fecha = db.Column(db.DateTime, default=datetime.utcnow)
-    estatus = db.Column(db.String(20), default="PENDIENTE")
-    subtotal = db.Column(db.Float, default=0.0)
-    descuento_total = db.Column(db.Float, default=0.0)  # legado
-    iva_porc = db.Column(db.Float, default=16.0)
-    iva_monto = db.Column(db.Float, default=0.0)
-    total = db.Column(db.Float, default=0.0)
-    notas = db.Column(db.String(3000))
-    last_whatsapp_at = db.Column(db.DateTime, nullable=True)
-    representante = db.Column(db.String(120))
-
-    cliente = db.relationship("Cliente", backref="cotizaciones")
-    detalles = db.relationship("CotizacionDetalle", backref="cotizacion",
-                               cascade="all, delete-orphan")
-
-class CotizacionDetalle(db.Model):
-    __tablename__ = "cotizacion_detalle"
-    id = db.Column(db.Integer, primary_key=True)
-    cotizacion_id = db.Column(db.Integer, db.ForeignKey("cotizacion.id"))
-    concepto_id = db.Column(db.Integer, db.ForeignKey("concepto.id"), nullable=True)
-    nombre_concepto = db.Column(db.String(500), nullable=False)
-    unidad = db.Column(db.String(50))
-    cantidad = db.Column(db.Float, default=1)
-    precio_unitario = db.Column(db.Float, default=0)
-    sistema = db.Column(db.String(200))  # NUEVO
-    descripcion = db.Column(db.String(1000))
-    subtotal = db.Column(db.Float, default=0)
-
-    concepto = db.relationship("Concepto")
-
-# ---------------------------------------------------------
 # Migraciones mínimas
 # ---------------------------------------------------------
 def _table_columns(table_name: str) -> set[str]:
@@ -141,6 +87,9 @@ def _table_columns(table_name: str) -> set[str]:
     return {r["name"] for r in rows}
 
 def ensure_schema():
+    """
+    Crea tablas si no existen y agrega columnas mínimas nuevas en cotizacion y cotizacion_detalle.
+    """
     db.create_all()
 
     # Cotizacion
@@ -1258,6 +1207,9 @@ render_template = _types.FunctionType(render_template.__code__, globals(), "rend
 # ---------------------------------------------------------
 # Blueprints (Catálogos)
 # ---------------------------------------------------------
+# IMPORTANTE: Para evitar bucles, en catalogos_routes.py debes tener:
+#   from models import db, Cliente, Concepto, Cotizacion, CotizacionDetalle
+# y NUNCA 'from app import db'
 from catalogos_routes import bp as catalogos_bp
 app.register_blueprint(catalogos_bp, url_prefix="/catalogos")
 
