@@ -35,25 +35,27 @@
             <th>Unidad</th>
             <th>Cantidad</th>
             <th>Precio Unitario</th>
-            <th>Sistema</th> <!-- ✅ Cambio aplicado -->
+            <th>Sistema</th>
             <th>Subtotal</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
-          {% for item in cotizacion.detalles %}
-          <tr>
-            <td><input type="text" name="concepto[]" value="{{ item.nombre_concepto }}" class="form-control concepto" required></td>
-            <td><input type="text" name="unidad[]" value="{{ item.unidad }}" class="form-control"></td>
-            <td><input type="number" name="cantidad[]" step="0.01" value="{{ item.cantidad }}" class="form-control cantidad"></td>
-            <td><input type="number" name="precio_unitario[]" step="0.01" value="{{ item.precio_unitario }}" class="form-control precio_unitario"></td>
-            <td><input type="number" name="descuento[]" step="0.01" value="{{ item.descuento }}" class="form-control" placeholder="Sistema"></td> <!-- ✅ Cambio visual -->
-            <td><input type="text" name="subtotal[]" readonly value="{{ item.subtotal }}" class="form-control-plaintext subtotal"></td>
-            <td class="text-center">
-              <button type="button" class="btn btn-sm btn-outline-danger btn-del">✖</button>
-            </td>
-          </tr>
-          {% endfor %}
+          {% if cotizacion and cotizacion.detalles %}
+            {% for item in cotizacion.detalles %}
+            <tr>
+              <td><input type="text" name="concepto[]" value="{{ item.nombre_concepto }}" class="form-control concepto" required></td>
+              <td><input type="text" name="unidad[]" value="{{ item.unidad }}" class="form-control"></td>
+              <td><input type="number" name="cantidad[]" step="0.01" value="{{ item.cantidad }}" class="form-control cantidad"></td>
+              <td><input type="number" name="precio_unitario[]" step="0.01" value="{{ item.precio_unitario }}" class="form-control precio_unitario"></td>
+              <td><input type="number" name="descuento[]" step="0.01" value="{{ item.descuento }}" class="form-control" placeholder="Sistema"></td>
+              <td><input type="text" name="subtotal[]" readonly value="{{ item.subtotal }}" class="form-control-plaintext subtotal"></td>
+              <td class="text-center">
+                <button type="button" class="btn btn-sm btn-outline-danger btn-del">✖</button>
+              </td>
+            </tr>
+            {% endfor %}
+          {% endif %}
         </tbody>
       </table>
     </div>
@@ -125,11 +127,12 @@ document.addEventListener("DOMContentLoaded", () => {
   function recalcularTotales() {
     let subtotal = 0;
     table.querySelectorAll("tbody tr").forEach(tr => {
-      const cant = parseFloat(tr.querySelector(".cantidad").value) || 0;
-      const precio = parseFloat(tr.querySelector(".precio_unitario").value) || 0;
-      const descuento = parseFloat(tr.querySelector("[name='descuento[]']").value) || 0;
+      const cant = parseFloat(tr.querySelector(".cantidad")?.value) || 0;
+      const precio = parseFloat(tr.querySelector(".precio_unitario")?.value) || 0;
+      const descuento = parseFloat(tr.querySelector("[name='descuento[]']")?.value) || 0;
       const sub = (cant * precio) - descuento;
-      tr.querySelector(".subtotal").value = sub.toFixed(2);
+      const subtotalField = tr.querySelector(".subtotal");
+      if (subtotalField) subtotalField.value = sub.toFixed(2);
       subtotal += sub;
     });
 
