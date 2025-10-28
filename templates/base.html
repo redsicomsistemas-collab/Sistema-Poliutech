@@ -12,20 +12,9 @@
 
   <!-- 🔧 Fix global + animación suave para autocompletar -->
   <style>
-    /* 🔹 Evita que los dropdowns queden ocultos */
-    .table-responsive {
-      overflow: visible !important;
-    }
-
-    /* 🔹 Permite que las celdas muestren correctamente el autocompletar */
-    #tbl-items td {
-      overflow: visible !important;
-      position: relative;
-    }
-
-    /* 🔹 Apariencia del menú de sugerencias */
-    .list-group.item-suggest,
-    #cliente_suggestions {
+    .table-responsive { overflow: visible !important; }
+    #tbl-items td { overflow: visible !important; position: relative; }
+    .list-group.item-suggest, #cliente_suggestions {
       z-index: 3000 !important;
       position: absolute !important;
       background-color: #fff;
@@ -34,34 +23,48 @@
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
       animation: fadeDown 0.15s ease-in-out;
     }
+    .item-suggest { max-height: 200px; overflow-y: auto; }
+    @keyframes fadeDown { 0%{opacity:0;transform:translateY(-5px);}100%{opacity:1;transform:translateY(0);} }
+    .list-group-item:hover { background-color: #e9f3ff; transition: background-color 0.1s ease-in-out; }
 
-    /* 🔹 Ajuste visual del contenedor de sugerencias */
-    .item-suggest {
-      max-height: 200px;
-      overflow-y: auto;
+    /* 🔷 Splash Screen */
+    #splash-screen {
+      position: fixed;
+      inset: 0;
+      background-color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      z-index: 9999;
+      transition: opacity 0.6s ease;
     }
-
-    /* ✨ Animación suave de aparición */
-    @keyframes fadeDown {
-      0% {
-        opacity: 0;
-        transform: translateY(-5px);
-      }
-      100% {
-        opacity: 1;
-        transform: translateY(0);
-      }
+    #splash-screen img {
+      width: 130px;
+      height: auto;
+      animation: fadeInScale 1.2s ease-in-out;
     }
-
-    /* 🔹 Pequeño realce al pasar el cursor */
-    .list-group-item:hover {
-      background-color: #e9f3ff;
-      transition: background-color 0.1s ease-in-out;
+    #splash-screen p {
+      margin-top: 16px;
+      font-size: 18px;
+      font-weight: 600;
+      color: #0d47a1;
+      letter-spacing: 1px;
+      animation: fadeInText 1.8s ease-in-out;
     }
+    @keyframes fadeInScale { 0%{opacity:0;transform:scale(0.8);}100%{opacity:1;transform:scale(1);} }
+    @keyframes fadeInText { 0%{opacity:0;transform:translateY(10px);}100%{opacity:1;transform:translateY(0);} }
+    .hidden { opacity:0; pointer-events:none; }
   </style>
 </head>
 
 <body class="bg-light">
+  <!-- 🔷 Splash Screen -->
+  <div id="splash-screen" style="display:none;">
+    <img src="{{ url_for('static', filename='logo.jpg') }}" alt="Logo Poliutech">
+    <p>BIENVENIDO AL SISTEMA M.A.R. POLIUTECH</p>
+  </div>
+
   <!-- 🔷 Encabezado principal -->
   <header class="bg-primary text-white p-3 mb-4 shadow-sm">
     <div class="container d-flex justify-content-between align-items-center">
@@ -86,5 +89,23 @@
 
   <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- ✨ Splash solo al entrar por primera vez al Dashboard -->
+  <script>
+  window.addEventListener("load", () => {
+    const splash = document.getElementById("splash-screen");
+    const hasVisited = sessionStorage.getItem("mar_splash_shown");
+    const isDashboard = window.location.pathname === "/" || window.location.pathname === "/index";
+
+    if (!hasVisited && isDashboard) {
+      splash.style.display = "flex";
+      setTimeout(() => splash.classList.add("hidden"), 1600);
+      setTimeout(() => splash.remove(), 2200);
+      sessionStorage.setItem("mar_splash_shown", "true");
+    } else {
+      splash.remove();
+    }
+  });
+  </script>
 </body>
 </html>
