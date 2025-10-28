@@ -122,5 +122,26 @@
     }
   });
   </script>
+  <!-- 🔊 Sonido de inicio - Reproduce solo al entrar al Dashboard -->
+<audio id="startup-sound" preload="auto">
+  <source src="{{ url_for('static', filename='sounds/startup.mp3') }}" type="audio/mpeg">
+</audio>
+
+<script>
+  // Reproduce sonido de bienvenida solo una vez por sesión
+  window.addEventListener("load", () => {
+    const isDashboard = window.location.pathname === "/" || window.location.pathname === "/index";
+    const hasPlayed = sessionStorage.getItem("mar_sound_played");
+    if (isDashboard && !hasPlayed) {
+      const audio = document.getElementById("startup-sound");
+      setTimeout(() => {
+        audio.volume = 0.3; // volumen suave
+        audio.play().catch(()=>{});
+      }, 600); // suena al mismo tiempo que aparece el logo
+      sessionStorage.setItem("mar_sound_played", "true");
+    }
+  });
+</script>
+
 </body>
 </html>
