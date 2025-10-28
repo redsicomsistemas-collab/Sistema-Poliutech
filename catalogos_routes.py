@@ -7,27 +7,38 @@ from flask import (
     Blueprint, request, redirect, url_for,
     render_template, flash, jsonify, Response
 )
-from sqlalchemy import text
-from models import db, Cliente, Concepto  # ✅ Import directo desde models
+from models import db, Cliente, Concepto  # Importa desde models.py
 
 bp = Blueprint("catalogos", __name__)
 
-
 # ---------------------------------------------------------
-# Vista principal del módulo de catálogos
+# Vista principal con paginación numerada
 # ---------------------------------------------------------
 @bp.route("/")
 def catalogos_index():
-    clientes = Cliente.query.order_by(Cliente.id.desc()).limit(10).all()
-    conceptos = Concepto.query.order_by(Concepto.id.desc()).limit(10).all()
-    return render_template("admin_catalogos.html",
-                           title="Catálogos",
-                           clientes=clientes,
-                           conceptos=conceptos)
+    # Paginación
+    page_clientes = int(request.args.get("page_clientes", 1))
+    page_conceptos = int(request.args.get("page_conceptos", 1))
+    per_page = 20
 
+    clientes_pag = Cliente.query.order_by(Cliente.id.desc()).paginate(
+        page=page_clientes, per_page=per_page, error_out=False
+    )
+    conceptos_pag = Concepto.query.order_by(Concepto.id.desc()).paginate(
+        page=page_conceptos, per_page=per_page, error_out=False
+    )
+
+    return render_template(
+        "admin_catalogos.html",
+        title="Catálogos",
+        clientes=clientes_pag.items,
+        conceptos=conceptos_pag.items,
+        clientes_pag=clientes_pag,
+        conceptos_pag=conceptos_pag,
+    )
 
 # ---------------------------------------------------------
-# Exportar catálogo de clientes a CSV
+# Exportar catálogos a CSV
 # ---------------------------------------------------------
 @bp.route("/clientes/export.csv")
 def export_clientes_csv():
@@ -45,10 +56,6 @@ def export_clientes_csv():
         headers={"Content-Disposition": "attachment; filename=clientes_catalogo.csv"}
     )
 
-
-# ---------------------------------------------------------
-# Exportar catálogo de conceptos a CSV
-# ---------------------------------------------------------
 @bp.route("/conceptos/export.csv")
 def export_conceptos_csv():
     output = io.StringIO()
@@ -65,97 +72,76 @@ def export_conceptos_csv():
         headers={"Content-Disposition": "attachment; filename=conceptos_catalogo.csv"}
     )
 
-
 # ---------------------------------------------------------
-# Importar catálogos (Clientes o Conceptos)
+# Importar catálogos
 # ---------------------------------------------------------
-@bp.route("/import", methods=["GET", "POST"])
+@bp.route("/import", methods=["POST"])
 def import_catalogo():
-    if request.method == "POST":
-        # 🔧 Normalizamos el valor a minúsculas para evitar errores por capitalización
-        tipo = (request.form.get("tipo") or "").strip().lower()
-        file = request.files.get("archivo")
+    tipo = request.form.get("tipo")
+    file = request.files.get("archivo")
 
-        if not tipo or tipo not in ["clientes", "conceptos"]:
-            flash("Selecciona un tipo de catálogo válido.", "warning")
-            return redirect(url_for("catalogos.catalogos_index"))
-
-        if not file:
-            flash("Selecciona un archivo para importar.", "danger")
-            return redirect(url_for("catalogos.catalogos_index"))
-
-        try:
-            # Detecta si es Excel o CSV
-            filename = file.filename.lower()
-            if filename.endswith(".xlsx") or filename.endswith(".xls"):
-                import pandas as pd
-                df = pd.read_excel(file)
-                data = df.to_dict(orient="records")
-            else:
-                data = file.read().decode("utf-8").splitlines()
-                reader = csv.DictReader(data)
-                data = list(reader)
-
-            count = 0
-
-            # --- CLIENTES ---
-            if tipo == "clientes":
-                for row in data:
-                    nombre = (row.get("Nombre") or row.get("nombre_cliente") or "").strip()
-                    if not nombre:
-                        continue
-                    existente = Cliente.query.filter_by(nombre_cliente=nombre).first()
-                    if not existente:
-                        cliente = Cliente(
-                            nombre_cliente=nombre,
-                            empresa=row.get("Empresa") or row.get("empresa"),
-                            responsable=row.get("Responsable") or row.get("responsable"),
-                            correo=row.get("Correo") or row.get("correo"),
-                            telefono=row.get("Teléfono") or row.get("telefono"),
-                            direccion=row.get("Dirección") or row.get("direccion"),
-                            rfc=row.get("RFC") or row.get("rfc")
-                        )
-                        db.session.add(cliente)
-                        count += 1
-
-            # --- CONCEPTOS ---
-            elif tipo == "conceptos":
-                for row in data:
-                    nombre = (row.get("Nombre") or row.get("nombre_concepto") or "").strip()
-                    if not nombre:
-                        continue
-                    existente = Concepto.query.filter_by(nombre_concepto=nombre).first()
-                    if not existente:
-                        concepto = Concepto(
-                            nombre_concepto=nombre,
-                            unidad=row.get("Unidad") or row.get("unidad"),
-                            precio_unitario=float(row.get("Precio Unitario") or row.get("precio_unitario") or 0),
-                            descripcion=row.get("Descripción") or row.get("descripcion")
-                        )
-                        db.session.add(concepto)
-                        count += 1
-
-            db.session.commit()
-            flash(f"Catálogo '{tipo}' importado correctamente ({count} nuevos registros).", "success")
-
-        except Exception as e:
-            db.session.rollback()
-            print("[IMPORT ERROR]", e)
-            traceback.print_exc()
-            flash(f"Error al importar catálogo: {e}", "danger")
-
+    if not tipo or tipo.lower() not in ["clientes", "conceptos"]:
+        flash("Selecciona un tipo de catálogo válido.", "warning")
         return redirect(url_for("catalogos.catalogos_index"))
 
-    return render_template("import_catalogo.html", title="Importar Catálogo")
+    if not file:
+        flash("Selecciona un archivo para importar.", "danger")
+        return redirect(url_for("catalogos.catalogos_index"))
 
+    try:
+        data = file.read().decode("utf-8").splitlines()
+        reader = csv.DictReader(data)
+        count = 0
+
+        if tipo.lower() == "clientes":
+            for row in reader:
+                nombre = (row.get("Nombre") or row.get("nombre_cliente") or "").strip()
+                if not nombre:
+                    continue
+                existe = Cliente.query.filter_by(nombre_cliente=nombre).first()
+                if not existe:
+                    cliente = Cliente(
+                        nombre_cliente=nombre,
+                        empresa=row.get("Empresa") or row.get("empresa"),
+                        responsable=row.get("Responsable") or row.get("responsable"),
+                        correo=row.get("Correo") or row.get("correo"),
+                        telefono=row.get("Teléfono") or row.get("telefono"),
+                        direccion=row.get("Dirección") or row.get("direccion"),
+                        rfc=row.get("RFC") or row.get("rfc"),
+                    )
+                    db.session.add(cliente)
+                    count += 1
+        else:
+            for row in reader:
+                nombre = (row.get("Nombre") or row.get("nombre_concepto") or "").strip()
+                if not nombre:
+                    continue
+                existe = Concepto.query.filter_by(nombre_concepto=nombre).first()
+                if not existe:
+                    concepto = Concepto(
+                        nombre_concepto=nombre,
+                        unidad=row.get("Unidad") or row.get("unidad"),
+                        precio_unitario=float(row.get("Precio Unitario") or 0),
+                        descripcion=row.get("Descripción") or row.get("descripcion"),
+                    )
+                    db.session.add(concepto)
+                    count += 1
+
+        db.session.commit()
+        flash(f"Catálogo '{tipo}' importado correctamente ({count} nuevos registros).", "success")
+
+    except Exception as e:
+        db.session.rollback()
+        traceback.print_exc()
+        flash(f"Error al importar catálogo: {e}", "danger")
+
+    return redirect(url_for("catalogos.catalogos_index"))
 
 # ---------------------------------------------------------
-# Eliminar registro de catálogo
+# Eliminar registros
 # ---------------------------------------------------------
 @bp.route("/eliminar/<tipo>/<int:item_id>")
 def eliminar_catalogo(tipo, item_id):
-    tipo = (tipo or "").strip().lower()
-
     if tipo == "clientes":
         obj = Cliente.query.get_or_404(item_id)
     elif tipo == "conceptos":
