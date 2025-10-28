@@ -1,121 +1,148 @@
 {% extends "base.html" %}
 {% block content %}
 
-<h2 class="mb-3">Nueva Cotización</h2>
+<h2 class="mb-4 fw-bold text-primary">💰 Cotizador de Poliutech</h2>
 
-<form action="{{ url_for('crear_cotizacion') }}" method="POST" autocomplete="off" class="panel">
-
-  <!-- ===== Datos del cliente ===== -->
-  <section class="mb-4">
-    <h5>Datos del cliente</h5>
+<form id="frm-cotizacion" method="POST" action="{{ url_for('guardar_cotizacion') }}">
+  <!-- DATOS DEL CLIENTE -->
+  <section class="panel mb-4">
+    <h5 class="mb-3 text-secondary">Datos del Cliente</h5>
     <div class="row g-3">
-      <div class="col-md-6 position-relative">
-        <label class="form-label">Cliente</label>
-        <input type="text" id="cliente_input" name="cliente_nombre" class="form-control" placeholder="Escribe para buscar o crear...">
-        <div id="cliente_suggestions" class="list-group position-absolute w-100" style="z-index:1000; max-height:200px; overflow:auto;"></div>
+      <div class="col-md-6">
+        <label for="cliente" class="form-label fw-semibold">Cliente</label>
+        <input type="text" id="cliente" name="cliente" class="form-control" required placeholder="Nombre del cliente" autocomplete="off">
+        <div id="cliente_suggestions" class="list-group position-absolute w-100"></div>
       </div>
       <div class="col-md-6">
-        <label class="form-label">Empresa</label>
-        <input type="text" id="empresa" name="empresa" class="form-control">
-      </div>
-      <div class="col-md-4">
-        <label class="form-label">Responsable</label>
-        <input type="text" id="responsable" name="responsable" class="form-control">
-      </div>
-      <div class="col-md-4">
-        <label class="form-label">Correo</label>
-        <input type="email" id="correo" name="correo" class="form-control">
-      </div>
-      <div class="col-md-4">
-        <label class="form-label">Teléfono</label>
-        <input type="text" id="telefono" name="telefono" class="form-control">
-      </div>
-      <div class="col-md-8">
-        <label class="form-label">Dirección</label>
-        <input type="text" id="direccion" name="direccion" class="form-control">
-      </div>
-      <div class="col-md-4">
-        <label class="form-label">RFC</label>
-        <input type="text" id="rfc" name="rfc" class="form-control">
+        <label for="empresa" class="form-label fw-semibold">Empresa</label>
+        <input type="text" id="empresa" name="empresa" class="form-control" placeholder="Empresa o razón social">
       </div>
     </div>
   </section>
 
-  <!-- ===== Conceptos ===== -->
-  <section class="mb-4">
-    <div class="d-flex justify-content-between align-items-center mb-2">
-      <h5 class="m-0">Conceptos</h5>
-      <button type="button" class="btn btn-sm btn-outline-primary" id="btn-add-row">Agregar renglón</button>
+  <!-- LISTA DE CONCEPTOS -->
+  <section class="panel mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="text-secondary mb-0">Conceptos de Cotización</h5>
+      <button type="button" class="btn btn-outline-primary btn-sm" id="btn-add-item">➕ Agregar Concepto</button>
     </div>
 
     <div class="table-responsive">
-      <table class="table table-sm align-middle" id="tbl-items">
-        <thead>
+      <table class="table table-bordered align-middle" id="tbl-items">
+        <thead class="table-light">
           <tr>
             <th>Concepto</th>
             <th>Unidad</th>
             <th>Cantidad</th>
             <th>Precio Unitario</th>
-            <th>Sistema</th>
+            <th>Sistema</th> <!-- ✅ Cambio aplicado -->
             <th>Subtotal</th>
+            <th></th>
           </tr>
         </thead>
-
-        <tbody id="items-body"></tbody>
+        <tbody>
+          {% for item in cotizacion.detalles %}
+          <tr>
+            <td><input type="text" name="concepto[]" value="{{ item.nombre_concepto }}" class="form-control concepto" required></td>
+            <td><input type="text" name="unidad[]" value="{{ item.unidad }}" class="form-control"></td>
+            <td><input type="number" name="cantidad[]" step="0.01" value="{{ item.cantidad }}" class="form-control cantidad"></td>
+            <td><input type="number" name="precio_unitario[]" step="0.01" value="{{ item.precio_unitario }}" class="form-control precio_unitario"></td>
+            <td><input type="number" name="descuento[]" step="0.01" value="{{ item.descuento }}" class="form-control" placeholder="Sistema"></td> <!-- ✅ Cambio visual -->
+            <td><input type="text" name="subtotal[]" readonly value="{{ item.subtotal }}" class="form-control-plaintext subtotal"></td>
+            <td class="text-center">
+              <button type="button" class="btn btn-sm btn-outline-danger btn-del">✖</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
       </table>
     </div>
   </section>
 
-  <!-- ===== Totales / Estatus ===== -->
-  <section class="row g-3 mb-4">
-    <div class="col-md-8">
-      <label class="form-label">Notas</label>
-      <textarea class="form-control" name="notas" rows="3"></textarea>
-    </div>
-    <div class="col-md-4">
-      <div class="border rounded p-2 bg-light">
-        <div class="d-flex justify-content-between">
-          <span>Subtotal</span><strong id="ui-subtotal">$0.00</strong>
-        </div>
-        <div class="d-flex justify-content-between mt-2 align-items-center">
-          <span>IVA (%)</span>
-          <input type="number" step="0.01" class="form-control form-control-sm w-50" id="iva_porc" name="iva_porc" value="16">
-        </div>
-        <div class="d-flex justify-content-between mt-2">
-          <span>IVA ($)</span><strong id="ui-iva">$0.00</strong>
-        </div>
-        <hr>
-        <div class="d-flex justify-content-between">
-          <span>Total</span><strong id="ui-total" class="fs-5">$0.00</strong>
-        </div>
+  <!-- TOTALES -->
+  <section class="panel mb-4">
+    <div class="row g-3 text-end">
+      <div class="col-md-4 ms-auto">
+        <label class="form-label fw-semibold">Subtotal:</label>
+        <input type="text" id="subtotal" name="subtotal" readonly class="form-control-plaintext text-end" value="0.00">
+      </div>
+      <div class="col-md-4 ms-auto">
+        <label class="form-label fw-semibold">IVA (16%):</label>
+        <input type="text" id="iva" name="iva" readonly class="form-control-plaintext text-end" value="0.00">
+      </div>
+      <div class="col-md-4 ms-auto">
+        <label class="form-label fw-semibold">Total:</label>
+        <input type="text" id="total" name="total" readonly class="form-control-plaintext fw-bold text-success text-end" value="0.00">
       </div>
     </div>
   </section>
 
-  <section class="row g-3 mb-3">
-    <div class="col-md-3">
-      <label class="form-label">Estatus</label>
-      <select name="estatus" class="form-select">
-        <option value="PENDIENTE" selected>PENDIENTE</option>
-        <option value="ENVIADA">ENVIADA</option>
-        <option value="GANADA">GANADA</option>
-        <option value="PERDIDA">PERDIDA</option>
-      </select>
-    </div>
-  </section>
-
-  <div class="text-end">
-    <button type="submit" class="btn btn-primary px-4">Guardar Cotización</button>
+  <!-- BOTONES -->
+  <div class="d-flex justify-content-between">
+    <button type="submit" class="btn btn-success fw-bold px-4">💾 Guardar Cotización</button>
+    <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">⬅ Volver al Dashboard</a>
   </div>
 </form>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    {% for category, message in messages %}
-      <div class="alert alert-{{ category }} mt-3">{{ message }}</div>
-    {% endfor %}
-  {% endif %}
-{% endwith %}
-
+<!-- SCRIPTS -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="{{ url_for('static', filename='js/cotizador.js') }}"></script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const table = document.getElementById("tbl-items");
+  const btnAdd = document.getElementById("btn-add-item");
+
+  // === AGREGAR NUEVA FILA ===
+  btnAdd.addEventListener("click", () => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td><input type="text" name="concepto[]" class="form-control concepto" required></td>
+      <td><input type="text" name="unidad[]" class="form-control"></td>
+      <td><input type="number" name="cantidad[]" step="0.01" value="1" class="form-control cantidad"></td>
+      <td><input type="number" name="precio_unitario[]" step="0.01" value="0.00" class="form-control precio_unitario"></td>
+      <td><input type="number" name="descuento[]" step="0.01" value="0.00" class="form-control" placeholder="Sistema"></td>
+      <td><input type="text" name="subtotal[]" readonly value="0.00" class="form-control-plaintext subtotal"></td>
+      <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger btn-del">✖</button></td>
+    `;
+    table.querySelector("tbody").appendChild(row);
+  });
+
+  // === ELIMINAR FILA ===
+  table.addEventListener("click", e => {
+    if (e.target.classList.contains("btn-del")) {
+      e.target.closest("tr").remove();
+      recalcularTotales();
+    }
+  });
+
+  // === RECALCULAR AUTOMÁTICO ===
+  table.addEventListener("input", e => {
+    if (["cantidad", "precio_unitario", "descuento"].some(c => e.target.classList.contains(c))) {
+      recalcularTotales();
+    }
+  });
+
+  function recalcularTotales() {
+    let subtotal = 0;
+    table.querySelectorAll("tbody tr").forEach(tr => {
+      const cant = parseFloat(tr.querySelector(".cantidad").value) || 0;
+      const precio = parseFloat(tr.querySelector(".precio_unitario").value) || 0;
+      const descuento = parseFloat(tr.querySelector("[name='descuento[]']").value) || 0;
+      const sub = (cant * precio) - descuento;
+      tr.querySelector(".subtotal").value = sub.toFixed(2);
+      subtotal += sub;
+    });
+
+    const iva = subtotal * 0.16;
+    const total = subtotal + iva;
+
+    document.getElementById("subtotal").value = subtotal.toFixed(2);
+    document.getElementById("iva").value = iva.toFixed(2);
+    document.getElementById("total").value = total.toFixed(2);
+  }
+
+  recalcularTotales();
+});
+</script>
+
 {% endblock %}
