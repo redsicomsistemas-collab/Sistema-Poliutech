@@ -2,7 +2,7 @@
 # catalogos_routes.py — Sistema MARWHATS / Poliutech
 # =========================================================
 
-import io, csv, traceback
+import io, csv, traceback, chardet
 from flask import (
     Blueprint, request, redirect, url_for,
     render_template, flash, jsonify, Response
@@ -16,7 +16,7 @@ bp = Blueprint("catalogos", __name__)
 # ---------------------------------------------------------
 @bp.route("/")
 def catalogos_index():
-    # Paginación
+    # Paginación separada para clientes y conceptos
     page_clientes = int(request.args.get("page_clientes", 1))
     page_conceptos = int(request.args.get("page_conceptos", 1))
     per_page = 20
@@ -56,6 +56,7 @@ def export_clientes_csv():
         headers={"Content-Disposition": "attachment; filename=clientes_catalogo.csv"}
     )
 
+
 @bp.route("/conceptos/export.csv")
 def export_conceptos_csv():
     output = io.StringIO()
@@ -73,7 +74,7 @@ def export_conceptos_csv():
     )
 
 # ---------------------------------------------------------
-# Importar catálogos
+# Importar catálogos (Clientes o Conceptos)
 # ---------------------------------------------------------
 @bp.route("/import", methods=["POST"])
 def import_catalogo():
@@ -89,10 +90,23 @@ def import_catalogo():
         return redirect(url_for("catalogos.catalogos_index"))
 
     try:
-        data = file.read().decode("utf-8").splitlines()
+        # Leer el archivo con detección automática de codificación
+        file_bytes = file.read()
+        detected = chardet.detect(file_bytes)
+        encoding = detected.get("encoding", "utf-8")
+
+        try:
+            data = file_bytes.decode(encoding).splitlines()
+        except Exception:
+            # fallback seguro
+            data = file_bytes.decode("latin-1", errors="ignore").splitlines()
+
         reader = csv.DictReader(data)
         count = 0
 
+        # -----------------------------
+        # Importar CLIENTES
+        # -----------------------------
         if tipo.lower() == "clientes":
             for row in reader:
                 nombre = (row.get("Nombre") or row.get("nombre_cliente") or "").strip()
@@ -111,7 +125,11 @@ def import_catalogo():
                     )
                     db.session.add(cliente)
                     count += 1
-        else:
+
+        # -----------------------------
+        # Importar CONCEPTOS
+        # -----------------------------
+        elif tipo.lower() == "conceptos":
             for row in reader:
                 nombre = (row.get("Nombre") or row.get("nombre_concepto") or "").strip()
                 if not nombre:
