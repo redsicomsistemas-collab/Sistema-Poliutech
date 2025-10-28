@@ -75,6 +75,120 @@
     <p>BIENVENIDO AL SISTEMA M.A.R. POLIUTECH</p>
   </div>
 
+  <!-- 🌀 Animación de bienvenida con logo y audio -->
+<div id="bienvenida-overlay">
+  <div class="bienvenida-contenido">
+    <img src="{{ url_for('static', filename='logo.jpg') }}" alt="Logo Poliutech" class="bienvenida-logo">
+    <div class="bienvenida-texto">BIENVENIDO AL SISTEMA M.A.R. POLIUTECH</div>
+    <audio id="bienvenida-audio" src="{{ url_for('static', filename='soundas/startup.mp3') }}"></audio>
+  </div>
+</div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function() {
+    const enDashboard = window.location.pathname === "/" || window.location.pathname.endsWith("/index");
+    const yaMostrado = sessionStorage.getItem("animacionBienvenida");
+
+    if (enDashboard && !yaMostrado) {
+      const overlay = document.getElementById("bienvenida-overlay");
+      const audio = document.getElementById("bienvenida-audio");
+
+      overlay.style.display = "flex";
+
+      // Intenta reproducir el audio
+      try { audio.play().catch(() => {}); } catch(e) {}
+
+      // Oculta tras 6 segundos (duración del audio)
+      setTimeout(() => {
+        overlay.classList.add("fade-out");
+        setTimeout(() => overlay.remove(), 800);
+      }, 6000);
+
+      sessionStorage.setItem("animacionBienvenida", "true");
+    } else {
+      // Si no aplica, eliminar de inmediato
+      const overlay = document.getElementById("bienvenida-overlay");
+      if (overlay) overlay.remove();
+    }
+  });
+</script>
+
+<style>
+  /* 🔵 Fondo principal */
+  #bienvenida-overlay {
+    position: fixed;
+    inset: 0;
+    background: white;
+    color: #0d47a1;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    z-index: 9999;
+    font-family: 'Segoe UI', sans-serif;
+    text-align: center;
+    animation: aparecer 0.8s ease-out;
+  }
+
+  /* 🟦 Contenedor interno */
+  .bienvenida-contenido {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.2rem;
+    animation: zoomIn 1s ease-in-out;
+  }
+
+  /* 🎯 Logo */
+  .bienvenida-logo {
+    width: 150px;
+    height: auto;
+    opacity: 0;
+    animation: fadeInLogo 1.2s ease-out forwards;
+  }
+
+  /* ✨ Texto */
+  .bienvenida-texto {
+    font-size: 1.9rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    opacity: 0;
+    animation: fadeInTexto 1.4s ease-in forwards 1.2s;
+  }
+
+  /* 🌟 Animaciones */
+  @keyframes fadeInLogo {
+    from { opacity: 0; transform: scale(0.8); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  @keyframes fadeInTexto {
+    from { opacity: 0; transform: translateY(15px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes aparecer {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  @keyframes zoomIn {
+    0% { transform: scale(0.95); opacity: 0.6; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  /* 🔻 Desvanecimiento */
+  .fade-out {
+    animation: desaparecer 0.8s ease-in forwards;
+  }
+
+  @keyframes desaparecer {
+    from { opacity: 1; transform: scale(1); }
+    to { opacity: 0; transform: scale(1.05); }
+  }
+</style>
+
+
   <!-- 🔷 Encabezado principal -->
   <header class="bg-primary text-white p-3 mb-4 shadow-sm">
     <div class="container d-flex justify-content-between align-items-center">
