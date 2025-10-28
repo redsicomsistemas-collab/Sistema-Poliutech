@@ -1097,7 +1097,7 @@ a{{text-decoration:none}}
   <p><button>Guardar cotización</button> <a href="{url_for('index')}">Volver</a></p>
 </form>
 <script>
-function addItem(){
+function addItem(){{{{ 
   const d=document.createElement('div'); d.className='item';
   d.innerHTML=`<p><label>Concepto: <input name="item_nombre_concepto[]"></label></p>
   <p><label>Unidad: <input name="item_unidad[]"></label></p>
@@ -1106,7 +1106,7 @@ function addItem(){
   <p><label>Precio: <input name="item_precio[]" value="0"></label></p>
   <p><label>Descripción:<br><textarea name="item_descripcion[]"></textarea></label></p>`;
   document.getElementById('items').appendChild(d);
-}
+}}}}
 </script>
 </body></html>"""
             return html
