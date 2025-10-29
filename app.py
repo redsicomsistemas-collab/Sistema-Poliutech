@@ -316,10 +316,10 @@ def crear_cotizacion():
     empresa = (f.get("empresa") or "").strip()
     cliente = None
     if nombre_cliente:
-    q = Cliente.query.filter(db.func.lower(Cliente.nombre_cliente) == nombre_cliente.lower())
-    if empresa:
-        q = q.filter(db.func.lower(Cliente.empresa) == empresa.lower())
-    cliente = q.first()
+        q = Cliente.query.filter(db.func.lower(Cliente.nombre_cliente) == nombre_cliente.lower())
+        if empresa:
+            q = q.filter(db.func.lower(Cliente.empresa) == empresa.lower())
+        cliente = q.first()
 
     if not cliente:
         cliente = Cliente(
