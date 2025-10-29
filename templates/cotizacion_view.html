@@ -17,20 +17,24 @@
         <div class="row">
           <div class="col-md-6 mb-2">
             <label class="fw-bold">Nombre:</label>
-            <div>{{ c.cliente_nombre or "—" }}</div>
+            <div>{{ c.cliente.nombre_cliente if c.cliente else "—" }}</div>
           </div>
           <div class="col-md-6 mb-2">
             <label class="fw-bold">Empresa:</label>
-            <div>{{ c.empresa or "—" }}</div>
+            <div>{{ c.cliente.empresa if c.cliente else "—" }}</div>
           </div>
           <div class="col-md-6 mb-2">
             <label class="fw-bold">Correo:</label>
-            <div>{{ c.correo or "—" }}</div>
+            <div>{{ c.cliente.correo if c.cliente else "—" }}</div>
           </div>
           <div class="col-md-6 mb-2">
             <label class="fw-bold">Teléfono:</label>
-            <div>{{ c.telefono or "—" }}</div>
+            <div>{{ c.cliente.telefono if c.cliente else "—" }}</div>
           </div>
+        </div>
+        <div class="mt-2">
+          <label class="fw-bold">Representante:</label>
+          <div>{{ c.representante or "—" }}</div>
         </div>
       </div>
 
@@ -44,8 +48,8 @@
                 <th scope="col">Cantidad</th>
                 <th scope="col">Unidad</th>
                 <th scope="col">Concepto</th>
+                <th scope="col">Sistema</th>
                 <th scope="col" class="text-end">Precio Unitario</th>
-                <th scope="col" class="text-end">Descuento</th>
                 <th scope="col" class="text-end">Subtotal</th>
               </tr>
             </thead>
@@ -55,9 +59,9 @@
                 <td>{{ d.cantidad }}</td>
                 <td>{{ d.unidad }}</td>
                 <td>{{ d.nombre_concepto }}</td>
-                <td class="text-end">${{ "%.2f"|format(d.precio_unitario) }}</td>
-                <td class="text-end">{{ "%.2f"|format(d.descuento) }}%</td>
                 <td class="text-center">{{ d.sistema or '-' }}</td>
+                <td class="text-end">${{ "%.2f"|format(d.precio_unitario) }}</td>
+                <td class="text-end">${{ "%.2f"|format(d.subtotal) }}</td>
               </tr>
               {% else %}
               <tr><td colspan="6" class="text-center text-muted">No hay conceptos registrados.</td></tr>
@@ -100,7 +104,6 @@
         </div>
       </div>
 
-      <!-- BOTONES -->
       <div class="text-end mt-4">
         <a href="{{ url_for('editar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-primary">✏️ Editar</a>
         <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">← Volver al Dashboard</a>
