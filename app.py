@@ -238,9 +238,8 @@ def index():
         total_importe=float(total_importe),
         total_catalogo=total_catalogo,
         cotizaciones=cotizaciones,
-        show_splash=True  # 👈 ESTA LÍNEA ACTIVA EL SPLASH SOLO AQUÍ
+        show_splash=True
     )
-
 
 @app.route("/cotizador")
 def cotizador():
@@ -248,24 +247,20 @@ def cotizador():
 
 @app.route("/admin/catalogos")
 def admin_catalogos():
-    # Paginación: toma el número de página desde la URL (por ejemplo, ?page_clientes=2)
     page_clientes = request.args.get("page_clientes", 1, type=int)
     page_conceptos = request.args.get("page_conceptos", 1, type=int)
 
-    # Obtiene clientes y conceptos con paginación
     clientes_pag = Cliente.query.order_by(Cliente.id.desc()).paginate(page=page_clientes, per_page=10, error_out=False)
     conceptos_pag = Concepto.query.order_by(Concepto.id.desc()).paginate(page=page_conceptos, per_page=10, error_out=False)
 
-    # Renderiza con las variables necesarias
     return render_template(
         "admin_catalogos.html",
         title="Admin Catálogos",
-        clientes=clientes_pag.items,          # Lista visible
-        clientes_pag=clientes_pag,            # Objeto con info de páginas
-        conceptos=conceptos_pag.items,        # Lista visible
-        conceptos_pag=conceptos_pag           # Objeto con info de páginas
+        clientes=clientes_pag.items,
+        clientes_pag=clientes_pag,
+        conceptos=conceptos_pag.items,
+        conceptos_pag=conceptos_pag
     )
-
 
 # ---------------------------------------------------------
 # Autocompletar
@@ -312,11 +307,11 @@ def api_conceptos_suggest():
 def crear_cotizacion():
     f = request.form
 
-    # ==== CLIENTE ====
-    nombre_cliente = (f.get("cliente_nombre") or "").strip()
+    nombre_cliente = (f.get("cliente") or f.get("cliente_nombre") or "").strip()
     empresa = (f.get("empresa") or "").strip()
-    cliente = None
 
+    # --- FIX: Bloque bien indentado para crear/buscar cliente ---
+    cliente = None
     if nombre_cliente:
         q = Cliente.query.filter(db.func.lower(Cliente.nombre_cliente) == nombre_cliente.lower())
         if empresa:
@@ -338,7 +333,6 @@ def crear_cotizacion():
 
     iva_porc = parse_float(f.get("iva_porc"), 16.0)
 
-    # ==== ENCABEZADO COTIZACIÓN ====
     cot = Cotizacion(
         folio=generar_folio(),
         cliente_id=cliente.id if cliente else None,
@@ -350,12 +344,11 @@ def crear_cotizacion():
     db.session.add(cot)
     db.session.flush()
 
-    # ==== DETALLES ====
     nombres = f.getlist("item_nombre_concepto[]")
     unidades = f.getlist("item_unidad[]")
     cantidades = f.getlist("item_cantidad[]")
     precios = f.getlist("item_precio[]")
-    sistemas = f.getlist("item_sistema[]")
+    sistemas = f.getlist("item_sistema[]")  # <- campo SISTEMA
     descripciones = f.getlist("item_descripcion[]")
 
     subtotal = 0.0
@@ -405,20 +398,18 @@ def crear_cotizacion():
     cot.total = fmt(total)
     db.session.commit()
 
-    # ==== WhatsApp opcional ====
     try:
         msg = (
-            "🧾 *Nueva Cotización Creada*\\n"
-            f"Folio: *{cot.folio}*\\n"
-            f"Estatus: *{cot.estatus}*\\n"
-            f"Fecha (UTC): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\\n"
+            "🧾 *Nueva Cotización Creada*\n"
+            f"Folio: *{cot.folio}*\n"
+            f"Estatus: *{cot.estatus}*\n"
+            f"Fecha (UTC): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\n"
             f"Total: {money(cot.total)}"
         )
         send_whatsapp_multi(ADMIN_LIST, msg)
     except Exception as e:
         print(f"[WARN] WhatsApp creación ({cot.folio}): {e}", file=sys.stderr)
 
-    # ==== Respuesta: abrir PDF y volver al cotizador ====
     pdf_url = url_for("export_cotizacion_pdf", cot_id=cot.id)
     volver = url_for("cotizador")
     return f"""<!DOCTYPE html>
@@ -430,6 +421,7 @@ window.location.href = "{volver}";
 </script>
 <p>Abrir PDF: <a href="{pdf_url}" target="_blank">aquí</a>. Volver: <a href="{volver}">cotizador</a>.</p>
 </body></html>"""
+
 @app.route("/cotizaciones/<int:cot_id>/editar")
 def editar_cotizacion(cot_id: int):
     c = Cotizacion.query.get_or_404(cot_id)
@@ -478,29 +470,29 @@ def actualizar_cotizacion(cot_id: int):
     for d in list(c.detalles):
         db.session.delete(d)
 
-    # === DETALLES NUEVOS ===
+    # === DETALLES NUEVOS === (sin descuento; con SISTEMA)
     nombres = f.getlist("item_nombre_concepto[]")
     unidades = f.getlist("item_unidad[]")
     cantidades = f.getlist("item_cantidad[]")
     precios = f.getlist("item_precio[]")
-    descuentos = f.getlist("item_descuento[]")
+    sistemas = f.getlist("item_sistema[]")
     descripciones = f.getlist("item_descripcion[]")
 
     subtotal = 0.0
-    for i, nombre in enumerate(nombres):
-        nombre = (nombre or "").strip()
+    n = max(len(nombres), len(unidades), len(cantidades), len(precios))
+    for i in range(n):
+        nombre = (nombres[i] if i < len(nombres) else "").strip()
         if not nombre:
             continue
         unidad = (unidades[i] if i < len(unidades) else "").strip()
         cantidad = parse_float(cantidades[i] if i < len(cantidades) else 0, 0.0)
         precio = parse_float(precios[i] if i < len(precios) else 0, 0.0)
-        desc_porc = parse_float(descuentos[i] if i < len(descuentos) else 0, 0.0)
+        sistema = (sistemas[i] if i < len(sistemas) else "").strip()
         descripcion = (descripciones[i] if i < len(descripciones) else "").strip()
 
-        linea_subtotal = cantidad * precio * (1 - desc_porc / 100)
+        linea_subtotal = cantidad * precio
         subtotal += linea_subtotal
 
-        # Registrar concepto nuevo si no existe
         concepto = Concepto.query.filter_by(nombre_concepto=nombre).first()
         if not concepto:
             concepto = Concepto(
@@ -520,6 +512,7 @@ def actualizar_cotizacion(cot_id: int):
             unidad=unidad,
             cantidad=cantidad,
             precio_unitario=precio,
+            sistema=sistema or None,
             descripcion=descripcion,
             subtotal=linea_subtotal
         )
@@ -535,7 +528,6 @@ def actualizar_cotizacion(cot_id: int):
 
     db.session.commit()
 
-    # === RESPUESTA HTML ===
     pdf_url = url_for("export_cotizacion_pdf", cot_id=c.id)
     detalle = url_for("view_cotizacion", cot_id=c.id)
     return f"""<!DOCTYPE html>
@@ -547,7 +539,6 @@ window.location.href = "{detalle}";
 </script>
 <p>Abrir PDF: <a href="{pdf_url}" target="_blank">aquí</a>. Ver detalle: <a href="{detalle}">cotización</a>.</p>
 </body></html>"""
-
 
 @app.route("/cotizaciones/<int:cot_id>/ver")
 def ver_cotizacion(cot_id):
@@ -801,7 +792,7 @@ def export_cotizacion_pdf(cot_id: int):
             pass
         canv.restoreState()
 
-    # Encabezado de datos
+    # Encabezado de datos (con representante correcto)
     elems.append(Paragraph(f"<b>Folio:</b> {c.folio}", styles["Encabezado"]))
     elems.append(Paragraph(f"<b>Fecha:</b> {c.fecha.strftime('%d/%m/%Y %H:%M')} | "
                            f"<b>Representante:</b> {c.representante or ''}", styles["Encabezado"]))
@@ -819,7 +810,7 @@ def export_cotizacion_pdf(cot_id: int):
             elems.append(Paragraph(txt, styles["Encabezado"]))
         elems.append(Spacer(1, 10))
 
-    # --- TABLA DE CONCEPTOS (con “Sistema”) ---
+    # --- TABLA DE CONCEPTOS (con SISTEMA) ---
     data = [["Concepto", "Unidad", "Cantidad", "Precio Unitario", "Sistema", "Subtotal"]]
     for d in c.detalles:
         data.append([
@@ -845,7 +836,6 @@ def export_cotizacion_pdf(cot_id: int):
     elems.append(tbl)
     elems.append(Spacer(1, 10))
 
-    # Cantidad en letra (corregido: try alineado)
     try:
         from num2words import num2words
         total = float(c.total or 0)
@@ -862,7 +852,6 @@ def export_cotizacion_pdf(cot_id: int):
     except Exception as e:
         print(f"[PDF] num2words error: {e}", file=sys.stderr)
 
-    # Totales
     tot_data = [
         ["Subtotal:", money(c.subtotal)],
         [f"IVA ({c.iva_porc:.2f}%):", money(c.iva_monto)],
@@ -879,7 +868,6 @@ def export_cotizacion_pdf(cot_id: int):
     elems.append(t2)
     elems.append(Spacer(1, 8))
 
-    # Notas
     if c.notas:
         elems.append(Paragraph("<b>Notas:</b>", styles["Encabezado"]))
         for line in str(c.notas).replace("\r\n", "\n").split("\n"):
@@ -1023,14 +1011,8 @@ except Exception as e:
     print(f"[Scheduler] No pudo iniciar: {e}", file=sys.stderr)
 
 # ---------------------------------------------------------
-
-
-# ---------------------------------------------------------
 # Blueprints (Catálogos)
 # ---------------------------------------------------------
-# IMPORTANTE: Para evitar bucles, en catalogos_routes.py debes tener:
-#   from models import db, Cliente, Concepto, Cotizacion, CotizacionDetalle
-# y NUNCA 'from app import db'
 from catalogos_routes import bp as catalogos_bp
 app.register_blueprint(catalogos_bp, url_prefix="/catalogos")
 
