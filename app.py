@@ -312,31 +312,33 @@ def api_conceptos_suggest():
 def crear_cotizacion():
     f = request.form
 
+    # ==== CLIENTE ====
     nombre_cliente = (f.get("cliente_nombre") or "").strip()
     empresa = (f.get("empresa") or "").strip()
     cliente = None
+
     if nombre_cliente:
         q = Cliente.query.filter(db.func.lower(Cliente.nombre_cliente) == nombre_cliente.lower())
         if empresa:
             q = q.filter(db.func.lower(Cliente.empresa) == empresa.lower())
         cliente = q.first()
 
-    if not cliente:
-        cliente = Cliente(
-            nombre_cliente=nombre_cliente.strip(),
-            empresa=empresa.strip() or None,
-            responsable=(f.get("responsable") or "").strip() or None,
-            correo=(f.get("correo") or "").strip() or None,
-            telefono=(f.get("telefono") or "").strip() or None,
-            direccion=(f.get("direccion") or "").strip() or None,
-            rfc=(f.get("rfc") or "").strip() or None,
-        )
-        db.session.add(cliente)
-        db.session.flush()
-
+        if not cliente:
+            cliente = Cliente(
+                nombre_cliente=nombre_cliente.strip(),
+                empresa=empresa.strip() or None,
+                responsable=(f.get("responsable") or "").strip() or None,
+                correo=(f.get("correo") or "").strip() or None,
+                telefono=(f.get("telefono") or "").strip() or None,
+                direccion=(f.get("direccion") or "").strip() or None,
+                rfc=(f.get("rfc") or "").strip() or None,
+            )
+            db.session.add(cliente)
+            db.session.flush()
 
     iva_porc = parse_float(f.get("iva_porc"), 16.0)
 
+    # ==== ENCABEZADO COTIZACIÓN ====
     cot = Cotizacion(
         folio=generar_folio(),
         cliente_id=cliente.id if cliente else None,
@@ -348,6 +350,7 @@ def crear_cotizacion():
     db.session.add(cot)
     db.session.flush()
 
+    # ==== DETALLES ====
     nombres = f.getlist("item_nombre_concepto[]")
     unidades = f.getlist("item_unidad[]")
     cantidades = f.getlist("item_cantidad[]")
@@ -402,30 +405,31 @@ def crear_cotizacion():
     cot.total = fmt(total)
     db.session.commit()
 
+    # ==== WhatsApp opcional ====
     try:
         msg = (
-            "🧾 *Nueva Cotización Creada*\n"
-            f"Folio: *{cot.folio}*\n"
-            f"Estatus: *{cot.estatus}*\n"
-            f"Fecha (UTC): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\n"
+            "🧾 *Nueva Cotización Creada*\\n"
+            f"Folio: *{cot.folio}*\\n"
+            f"Estatus: *{cot.estatus}*\\n"
+            f"Fecha (UTC): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\\n"
             f"Total: {money(cot.total)}"
         )
         send_whatsapp_multi(ADMIN_LIST, msg)
     except Exception as e:
         print(f"[WARN] WhatsApp creación ({cot.folio}): {e}", file=sys.stderr)
+
+    # ==== Respuesta: abrir PDF y volver al cotizador ====
     pdf_url = url_for("export_cotizacion_pdf", cot_id=cot.id)
     volver = url_for("cotizador")
-        
     return f"""<!DOCTYPE html>
-    <html><head><meta charset="utf-8"><title>Creada {cot.folio}</title></head>
-    <body>
-    <script>
-    window.open("{pdf_url}", "_blank");
-    window.location.href = "{volver}";
-    </script>
-    <p>Abrir PDF: <a href="{pdf_url}" target="_blank">aquí</a>. Volver: <a href="{volver}">cotizador</a>.</p>
-    </body></html>"""
-
+<html><head><meta charset="utf-8"><title>Creada {cot.folio}</title></head>
+<body>
+<script>
+window.open("{pdf_url}", "_blank");
+window.location.href = "{volver}";
+</script>
+<p>Abrir PDF: <a href="{pdf_url}" target="_blank">aquí</a>. Volver: <a href="{volver}">cotizador</a>.</p>
+</body></html>"""
 @app.route("/cotizaciones/<int:cot_id>/editar")
 def editar_cotizacion(cot_id: int):
     c = Cotizacion.query.get_or_404(cot_id)
