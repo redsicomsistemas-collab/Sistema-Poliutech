@@ -134,4 +134,36 @@ document.addEventListener("DOMContentLoaded", ()=>{
   addRow();
 
   document.getElementById("iva_porc").addEventListener("input", recalcTotals);
+
+  // === Abrir PDF automáticamente tras guardar ===
+const frm = document.getElementById("frm-cotizacion");
+if (frm) {
+  frm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const formData = new FormData(frm);
+    const res = await fetch(frm.action, { method: "POST", body: formData });
+    const data = await res.json();
+
+    if (data.ok && data.cot_id) {
+      // ✅ Muestra mensaje de éxito
+      Swal.fire({
+        icon: "success",
+        title: "Cotización guardada",
+        text: "El PDF se abrirá automáticamente",
+        timer: 1200,
+        showConfirmButton: false
+      });
+
+      // Espera un poco y abre el PDF
+      setTimeout(() => {
+        window.open(`/cotizaciones/${data.cot_id}/export.pdf`, "_blank");
+        window.location.href = "/";
+      }, 1300);
+    } else {
+      Swal.fire("Error", data.error || "No se pudo guardar la cotización.", "error");
+    }
+  });
+}
+
 });
