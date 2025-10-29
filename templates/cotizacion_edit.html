@@ -58,11 +58,11 @@
               <label class="form-label">Precio unitario</label>
               <input type="number" step="any" name="item_precio[]" class="form-control" value="{{ d.precio_unitario }}">
             </div>
-            <div class="col-md-1">
-              <label class="form-label">Desc. (%)</label>
-              <input type="number" step="any" name="item_descuento[]" class="form-control" value="{{ d.descuento }}">
+            <div class="col-md-2">
+              <label class="form-label">Sistema</label>
+              <input type="text" name="item_sistema[]" class="form-control" value="{{ d.sistema }}">
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
               <label class="form-label">Descripción</label>
               <input type="text" name="item_descripcion[]" class="form-control" value="{{ d.descripcion }}">
             </div>
@@ -134,8 +134,8 @@ function agregarRenglon() {
     <div class="col-md-1"><input type="text" name="item_unidad[]" class="form-control" placeholder="Unidad"></div>
     <div class="col-md-1"><input type="number" step="any" name="item_cantidad[]" class="form-control" placeholder="Cant."></div>
     <div class="col-md-2"><input type="number" step="any" name="item_precio[]" class="form-control" placeholder="Precio"></div>
-    <div class="col-md-1"><input type="number" step="any" name="item_descuento[]" class="form-control" placeholder="%Desc"></div>
-    <div class="col-md-3"><input type="text" name="item_descripcion[]" class="form-control" placeholder="Descripción"></div>
+    <div class="col-md-2"><input type="text" name="item_sistema[]" class="form-control" placeholder="Sistema"></div>
+    <div class="col-md-2"><input type="text" name="item_descripcion[]" class="form-control" placeholder="Descripción"></div>
     <div class="col-md-1 text-end"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.row').remove()">🗑</button></div>
   </div>`;
   document.getElementById('items').insertAdjacentHTML('beforeend', html);
