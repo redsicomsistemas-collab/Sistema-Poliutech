@@ -314,21 +314,26 @@ def crear_cotizacion():
 
     nombre_cliente = (f.get("cliente_nombre") or "").strip()
     empresa = (f.get("empresa") or "").strip()
-    cliente = None
-    if nombre_cliente:
-        cliente = Cliente.query.filter_by(nombre_cliente=nombre_cliente, empresa=empresa).first()
-        if not cliente:
-            cliente = Cliente(
-                nombre_cliente=nombre_cliente,
-                empresa=empresa or None,
-                responsable=(f.get("responsable") or "").strip() or None,
-                correo=(f.get("correo") or "").strip() or None,
-                telefono=(f.get("telefono") or "").strip() or None,
-                direccion=(f.get("direccion") or "").strip() or None,
-                rfc=(f.get("rfc") or "").strip() or None,
-            )
-            db.session.add(cliente)
-            db.session.flush()
+cliente = None
+if nombre_cliente:
+    q = Cliente.query.filter(db.func.lower(Cliente.nombre_cliente) == nombre_cliente.lower())
+    if empresa:
+        q = q.filter(db.func.lower(Cliente.empresa) == empresa.lower())
+    cliente = q.first()
+
+    if not cliente:
+        cliente = Cliente(
+            nombre_cliente=nombre_cliente.strip(),
+            empresa=empresa.strip() or None,
+            responsable=(f.get("responsable") or "").strip() or None,
+            correo=(f.get("correo") or "").strip() or None,
+            telefono=(f.get("telefono") or "").strip() or None,
+            direccion=(f.get("direccion") or "").strip() or None,
+            rfc=(f.get("rfc") or "").strip() or None,
+        )
+        db.session.add(cliente)
+        db.session.flush()
+
 
     iva_porc = parse_float(f.get("iva_porc"), 16.0)
 
