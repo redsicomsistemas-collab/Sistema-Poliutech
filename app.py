@@ -822,7 +822,7 @@ def export_cotizacion_pdf(cot_id: int):
             money(d.subtotal),
         ])
 
-    tbl = Table(data, colWidths=[70*mm, 25*mm, 25*mm, 30*mm, 30*mm, 30*mm], repeatRows=1, hAlign="LEFT")
+    tbl = Table(data, colWidths=[65*mm, 25*mm, 25*mm, 35*mm, 30*mm, 30*mm], repeatRows=1, hAlign="LEFT")
     tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0d47a1")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
