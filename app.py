@@ -810,7 +810,7 @@ def export_cotizacion_pdf(cot_id: int):
             elems.append(Paragraph(txt, styles["Encabezado"]))
         elems.append(Spacer(1, 10))
 
-        # --- TABLA DE CONCEPTOS (con SISTEMA ajustado a ancho completo) ---
+               # --- TABLA DE CONCEPTOS (con SISTEMA y proporciones ajustadas) ---
         data = [["Concepto", "Unidad", "Cantidad", "Sistema", "Precio Unitario", "Subtotal"]]
         for d in c.detalles:
             data.append([
@@ -822,10 +822,15 @@ def export_cotizacion_pdf(cot_id: int):
                 Paragraph(money(d.subtotal), styles["NormalRight"]),
             ])
         
-        # A4 width usable ≈ 170mm → 6 columnas iguales
+        # A4 width usable ≈ 170mm
+        col_concepto = (170/8*2)*mm   # doble ancho
+        col_unidad   = (170/8*0.5)*mm # mitad
+        col_cantidad = (170/8*0.5)*mm # mitad
+        col_restante = (170 - (col_concepto/mm + col_unidad/mm + col_cantidad/mm)) / 3 * mm
+        
         tbl = Table(
             data,
-            colWidths=[170/6*mm]*6,  # 👈 todas las columnas del mismo tamaño
+            colWidths=[col_concepto, col_unidad, col_cantidad, col_restante, col_restante, col_restante],
             repeatRows=1,
             hAlign="CENTER"
         )
@@ -839,8 +844,9 @@ def export_cotizacion_pdf(cot_id: int):
             ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
             ("FONTSIZE", (0, 0), (-1, -1), 9),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ("WORDWRAP", (0, 0), (-1, -1), True),  # 👈 permite salto de línea dentro de la celda
+            ("WORDWRAP", (0, 0), (-1, -1), True),  # salto de línea dentro de celdas
         ]))
+
 
     elems.append(tbl)
     elems.append(Spacer(1, 10))
