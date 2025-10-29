@@ -413,10 +413,10 @@ if nombre_cliente:
         send_whatsapp_multi(ADMIN_LIST, msg)
     except Exception as e:
         print(f"[WARN] WhatsApp creación ({cot.folio}): {e}", file=sys.stderr)
-
-    pdf_url = url_for("export_cotizacion_pdf", cot_id=cot.id)
-    volver = url_for("cotizador")
-    return f"""<!DOCTYPE html>
+        pdf_url = url_for("export_cotizacion_pdf", cot_id=cot.id)
+        volver = url_for("cotizador")
+        
+        return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Creada {cot.folio}</title></head>
 <body>
 <script>
