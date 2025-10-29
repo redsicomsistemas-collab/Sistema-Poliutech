@@ -82,7 +82,7 @@
     }
 
     #mar-splash .wrap {
-      position: absolute;
+      position: fixed;
       inset: 0;
       display: flex;
       align-items: center;
@@ -90,10 +90,12 @@
       flex-direction: column;
       text-align: center;
       padding: 24px;
+      width: 100%;
+      height: 100%;
     }
 
     #mar-splash img {
-      height: 96px;
+      height: clamp(70px, 25vw, 120px);
       width: auto;
       border-radius: 12px;
       margin-bottom: 12px;
@@ -102,12 +104,13 @@
     }
 
     #mar-splash h2 {
-      font-size: 1.1rem;
+      font-size: clamp(0.9rem, 4vw, 1.3rem);
       margin: 0;
       color: #0d47a1;
       font-weight: 800;
       letter-spacing: .4px;
       text-transform: uppercase;
+      text-align: center;
       opacity: 0;
       animation: fadeInText 1s ease-out forwards 0.8s;
     }
@@ -161,7 +164,7 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: center;     /* ✅ Centrado vertical y horizontal */
+        justify-content: center;
         text-align: center;
         padding: 20px;
       }
@@ -244,8 +247,27 @@
     splash.style.display = 'block';
     splash.classList.add('fade-in');
 
-    try { audio.currentTime = 0; audio.play().catch(() => {}); } catch(e) {}
+    // 🟢 Espera a que el audio esté listo antes de reproducir
+    function playStartupSound() {
+      if (!audio) return;
+      audio.currentTime = 0;
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {
+          // 🔊 Si el navegador bloquea autoplay, espera un clic o toque
+          document.body.addEventListener('click', tryAgainOnce, { once: true });
+        });
+      }
+    }
 
+    function tryAgainOnce() {
+      audio.play().catch(() => {});
+    }
+
+    // Espera unos ms para asegurar que el DOM y el audio están cargados
+    setTimeout(playStartupSound, 200);
+
+    // 🕓 Cierre del splash
     setTimeout(() => {
       splash.classList.remove('fade-in');
       splash.classList.add('fade-out');
