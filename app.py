@@ -416,15 +416,15 @@ if nombre_cliente:
 
     pdf_url = url_for("export_cotizacion_pdf", cot_id=cot.id)
     volver = url_for("cotizador")
-    return f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Creada {cot.folio}</title></head>
-<body>
-<script>
-window.open("{pdf_url}", "_blank");
-window.location.href = "{volver}";
-</script>
-<p>Abrir PDF: <a href="{pdf_url}" target="_blank">aquí</a>. Volver: <a href="{volver}">cotizador</a>.</p>
-</body></html>"""
+        return f"""<!DOCTYPE html>
+    <html><head><meta charset="utf-8"><title>Creada {cot.folio}</title></head>
+    <body>
+    <script>
+    window.open("{pdf_url}", "_blank");
+    window.location.href = "{volver}";
+    </script>
+    <p>Abrir PDF: <a href="{pdf_url}" target="_blank">aquí</a>. Volver: <a href="{volver}">cotizador</a>.</p>
+    </body></html>"""
 
 @app.route("/cotizaciones/<int:cot_id>/editar")
 def editar_cotizacion(cot_id: int):
