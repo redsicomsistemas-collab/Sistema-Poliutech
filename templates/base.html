@@ -152,6 +152,26 @@
       background-color: #e9f3ff;
       transition: background-color 0.1s ease-in-out;
     }
+
+    /* ===== AJUSTES RESPONSIVOS PARA MÓVILES ===== */
+    @media (max-width: 768px) {
+      #mar-splash .wrap {
+        padding: 12px;
+        justify-content: flex-start;      /* En lugar de centrar, sube el contenido */
+        margin-top: 30vh;                /* Lo ubica aprox. a 30% del alto */
+      }
+
+      #mar-splash img {
+        height: 60px;
+        margin-bottom: 8px;
+      }
+
+      #mar-splash h2 {
+        font-size: 0.9rem;
+        line-height: 1.2rem;
+        padding: 0 10px;
+      }
+    }
   </style>
 </head>
 
