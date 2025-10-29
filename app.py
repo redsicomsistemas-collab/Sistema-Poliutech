@@ -431,79 +431,93 @@ def actualizar_cotizacion(cot_id: int):
     c = Cotizacion.query.get_or_404(cot_id)
     f = request.form
 
-    nombre_cliente = (f.get("cliente_nombre") or "").strip()
+    # === CLIENTE ===
+    cliente_nombre = (f.get("cliente") or f.get("cliente_nombre") or "").strip()
     empresa = (f.get("empresa") or "").strip()
-    if nombre_cliente:
-        cliente = Cliente.query.filter_by(nombre_cliente=nombre_cliente, empresa=empresa).first()
+    responsable = (f.get("responsable") or "").strip()
+    correo = (f.get("correo") or "").strip()
+    telefono = (f.get("telefono") or "").strip()
+    direccion = (f.get("direccion") or "").strip()
+    rfc = (f.get("rfc") or "").strip()
+    representante = (f.get("representante") or "").strip()
+
+    cliente = None
+    if cliente_nombre:
+        cliente = Cliente.query.filter_by(nombre_cliente=cliente_nombre).first()
         if not cliente:
             cliente = Cliente(
-                nombre_cliente=nombre_cliente,
+                nombre_cliente=cliente_nombre,
                 empresa=empresa or None,
-                responsable=(f.get("responsable") or "").strip() or None,
-                correo=(f.get("correo") or "").strip() or None,
-                telefono=(f.get("telefono") or "").strip() or None,
-                direccion=(f.get("direccion") or "").strip() or None,
-                rfc=(f.get("rfc") or "").strip() or None,
+                responsable=responsable or None,
+                correo=correo or None,
+                telefono=telefono or None,
+                direccion=direccion or None,
+                rfc=rfc or None,
             )
             db.session.add(cliente)
             db.session.flush()
+            print(f"[INFO] Nuevo cliente agregado (en actualización): {cliente_nombre}")
         c.cliente_id = cliente.id
 
+    # === ENCABEZADO ===
     c.estatus = (f.get("estatus") or c.estatus).upper()
-    c.notas = f.get("notas")
-    c.representante = (f.get("representante") or "").strip() or c.representante
+    c.notas = f.get("notas") or c.notas
+    c.representante = representante or c.representante
     iva_porc = parse_float(f.get("iva_porc"), c.iva_porc or 16.0)
 
+    # === LIMPIAR DETALLES EXISTENTES ===
     for d in list(c.detalles):
         db.session.delete(d)
 
+    # === DETALLES NUEVOS ===
     nombres = f.getlist("item_nombre_concepto[]")
     unidades = f.getlist("item_unidad[]")
     cantidades = f.getlist("item_cantidad[]")
     precios = f.getlist("item_precio[]")
-    sistemas = f.getlist("item_sistema[]")
+    descuentos = f.getlist("item_descuento[]")
     descripciones = f.getlist("item_descripcion[]")
 
     subtotal = 0.0
-    n = max(len(nombres), len(unidades), len(cantidades), len(precios))
-    for i in range(n):
-        nom = (nombres[i] if i < len(nombres) else "").strip()
-        if not nom:
+    for i, nombre in enumerate(nombres):
+        nombre = (nombre or "").strip()
+        if not nombre:
             continue
-        uni = (unidades[i] if i < len(unidades) else "").strip()
-        cant = parse_float(cantidades[i] if i < len(cantidades) else 0, 0.0)
-        pu   = parse_float(precios[i] if i < len(precios) else 0, 0.0)
-        sis  = (sistemas[i] if i < len(sistemas) else "").strip()
-        desc = (descripciones[i] if i < len(descripciones) else "") or ""
+        unidad = (unidades[i] if i < len(unidades) else "").strip()
+        cantidad = parse_float(cantidades[i] if i < len(cantidades) else 0, 0.0)
+        precio = parse_float(precios[i] if i < len(precios) else 0, 0.0)
+        desc_porc = parse_float(descuentos[i] if i < len(descuentos) else 0, 0.0)
+        descripcion = (descripciones[i] if i < len(descripciones) else "").strip()
 
-        line_subtotal = cant * pu
-        subtotal += line_subtotal
+        linea_subtotal = cantidad * precio * (1 - desc_porc / 100)
+        subtotal += linea_subtotal
 
-        concepto = Concepto.query.filter_by(nombre_concepto=nom).first()
+        # Registrar concepto nuevo si no existe
+        concepto = Concepto.query.filter_by(nombre_concepto=nombre).first()
         if not concepto:
             concepto = Concepto(
-                nombre_concepto=nom,
-                unidad=uni or None,
-                precio_unitario=pu,
-                descripcion=desc or None
+                nombre_concepto=nombre,
+                unidad=unidad or None,
+                precio_unitario=precio,
+                descripcion=descripcion or None,
             )
             db.session.add(concepto)
             db.session.flush()
+            print(f"[INFO] Nuevo concepto agregado (en actualización): {nombre}")
 
         det = CotizacionDetalle(
             cotizacion_id=c.id,
-            concepto_id=concepto.id if concepto else None,
-            nombre_concepto=nom,
-            unidad=uni,
-            cantidad=cant,
-            precio_unitario=pu,
-            sistema=sis or None,
-            descripcion=desc,
-            subtotal=line_subtotal
+            concepto_id=concepto.id,
+            nombre_concepto=nombre,
+            unidad=unidad,
+            cantidad=cantidad,
+            precio_unitario=precio,
+            descripcion=descripcion,
+            subtotal=linea_subtotal
         )
         db.session.add(det)
 
-    iva_monto = subtotal * (iva_porc/100.0)
+    # === TOTALES ===
+    iva_monto = subtotal * (iva_porc / 100.0)
     total = subtotal + iva_monto
     c.subtotal = fmt(subtotal)
     c.iva_porc = fmt(iva_porc)
@@ -512,6 +526,7 @@ def actualizar_cotizacion(cot_id: int):
 
     db.session.commit()
 
+    # === RESPUESTA HTML ===
     pdf_url = url_for("export_cotizacion_pdf", cot_id=c.id)
     detalle = url_for("view_cotizacion", cot_id=c.id)
     return f"""<!DOCTYPE html>
@@ -523,6 +538,7 @@ window.location.href = "{detalle}";
 </script>
 <p>Abrir PDF: <a href="{pdf_url}" target="_blank">aquí</a>. Ver detalle: <a href="{detalle}">cotización</a>.</p>
 </body></html>"""
+
 
 @app.route("/cotizaciones/<int:cot_id>/ver")
 def ver_cotizacion(cot_id):
