@@ -1,5 +1,5 @@
 // ============================================================
-//  cotizador.js - renglones, autocompletar y totales (UI intacta)
+//  cotizador.js - renglones, autocompletar y totales (SISTEMA activo, sin descuento)
 // ============================================================
 
 function fmt(n){ return (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}); }
@@ -14,7 +14,7 @@ function rowTemplate(){
       <td><input type="text" class="form-control form-control-sm item-unidad" name="item_unidad[]"></td>
       <td><input type="number" step="0.01" class="form-control form-control-sm item-cantidad" name="item_cantidad[]" value="1"></td>
       <td><input type="number" step="0.01" class="form-control form-control-sm item-precio" name="item_precio[]" value="0"></td>
-      <td><input type="number" step="0.01" class="form-control form-control-sm item-desc" name="item_descuento[]" value="0"></td>
+      <td><input type="text" class="form-control form-control-sm item-sistema" name="item_sistema[]" placeholder="Sistema"></td>
       <td class="text-end"><span class="item-subtotal">$0.00</span></td>
       <td><input type="text" class="form-control form-control-sm" name="item_descripcion[]"></td>
       <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger btn-del">×</button></td>
@@ -27,7 +27,6 @@ function bindRowEvents(tr){
   const unidad = tr.querySelector(".item-unidad");
   const cantidad = tr.querySelector(".item-cantidad");
   const precio = tr.querySelector(".item-precio");
-  const desc = tr.querySelector(".item-desc");
   const subtotalEl = tr.querySelector(".item-subtotal");
   const sug = tr.querySelector(".item-suggest");
 
@@ -57,11 +56,10 @@ function bindRowEvents(tr){
   function recalcRow(){
     const c = Number(cantidad.value)||0;
     const p = Number(precio.value)||0;
-    const d = Math.min(Math.max(Number(desc.value)||0, 0), 100);
-    const line = c * p * (1 - d/100);
+    const line = c * p;
     subtotalEl.textContent = "$"+fmt(line);
   }
-  [cantidad, precio, desc].forEach(i=> i.addEventListener("input", ()=>{ recalcRow(); recalcTotals(); }));
+  [cantidad, precio].forEach(i=> i.addEventListener("input", ()=>{ recalcRow(); recalcTotals(); }));
 
   tr.querySelector(".btn-del").addEventListener("click", ()=>{ tr.remove(); recalcTotals(); });
 
@@ -74,8 +72,7 @@ function recalcTotals(){
   rows.forEach(tr=>{
     const cantidad = Number(tr.querySelector(".item-cantidad").value)||0;
     const precio = Number(tr.querySelector(".item-precio").value)||0;
-    const desc = Math.min(Math.max(Number(tr.querySelector(".item-desc").value)||0,0),100);
-    subtotal += cantidad * precio * (1 - desc/100);
+    subtotal += cantidad * precio;
   });
   const ivaPorc = Number(document.getElementById("iva_porc").value)||0;
   const iva = subtotal * ivaPorc/100;
