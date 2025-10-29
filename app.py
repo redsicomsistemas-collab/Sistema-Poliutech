@@ -712,8 +712,7 @@ def export_cotizacion_xlsx(cot_id: int):
     )
 
 # ---------------------------------------------------------
-# PDF
-# ---------------------------------------------------------
+# === PDF CORPORATIVO POLIUTECH ===
 @app.route("/cotizaciones/<int:cot_id>/export.pdf")
 def export_cotizacion_pdf(cot_id: int):
     c = Cotizacion.query.get_or_404(cot_id)
@@ -721,82 +720,54 @@ def export_cotizacion_pdf(cot_id: int):
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
-        leftMargin=20*mm, rightMargin=20*mm, topMargin=58*mm, bottomMargin=36*mm
+        leftMargin=20 * mm, rightMargin=20 * mm,
+        topMargin=60 * mm, bottomMargin=30 * mm
     )
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="Encabezado", fontSize=9, leading=12, spaceAfter=4))
     styles.add(ParagraphStyle(name="NormalRight", fontSize=9, alignment=2))
+    styles.add(ParagraphStyle(name="NormalCenter", fontSize=9, alignment=1))
+    styles.add(ParagraphStyle(name="NormalJustify", fontSize=9, alignment=4))
 
     elems = []
 
+    # === ENCABEZADO ===
     def encabezado(canv, doc_):
         canv.saveState()
         canv.setFillColor(colors.HexColor("#0d47a1"))
-        canv.rect(0, A4[1]-22, A4[0], 22, stroke=0, fill=1)
+        canv.rect(0, A4[1] - 30, A4[0], 30, stroke=0, fill=1)
 
         logo_path = os.path.join(app.static_folder or "static", "logo.jpg")
-        x_logo = 20
-        y_logo = A4[1] - 22 - 5
         if os.path.exists(logo_path):
             try:
-                img = ImageReader(logo_path)
-                iw, ih = img.getSize()
-                max_w = 60*mm
-                scale = max_w / float(iw)
-                w = max_w
-                h = ih * scale
-                canv.drawImage(img, x_logo, y_logo - h, width=w, height=h, mask="auto")
+                canv.drawImage(logo_path, 25, A4[1] - 60, width=60, height=40, mask="auto")
             except Exception:
                 pass
 
-        canv.setFillColor(colors.HexColor("#0d47a1"))
+        canv.setFillColor(colors.white)
         canv.setFont("Helvetica-Bold", 14)
-        canv.drawRightString(A4[0]-28, A4[1]-40, "COTIZACIÓN POLIUTECH")
-        canv.setFont("Helvetica", 10)
-        canv.setFillColor(colors.black)
-        canv.drawRightString(A4[0]-28, A4[1]-56, "Recubrimientos Especializados")
+        canv.drawRightString(A4[0] - 25, A4[1] - 40, "COTIZACIÓN")
+        canv.setFont("Helvetica", 9)
+        canv.drawRightString(A4[0] - 25, A4[1] - 52, "Recubrimientos Especializados")
         canv.restoreState()
 
+    # === FOOTER ===
     def footer(canv, doc_):
         canv.saveState()
-        canv.setFont("Helvetica", 9)
-        canv.setFillColor(colors.black)
-        y_firma = 80
-        canv.drawCentredString(A4[0]/2, y_firma + 18, "Atte.")
-        canv.setFont("Helvetica-Bold", 9)
-        canv.drawCentredString(A4[0]/2, y_firma + 6, "Ing. César Antonio Garza Guerrero")
-        canv.setFont("Helvetica", 9)
-        canv.drawCentredString(A4[0]/2, y_firma - 6, "DIRECTOR GENERAL")
-
-        division_path = os.path.join(app.static_folder or "static", "division.png")
-        if os.path.exists(division_path):
-            try:
-                canv.drawImage(division_path, (A4[0]-155*mm)/2, 45, width=155*mm, height=3*mm, mask="auto")
-            except Exception:
-                pass
-
-        canv.setFont("Helvetica-Bold", 9)
-        canv.setFillColor(colors.HexColor("#0d47a1"))
-        canv.drawCentredString(A4[0]/2, 35, "POLIUTECH – Recubrimientos Especializados")
-
         canv.setFont("Helvetica", 8)
-        canv.setFillColor(colors.HexColor("#333333"))
-        line1 = "Campos Elíseos 223 Oficina 602 · Col. Polanco V Sección · Miguel Hidalgo, CDMX 11560"
-        line2 = "Tel: 55 5938 6530 / 55 5938 0536 · info@poliutech.com · www.poliutech.com"
-        canv.drawCentredString(A4[0]/2, 25, line1)
-        canv.drawCentredString(A4[0]/2, 15, line2)
-
-        try:
-            canv.setTitle(c.folio or "Cotizacion")
-        except Exception:
-            pass
+        canv.setFillColor(colors.HexColor("#666666"))
+        canv.drawCentredString(
+            A4[0] / 2,
+            20,
+            "© 2025 Poliutech – Recubrimientos Especializados"
+        )
         canv.restoreState()
 
-    # Encabezado de datos (con representante correcto)
+    # === DATOS ENCABEZADO ===
     elems.append(Paragraph(f"<b>Folio:</b> {c.folio}", styles["Encabezado"]))
     elems.append(Paragraph(f"<b>Fecha:</b> {c.fecha.strftime('%d/%m/%Y %H:%M')} | "
-                           f"<b>Representante:</b> {c.representante or ''}", styles["Encabezado"]))
-    elems.append(Spacer(1, 6))
+                           f"<b>Representante:</b> {c.representante or '-'}", styles["Encabezado"]))
+    elems.append(Spacer(1, 8))
 
     if c.cliente:
         cli = c.cliente
@@ -810,90 +781,80 @@ def export_cotizacion_pdf(cot_id: int):
             elems.append(Paragraph(txt, styles["Encabezado"]))
         elems.append(Spacer(1, 10))
 
-        # --- TABLA DE CONCEPTOS (con SISTEMA, proporciones y encabezados ajustados) ---
-        data = [["Concepto", "Uni.", "Cant.", "Sistema", "Precio Unitario", "Subtotal"]]
-        for d in c.detalles:
-            data.append([
-                Paragraph(d.nombre_concepto or "-", styles["Normal"]),
-                Paragraph(d.unidad or "-", styles["Normal"]),
-                Paragraph(f"{d.cantidad:.2f}", styles["Normal"]),
-                Paragraph(d.sistema or "-", styles["Normal"]),
-                Paragraph(money(d.precio_unitario), styles["NormalRight"]),
-                Paragraph(money(d.subtotal), styles["NormalRight"]),
-            ])
-        
-        # A4 width usable ≈ 170mm
-        col_concepto = (170/8*2)*mm   # doble ancho
-        col_unidad   = (170/8*0.45)*mm # un poco más angosta
-        col_cantidad = (170/8*0.7)*mm  # un poco más ancha para 00.00
-        col_restante = (170 - (col_concepto/mm + col_unidad/mm + col_cantidad/mm)) / 3 * mm
-        
-        tbl = Table(
-            data,
-            colWidths=[col_concepto, col_unidad, col_cantidad, col_restante, col_restante, col_restante],
-            repeatRows=1,
-            hAlign="CENTER"
-        )
-        
-        tbl.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0d47a1")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ("WORDWRAP", (0, 0), (-1, -1), True),  # salto de línea dentro de celdas
-        ]))
+    # === TABLA DE CONCEPTOS ===
+    data = [["Concepto", "Uni.", "Cant.", "Precio Unit.", "Sistema", "Subtotal"]]
+    for d in c.detalles:
+        data.append([
+            Paragraph(d.nombre_concepto or "", styles["NormalJustify"]),
+            Paragraph(d.unidad or "", styles["NormalCenter"]),
+            Paragraph(f"{d.cantidad:.2f}", styles["NormalCenter"]),
+            Paragraph(money(d.precio_unitario), styles["NormalRight"]),
+            Paragraph(d.sistema or "-", styles["NormalCenter"]),
+            Paragraph(money(d.subtotal), styles["NormalRight"]),
+        ])
 
+    tbl = Table(
+        data,
+        colWidths=[90 * mm, 20 * mm, 22 * mm, 28 * mm, 28 * mm, 28 * mm],
+        repeatRows=1,
+        hAlign="LEFT"
+    )
 
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0d47a1")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("WORDWRAP", (0, 0), (-1, -1), True),
+    ]))
     elems.append(tbl)
-    elems.append(Spacer(1, 10))
+    elems.append(Spacer(1, 12))
 
+    # === CANTIDAD EN LETRA ===
     try:
         from num2words import num2words
         total = float(c.total or 0)
-        enteros = int(total)
-        centavos = int(round((total - enteros) * 100)) % 100
-        palabras = num2words(enteros, lang='es').strip()
-        if palabras.endswith(" uno"):
-            palabras = palabras[:-4] + " un"
-        if palabras:
-            palabras = palabras[0].upper() + palabras[1:]
-        cantidad_letra = f"{palabras} pesos {centavos:02d}/100 M.N."
-        elems.append(Paragraph(f"<b>Cantidad en letra:</b> {cantidad_letra}", styles["Encabezado"]))
-        elems.append(Spacer(1, 6))
-    except Exception as e:
-        print(f"[PDF] num2words error: {e}", file=sys.stderr)
+        entero = int(total)
+        cents = int(round((total - entero) * 100))
+        palabras = num2words(entero, lang="es").replace(" uno", " un")
+        palabras = palabras[0].upper() + palabras[1:]
+        elems.append(Paragraph(f"<b>Cantidad en letra:</b> {palabras} pesos {cents:02d}/100 M.N.", styles["Encabezado"]))
+    except Exception:
+        elems.append(Paragraph(f"<b>Cantidad en letra:</b> {c.total:.2f} pesos M.N.", styles["Encabezado"]))
+    elems.append(Spacer(1, 10))
 
+    # === TOTALES ===
     tot_data = [
         ["Subtotal:", money(c.subtotal)],
         [f"IVA ({c.iva_porc:.2f}%):", money(c.iva_monto)],
         ["Total:", money(c.total)],
     ]
-    t2 = Table(tot_data, colWidths=[40*mm, 35*mm], hAlign="RIGHT")
+    t2 = Table(tot_data, colWidths=[50 * mm, 35 * mm], hAlign="RIGHT")
     t2.setStyle(TableStyle([
-        ("FONTNAME", (0,0), (-1,-1), "Helvetica-Bold"),
-        ("ALIGN", (1,0), (1,-1), "RIGHT"),
-        ("LINEBELOW", (0,-1), (-1,-1), 0.5, colors.black),
-        ("BACKGROUND", (0,0), (-1,-1), colors.whitesmoke),
-        ("INNERGRID", (0,0), (-1,-1), 0.25, colors.lightgrey),
+        ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("TEXTCOLOR", (0, 0), (-1, -1), colors.black),
     ]))
     elems.append(t2)
-    elems.append(Spacer(1, 8))
+    elems.append(Spacer(1, 10))
 
+    # === NOTAS ===
     if c.notas:
         elems.append(Paragraph("<b>Notas:</b>", styles["Encabezado"]))
-        for line in str(c.notas).replace("\r\n", "\n").split("\n"):
+        for line in str(c.notas).splitlines():
             if line.strip():
-                elems.append(Paragraph(line.strip(), styles["Normal"]))
+                elems.append(Paragraph(line.strip(), styles["NormalJustify"]))
         elems.append(Spacer(1, 8))
 
     doc.build(
         elems,
         onFirstPage=lambda canv, d: (encabezado(canv, d), footer(canv, d)),
-        onLaterPages=lambda canv, d: (encabezado(canv, d), footer(canv, d))
+        onLaterPages=lambda canv, d: (encabezado(canv, d), footer(canv, d)),
     )
 
     buf.seek(0)
@@ -902,6 +863,7 @@ def export_cotizacion_pdf(cot_id: int):
         mimetype="application/pdf",
         headers={'Content-Disposition': f'inline; filename="{c.folio}.pdf"'}
     )
+
 
 # ---------------------------------------------------------
 # API Dashboard (series / kpis / breakdown)
