@@ -810,8 +810,8 @@ def export_cotizacion_pdf(cot_id: int):
             elems.append(Paragraph(txt, styles["Encabezado"]))
         elems.append(Spacer(1, 10))
 
-               # --- TABLA DE CONCEPTOS (con SISTEMA y proporciones ajustadas) ---
-        data = [["Concepto", "Unidad", "Cantidad", "Sistema", "Precio Unitario", "Subtotal"]]
+        # --- TABLA DE CONCEPTOS (con SISTEMA, proporciones y encabezados ajustados) ---
+        data = [["Concepto", "Uni.", "Cant.", "Sistema", "Precio Unitario", "Subtotal"]]
         for d in c.detalles:
             data.append([
                 Paragraph(d.nombre_concepto or "-", styles["Normal"]),
@@ -824,8 +824,8 @@ def export_cotizacion_pdf(cot_id: int):
         
         # A4 width usable ≈ 170mm
         col_concepto = (170/8*2)*mm   # doble ancho
-        col_unidad   = (170/8*0.5)*mm # mitad
-        col_cantidad = (170/8*0.5)*mm # mitad
+        col_unidad   = (170/8*0.45)*mm # un poco más angosta
+        col_cantidad = (170/8*0.7)*mm  # un poco más ancha para 00.00
         col_restante = (170 - (col_concepto/mm + col_unidad/mm + col_cantidad/mm)) / 3 * mm
         
         tbl = Table(
