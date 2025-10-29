@@ -810,37 +810,37 @@ def export_cotizacion_pdf(cot_id: int):
             elems.append(Paragraph(txt, styles["Encabezado"]))
         elems.append(Spacer(1, 10))
 
-# --- TABLA DE CONCEPTOS (con SISTEMA ajustado a ancho completo) ---
-data = [["Concepto", "Unidad", "Cantidad", "Sistema", "Precio Unitario", "Subtotal"]]
-for d in c.detalles:
-    data.append([
-        Paragraph(d.nombre_concepto or "-", styles["Normal"]),
-        Paragraph(d.unidad or "-", styles["Normal"]),
-        Paragraph(f"{d.cantidad:.2f}", styles["Normal"]),
-        Paragraph(d.sistema or "-", styles["Normal"]),
-        Paragraph(money(d.precio_unitario), styles["NormalRight"]),
-        Paragraph(money(d.subtotal), styles["NormalRight"]),
-    ])
-
-# A4 width usable ≈ 170mm → 6 columnas iguales
-tbl = Table(
-    data,
-    colWidths=[170/6*mm]*6,  # 👈 todas las columnas del mismo tamaño
-    repeatRows=1,
-    hAlign="CENTER"
-)
-
-tbl.setStyle(TableStyle([
-    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0d47a1")),
-    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-    ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-    ("FONTSIZE", (0, 0), (-1, -1), 9),
-    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ("WORDWRAP", (0, 0), (-1, -1), True),  # 👈 permite salto de línea dentro de la celda
-]))
+        # --- TABLA DE CONCEPTOS (con SISTEMA ajustado a ancho completo) ---
+        data = [["Concepto", "Unidad", "Cantidad", "Sistema", "Precio Unitario", "Subtotal"]]
+        for d in c.detalles:
+            data.append([
+                Paragraph(d.nombre_concepto or "-", styles["Normal"]),
+                Paragraph(d.unidad or "-", styles["Normal"]),
+                Paragraph(f"{d.cantidad:.2f}", styles["Normal"]),
+                Paragraph(d.sistema or "-", styles["Normal"]),
+                Paragraph(money(d.precio_unitario), styles["NormalRight"]),
+                Paragraph(money(d.subtotal), styles["NormalRight"]),
+            ])
+        
+        # A4 width usable ≈ 170mm → 6 columnas iguales
+        tbl = Table(
+            data,
+            colWidths=[170/6*mm]*6,  # 👈 todas las columnas del mismo tamaño
+            repeatRows=1,
+            hAlign="CENTER"
+        )
+        
+        tbl.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0d47a1")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("WORDWRAP", (0, 0), (-1, -1), True),  # 👈 permite salto de línea dentro de la celda
+        ]))
 
     elems.append(tbl)
     elems.append(Spacer(1, 10))
