@@ -714,6 +714,7 @@ def export_cotizacion_xlsx(cot_id: int):
 # ---------------------------------------------------------
 # ---------------------------------------------------------
 # ---------------------------------------------------------
+# ---------------------------------------------------------
 # PDF - Diseño corporativo Poliutech (azul, logo izq., A4)
 # ---------------------------------------------------------
 @app.route("/cotizaciones/<int:cot_id>/export.pdf")
@@ -908,8 +909,6 @@ def export_cotizacion_pdf(cot_id: int):
     )
     response.direct_passthrough = False
     return response
-
-
 
 # ---------------------------------------------------------
 # API Dashboard (series / kpis / breakdown)
