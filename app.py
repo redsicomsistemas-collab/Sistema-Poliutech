@@ -713,6 +713,7 @@ def export_cotizacion_xlsx(cot_id: int):
 
 # ---------------------------------------------------------
 # ---------------------------------------------------------
+# ---------------------------------------------------------
 # PDF - Diseño corporativo Poliutech (azul, logo izq., A4)
 # ---------------------------------------------------------
 @app.route("/cotizaciones/<int:cot_id>/export.pdf")
@@ -759,9 +760,27 @@ def export_cotizacion_pdf(cot_id: int):
 
         canv.restoreState()
 
-    # === PIE DE PÁGINA ===
+    # === PIE DE PÁGINA CON FIRMA ===
     def footer(canv, doc_):
         canv.saveState()
+        y_firma = 80
+        canv.setFont("Helvetica", 9)
+        canv.setFillColor(colors.black)
+        canv.drawCentredString(A4[0]/2, y_firma + 18, "Atte.")
+        canv.setFont("Helvetica-Bold", 9)
+        canv.drawCentredString(A4[0]/2, y_firma + 6, "Ing. César Antonio Garza Guerrero")
+        canv.setFont("Helvetica", 9)
+        canv.drawCentredString(A4[0]/2, y_firma - 6, "DIRECTOR GENERAL")
+
+        # Línea divisoria
+        division_path = os.path.join(app.static_folder or "static", "division.png")
+        if os.path.exists(division_path):
+            try:
+                canv.drawImage(division_path, (A4[0]-155*mm)/2, 45, width=155*mm, height=3*mm, mask="auto")
+            except Exception:
+                pass
+
+        # Info corporativa
         canv.setFont("Helvetica-Bold", 9)
         canv.setFillColor(colors.HexColor("#0d47a1"))
         canv.drawCentredString(A4[0]/2, 35, "POLIUTECH – Recubrimientos Especializados")
@@ -772,6 +791,12 @@ def export_cotizacion_pdf(cot_id: int):
         line2 = "Tel: 55 5938 6530 / 55 5938 0536 · info@poliutech.com · www.poliutech.com"
         canv.drawCentredString(A4[0]/2, 25, line1)
         canv.drawCentredString(A4[0]/2, 15, line2)
+
+        # Título PDF (folio)
+        try:
+            canv.setTitle(c.folio or "Cotizacion")
+        except Exception:
+            pass
 
         canv.restoreState()
 
@@ -883,6 +908,7 @@ def export_cotizacion_pdf(cot_id: int):
     )
     response.direct_passthrough = False
     return response
+
 
 
 # ---------------------------------------------------------
