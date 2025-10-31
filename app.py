@@ -86,22 +86,24 @@ def _table_columns(table_name: str) -> set[str]:
     rows = db.session.execute(text(f"PRAGMA table_info('{table_name}')")).mappings().all()
     return {r["name"] for r in rows}
 
-
 def ensure_schema():
     """
-    Crea tablas si no existen y agrega columnas mínimas nuevas en cotizacion,
-    cotizacion_detalle y cliente (representante).
+    Crea tablas si no existen y agrega columnas mínimas nuevas en cotizacion y cotizacion_detalle.
     """
     db.create_all()
 
-    # ✅ CLIENTE: verificar y agregar 'representante' si no existe
-    cols_cliente = _table_columns("cliente")
-    if "representante" not in cols_cliente:
-        db.session.execute(text("ALTER TABLE cliente ADD COLUMN representante VARCHAR(120)"))
-        db.session.commit()
-        print("[Schema] Columna 'representante' agregada a la tabla 'cliente'.")
+    # Cliente (asegurar columna 'responsable')
+    try:
+        ccols = _table_columns("cliente")
+        if "responsable" not in ccols:
+            db.session.execute(text("ALTER TABLE cliente ADD COLUMN responsable VARCHAR(120)"))
+            db.session.commit()
+    except Exception as _e:
+        # Si falla (p.ej. ya existe), no detenemos la app
+        pass
 
-    # ✅ COTIZACION: columnas mínimas
+
+    # Cotizacion
     cols = _table_columns("cotizacion")
     adds = []
     if "subtotal" not in cols:
@@ -123,7 +125,7 @@ def ensure_schema():
     for sql in adds:
         db.session.execute(text(sql))
 
-    # ✅ COTIZACION DETALLE: columnas mínimas
+    # CotizacionDetalle
     dcols = _table_columns("cotizacion_detalle")
     dadds = []
     if "sistema" not in dcols:
@@ -135,7 +137,6 @@ def ensure_schema():
 
     if adds or dadds:
         db.session.commit()
-
 
 with app.app_context():
     ensure_schema()
@@ -287,6 +288,7 @@ def api_clientes_suggest():
         "label": f"{c.nombre_cliente} · {c.empresa}" if c.empresa else c.nombre_cliente,
         "nombre_cliente": c.nombre_cliente,
         "empresa": c.empresa,
+        "responsable": c.responsable,
         "correo": c.correo,
         "telefono": c.telefono,
         "direccion": c.direccion,
@@ -331,6 +333,7 @@ def crear_cotizacion():
             cliente = Cliente(
                 nombre_cliente=nombre_cliente.strip(),
                 empresa=empresa.strip() or None,
+                responsable=(f.get("responsable") or "").strip() or None,
                 correo=(f.get("correo") or "").strip() or None,
                 telefono=(f.get("telefono") or "").strip() or None,
                 direccion=(f.get("direccion") or "").strip() or None,
@@ -465,6 +468,7 @@ def actualizar_cotizacion(cot_id: int):
     # === CLIENTE ===
     cliente_nombre = (f.get("cliente") or f.get("cliente_nombre") or "").strip()
     empresa = (f.get("empresa") or "").strip()
+    responsable = (f.get("responsable") or "").strip()
     correo = (f.get("correo") or "").strip()
     telefono = (f.get("telefono") or "").strip()
     direccion = (f.get("direccion") or "").strip()
@@ -478,6 +482,7 @@ def actualizar_cotizacion(cot_id: int):
             cliente = Cliente(
                 nombre_cliente=cliente_nombre,
                 empresa=empresa or None,
+                responsable=responsable or None,
                 correo=correo or None,
                 telefono=telefono or None,
                 direccion=direccion or None,
