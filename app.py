@@ -746,11 +746,17 @@ def export_cotizacion_pdf(cot_id: int):
             try:
                 img = ImageReader(logo_path)
                 iw, ih = img.getSize()
-                max_w = 50 * mm
+                max_w = 50 * mm  # tamaño más proporcional
                 scale = max_w / iw
-                canv.drawImage(img, 25, A4[1]-35, width=max_w, height=ih*scale, mask="auto")
+                w = max_w
+                h = ih * scale
+                # 🔹 Centrado vertical dentro de la franja azul
+                x_logo = 25
+                y_logo = A4[1] - h - 15
+                canv.drawImage(img, x_logo, y_logo, width=w, height=h, mask="auto")
             except Exception:
                 pass
+
 
         # Texto superior derecho
         canv.setFont("Helvetica-Bold", 14)
