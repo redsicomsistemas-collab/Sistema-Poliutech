@@ -2,7 +2,9 @@
 //  cotizador.js - renglones, autocompletar y totales (SISTEMA activo, sin descuento)
 // ============================================================
 
-function fmt(n){ return (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}); }
+function fmt(n){ 
+  return (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}); 
+}
 
 function rowTemplate(){
   return `
@@ -84,7 +86,10 @@ function recalcTotals(){
 }
 
 document.addEventListener("DOMContentLoaded", ()=>{
-  // Autocompletar CLIENTE (UI superior)
+
+  // ============================================================
+  // 🔹 AUTOCOMPLETAR CLIENTE (UI superior) — FIXED VERSION
+  // ============================================================
   (function setupCliente(){
     const input = document.getElementById("cliente_input");
     const box = document.getElementById("cliente_suggestions");
@@ -96,30 +101,37 @@ document.addEventListener("DOMContentLoaded", ()=>{
       const res = await fetch("/api/clientes/suggest?q="+encodeURIComponent(q));
       const data = await res.json();
       box.innerHTML = "";
+
       data.forEach(it=>{
         const div = document.createElement("div");
         div.className = "list-group-item list-group-item-action";
         div.textContent = it.label;
         div.onclick = ()=>{
-          input.value = it.nombre_cliente;
-          document.getElementById("empresa").value = it.empresa||"";
-          document.getElementById("responsable").value = it.responsable||"";
-          document.getElementById("correo").value = it.correo||"";
-          document.getElementById("telefono").value = it.telefono||"";
-          document.getElementById("direccion").value = it.direccion||"";
-          document.getElementById("rfc").value = it.rfc||"";
-          box.innerHTML="";
+          // ✅ Rellenar todos los campos correctamente
+          input.value = it.nombre_cliente || "";
+          document.getElementById("empresa").value = it.empresa || "";
+          document.getElementById("representante").value = it.representante || it.responsable || "";
+          document.getElementById("correo").value = it.correo || "";
+          document.getElementById("telefono").value = it.telefono || "";
+          document.getElementById("direccion").value = it.direccion || "";
+          document.getElementById("rfc").value = it.rfc || "";
+
+          // ✅ Cerrar el dropdown
+          box.innerHTML = "";
         };
         box.appendChild(div);
       });
     });
 
+    // ✅ Cerrar sugerencias al hacer clic fuera
     document.addEventListener("click", (e)=>{
       if(!box.contains(e.target) && e.target!==input) box.innerHTML="";
     });
   })();
 
-  // Primera fila
+  // ============================================================
+  // 🔹 MANEJO DE RENGLONES DEL COTIZADOR
+  // ============================================================
   const tbody = document.getElementById("items-body");
   const btnAdd = document.getElementById("btn-add-row");
   function addRow(){
@@ -135,35 +147,35 @@ document.addEventListener("DOMContentLoaded", ()=>{
 
   document.getElementById("iva_porc").addEventListener("input", recalcTotals);
 
-  // === Abrir PDF automáticamente tras guardar ===
-const frm = document.getElementById("frm-cotizacion");
-if (frm) {
-  frm.addEventListener("submit", async (e) => {
-    e.preventDefault();
+  // ============================================================
+  // 🔹 ENVÍO Y APERTURA AUTOMÁTICA DEL PDF
+  // ============================================================
+  const frm = document.getElementById("frm-cotizacion");
+  if (frm) {
+    frm.addEventListener("submit", async (e) => {
+      e.preventDefault();
 
-    const formData = new FormData(frm);
-    const res = await fetch(frm.action, { method: "POST", body: formData });
-    const data = await res.json();
+      const formData = new FormData(frm);
+      const res = await fetch(frm.action, { method: "POST", body: formData });
+      const data = await res.json();
 
-    if (data.ok && data.cot_id) {
-      // ✅ Muestra mensaje de éxito
-      Swal.fire({
-        icon: "success",
-        title: "Cotización guardada",
-        text: "El PDF se abrirá automáticamente",
-        timer: 1200,
-        showConfirmButton: false
-      });
+      if (data.ok && data.cot_id) {
+        Swal.fire({
+          icon: "success",
+          title: "Cotización guardada",
+          text: "El PDF se abrirá automáticamente",
+          timer: 1200,
+          showConfirmButton: false
+        });
 
-      // Espera un poco y abre el PDF
-      setTimeout(() => {
-        window.open(`/cotizaciones/${data.cot_id}/export.pdf`, "_blank");
-        window.location.href = "/";
-      }, 1300);
-    } else {
-      Swal.fire("Error", data.error || "No se pudo guardar la cotización.", "error");
-    }
-  });
-}
+        setTimeout(() => {
+          window.open(`/cotizaciones/${data.cot_id}/export.pdf`, "_blank");
+          window.location.href = "/";
+        }, 1300);
+      } else {
+        Swal.fire("Error", data.error || "No se pudo guardar la cotización.", "error");
+      }
+    });
+  }
 
 });
