@@ -279,8 +279,10 @@ def api_clientes_suggest():
         "empresa": c.empresa,
         "correo": c.correo,
         "telefono": c.telefono,
+        "representante": c.representante,  # 🔹 ahora usa este campo
         "direccion": c.direccion,
-        "rfc": c.rfc} for c in res])
+        "rfc": c.rfc,
+    } for c in res])
 
 @app.route("/api/conceptos/suggest")
 def api_conceptos_suggest():
