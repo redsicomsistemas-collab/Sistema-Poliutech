@@ -636,6 +636,26 @@ def api_update_estatus(cot_id):
     return jsonify({"ok": True, "estatus": nuevo})
 
 # ---------------------------------------------------------
+# 🗑️ API: Eliminar cotización (para botón en dashboard)
+# ---------------------------------------------------------
+@app.route("/api/cotizaciones/<int:cot_id>/eliminar", methods=["DELETE"])
+def api_eliminar_cotizacion(cot_id):
+    cot = Cotizacion.query.get(cot_id)
+    if not cot:
+        return jsonify({"ok": False, "error": "Cotización no encontrada."}), 404
+    try:
+        # Eliminar primero los detalles relacionados
+        CotizacionDetalle.query.filter_by(cotizacion_id=cot.id).delete()
+        db.session.delete(cot)
+        db.session.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        db.session.rollback()
+        print(f"[ERROR] al eliminar cotización {cot_id}: {e}", file=sys.stderr)
+        return jsonify({"ok": False, "error": str(e)}), 500
+    
+
+# ---------------------------------------------------------
 # Exportaciones CSV / Excel
 # ---------------------------------------------------------
 @app.route("/cotizaciones/<int:cot_id>/export.csv")
