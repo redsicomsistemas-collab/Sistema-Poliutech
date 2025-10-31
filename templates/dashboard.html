@@ -50,11 +50,42 @@
   </div>
 </div>
 
-<!-- 📋 TABLA DE COTIZACIONES -->
+<!-- 📋 TABLA DE COTIZACIONES + FILTROS -->
 <div class="mt-5">
   <div class="card shadow-sm">
     <div class="card-body">
       <h5 class="card-title mb-3">Últimas Cotizaciones</h5>
+
+      <!-- 🔍 FILTROS -->
+      <div class="row g-2 align-items-end mb-3">
+        <div class="col-md-3 col-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Desde</label>
+          <input type="date" id="filtro-desde" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-3 col-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Hasta</label>
+          <input type="date" id="filtro-hasta" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-3 col-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Estatus</label>
+          <select id="filtro-estatus" class="form-select form-select-sm">
+            <option value="">Todos</option>
+            <option value="PENDIENTE">PENDIENTE</option>
+            <option value="ENVIADA">ENVIADA</option>
+            <option value="GANADA">GANADA</option>
+            <option value="PERDIDA">PERDIDA</option>
+          </select>
+        </div>
+        <div class="col-md-2 col-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Cliente / Empresa</label>
+          <input type="text" id="filtro-cliente" class="form-control form-control-sm" placeholder="Buscar...">
+        </div>
+        <div class="col-md-1 text-end">
+          <button id="btn-limpiar-filtros" class="btn btn-outline-secondary btn-sm w-100">🔄</button>
+        </div>
+      </div>
+
+      <!-- 📋 TABLA -->
       <div class="table-responsive">
         <table class="table table-bordered align-middle">
           <thead class="table-light">
@@ -70,7 +101,12 @@
           </thead>
           <tbody id="tablaCotizaciones">
             {% for c in cotizaciones %}
-            <tr data-id="{{ c.id }}" class="status-row {{ c.estatus|lower }}">
+            <tr data-id="{{ c.id }}" 
+                data-fecha="{{ c.fecha.strftime('%Y-%m-%d') }}"
+                data-estatus="{{ c.estatus }}"
+                data-cliente="{{ (c.cliente.nombre_cliente if c.cliente else '')|lower }}"
+                data-empresa="{{ (c.cliente.empresa if c.cliente else '')|lower }}"
+                class="status-row {{ c.estatus|lower }}">
               <td>{{ c.folio }}</td>
               <td>{{ c.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
               <td>{{ c.cliente.nombre_cliente if c.cliente else '' }}</td>
@@ -83,11 +119,12 @@
                   {% endfor %}
                 </select>
               </td>
-              <td>
+              <td class="text-nowrap">
                 <a href="{{ url_for('view_cotizacion', cot_id=c.id) }}" class="btn btn-outline-primary btn-sm">👁️ Ver</a>
                 <a href="{{ url_for('export_cotizacion_pdf', cot_id=c.id) }}" target="_blank" class="btn btn-outline-danger btn-sm">📄 PDF</a>
                 <a href="{{ url_for('export_cotizacion_xlsx', cot_id=c.id) }}" class="btn btn-outline-success btn-sm">📊 Excel</a>
                 <a href="{{ url_for('editar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-warning btn-sm">✏️ Editar</a>
+                <button class="btn btn-outline-danger btn-sm" onclick="eliminarCotizacion({{ c.id }}, '{{ c.folio }}')">🗑️ Eliminar</button>
               </td>
             </tr>
             {% endfor %}
@@ -102,96 +139,156 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
-  // === CAMBIO DE ESTATUS INLINE ===
-  async function cambiarEstatus(id, select) {
-    const nuevo = select.value;
-    try {
-      const res = await fetch(`/api/cotizaciones/${id}/estatus`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ estatus: nuevo }),
+// === CAMBIO DE ESTATUS INLINE ===
+async function cambiarEstatus(id, select) {
+  const nuevo = select.value;
+  try {
+    const res = await fetch(`/api/cotizaciones/${id}/estatus`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estatus: nuevo }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      Swal.fire({
+        icon: "success",
+        title: "Estatus actualizado",
+        text: `Nuevo estatus: ${nuevo}`,
+        timer: 1200,
+        showConfirmButton: false
       });
+      actualizarColorFila(select.closest("tr"), nuevo);
+    }
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+function actualizarColorFila(row, estatus) {
+  row.classList.remove("table-success", "table-warning", "table-info", "table-danger");
+  switch (estatus) {
+    case "GANADA": row.classList.add("table-success"); break;
+    case "PENDIENTE": row.classList.add("table-warning"); break;
+    case "ENVIADA": row.classList.add("table-info"); break;
+    case "PERDIDA": row.classList.add("table-danger"); break;
+  }
+}
+
+// === FILTROS ===
+document.addEventListener("DOMContentLoaded", () => {
+  const desde = document.getElementById("filtro-desde");
+  const hasta = document.getElementById("filtro-hasta");
+  const estatus = document.getElementById("filtro-estatus");
+  const cliente = document.getElementById("filtro-cliente");
+  const limpiar = document.getElementById("btn-limpiar-filtros");
+  const filas = document.querySelectorAll("#tablaCotizaciones tr");
+
+  function filtrar() {
+    const d = desde.value ? new Date(desde.value) : null;
+    const h = hasta.value ? new Date(hasta.value) : null;
+    const e = estatus.value;
+    const c = cliente.value.trim().toLowerCase();
+
+    filas.forEach(tr => {
+      const f = new Date(tr.dataset.fecha);
+      const est = tr.dataset.estatus;
+      const cli = tr.dataset.cliente || "";
+      const emp = tr.dataset.empresa || "";
+      let visible = true;
+
+      if (d && f < d) visible = false;
+      if (h && f > h) visible = false;
+      if (e && est !== e) visible = false;
+      if (c && !(cli.includes(c) || emp.includes(c))) visible = false;
+
+      tr.style.display = visible ? "" : "none";
+    });
+  }
+
+  function limpiarFiltros() {
+    [desde, hasta, estatus, cliente].forEach(el => el.value = "");
+    filtrar();
+  }
+
+  [desde, hasta, estatus, cliente].forEach(el => el.addEventListener("input", filtrar));
+  limpiar.addEventListener("click", limpiarFiltros);
+});
+
+// === ELIMINAR COTIZACIÓN ===
+async function eliminarCotizacion(id, folio) {
+  const confirm = await Swal.fire({
+    title: `¿Eliminar ${folio}?`,
+    text: "Esta acción no se puede deshacer.",
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonColor: "#d33",
+    cancelButtonColor: "#3085d6",
+    confirmButtonText: "Sí, eliminar",
+    cancelButtonText: "Cancelar"
+  });
+
+  if (confirm.isConfirmed) {
+    try {
+      const res = await fetch(`/api/cotizaciones/${id}/eliminar`, { method: "DELETE" });
       const data = await res.json();
+
       if (data.ok) {
         Swal.fire({
           icon: "success",
-          title: "Estatus actualizado",
-          text: `Nuevo estatus: ${nuevo}`,
+          title: "Eliminada",
+          text: `Cotización ${folio} eliminada.`,
           timer: 1200,
           showConfirmButton: false
         });
-        actualizarColorFila(select.closest("tr"), nuevo);
+        document.querySelector(`#tablaCotizaciones tr[data-id='${id}']`)?.remove();
+      } else {
+        Swal.fire("Error", data.error || "No se pudo eliminar.", "error");
       }
-    } catch (err) {
-      console.error(err);
+    } catch (e) {
+      Swal.fire("Error", "No se pudo conectar con el servidor.", "error");
     }
   }
+}
 
-  function actualizarColorFila(row, estatus) {
-    row.classList.remove("table-success", "table-warning", "table-info", "table-danger");
-    switch (estatus) {
-      case "GANADA": row.classList.add("table-success"); break;
-      case "PENDIENTE": row.classList.add("table-warning"); break;
-      case "ENVIADA": row.classList.add("table-info"); break;
-      case "PERDIDA": row.classList.add("table-danger"); break;
-    }
+// === GRÁFICAS ===
+async function cargarGraficas() {
+  try {
+    const res1 = await fetch("/api/dashboard/metrics");
+    const data1 = await res1.json();
+
+    const labels = data1.series.map(x => x.mes);
+    const totales = data1.series.map(x => x.total);
+    const cotizaciones = data1.series.map(x => x.cotizaciones);
+
+    new Chart(document.getElementById("chartMensual"), {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [
+          { label: "Importe Total ($)", data: totales, backgroundColor: "#0d47a1", borderRadius: 6 },
+          { label: "Cotizaciones", data: cotizaciones, backgroundColor: "#4caf50", borderRadius: 6 },
+        ],
+      },
+      options: { responsive: true, scales: { y: { beginAtZero: true } } },
+    });
+
+    const res2 = await fetch("/api/dashboard/status_breakdown");
+    const data2 = await res2.json();
+
+    new Chart(document.getElementById("chartEstatus"), {
+      type: "doughnut",
+      data: {
+        labels: data2.labels,
+        datasets: [{ data: data2.counts, backgroundColor: ["#4caf50", "#ffeb3b", "#2196f3", "#f44336"] }],
+      },
+      options: { plugins: { legend: { position: "bottom" } } },
+    });
+  } catch (err) {
+    console.error("Error cargando gráficas", err);
   }
+}
 
-  // === GRÁFICAS ===
-  async function cargarGraficas() {
-    try {
-      const res1 = await fetch("/api/dashboard/metrics");
-      const data1 = await res1.json();
-
-      const labels = data1.series.map(x => x.mes);
-      const totales = data1.series.map(x => x.total);
-      const cotizaciones = data1.series.map(x => x.cotizaciones);
-
-      new Chart(document.getElementById("chartMensual"), {
-        type: "bar",
-        data: {
-          labels,
-          datasets: [
-            {
-              label: "Importe Total ($)",
-              data: totales,
-              backgroundColor: "#0d47a1",
-              borderRadius: 6,
-            },
-            {
-              label: "Cotizaciones",
-              data: cotizaciones,
-              backgroundColor: "#4caf50",
-              borderRadius: 6,
-            },
-          ],
-        },
-        options: {
-          responsive: true,
-          scales: { y: { beginAtZero: true } },
-        },
-      });
-
-      const res2 = await fetch("/api/dashboard/status_breakdown");
-      const data2 = await res2.json();
-
-      new Chart(document.getElementById("chartEstatus"), {
-        type: "doughnut",
-        data: {
-          labels: data2.labels,
-          datasets: [{
-            data: data2.counts,
-            backgroundColor: ["#4caf50", "#ffeb3b", "#2196f3", "#f44336"],
-          }],
-        },
-        options: { plugins: { legend: { position: "bottom" } } },
-      });
-    } catch (err) {
-      console.error("Error cargando gráficas", err);
-    }
-  }
-
-  document.addEventListener("DOMContentLoaded", cargarGraficas);
+document.addEventListener("DOMContentLoaded", cargarGraficas);
 </script>
 
 {% endblock %}
