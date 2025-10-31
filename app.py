@@ -310,7 +310,7 @@ def crear_cotizacion():
     nombre_cliente = (f.get("cliente") or f.get("cliente_nombre") or "").strip()
     empresa = (f.get("empresa") or "").strip()
 
-    # --- FIX: Bloque bien indentado para crear/buscar cliente ---
+    # --- CREAR O BUSCAR CLIENTE ---
     cliente = None
     if nombre_cliente:
         q = Cliente.query.filter(db.func.lower(Cliente.nombre_cliente) == nombre_cliente.lower())
@@ -348,7 +348,7 @@ def crear_cotizacion():
     unidades = f.getlist("item_unidad[]")
     cantidades = f.getlist("item_cantidad[]")
     precios = f.getlist("item_precio[]")
-    sistemas = f.getlist("item_sistema[]")  # <- campo SISTEMA
+    sistemas = f.getlist("item_sistema[]")  # campo SISTEMA
     descripciones = f.getlist("item_descripcion[]")
 
     subtotal = 0.0
@@ -390,7 +390,7 @@ def crear_cotizacion():
         )
         db.session.add(det)
 
-    iva_monto = subtotal * (iva_porc/100.0)
+    iva_monto = subtotal * (iva_porc / 100.0)
     total = subtotal + iva_monto
     cot.subtotal = fmt(subtotal)
     cot.iva_porc = fmt(iva_porc)
@@ -398,6 +398,7 @@ def crear_cotizacion():
     cot.total = fmt(total)
     db.session.commit()
 
+    # --- Notificación WhatsApp ---
     try:
         msg = (
             "🧾 *Nueva Cotización Creada*\n"
@@ -410,17 +411,23 @@ def crear_cotizacion():
     except Exception as e:
         print(f"[WARN] WhatsApp creación ({cot.folio}): {e}", file=sys.stderr)
 
+    # --- Apertura automática del PDF ---
     pdf_url = url_for("export_cotizacion_pdf", cot_id=cot.id)
     volver = url_for("cotizador")
+
     return f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Creada {cot.folio}</title></head>
-<body>
+<html><head><meta charset="utf-8"><title>{cot.folio}</title>
 <script>
-window.open("{pdf_url}", "_blank");
-window.location.href = "{volver}";
+  alert("✅ Cotización {cot.folio} creada con éxito. Se abrirá el PDF automáticamente.");
+  window.open("{pdf_url}", "_blank");
+  window.location.href = "{volver}";
 </script>
-<p>Abrir PDF: <a href="{pdf_url}" target="_blank">aquí</a>. Volver: <a href="{volver}">cotizador</a>.</p>
+</head>
+<body>
+  <p>Abrir PDF manualmente: <a href="{pdf_url}" target="_blank">{cot.folio}</a></p>
+  <p>Volver al cotizador: <a href="{volver}">click aquí</a>.</p>
 </body></html>"""
+
 
 @app.route("/cotizaciones/<int:cot_id>/editar")
 def editar_cotizacion(cot_id: int):
