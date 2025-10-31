@@ -1,5 +1,5 @@
 // ============================================================
-//  cotizador.js - renglones, autocompletar y totales (SISTEMA activo, sin descuento)
+//  cotizador.js - renglones, autocompletar y totales (campo RESPONSABLE)
 // ============================================================
 
 function fmt(n){ 
@@ -109,7 +109,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
         div.onclick = ()=>{
           input.value = it.nombre_cliente || "";
           document.getElementById("empresa").value = it.empresa || "";
-          document.getElementById("representante").value = it.representante || it.responsable || "";
+          document.getElementById("responsable").value = it.responsable || it.representante || "";
           document.getElementById("correo").value = it.correo || "";
           document.getElementById("telefono").value = it.telefono || "";
           document.getElementById("direccion").value = it.direccion || "";
@@ -163,7 +163,6 @@ document.addEventListener("DOMContentLoaded", ()=>{
 
         // ✅ Abrir PDF en nueva pestaña si se encuentra el folio
         if (folio) {
-          // Buscar ID en el backend si el folio no coincide con ruta, opcional:
           window.open(`/cotizaciones/${folio}/export.pdf`, "_blank");
         }
 
