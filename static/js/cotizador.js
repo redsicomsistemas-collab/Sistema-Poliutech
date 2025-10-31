@@ -88,7 +88,7 @@ function recalcTotals(){
 document.addEventListener("DOMContentLoaded", ()=>{
 
   // ============================================================
-  // 🔹 AUTOCOMPLETAR CLIENTE (UI superior) — FIXED VERSION
+  // 🔹 AUTOCOMPLETAR CLIENTE (UI superior)
   // ============================================================
   (function setupCliente(){
     const input = document.getElementById("cliente_input");
@@ -107,7 +107,6 @@ document.addEventListener("DOMContentLoaded", ()=>{
         div.className = "list-group-item list-group-item-action";
         div.textContent = it.label;
         div.onclick = ()=>{
-          // ✅ Rellenar todos los campos correctamente
           input.value = it.nombre_cliente || "";
           document.getElementById("empresa").value = it.empresa || "";
           document.getElementById("representante").value = it.representante || it.responsable || "";
@@ -115,15 +114,12 @@ document.addEventListener("DOMContentLoaded", ()=>{
           document.getElementById("telefono").value = it.telefono || "";
           document.getElementById("direccion").value = it.direccion || "";
           document.getElementById("rfc").value = it.rfc || "";
-
-          // ✅ Cerrar el dropdown
-          box.innerHTML = "";
+          box.innerHTML="";
         };
         box.appendChild(div);
       });
     });
 
-    // ✅ Cerrar sugerencias al hacer clic fuera
     document.addEventListener("click", (e)=>{
       if(!box.contains(e.target) && e.target!==input) box.innerHTML="";
     });
@@ -148,7 +144,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
   document.getElementById("iva_porc").addEventListener("input", recalcTotals);
 
   // ============================================================
-  // 🔹 ENVÍO Y APERTURA AUTOMÁTICA DEL PDF
+  // 🔹 ENVÍO Y APERTURA AUTOMÁTICA DEL PDF (ACEPTA HTML)
   // ============================================================
   const frm = document.getElementById("frm-cotizacion");
   if (frm) {
@@ -157,9 +153,9 @@ document.addEventListener("DOMContentLoaded", ()=>{
 
       const formData = new FormData(frm);
       const res = await fetch(frm.action, { method: "POST", body: formData });
-      const data = await res.json();
+      const text = await res.text(); // ✅ leer como texto, no JSON
 
-      if (data.ok && data.cot_id) {
+      if (text.includes("Cotización creada con éxito")) {
         Swal.fire({
           icon: "success",
           title: "Cotización guardada",
@@ -167,13 +163,11 @@ document.addEventListener("DOMContentLoaded", ()=>{
           timer: 1200,
           showConfirmButton: false
         });
-
-        setTimeout(() => {
-          window.open(`/cotizaciones/${data.cot_id}/export.pdf`, "_blank");
-          window.location.href = "/";
-        }, 1300);
+        // Esperar y volver al dashboard
+        setTimeout(() => { window.location.href = "/"; }, 1500);
       } else {
-        Swal.fire("Error", data.error || "No se pudo guardar la cotización.", "error");
+        Swal.fire("Error", "No se pudo guardar la cotización.", "error");
+        console.warn("Respuesta inesperada:", text);
       }
     });
   }
