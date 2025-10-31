@@ -137,7 +137,7 @@ def generar_folio() -> str:
     prefix = "PTCH-"
     maxn = 0
     rows = db.session.execute(text("SELECT folio FROM cotizacion WHERE folio LIKE 'PTCH-%'")).fetchall()
-    for (folio,) in rows:
+    for (folio) in rows:
         m = re.match(r"PTCH-(\d{4})$", str(folio))
         if m:
             n = int(m.group(1))
@@ -277,12 +277,10 @@ def api_clientes_suggest():
         "label": f"{c.nombre_cliente} · {c.empresa}" if c.empresa else c.nombre_cliente,
         "nombre_cliente": c.nombre_cliente,
         "empresa": c.empresa,
-        "responsable": c.responsable,
         "correo": c.correo,
         "telefono": c.telefono,
         "direccion": c.direccion,
-        "rfc": c.rfc,
-    } for c in res])
+        "rfc": c.rfc} for c in res])
 
 @app.route("/api/conceptos/suggest")
 def api_conceptos_suggest():
@@ -322,12 +320,10 @@ def crear_cotizacion():
             cliente = Cliente(
                 nombre_cliente=nombre_cliente.strip(),
                 empresa=empresa.strip() or None,
-                responsable=(f.get("responsable") or "").strip() or None,
                 correo=(f.get("correo") or "").strip() or None,
                 telefono=(f.get("telefono") or "").strip() or None,
                 direccion=(f.get("direccion") or "").strip() or None,
-                rfc=(f.get("rfc") or "").strip() or None,
-            )
+                rfc=(f.get("rfc") or "").strip() or None)
             db.session.add(cliente)
             db.session.flush()
 
@@ -442,8 +438,6 @@ def crear_cotizacion():
 </body>
 </html>"""
 
-
-
 @app.route("/cotizaciones/<int:cot_id>/editar")
 def editar_cotizacion(cot_id: int):
     c = Cotizacion.query.get_or_404(cot_id)
@@ -457,7 +451,6 @@ def actualizar_cotizacion(cot_id: int):
     # === CLIENTE ===
     cliente_nombre = (f.get("cliente") or f.get("cliente_nombre") or "").strip()
     empresa = (f.get("empresa") or "").strip()
-    responsable = (f.get("responsable") or "").strip()
     correo = (f.get("correo") or "").strip()
     telefono = (f.get("telefono") or "").strip()
     direccion = (f.get("direccion") or "").strip()
@@ -471,12 +464,10 @@ def actualizar_cotizacion(cot_id: int):
             cliente = Cliente(
                 nombre_cliente=cliente_nombre,
                 empresa=empresa or None,
-                responsable=responsable or None,
                 correo=correo or None,
                 telefono=telefono or None,
                 direccion=direccion or None,
-                rfc=rfc or None,
-            )
+                rfc=rfc or None)
             db.session.add(cliente)
             db.session.flush()
             print(f"[INFO] Nuevo cliente agregado (en actualización): {cliente_nombre}")
@@ -521,8 +512,7 @@ def actualizar_cotizacion(cot_id: int):
                 nombre_concepto=nombre,
                 unidad=unidad or None,
                 precio_unitario=precio,
-                descripcion=descripcion or None,
-            )
+                descripcion=descripcion or None)
             db.session.add(concepto)
             db.session.flush()
             print(f"[INFO] Nuevo concepto agregado (en actualización): {nombre}")
@@ -799,7 +789,6 @@ def export_cotizacion_pdf(cot_id: int):
             except Exception:
                 pass
 
-
         # Texto superior derecho
         canv.setFont("Helvetica-Bold", 14)
         canv.setFillColor(colors.white)
@@ -862,8 +851,7 @@ def export_cotizacion_pdf(cot_id: int):
             f"<b>Empresa:</b> {cli.empresa or ''}",
             f"<b>Correo:</b> {cli.correo or ''}",
             f"<b>Teléfono:</b> {cli.telefono or ''}",
-            f"<b>RFC:</b> {cli.rfc or ''}",
-        ]:
+            f"<b>RFC:</b> {cli.rfc or ''}"]:
             elems.append(Paragraph(txt, styles["Encabezado"]))
         elems.append(Spacer(1, 10))
 
@@ -876,8 +864,7 @@ def export_cotizacion_pdf(cot_id: int):
             Paragraph(f"{d.cantidad:.2f}", styles["NormalCenter"]),
             Paragraph(d.sistema or "-", styles["NormalCenter"]),
             Paragraph(money(d.precio_unitario), styles["NormalRight"]),
-            Paragraph(money(d.subtotal), styles["NormalRight"]),
-        ])
+            Paragraph(money(d.subtotal), styles["NormalRight"])])
 
     tbl = Table(
         data,
@@ -895,8 +882,7 @@ def export_cotizacion_pdf(cot_id: int):
         ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
         ("WORDWRAP", (0, 0), (-1, -1), True),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
 
     elems.append(tbl)
     elems.append(Spacer(1, 10))
@@ -921,16 +907,14 @@ def export_cotizacion_pdf(cot_id: int):
     tot_data = [
         ["Subtotal:", money(c.subtotal)],
         [f"IVA ({c.iva_porc:.2f}%):", money(c.iva_monto)],
-        ["Total:", money(c.total)],
-    ]
+        ["Total:", money(c.total)]]
     t2 = Table(tot_data, colWidths=[45*mm, 35*mm], hAlign="RIGHT")
     t2.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
         ("ALIGN", (1, 0), (1, -1), "RIGHT"),
         ("BACKGROUND", (0, 0), (-1, -1), colors.whitesmoke),
         ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
-        ("LINEBELOW", (0, -1), (-1, -1), 0.5, colors.black),
-    ]))
+        ("LINEBELOW", (0, -1), (-1, -1), 0.5, colors.black)]))
     elems.append(t2)
     elems.append(Spacer(1, 10))
 
@@ -998,8 +982,7 @@ def api_cotizaciones_search():
             "total": round(c.total or 0, 2),
             "export_csv": url_for("export_cotizacion_csv", cot_id=c.id),
             "export_pdf": url_for("export_cotizacion_pdf", cot_id=c.id),
-            "export_xlsx": url_for("export_cotizacion_xlsx", cot_id=c.id),
-        })
+            "export_xlsx": url_for("export_cotizacion_xlsx", cot_id=c.id)})
     return jsonify(data)
 
 @app.route("/api/dashboard/metrics")
@@ -1013,8 +996,7 @@ def api_dashboard_metrics():
     kpis = {
         "total_cotizaciones": Cotizacion.query.count(),
         "total_importe": float(db.session.query(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar() or 0),
-        "total_catalogo": Concepto.query.count(),
-    }
+        "total_catalogo": Concepto.query.count()}
     return jsonify({"series": series, "kpis": kpis})
 
 @app.route("/api/dashboard/status_breakdown")
