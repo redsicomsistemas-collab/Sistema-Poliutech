@@ -18,7 +18,7 @@ class Cliente(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nombre_cliente = db.Column(db.String(120), nullable=False)
     empresa = db.Column(db.String(120))
-    responsable = db.Column(db.String(120))
+    representante = db.Column(db.String(120))  # ✅ reemplaza al campo 'responsable'
     correo = db.Column(db.String(120))
     telefono = db.Column(db.String(50))
     direccion = db.Column(db.String(200))
