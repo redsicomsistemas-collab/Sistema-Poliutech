@@ -120,12 +120,32 @@
                 </select>
               </td>
                <td class="text-center">
-                <a href="{{ url_for('view_cotizacion', cot_id=c.id) }}" class="btn btn-outline-primary btn-sm" title="Ver">👁️</a>
-                <a href="{{ url_for('export_cotizacion_pdf', cot_id=c.id) }}" target="_blank" class="btn btn-outline-danger btn-sm" title="PDF">📄</a>
-                <a href="{{ url_for('export_cotizacion_xlsx', cot_id=c.id) }}" class="btn btn-outline-success btn-sm" title="Excel">📊</a>
-                <a href="{{ url_for('editar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-warning btn-sm" title="Editar">✏️</a>
-                <a href="{{ url_for('eliminar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-danger btn-sm" title="Eliminar">🗑️</a>
-              </td>
+                  <a href="{{ url_for('view_cotizacion', cot_id=c.id) }}" 
+                     class="btn btn-outline-primary btn-sm" 
+                     data-bs-toggle="tooltip" data-bs-placement="top" title="Ver">
+                     👁️
+                  </a>
+                  <a href="{{ url_for('export_cotizacion_pdf', cot_id=c.id) }}" 
+                     target="_blank" class="btn btn-outline-danger btn-sm"
+                     data-bs-toggle="tooltip" data-bs-placement="top" title="PDF">
+                     📄
+                  </a>
+                  <a href="{{ url_for('export_cotizacion_xlsx', cot_id=c.id) }}" 
+                     class="btn btn-outline-success btn-sm"
+                     data-bs-toggle="tooltip" data-bs-placement="top" title="Excel">
+                     📊
+                  </a>
+                  <a href="{{ url_for('editar_cotizacion', cot_id=c.id) }}" 
+                     class="btn btn-outline-warning btn-sm"
+                     data-bs-toggle="tooltip" data-bs-placement="top" title="Editar">
+                     ✏️
+                  </a>
+                  <a href="{{ url_for('eliminar_cotizacion', cot_id=c.id) }}" 
+                     class="btn btn-outline-danger btn-sm"
+                     data-bs-toggle="tooltip" data-bs-placement="top" title="Eliminar">
+                     🗑️
+                  </a>
+                </td>
             </tr>
             {% endfor %}
           </tbody>
