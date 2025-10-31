@@ -87,26 +87,40 @@ def _table_columns(table_name: str) -> set[str]:
     return {r["name"] for r in rows}
 
 def ensure_schema():
-    # Cliente: asegurar columna 'responsable'
-    # (se inserta más abajo dentro de la función)
-    """
-    Crea tablas si no existen y agrega columnas mínimas nuevas en cotizacion y cotizacion_detalle.
-    """
+    from sqlalchemy import text
+    print("🔍 Verificando estructura de la base de datos...")
     db.create_all()
 
-    changed = False
-    cols_cli = _table_columns("cliente")
-    if "responsable" not in cols_cli:
-        db.session.execute(text("ALTER TABLE cliente ADD COLUMN responsable VARCHAR(120)"))
-        changed = True
-
-    # Cliente (asegurar columna 'responsable')
+    # ---------------------------------------------
+    # 🧱 COTIZACION: agregar columna 'responsable'
+    # ---------------------------------------------
     try:
-        ccols = _table_columns("cliente")
-        if "responsable" not in ccols:
+        cols_cot = [c["name"] for c in db.session.execute(text("PRAGMA table_info(cotizacion)")).fetchall()]
+        if "responsable" not in cols_cot:
+            db.session.execute(text("ALTER TABLE cotizacion ADD COLUMN responsable VARCHAR(120)"))
+            db.session.commit()
+            print("✅ Campo 'responsable' agregado automáticamente en tabla 'cotizacion'.")
+        else:
+            print("✔️ Campo 'responsable' ya existe en 'cotizacion'.")
+    except Exception as e:
+        print("⚠️ No se pudo verificar/agregar 'responsable' en cotizacion:", e)
+
+    # ---------------------------------------------
+    # 🧱 CLIENTE: agregar columna 'responsable'
+    # ---------------------------------------------
+    try:
+        cols_cli = [c["name"] for c in db.session.execute(text("PRAGMA table_info(cliente)")).fetchall()]
+        if "responsable" not in cols_cli:
             db.session.execute(text("ALTER TABLE cliente ADD COLUMN responsable VARCHAR(120)"))
             db.session.commit()
-    except Exception as _e:
+            print("✅ Campo 'responsable' agregado automáticamente en tabla 'cliente'.")
+        else:
+            print("✔️ Campo 'responsable' ya existe en 'cliente'.")
+    except Exception as e:
+        print("⚠️ No se pudo verificar/agregar 'responsable' en cliente:", e)
+
+    print("🏁 Verificación de esquema completada.\n")
+
         # Si falla (p.ej. ya existe), no detenemos la app
         pass
 
