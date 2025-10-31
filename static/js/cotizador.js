@@ -144,7 +144,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
   document.getElementById("iva_porc").addEventListener("input", recalcTotals);
 
   // ============================================================
-  // 🔹 ENVÍO Y APERTURA AUTOMÁTICA DEL PDF (ACEPTA HTML)
+  // 🔹 ENVÍO Y APERTURA AUTOMÁTICA DEL PDF (EN NUEVA PESTAÑA)
   // ============================================================
   const frm = document.getElementById("frm-cotizacion");
   if (frm) {
@@ -153,18 +153,32 @@ document.addEventListener("DOMContentLoaded", ()=>{
 
       const formData = new FormData(frm);
       const res = await fetch(frm.action, { method: "POST", body: formData });
-      const text = await res.text(); // ✅ leer como texto, no JSON
+      const text = await res.text(); // ✅ leer como texto (HTML)
 
       if (text.includes("Cotización creada con éxito")) {
+
+        // ✅ Buscar folio o ID en el HTML de respuesta
+        const folioMatch = text.match(/Folio:\s*<b>(.*?)<\/b>/i);
+        let folio = folioMatch ? folioMatch[1] : null;
+
+        // ✅ Abrir PDF en nueva pestaña si se encuentra el folio
+        if (folio) {
+          // Buscar ID en el backend si el folio no coincide con ruta, opcional:
+          window.open(`/cotizaciones/${folio}/export.pdf`, "_blank");
+        }
+
+        // ✅ Mostrar alerta
         Swal.fire({
           icon: "success",
           title: "Cotización guardada",
-          text: "El PDF se abrirá automáticamente",
-          timer: 1200,
+          text: "El PDF se abrirá en una nueva pestaña",
+          timer: 1500,
           showConfirmButton: false
         });
-        // Esperar y volver al dashboard
-        setTimeout(() => { window.location.href = "/"; }, 1500);
+
+        // ✅ Redirigir al dashboard después
+        setTimeout(() => { window.location.href = "/"; }, 1700);
+
       } else {
         Swal.fire("Error", "No se pudo guardar la cotización.", "error");
         console.warn("Respuesta inesperada:", text);
