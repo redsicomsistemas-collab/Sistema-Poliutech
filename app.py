@@ -414,19 +414,34 @@ def crear_cotizacion():
     # --- Apertura automática del PDF ---
     pdf_url = url_for("export_cotizacion_pdf", cot_id=cot.id)
     volver = url_for("cotizador")
-
+    
     return f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>{cot.folio}</title>
-<script>
-  alert("✅ Cotización {cot.folio} creada con éxito. Se abrirá el PDF automáticamente.");
-  window.open("{pdf_url}", "_blank");
-  window.location.href = "{volver}";
+    <html>
+    <head>
+    <meta charset="utf-8">
+    <title>{cot.folio}</title>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    </head>
+    <body>
+    <script>
+      Swal.fire({{
+        icon: 'success',
+        title: 'Cotización creada con éxito',
+        html: 'Folio: <b>{cot.folio}</b><br>Se abrirá el PDF automáticamente.',
+        timer: 2500,
+        timerProgressBar: true,
+        showConfirmButton: false,
+        didOpen: () => {{
+          window.open("{pdf_url}", "_blank");
+          setTimeout(() => {{
+            window.location.href = "{volver}";
+          }}, 2500);
+        }}
+      }});
 </script>
-</head>
-<body>
-  <p>Abrir PDF manualmente: <a href="{pdf_url}" target="_blank">{cot.folio}</a></p>
-  <p>Volver al cotizador: <a href="{volver}">click aquí</a>.</p>
-</body></html>"""
+</body>
+</html>"""
+
 
 
 @app.route("/cotizaciones/<int:cot_id>/editar")
