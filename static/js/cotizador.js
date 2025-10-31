@@ -32,7 +32,9 @@ function bindRowEvents(tr){
   const subtotalEl = tr.querySelector(".item-subtotal");
   const sug = tr.querySelector(".item-suggest");
 
-  // Autocompletar concepto
+  // ============================================================
+  // 🔹 AUTOCOMPLETAR CONCEPTO
+  // ============================================================
   nombre.addEventListener("input", async ()=>{
     const q = nombre.value.trim();
     if(q.length < 1){ sug.innerHTML=""; return; }
@@ -61,13 +63,15 @@ function bindRowEvents(tr){
     const line = c * p;
     subtotalEl.textContent = "$"+fmt(line);
   }
+
   [cantidad, precio].forEach(i=> i.addEventListener("input", ()=>{ recalcRow(); recalcTotals(); }));
-
   tr.querySelector(".btn-del").addEventListener("click", ()=>{ tr.remove(); recalcTotals(); });
-
   recalcRow();
 }
 
+// ============================================================
+// 🔹 RECÁLCULO DE TOTALES
+// ============================================================
 function recalcTotals(){
   const rows = document.querySelectorAll("#items-body tr");
   let subtotal = 0;
@@ -85,6 +89,9 @@ function recalcTotals(){
   document.getElementById("ui-total").textContent = "$"+fmt(total);
 }
 
+// ============================================================
+// 🔹 EVENTOS PRINCIPALES
+// ============================================================
 document.addEventListener("DOMContentLoaded", ()=>{
 
   // ============================================================
@@ -109,7 +116,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
         div.onclick = ()=>{
           input.value = it.nombre_cliente || "";
           document.getElementById("empresa").value = it.empresa || "";
-          document.getElementById("responsable").value = it.responsable || it.representante || "";
+          document.getElementById("responsable").value = it.responsable || "";
           document.getElementById("correo").value = it.correo || "";
           document.getElementById("telefono").value = it.telefono || "";
           document.getElementById("direccion").value = it.direccion || "";
@@ -156,17 +163,13 @@ document.addEventListener("DOMContentLoaded", ()=>{
       const text = await res.text(); // ✅ leer como texto (HTML)
 
       if (text.includes("Cotización creada con éxito")) {
+        const folioMatch = text.match(/Folio:\\s*<b>(.*?)<\\/b>/i);
+        const folio = folioMatch ? folioMatch[1] : null;
 
-        // ✅ Buscar folio o ID en el HTML de respuesta
-        const folioMatch = text.match(/Folio:\s*<b>(.*?)<\/b>/i);
-        let folio = folioMatch ? folioMatch[1] : null;
-
-        // ✅ Abrir PDF en nueva pestaña si se encuentra el folio
         if (folio) {
           window.open(`/cotizaciones/${folio}/export.pdf`, "_blank");
         }
 
-        // ✅ Mostrar alerta
         Swal.fire({
           icon: "success",
           title: "Cotización guardada",
@@ -175,7 +178,6 @@ document.addEventListener("DOMContentLoaded", ()=>{
           showConfirmButton: false
         });
 
-        // ✅ Redirigir al dashboard después
         setTimeout(() => { window.location.href = "/"; }, 1700);
 
       } else {
