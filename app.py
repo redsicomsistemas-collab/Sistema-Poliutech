@@ -87,10 +87,18 @@ def _table_columns(table_name: str) -> set[str]:
     return {r["name"] for r in rows}
 
 def ensure_schema():
+    # Cliente: asegurar columna 'responsable'
+    # (se inserta más abajo dentro de la función)
     """
     Crea tablas si no existen y agrega columnas mínimas nuevas en cotizacion y cotizacion_detalle.
     """
     db.create_all()
+
+    changed = False
+    cols_cli = _table_columns("cliente")
+    if "responsable" not in cols_cli:
+        db.session.execute(text("ALTER TABLE cliente ADD COLUMN responsable VARCHAR(120)"))
+        changed = True
 
     # Cliente (asegurar columna 'responsable')
     try:
@@ -120,8 +128,8 @@ def ensure_schema():
         adds.append("ALTER TABLE cotizacion ADD COLUMN notas VARCHAR(3000)")
     if "last_whatsapp_at" not in cols:
         adds.append("ALTER TABLE cotizacion ADD COLUMN last_whatsapp_at TIMESTAMP NULL")
-    if "representante" not in cols:
-        adds.append("ALTER TABLE cotizacion ADD COLUMN representante VARCHAR(120)")
+    if "responsable" not in cols:
+        adds.append("ALTER TABLE cotizacion ADD COLUMN responsable VARCHAR(120)")
     for sql in adds:
         db.session.execute(text(sql))
 
@@ -135,7 +143,7 @@ def ensure_schema():
     for sql in dadds:
         db.session.execute(text(sql))
 
-    if adds or dadds:
+    if adds or dadds or changed:
         db.session.commit()
 
 with app.app_context():
@@ -350,7 +358,7 @@ def crear_cotizacion():
         estatus=(f.get("estatus") or "PENDIENTE").upper(),
         notas=f.get("notas"),
         last_whatsapp_at=None,
-        representante=(f.get("representante") or "").strip() or None
+        responsable=(f.get("responsable") or "").strip() or None
     )
     db.session.add(cot)
     db.session.flush()
@@ -473,7 +481,7 @@ def actualizar_cotizacion(cot_id: int):
     telefono = (f.get("telefono") or "").strip()
     direccion = (f.get("direccion") or "").strip()
     rfc = (f.get("rfc") or "").strip()
-    representante = (f.get("representante") or "").strip()
+    responsable = (f.get("responsable") or "").strip()
 
     cliente = None
     if cliente_nombre:
@@ -496,7 +504,7 @@ def actualizar_cotizacion(cot_id: int):
     # === ENCABEZADO ===
     c.estatus = (f.get("estatus") or c.estatus).upper()
     c.notas = f.get("notas") or c.notas
-    c.representante = representante or c.representante
+    c.responsable = responsable or c.responsable
     iva_porc = parse_float(f.get("iva_porc"), c.iva_porc or 16.0)
 
     # === LIMPIAR DETALLES EXISTENTES ===
@@ -676,7 +684,7 @@ def export_cotizacion_csv(cot_id: int):
     w = csv.writer(output)
     w.writerow(["Folio","Fecha","Estatus","Representante","Cliente","Empresa","Subtotal","IVA %","IVA $","Total","Notas"])
     w.writerow([
-        c.folio, c.fecha.strftime("%Y-%m-%d %H:%M"), c.estatus, (c.representante or ""),
+        c.folio, c.fecha.strftime("%Y-%m-%d %H:%M"), c.estatus, (c.responsable or ""),
         c.cliente.nombre_cliente if c.cliente else "",
         c.cliente.empresa if c.cliente else "",
         f"{c.subtotal:.2f}",
@@ -719,7 +727,7 @@ def export_cotizacion_xlsx(cot_id: int):
 
     ws.append(["Folio", c.folio, "", "Fecha", c.fecha.strftime("%d/%m/%Y %H:%M"), ""])
     ws.append(["Cliente", (c.cliente.nombre_cliente if c.cliente else ""), "", "Empresa", (c.cliente.empresa if c.cliente else ""), ""])
-    ws.append(["Representante", c.representante or "", "", "Estatus", c.estatus, ""])
+    ws.append(["Representante", c.responsable or "", "", "Estatus", c.estatus, ""])
     ws.append([])
 
     headers = ["Cant", "Unidad", "Concepto", "Sistema", "Precio Unit.", "Subtotal"]
@@ -863,7 +871,7 @@ def export_cotizacion_pdf(cot_id: int):
     # === DATOS PRINCIPALES ===
     elems.append(Paragraph(f"<b>Folio:</b> {c.folio}", styles["Encabezado"]))
     elems.append(Paragraph(f"<b>Fecha:</b> {c.fecha.strftime('%d/%m/%Y %H:%M')} | "
-                           f"<b>Representante:</b> {c.representante or ''}", styles["Encabezado"]))
+                           f"<b>Representante:</b> {c.responsable or ''}", styles["Encabezado"]))
     elems.append(Spacer(1, 8))
 
     if c.cliente:
