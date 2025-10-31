@@ -247,14 +247,13 @@
     splash.style.display = 'block';
     splash.classList.add('fade-in');
 
-    // 🟢 Espera a que el audio esté listo antes de reproducir
+    // 🎵 Reproduce el audio inmediatamente (no se detiene al cerrar el splash)
     function playStartupSound() {
       if (!audio) return;
       audio.currentTime = 0;
       const playPromise = audio.play();
       if (playPromise !== undefined) {
         playPromise.catch(() => {
-          // 🔊 Si el navegador bloquea autoplay, espera un clic o toque
           document.body.addEventListener('click', tryAgainOnce, { once: true });
         });
       }
@@ -264,20 +263,19 @@
       audio.play().catch(() => {});
     }
 
-    // Espera unos ms para asegurar que el DOM y el audio están cargados
-    setTimeout(playStartupSound, 200);
+    playStartupSound();
 
-    // 🕓 Cierre del splash
+    // 🕓 Cierre del splash (4 segundos totales)
     setTimeout(() => {
       splash.classList.remove('fade-in');
       splash.classList.add('fade-out');
-      try { audio.pause(); audio.currentTime = 0; } catch(e) {}
 
+      // ❌ Ya no se pausa el audio aquí, solo se quita el splash visualmente
       setTimeout(() => {
         splash.remove();
         sessionStorage.setItem('marSplashShown', '1');
-      }, 400);
-    }, 1800);
+      }, 400); // tiempo del fade out
+    }, 4000); // ← duración total del splash (4 s)
   })();
   </script>
 </body>
