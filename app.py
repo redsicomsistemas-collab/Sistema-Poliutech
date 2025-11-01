@@ -86,46 +86,36 @@ def _table_columns(table_name: str) -> set[str]:
     rows = db.session.execute(text(f"PRAGMA table_info('{table_name}')")).mappings().all()
     return {r["name"] for r in rows}
 
+
+def _table_columns(table_name: str) -> set[str]:
+    rows = db.session.execute(text(f"PRAGMA table_info('{table_name}')")).mappings().all()
+    return {r["name"] for r in rows}
+
 def ensure_schema():
-    from sqlalchemy import text
     print("🔍 Verificando estructura de la base de datos...")
     db.create_all()
 
-    # ---------------------------------------------
-    # 🧱 COTIZACION: agregar columna 'responsable'
-    # ---------------------------------------------
+    # COTIZACION: responsable
     try:
         cols_cot = [c["name"] for c in db.session.execute(text("PRAGMA table_info(cotizacion)")).fetchall()]
         if "responsable" not in cols_cot:
             db.session.execute(text("ALTER TABLE cotizacion ADD COLUMN responsable VARCHAR(120)"))
             db.session.commit()
-            print("✅ Campo 'responsable' agregado automáticamente en tabla 'cotizacion'.")
-        else:
-            print("✔️ Campo 'responsable' ya existe en 'cotizacion'.")
+            print("✅ Campo 'responsable' agregado en 'cotizacion'.")
     except Exception as e:
-        print("⚠️ No se pudo verificar/agregar 'responsable' en cotizacion:", e)
+        print("⚠️ ensure_schema(cotizacion):", e)
 
-    # ---------------------------------------------
-    # 🧱 CLIENTE: agregar columna 'responsable'
-    # ---------------------------------------------
+    # CLIENTE: responsable
     try:
         cols_cli = [c["name"] for c in db.session.execute(text("PRAGMA table_info(cliente)")).fetchall()]
         if "responsable" not in cols_cli:
             db.session.execute(text("ALTER TABLE cliente ADD COLUMN responsable VARCHAR(120)"))
             db.session.commit()
-            print("✅ Campo 'responsable' agregado automáticamente en tabla 'cliente'.")
-        else:
-            print("✔️ Campo 'responsable' ya existe en 'cliente'.")
+            print("✅ Campo 'responsable' agregado en 'cliente'.")
     except Exception as e:
-        print("⚠️ No se pudo verificar/agregar 'responsable' en cliente:", e)
+        print("⚠️ ensure_schema(cliente):", e)
 
-    print("🏁 Verificación de esquema completada.\n")
-
-        # Si falla (p.ej. ya existe), no detenemos la app
-        pass
-
-
-    # Cotizacion
+    # Extras mínimos
     cols = _table_columns("cotizacion")
     adds = []
     if "subtotal" not in cols:
@@ -142,12 +132,12 @@ def ensure_schema():
         adds.append("ALTER TABLE cotizacion ADD COLUMN notas VARCHAR(3000)")
     if "last_whatsapp_at" not in cols:
         adds.append("ALTER TABLE cotizacion ADD COLUMN last_whatsapp_at TIMESTAMP NULL")
-    if "responsable" not in cols:
-        adds.append("ALTER TABLE cotizacion ADD COLUMN responsable VARCHAR(120)")
     for sql in adds:
-        db.session.execute(text(sql))
+        try:
+            db.session.execute(text(sql))
+        except Exception:
+            pass
 
-    # CotizacionDetalle
     dcols = _table_columns("cotizacion_detalle")
     dadds = []
     if "sistema" not in dcols:
@@ -155,10 +145,18 @@ def ensure_schema():
     if "descripcion" not in dcols:
         dadds.append("ALTER TABLE cotizacion_detalle ADD COLUMN descripcion VARCHAR(1000)")
     for sql in dadds:
-        db.session.execute(text(sql))
+        try:
+            db.session.execute(text(sql))
+        except Exception:
+            pass
 
-    if adds or dadds or changed:
-        db.session.commit()
+    if adds or dadds:
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            pass
+
 
 with app.app_context():
     ensure_schema()
@@ -311,6 +309,7 @@ def api_clientes_suggest():
         "nombre_cliente": c.nombre_cliente,
         "empresa": c.empresa,
         "responsable": c.responsable,
+        "responsable": c.responsable,
         "correo": c.correo,
         "telefono": c.telefono,
         "direccion": c.direccion,
@@ -372,7 +371,7 @@ def crear_cotizacion():
         estatus=(f.get("estatus") or "PENDIENTE").upper(),
         notas=f.get("notas"),
         last_whatsapp_at=None,
-        responsable=(f.get("responsable") or "").strip() or None
+        representante=(f.get("representante") or "").strip() or None
     )
     db.session.add(cot)
     db.session.flush()
@@ -495,7 +494,7 @@ def actualizar_cotizacion(cot_id: int):
     telefono = (f.get("telefono") or "").strip()
     direccion = (f.get("direccion") or "").strip()
     rfc = (f.get("rfc") or "").strip()
-    responsable = (f.get("responsable") or "").strip()
+    representante = (f.get("representante") or "").strip()
 
     cliente = None
     if cliente_nombre:
@@ -518,7 +517,7 @@ def actualizar_cotizacion(cot_id: int):
     # === ENCABEZADO ===
     c.estatus = (f.get("estatus") or c.estatus).upper()
     c.notas = f.get("notas") or c.notas
-    c.responsable = responsable or c.responsable
+    c.representante = representante or c.representante
     iva_porc = parse_float(f.get("iva_porc"), c.iva_porc or 16.0)
 
     # === LIMPIAR DETALLES EXISTENTES ===
@@ -698,7 +697,7 @@ def export_cotizacion_csv(cot_id: int):
     w = csv.writer(output)
     w.writerow(["Folio","Fecha","Estatus","Representante","Cliente","Empresa","Subtotal","IVA %","IVA $","Total","Notas"])
     w.writerow([
-        c.folio, c.fecha.strftime("%Y-%m-%d %H:%M"), c.estatus, (c.responsable or ""),
+        c.folio, c.fecha.strftime("%Y-%m-%d %H:%M"), c.estatus, (c.representante or ""),
         c.cliente.nombre_cliente if c.cliente else "",
         c.cliente.empresa if c.cliente else "",
         f"{c.subtotal:.2f}",
@@ -741,7 +740,7 @@ def export_cotizacion_xlsx(cot_id: int):
 
     ws.append(["Folio", c.folio, "", "Fecha", c.fecha.strftime("%d/%m/%Y %H:%M"), ""])
     ws.append(["Cliente", (c.cliente.nombre_cliente if c.cliente else ""), "", "Empresa", (c.cliente.empresa if c.cliente else ""), ""])
-    ws.append(["Representante", c.responsable or "", "", "Estatus", c.estatus, ""])
+    ws.append(["Representante", c.representante or "", "", "Estatus", c.estatus, ""])
     ws.append([])
 
     headers = ["Cant", "Unidad", "Concepto", "Sistema", "Precio Unit.", "Subtotal"]
@@ -885,7 +884,7 @@ def export_cotizacion_pdf(cot_id: int):
     # === DATOS PRINCIPALES ===
     elems.append(Paragraph(f"<b>Folio:</b> {c.folio}", styles["Encabezado"]))
     elems.append(Paragraph(f"<b>Fecha:</b> {c.fecha.strftime('%d/%m/%Y %H:%M')} | "
-                           f"<b>Representante:</b> {c.responsable or ''}", styles["Encabezado"]))
+                           f"<b>Representante:</b> {c.representante or ''}", styles["Encabezado"]))
     elems.append(Spacer(1, 8))
 
     if c.cliente:
