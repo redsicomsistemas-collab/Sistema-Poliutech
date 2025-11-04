@@ -18,7 +18,7 @@ class Cliente(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nombre_cliente = db.Column(db.String(120), nullable=False)
     empresa = db.Column(db.String(120))
-    responsable = db.Column(db.String(120))
+    responsable = db.Column(db.String(120))  # <— campo correcto y único
     correo = db.Column(db.String(120))
     telefono = db.Column(db.String(50))
     direccion = db.Column(db.String(200))
@@ -56,7 +56,7 @@ class Cotizacion(db.Model):
     total = db.Column(db.Float, default=0.0)
     notas = db.Column(db.String(3000))
     last_whatsapp_at = db.Column(db.DateTime, nullable=True)
-    responsable = db.Column(db.String(120))
+    responsable = db.Column(db.String(120))  # <— sustituye al viejo 'representante'
 
     detalles = db.relationship("CotizacionDetalle", backref="cotizacion",
                                cascade="all, delete-orphan")
