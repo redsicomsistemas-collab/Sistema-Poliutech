@@ -1,5 +1,5 @@
 // ============================================================
-//  cotizador.js - renglones, autocompletar y totales (campo RESPONSABLE)
+//  cotizador.js - renglones, autocompletar y totales (RESPONSABLE)
 // ============================================================
 
 function fmt(n){ 
@@ -138,10 +138,11 @@ document.addEventListener("DOMContentLoaded", ()=>{
     bindRowEvents(tr);
     recalcTotals();
   }
-  btnAdd.addEventListener("click", addRow);
+  if (btnAdd) btnAdd.addEventListener("click", addRow);
   addRow();
 
-  document.getElementById("iva_porc").addEventListener("input", recalcTotals);
+  const ivaField = document.getElementById("iva_porc");
+  if (ivaField) ivaField.addEventListener("input", recalcTotals);
 
   // ============================================================
   // 🔹 ENVÍO Y APERTURA AUTOMÁTICA DEL PDF (EN NUEVA PESTAÑA)
@@ -153,31 +154,17 @@ document.addEventListener("DOMContentLoaded", ()=>{
 
       const formData = new FormData(frm);
       const res = await fetch(frm.action, { method: "POST", body: formData });
-      const text = await res.text(); // ✅ leer como texto (HTML)
+      const text = await res.text(); // leer como texto (HTML con Swal + window.open)
 
       if (text.includes("Cotización creada con éxito")) {
-
-        // ✅ Buscar folio o ID en el HTML de respuesta
-        const folioMatch = text.match(/Folio:\s*<b>(.*?)<\/b>/i);
-        let folio = folioMatch ? folioMatch[1] : null;
-
-        // ✅ Abrir PDF en nueva pestaña si se encuentra el folio
-        if (folio) {
-          window.open(`/cotizaciones/${folio}/export.pdf`, "_blank");
-        }
-
-        // ✅ Mostrar alerta
+        // El HTML de respuesta ya abre el PDF y redirige.
         Swal.fire({
           icon: "success",
           title: "Cotización guardada",
-          text: "El PDF se abrirá en una nueva pestaña",
-          timer: 1500,
+          text: "Se abrirá el PDF en una nueva pestaña",
+          timer: 1400,
           showConfirmButton: false
         });
-
-        // ✅ Redirigir al dashboard después
-        setTimeout(() => { window.location.href = "/"; }, 1700);
-
       } else {
         Swal.fire("Error", "No se pudo guardar la cotización.", "error");
         console.warn("Respuesta inesperada:", text);
