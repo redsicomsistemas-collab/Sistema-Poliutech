@@ -869,7 +869,9 @@ def export_cotizacion_pdf(cot_id: int):
     # === DATOS PRINCIPALES ===
     elems.append(Paragraph(f"<b>Folio:</b> {c.folio}", styles["Encabezado"]))
     elems.append(Paragraph(f"<b>Fecha:</b> {c.fecha.strftime('%d/%m/%Y %H:%M')} | "
-                           f"<b>Responsable:</b> {c.responsable or ''}", styles["Encabezado"]))
+                           f"<b>Responsable:</b> {c.responsable or ''}", 
+                           styles["Encabezado"]
+    ))
     elems.append(Spacer(1, 8))
 
     if c.cliente:
