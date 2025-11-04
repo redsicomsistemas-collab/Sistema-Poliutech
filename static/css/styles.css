@@ -1,100 +1,105 @@
-/* ============================================================
-   styles.css - MAR Tercera Temporada
-   ============================================================ */
+/* =========================================================
+   🌐 ESTILOS RESPONSIVOS POLIUTECH
+   ========================================================= */
 
-/* --- ESTRUCTURA GENERAL --- */
+/* === Base general (solo pequeños ajustes visuales globales) === */
 body {
-  font-family: "Segoe UI", Roboto, Arial, sans-serif;
   background-color: #f8f9fa;
+  font-family: "Inter", "Segoe UI", sans-serif;
   color: #222;
 }
 
-.cards {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  margin-bottom: 2rem;
+/* Centrado y alineación general */
+.container, main, .row {
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 1300px;
 }
 
+/* Sombras y bordes suaves */
 .card {
-  flex: 1;
-  min-width: 200px;
-  background: #fff;
-  border-radius: 0.5rem;
-  padding: 1rem;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  border-radius: 0.75rem;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+.card-title {
+  font-weight: 600;
+  color: #0d47a1;
 }
 
-.card h3 {
-  font-size: 1rem;
-  color: #666;
-  margin-bottom: 0.5rem;
+/* === TABLAS === */
+.table {
+  font-size: 0.95rem;
+  border-collapse: separate;
+  border-spacing: 0;
 }
-
-.kpi {
-  font-size: 1.5rem;
-  font-weight: bold;
-  color: #0d6efd;
+.table th {
+  background-color: #f1f3f5;
+  font-weight: 600;
+  color: #333;
 }
-
-/* --- PANELES --- */
-.panel {
-  background: #fff;
-  border-radius: 0.5rem;
-  padding: 1rem;
-  margin-bottom: 2rem;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-}
-
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  align-items: flex-end;
-}
-
-/* --- TABLAS --- */
-.table th, .table td {
+.table td {
   vertical-align: middle;
-  text-align: center;
-  white-space: nowrap;
-  padding: 0.6rem 0.8rem;
 }
 .table-responsive {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  border-radius: 0.4rem;
+  border-radius: 0.5rem;
+}
+.table th, .table td {
+  white-space: nowrap;
+  text-align: center;
+  padding: 0.6rem 0.8rem;
 }
 
-/* --- AUTOCOMPLETAR --- */
-.list-group-item { cursor: pointer; transition: background 0.15s ease-in-out; }
-.list-group-item:hover { background-color: #f8f9fa; }
+/* === BOTONES === */
+.btn {
+  border-radius: 0.4rem;
+  font-weight: 500;
+}
+.btn-outline-primary:hover {
+  background-color: #0d47a1;
+  color: white;
+}
+.btn-outline-success:hover {
+  background-color: #43a047;
+  color: white;
+}
+.btn-outline-danger:hover {
+  background-color: #e53935;
+  color: white;
+}
+.btn-outline-warning:hover {
+  background-color: #fbc02d;
+  color: white;
+}
 
-/* --- FOOTER/HEADER --- */
-nav a { text-decoration: none; }
-nav a.active { background: #0d6efd; color: #fff !important; }
+/* === GRÁFICAS === */
+canvas {
+  max-height: 260px;
+}
+.card-body canvas {
+  display: block;
+  margin: 0 auto;
+}
 
-/* --- TOTALES --- */
-#ui-total { font-weight: 700; }
-
-/* ============================================================
-   🔧 AJUSTES RESPONSIVOS (MÓVILES Y TABLETS)
-   ============================================================ */
-
-/* === General === */
+/* =========================================================
+   📱 MOBILE (pantallas menores a 768px)
+   ========================================================= */
 @media (max-width: 768px) {
+
+  /* Centrado general */
   body {
     padding: 0 10px !important;
   }
 
-  main, .container, .card, .row, .panel {
+  main, .container, .card, .row {
     margin-left: auto !important;
     margin-right: auto !important;
     width: 100% !important;
     max-width: 100% !important;
   }
 
-  /* --- Centrado en pantallas de inicio o vacías --- */
+  /* Página de inicio o pantallas vacías */
   .main-content, .inicio, .welcome-section {
     display: flex;
     flex-direction: column;
@@ -105,29 +110,32 @@ nav a.active { background: #0d6efd; color: #fff !important; }
     padding: 1rem;
   }
 
-  /* --- Cards y métricas --- */
-  .cards {
-    flex-direction: column;
-  }
+  /* Cards y métricas */
   .card {
     margin-bottom: 1rem;
+  }
+  .card-body {
+    padding: 1rem 0.8rem;
+  }
+  .card-title {
+    font-size: 1rem;
     text-align: center;
   }
 
-  /* --- Tablas --- */
-  .table th, .table td {
-    font-size: 0.9rem;
-  }
+  /* Tablas */
   .table-responsive {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
+  .table th, .table td {
+    white-space: nowrap;
+    font-size: 0.85rem;
+  }
 
-  /* --- Formularios (cotizador) --- */
-  #frm-cotizacion .form-control,
+  /* Formularios del cotizador */
+  #frm-cotizacion .form-control, 
   #frm-cotizacion .form-select {
     font-size: 0.9rem;
-    border-radius: 0.4rem;
   }
   #frm-cotizacion label {
     font-weight: 600;
@@ -136,110 +144,37 @@ nav a.active { background: #0d6efd; color: #fff !important; }
   #frm-cotizacion .card {
     margin-bottom: 1rem;
   }
-
-  /* --- Botones --- */
   .btn, button {
     font-size: 0.9rem !important;
-    border-radius: 0.4rem !important;
   }
 
-  /* --- Espaciado vertical entre campos --- */
+  /* Campos alineados verticalmente */
   #frm-cotizacion .row > div {
     margin-bottom: 0.5rem;
   }
 
-  /* --- Gráficas --- */
-  canvas {
-    max-height: 220px !important;
+  /* Inputs con mejor tactilidad */
+  input, select, textarea {
+    border-radius: 0.4rem !important;
   }
 
-  /* --- Footer y centrado --- */
-  footer {
-    text-align: center;
-    font-size: 0.8rem;
-    margin-top: 2rem;
+  /* Ajuste gráfico y dashboard */
+  .card-body canvas {
+    max-height: 200px;
+  }
+  .row > [class*='col-'] {
+    margin-bottom: 1rem;
   }
 }
 
-/* ============================================================
-   💻 TABLETS (768px – 1024px)
-   ============================================================ */
+/* =========================================================
+   💻 TABLETS (768–1024px)
+   ========================================================= */
 @media (min-width: 769px) and (max-width: 1024px) {
-  .card {
-    padding: 1.2rem;
+  .card-body canvas {
+    max-height: 230px;
   }
   .table th, .table td {
     font-size: 0.9rem;
   }
-  canvas {
-    max-height: 250px !important;
-  }
 }
-/* ============================================================
-   🔧 FIX MOBILE VIEW POLIUTECH (centrado + layout)
-   ============================================================ */
-@media (max-width: 768px) {
-
-  /* Centra cualquier pantalla de bienvenida o dashboard vacío */
-  main, .main-content, .inicio, .welcome-section {
-    display: flex !important;
-    flex-direction: column !important;
-    justify-content: center !important;
-    align-items: center !important;
-    text-align: center;
-    min-height: 80vh;
-    padding: 1.5rem;
-  }
-
-  /* Asegura márgenes laterales visibles en móviles */
-  body, main, .container, .panel, .card {
-    width: 100% !important;
-    max-width: 100% !important;
-    padding-left: 10px !important;
-    padding-right: 10px !important;
-    box-sizing: border-box;
-  }
-
-  /* Tablas responsivas */
-  .table-responsive {
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .table th, .table td {
-    font-size: 0.9rem !important;
-    white-space: nowrap !important;
-  }
-
-  /* Formularios del cotizador */
-  #frm-cotizacion .form-control,
-  #frm-cotizacion .form-select {
-    font-size: 0.9rem !important;
-    border-radius: 0.4rem !important;
-  }
-
-  #frm-cotizacion label {
-    font-weight: 600 !important;
-    font-size: 0.85rem !important;
-  }
-
-  /* Botones más accesibles */
-  .btn, button {
-    font-size: 0.95rem !important;
-    width: 100%;
-    margin-bottom: 0.5rem;
-  }
-
-  /* Gráficas más contenidas */
-  canvas {
-    max-height: 200px !important;
-  }
-
-  /* Ajusta el pie de página */
-  footer {
-    text-align: center;
-    font-size: 0.8rem;
-    margin-top: 1.5rem;
-  }
-}
-
