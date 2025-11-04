@@ -144,43 +144,48 @@ document.addEventListener("DOMContentLoaded", ()=>{
   const ivaField = document.getElementById("iva_porc");
   if (ivaField) ivaField.addEventListener("input", recalcTotals);
 
-// ============================================================
-// 🔹 ENVÍO Y APERTURA AUTOMÁTICA DEL PDF (EN NUEVA PESTAÑA)
-// ============================================================
-const frm = document.getElementById("frm-cotizacion");
-if (frm) {
-  frm.addEventListener("submit", async (e) => {
-    e.preventDefault();
+  // ============================================================
+  // 🔹 ENVÍO Y APERTURA AUTOMÁTICA DEL PDF (EN NUEVA PESTAÑA)
+  // ============================================================
 
-    const formData = new FormData(frm);
-    const res = await fetch(frm.action, { method: "POST", body: formData });
-    const text = await res.text(); // HTML de respuesta
+  // Función para extraer el ID real del HTML que devuelve Flask
+  function getLastCotIdFromResponse(html) {
+    const match = html.match(/\/cotizaciones\/(\d+)\/export\.pdf/);
+    return match ? match[1] : null;
+  }
 
-    // ✅ Buscar el folio directamente en el HTML de respuesta
-    const folioMatch = text.match(/Folio:\s*<b>(.*?)<\/b>/i);
-    const folio = folioMatch ? folioMatch[1] : null;
+  const frm = document.getElementById("frm-cotizacion");
+  if (frm) {
+    frm.addEventListener("submit", async (e) => {
+      e.preventDefault();
 
-    if (text.includes("Cotización creada con éxito") && folio) {
-      Swal.fire({
-        icon: "success",
-        title: "Cotización guardada",
-        html: `Folio: <b>${folio}</b><br>Se abrirá el PDF en una nueva pestaña.`,
-        confirmButtonText: "Ver PDF",
-        timer: 2500,
-        timerProgressBar: true,
-      }).then(() => {
-        // 🔹 Abre el PDF justo al cerrar el alert (evento de usuario)
-        window.open(`/cotizaciones/${folio}/export.pdf`, "_blank");
-        // 🔹 Redirige al dashboard después
-        setTimeout(() => {
-          window.location.href = "/";
-        }, 1000);
-      });
-    } else {
-      Swal.fire("Error", "No se pudo guardar la cotización.", "error");
-      console.warn("Respuesta inesperada:", text);
-    }
-  });
-}
+      const formData = new FormData(frm);
+      const res = await fetch(frm.action, { method: "POST", body: formData });
+      const text = await res.text();
+
+      const folioMatch = text.match(/Folio:\s*<b>(.*?)<\/b>/i);
+      const folio = folioMatch ? folioMatch[1] : null;
+      const cotId = getLastCotIdFromResponse(text);
+
+      if (text.includes("Cotización creada con éxito") && cotId) {
+        Swal.fire({
+          icon: "success",
+          title: "Cotización guardada",
+          html: `Folio: <b>${folio}</b><br>Se abrirá el PDF en una nueva pestaña.`,
+          confirmButtonText: "Ver PDF",
+          timer: 2500,
+          timerProgressBar: true,
+        }).then(() => {
+          window.open(`/cotizaciones/${cotId}/export.pdf`, "_blank");
+          setTimeout(() => {
+            window.location.href = "/";
+          }, 1000);
+        });
+      } else {
+        Swal.fire("Error", "No se pudo guardar la cotización.", "error");
+        console.warn("Respuesta inesperada:", text);
+      }
+    });
+  }
 
 });
