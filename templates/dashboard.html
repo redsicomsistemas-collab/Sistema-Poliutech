@@ -31,32 +31,35 @@
 
 <!-- 📊 GRÁFICAS -->
 <div class="row mt-4">
-  <!-- 📈 Importe Total -->
-  <div class="col-md-4 d-flex align-items-stretch">
-    <div class="card shadow-sm w-100">
-      <div class="card-body">
+  <div class="col-md-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-body" style="height: 340px;">
         <h5 class="card-title text-primary">Importe Total por Mes</h5>
-        <canvas id="chartImporte" style="height:300px;"></canvas>
+        <div style="position: relative; height: 250px;">
+          <canvas id="chartImporte"></canvas>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- 📈 Cotizaciones por Mes -->
-  <div class="col-md-4 d-flex align-items-stretch">
-    <div class="card shadow-sm w-100">
-      <div class="card-body">
+  <div class="col-md-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-body" style="height: 340px;">
         <h5 class="card-title text-success">Cotizaciones por Mes</h5>
-        <canvas id="chartCantidad" style="height:300px;"></canvas>
+        <div style="position: relative; height: 250px;">
+          <canvas id="chartCantidad"></canvas>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- 📊 Distribución por Estatus -->
-  <div class="col-md-4 d-flex align-items-stretch">
-    <div class="card shadow-sm w-100">
-      <div class="card-body">
+  <div class="col-md-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-body" style="height: 340px;">
         <h5 class="card-title">Distribución por Estatus</h5>
-        <canvas id="chartEstatus" style="height:300px;"></canvas>
+        <div style="position: relative; height: 250px;">
+          <canvas id="chartEstatus"></canvas>
+        </div>
       </div>
     </div>
   </div>
@@ -67,102 +70,8 @@
   <div class="card shadow-sm">
     <div class="card-body">
       <h5 class="card-title mb-3">Últimas Cotizaciones</h5>
-
-      <!-- 🔍 FILTROS -->
-      <div class="row g-2 align-items-end mb-3">
-        <div class="col-md-3 col-6">
-          <label class="form-label small fw-bold text-secondary mb-1">Desde</label>
-          <input type="date" id="filtro-desde" class="form-control form-control-sm">
-        </div>
-        <div class="col-md-3 col-6">
-          <label class="form-label small fw-bold text-secondary mb-1">Hasta</label>
-          <input type="date" id="filtro-hasta" class="form-control form-control-sm">
-        </div>
-        <div class="col-md-3 col-6">
-          <label class="form-label small fw-bold text-secondary mb-1">Estatus</label>
-          <select id="filtro-estatus" class="form-select form-select-sm">
-            <option value="">Todos</option>
-            <option value="PENDIENTE">PENDIENTE</option>
-            <option value="ENVIADA">ENVIADA</option>
-            <option value="GANADA">GANADA</option>
-            <option value="PERDIDA">PERDIDA</option>
-          </select>
-        </div>
-        <div class="col-md-2 col-6">
-          <label class="form-label small fw-bold text-secondary mb-1">Cliente / Empresa</label>
-          <input type="text" id="filtro-cliente" class="form-control form-control-sm" placeholder="Buscar...">
-        </div>
-        <div class="col-md-1 text-end">
-          <button id="btn-limpiar-filtros" class="btn btn-outline-secondary btn-sm w-100">🔄</button>
-        </div>
-      </div>
-
-      <!-- 📋 TABLA -->
-      <div class="table-responsive">
-        <table class="table table-bordered align-middle">
-          <thead class="table-light">
-            <tr>
-              <th>Folio</th>
-              <th>Fecha</th>
-              <th>Cliente</th>
-              <th>Empresa</th>
-              <th>Total</th>
-              <th>Estatus</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody id="tablaCotizaciones">
-            {% for c in cotizaciones %}
-            <tr data-id="{{ c.id }}" 
-                data-fecha="{{ c.fecha.strftime('%Y-%m-%d') }}"
-                data-estatus="{{ c.estatus }}"
-                data-cliente="{{ (c.cliente.nombre_cliente if c.cliente else '')|lower }}"
-                data-empresa="{{ (c.cliente.empresa if c.cliente else '')|lower }}"
-                class="status-row {{ c.estatus|lower }}">
-              <td>{{ c.folio }}</td>
-              <td>{{ c.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
-              <td>{{ c.cliente.nombre_cliente if c.cliente else '' }}</td>
-              <td>{{ c.cliente.empresa if c.cliente else '' }}</td>
-              <td>${{ "{:,.2f}".format(c.total) }}</td>
-              <td>
-                <select class="status-select" onchange="cambiarEstatus({{ c.id }}, this)">
-                  {% for estado in ['PENDIENTE','ENVIADA','GANADA','PERDIDA'] %}
-                    <option value="{{ estado }}" {% if c.estatus == estado %}selected{% endif %}>{{ estado }}</option>
-                  {% endfor %}
-                </select>
-              </td>
-               <td class="text-center">
-                  <a href="{{ url_for('view_cotizacion', cot_id=c.id) }}" 
-                     class="btn btn-outline-primary btn-sm" 
-                     data-bs-toggle="tooltip" data-bs-placement="top" title="Ver">
-                     👁️
-                  </a>
-                  <a href="{{ url_for('export_cotizacion_pdf', cot_id=c.id) }}" 
-                     target="_blank" class="btn btn-outline-danger btn-sm"
-                     data-bs-toggle="tooltip" data-bs-placement="top" title="PDF">
-                     📄
-                  </a>
-                  <a href="{{ url_for('export_cotizacion_xlsx', cot_id=c.id) }}" 
-                     class="btn btn-outline-success btn-sm"
-                     data-bs-toggle="tooltip" data-bs-placement="top" title="Excel">
-                     📊
-                  </a>
-                  <a href="{{ url_for('editar_cotizacion', cot_id=c.id) }}" 
-                     class="btn btn-outline-warning btn-sm"
-                     data-bs-toggle="tooltip" data-bs-placement="top" title="Editar">
-                     ✏️
-                  </a>
-                  <a href="{{ url_for('eliminar_cotizacion', cot_id=c.id) }}" 
-                     class="btn btn-outline-danger btn-sm"
-                     data-bs-toggle="tooltip" data-bs-placement="top" title="Eliminar">
-                     🗑️
-                  </a>
-                </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+      {% include "partials/filtros_tabla.html" ignore missing %}
+      {% include "partials/tabla_cotizaciones.html" ignore missing %}
     </div>
   </div>
 </div>
@@ -180,7 +89,7 @@ async function cargarGraficas() {
     const importes = data1.series.map(x => x.total);
     const cantidades = data1.series.map(x => x.cotizaciones);
 
-    // 💰 Importe total
+    // 💰 Importe total mensual
     new Chart(document.getElementById("chartImporte"), {
       type: "bar",
       data: {
@@ -192,10 +101,14 @@ async function cargarGraficas() {
           borderRadius: 6
         }]
       },
-      options: { maintainAspectRatio: false, responsive: true, scales: { y: { beginAtZero: true } } }
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { y: { beginAtZero: true } }
+      }
     });
 
-    // 📦 Cantidad de cotizaciones
+    // 📦 Cantidad de cotizaciones mensual
     new Chart(document.getElementById("chartCantidad"), {
       type: "bar",
       data: {
@@ -207,7 +120,11 @@ async function cargarGraficas() {
           borderRadius: 6
         }]
       },
-      options: { maintainAspectRatio: false, responsive: true, scales: { y: { beginAtZero: true } } }
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { y: { beginAtZero: true } }
+      }
     });
 
     // 🟢 Distribución por estatus
@@ -218,9 +135,16 @@ async function cargarGraficas() {
       type: "doughnut",
       data: {
         labels: data2.labels,
-        datasets: [{ data: data2.counts, backgroundColor: ["#4caf50", "#ffeb3b", "#2196f3", "#f44336"] }]
+        datasets: [{
+          data: data2.counts,
+          backgroundColor: ["#4caf50", "#ffeb3b", "#2196f3", "#f44336"]
+        }]
       },
-      options: { maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } }
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: "bottom" } }
+      }
     });
   } catch (err) {
     console.error("Error cargando gráficas", err);
