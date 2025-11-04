@@ -86,77 +86,73 @@ def _table_columns(table_name: str) -> set[str]:
     rows = db.session.execute(text(f"PRAGMA table_info('{table_name}')")).mappings().all()
     return {r["name"] for r in rows}
 
-
-def _table_columns(table_name: str) -> set[str]:
-    rows = db.session.execute(text(f"PRAGMA table_info('{table_name}')")).mappings().all()
-    return {r["name"] for r in rows}
-
 def ensure_schema():
+    """Crea tablas si no existen y agrega/normaliza columnas clave (responsable)."""
     print("🔍 Verificando estructura de la base de datos...")
     db.create_all()
 
-    # COTIZACION: responsable
+    # --- CLIENTE.responsable ---
     try:
-        cols_cot = [c["name"] for c in db.session.execute(text("PRAGMA table_info(cotizacion)")).fetchall()]
-        if "responsable" not in cols_cot:
-            db.session.execute(text("ALTER TABLE cotizacion ADD COLUMN responsable VARCHAR(120)"))
-            db.session.commit()
-            print("✅ Campo 'responsable' agregado en 'cotizacion'.")
-    except Exception as e:
-        print("⚠️ ensure_schema(cotizacion):", e)
-
-    # CLIENTE: responsable
-    try:
-        cols_cli = [c["name"] for c in db.session.execute(text("PRAGMA table_info(cliente)")).fetchall()]
+        cols_cli = _table_columns("cliente")
         if "responsable" not in cols_cli:
             db.session.execute(text("ALTER TABLE cliente ADD COLUMN responsable VARCHAR(120)"))
             db.session.commit()
             print("✅ Campo 'responsable' agregado en 'cliente'.")
     except Exception as e:
-        print("⚠️ ensure_schema(cliente):", e)
+        print("⚠️ ensure_schema(cliente.responsable):", e)
 
-    # Extras mínimos
-    cols = _table_columns("cotizacion")
-    adds = []
-    if "subtotal" not in cols:
-        adds.append("ALTER TABLE cotizacion ADD COLUMN subtotal FLOAT DEFAULT 0.0")
-    if "descuento_total" not in cols:
-        adds.append("ALTER TABLE cotizacion ADD COLUMN descuento_total FLOAT DEFAULT 0.0")
-    if "iva_porc" not in cols:
-        adds.append("ALTER TABLE cotizacion ADD COLUMN iva_porc FLOAT DEFAULT 16.0")
-    if "iva_monto" not in cols:
-        adds.append("ALTER TABLE cotizacion ADD COLUMN iva_monto FLOAT DEFAULT 0.0")
-    if "total" not in cols:
-        adds.append("ALTER TABLE cotizacion ADD COLUMN total FLOAT DEFAULT 0.0")
-    if "notas" not in cols:
-        adds.append("ALTER TABLE cotizacion ADD COLUMN notas VARCHAR(3000)")
-    if "last_whatsapp_at" not in cols:
-        adds.append("ALTER TABLE cotizacion ADD COLUMN last_whatsapp_at TIMESTAMP NULL")
-    for sql in adds:
-        try:
-            db.session.execute(text(sql))
-        except Exception:
-            pass
+    # --- COTIZACION.responsable ---
+    try:
+        cols_cot = _table_columns("cotizacion")
+        if "responsable" not in cols_cot:
+            # Si existe 'representante' viejo, creamos 'responsable' y copiamos datos
+            if "representante" in cols_cot:
+                db.session.execute(text("ALTER TABLE cotizacion ADD COLUMN responsable VARCHAR(120)"))
+                # Copiar datos
+                try:
+                    db.session.execute(text("UPDATE cotizacion SET responsable = representante WHERE responsable IS NULL"))
+                except Exception:
+                    pass
+                db.session.commit()
+                print("✅ Campo 'responsable' creado y poblado desde 'representante'.")
+            else:
+                db.session.execute(text("ALTER TABLE cotizacion ADD COLUMN responsable VARCHAR(120)"))
+                db.session.commit()
+                print("✅ Campo 'responsable' agregado en 'cotizacion'.")
+    except Exception as e:
+        print("⚠️ ensure_schema(cotizacion.responsable):", e)
 
-    dcols = _table_columns("cotizacion_detalle")
-    dadds = []
-    if "sistema" not in dcols:
-        dadds.append("ALTER TABLE cotizacion_detalle ADD COLUMN sistema VARCHAR(200)")
-    if "descripcion" not in dcols:
-        dadds.append("ALTER TABLE cotizacion_detalle ADD COLUMN descripcion VARCHAR(1000)")
-    for sql in dadds:
-        try:
-            db.session.execute(text(sql))
-        except Exception:
-            pass
+    # --- Otros mínimos para estabilidad ---
+    try:
+        cols = _table_columns("cotizacion")
+        for sql in [
+            ("subtotal", "ALTER TABLE cotizacion ADD COLUMN subtotal FLOAT DEFAULT 0.0"),
+            ("descuento_total", "ALTER TABLE cotizacion ADD COLUMN descuento_total FLOAT DEFAULT 0.0"),
+            ("iva_porc", "ALTER TABLE cotizacion ADD COLUMN iva_porc FLOAT DEFAULT 16.0"),
+            ("iva_monto", "ALTER TABLE cotizacion ADD COLUMN iva_monto FLOAT DEFAULT 0.0"),
+            ("total", "ALTER TABLE cotizacion ADD COLUMN total FLOAT DEFAULT 0.0"),
+            ("notas", "ALTER TABLE cotizacion ADD COLUMN notas VARCHAR(3000)"),
+            ("last_whatsapp_at", "ALTER TABLE cotizacion ADD COLUMN last_whatsapp_at TIMESTAMP NULL"),
+        ]:
+            col, stmt = sql
+            if col not in cols:
+                try:
+                    db.session.execute(text(stmt))
+                except Exception:
+                    pass
+        db.session.commit()
+    except Exception as e:
+        print("⚠️ ensure_schema(cotizacion extras):", e)
 
-    if adds or dadds:
-        try:
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-            pass
-
+    try:
+        dcols = _table_columns("cotizacion_detalle")
+        if "sistema" not in dcols:
+            db.session.execute(text("ALTER TABLE cotizacion_detalle ADD COLUMN sistema VARCHAR(200)"))
+        if "descripcion" not in dcols:
+            db.session.execute(text("ALTER TABLE cotizacion_detalle ADD COLUMN descripcion VARCHAR(1000)"))
+        db.session.commit()
+    except Exception as e:
+        print("⚠️ ensure_schema(detalle extras):", e)
 
 with app.app_context():
     ensure_schema()
@@ -309,7 +305,6 @@ def api_clientes_suggest():
         "nombre_cliente": c.nombre_cliente,
         "empresa": c.empresa,
         "responsable": c.responsable,
-        "responsable": c.responsable,
         "correo": c.correo,
         "telefono": c.telefono,
         "direccion": c.direccion,
@@ -371,7 +366,7 @@ def crear_cotizacion():
         estatus=(f.get("estatus") or "PENDIENTE").upper(),
         notas=f.get("notas"),
         last_whatsapp_at=None,
-        representante=(f.get("representante") or "").strip() or None
+        responsable=(f.get("responsable") or "").strip() or None
     )
     db.session.add(cot)
     db.session.flush()
@@ -433,10 +428,10 @@ def crear_cotizacion():
     # --- Notificación WhatsApp ---
     try:
         msg = (
-            "🧾 *Nueva Cotización Creada*\n"
-            f"Folio: *{cot.folio}*\n"
-            f"Estatus: *{cot.estatus}*\n"
-            f"Fecha (UTC): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\n"
+            "🧾 *Nueva Cotización Creada*\\n"
+            f"Folio: *{cot.folio}*\\n"
+            f"Estatus: *{cot.estatus}*\\n"
+            f"Fecha (UTC): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\\n"
             f"Total: {money(cot.total)}"
         )
         send_whatsapp_multi(ADMIN_LIST, msg)
@@ -470,11 +465,9 @@ def crear_cotizacion():
           }}, 2500);
         }}
       }});
-</script>
-</body>
-</html>"""
-
-
+    </script>
+    </body>
+    </html>"""
 
 @app.route("/cotizaciones/<int:cot_id>/editar")
 def editar_cotizacion(cot_id: int):
@@ -494,7 +487,6 @@ def actualizar_cotizacion(cot_id: int):
     telefono = (f.get("telefono") or "").strip()
     direccion = (f.get("direccion") or "").strip()
     rfc = (f.get("rfc") or "").strip()
-    representante = (f.get("representante") or "").strip()
 
     cliente = None
     if cliente_nombre:
@@ -517,14 +509,14 @@ def actualizar_cotizacion(cot_id: int):
     # === ENCABEZADO ===
     c.estatus = (f.get("estatus") or c.estatus).upper()
     c.notas = f.get("notas") or c.notas
-    c.representante = representante or c.representante
+    c.responsable = responsable or c.responsable
     iva_porc = parse_float(f.get("iva_porc"), c.iva_porc or 16.0)
 
     # === LIMPIAR DETALLES EXISTENTES ===
     for d in list(c.detalles):
         db.session.delete(d)
 
-    # === DETALLES NUEVOS === (sin descuento; con SISTEMA)
+    # === DETALLES NUEVOS ===
     nombres = f.getlist("item_nombre_concepto[]")
     unidades = f.getlist("item_unidad[]")
     cantidades = f.getlist("item_cantidad[]")
@@ -655,10 +647,10 @@ def api_update_estatus(cot_id):
     try:
         if twilio_client and nuevo != anterior:
             body = (
-                f"🔄 *Actualización de estatus*\n"
-                f"Folio: *{c.folio}*\n"
-                f"Anterior: {anterior}\n"
-                f"Nuevo: *{nuevo}*\n"
+                f"🔄 *Actualización de estatus*\\n"
+                f"Folio: *{c.folio}*\\n"
+                f"Anterior: {anterior}\\n"
+                f"Nuevo: *{nuevo}*\\n"
                 f"Total: {money(c.total)}"
             )
             send_whatsapp_multi(ADMIN_LIST, body)
@@ -676,7 +668,6 @@ def api_eliminar_cotizacion(cot_id):
     if not cot:
         return jsonify({"ok": False, "error": "Cotización no encontrada."}), 404
     try:
-        # Eliminar primero los detalles relacionados
         CotizacionDetalle.query.filter_by(cotizacion_id=cot.id).delete()
         db.session.delete(cot)
         db.session.commit()
@@ -686,7 +677,6 @@ def api_eliminar_cotizacion(cot_id):
         print(f"[ERROR] al eliminar cotización {cot_id}: {e}", file=sys.stderr)
         return jsonify({"ok": False, "error": str(e)}), 500
     
-
 # ---------------------------------------------------------
 # Exportaciones CSV / Excel
 # ---------------------------------------------------------
@@ -695,9 +685,11 @@ def export_cotizacion_csv(cot_id: int):
     c = Cotizacion.query.get_or_404(cot_id)
     output = io.StringIO()
     w = csv.writer(output)
+    # Mantener el rótulo "Representante" por compatibilidad visual,
+    # aunque los datos se leen de c.responsable
     w.writerow(["Folio","Fecha","Estatus","Representante","Cliente","Empresa","Subtotal","IVA %","IVA $","Total","Notas"])
     w.writerow([
-        c.folio, c.fecha.strftime("%Y-%m-%d %H:%M"), c.estatus, (c.representante or ""),
+        c.folio, c.fecha.strftime("%Y-%m-%d %H:%M"), c.estatus, (c.responsable or ""),
         c.cliente.nombre_cliente if c.cliente else "",
         c.cliente.empresa if c.cliente else "",
         f"{c.subtotal:.2f}",
@@ -740,7 +732,8 @@ def export_cotizacion_xlsx(cot_id: int):
 
     ws.append(["Folio", c.folio, "", "Fecha", c.fecha.strftime("%d/%m/%Y %H:%M"), ""])
     ws.append(["Cliente", (c.cliente.nombre_cliente if c.cliente else ""), "", "Empresa", (c.cliente.empresa if c.cliente else ""), ""])
-    ws.append(["Representante", c.representante or "", "", "Estatus", c.estatus, ""])
+    # Mantener el rótulo "Representante" pero usar c.responsable
+    ws.append(["Representante", c.responsable or "", "", "Estatus", c.estatus, ""])
     ws.append([])
 
     headers = ["Cant", "Unidad", "Concepto", "Sistema", "Precio Unit.", "Subtotal"]
@@ -786,10 +779,7 @@ def export_cotizacion_xlsx(cot_id: int):
     )
 
 # ---------------------------------------------------------
-# ---------------------------------------------------------
-# ---------------------------------------------------------
-# ---------------------------------------------------------
-# PDF - Diseño corporativo Poliutech (azul, logo izq., A4)
+# PDF - Diseño corporativo
 # ---------------------------------------------------------
 @app.route("/cotizaciones/<int:cot_id>/export.pdf")
 def export_cotizacion_pdf(cot_id: int):
@@ -820,17 +810,15 @@ def export_cotizacion_pdf(cot_id: int):
             try:
                 img = ImageReader(logo_path)
                 iw, ih = img.getSize()
-                max_w = 50 * mm  # tamaño más proporcional
+                max_w = 50 * mm
                 scale = max_w / iw
                 w = max_w
                 h = ih * scale
-                # 🔹 Centrado vertical dentro de la franja azul
                 x_logo = 25
                 y_logo = A4[1] - h - 15
                 canv.drawImage(img, x_logo, y_logo, width=w, height=h, mask="auto")
             except Exception:
                 pass
-
 
         # Texto superior derecho
         canv.setFont("Helvetica-Bold", 14)
@@ -853,7 +841,6 @@ def export_cotizacion_pdf(cot_id: int):
         canv.setFont("Helvetica", 9)
         canv.drawCentredString(A4[0]/2, y_firma - 6, "DIRECTOR GENERAL")
 
-        # Línea divisoria
         division_path = os.path.join(app.static_folder or "static", "division.png")
         if os.path.exists(division_path):
             try:
@@ -861,7 +848,6 @@ def export_cotizacion_pdf(cot_id: int):
             except Exception:
                 pass
 
-        # Info corporativa
         canv.setFont("Helvetica-Bold", 9)
         canv.setFillColor(colors.HexColor("#0d47a1"))
         canv.drawCentredString(A4[0]/2, 35, "POLIUTECH – Recubrimientos Especializados")
@@ -873,7 +859,6 @@ def export_cotizacion_pdf(cot_id: int):
         canv.drawCentredString(A4[0]/2, 25, line1)
         canv.drawCentredString(A4[0]/2, 15, line2)
 
-        # Título PDF (folio)
         try:
             canv.setTitle(c.folio or "Cotizacion")
         except Exception:
@@ -884,7 +869,7 @@ def export_cotizacion_pdf(cot_id: int):
     # === DATOS PRINCIPALES ===
     elems.append(Paragraph(f"<b>Folio:</b> {c.folio}", styles["Encabezado"]))
     elems.append(Paragraph(f"<b>Fecha:</b> {c.fecha.strftime('%d/%m/%Y %H:%M')} | "
-                           f"<b>Representante:</b> {c.representante or ''}", styles["Encabezado"]))
+                           f"<b>Representante:</b> {c.responsable or ''}", styles["Encabezado"]))
     elems.append(Spacer(1, 8))
 
     if c.cliente:
@@ -917,7 +902,6 @@ def export_cotizacion_pdf(cot_id: int):
         repeatRows=1,
         hAlign="CENTER"
     )
-
     tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0d47a1")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -969,7 +953,7 @@ def export_cotizacion_pdf(cot_id: int):
     # === NOTAS ===
     if c.notas:
         elems.append(Paragraph("<b>Notas:</b>", styles["Encabezado"]))
-        for line in str(c.notas).replace("\r\n", "\n").split("\n"):
+        for line in str(c.notas).replace("\\r\\n", "\\n").split("\\n"):
             if line.strip():
                 elems.append(Paragraph(line.strip(), styles["Normal"]))
         elems.append(Spacer(1, 8))
@@ -1090,9 +1074,9 @@ def enviar_notificaciones_pendientes():
             if cot.last_whatsapp_at is None or cot.last_whatsapp_at <= hace_24h:
                 try:
                     body = (
-                        "🔔 *Recordatorio: Cotización PENDIENTE*\n"
-                        f"Folio: *{cot.folio}*\n"
-                        f"Fecha (UTC): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\n"
+                        "🔔 *Recordatorio: Cotización PENDIENTE*\\n"
+                        f"Folio: *{cot.folio}*\\n"
+                        f"Fecha (UTC): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\\n"
                         f"Total: {money(cot.total)}"
                     )
                     send_whatsapp_multi(ADMIN_LIST, body)
