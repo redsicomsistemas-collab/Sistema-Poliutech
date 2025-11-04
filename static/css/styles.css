@@ -5,6 +5,8 @@
 /* --- ESTRUCTURA GENERAL --- */
 body {
   font-family: "Segoe UI", Roboto, Arial, sans-serif;
+  background-color: #f8f9fa;
+  color: #222;
 }
 
 .cards {
@@ -52,7 +54,17 @@ body {
 }
 
 /* --- TABLAS --- */
-.table th, .table td { vertical-align: middle; }
+.table th, .table td {
+  vertical-align: middle;
+  text-align: center;
+  white-space: nowrap;
+  padding: 0.6rem 0.8rem;
+}
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 0.4rem;
+}
 
 /* --- AUTOCOMPLETAR --- */
 .list-group-item { cursor: pointer; transition: background 0.15s ease-in-out; }
@@ -62,11 +74,104 @@ body {
 nav a { text-decoration: none; }
 nav a.active { background: #0d6efd; color: #fff !important; }
 
-/* --- RESPONSIVO --- */
-@media (max-width: 768px) {
-  .filters { flex-direction: column; }
-  .cards { flex-direction: column; }
-}
-
 /* --- TOTALES --- */
 #ui-total { font-weight: 700; }
+
+/* ============================================================
+   🔧 AJUSTES RESPONSIVOS (MÓVILES Y TABLETS)
+   ============================================================ */
+
+/* === General === */
+@media (max-width: 768px) {
+  body {
+    padding: 0 10px !important;
+  }
+
+  main, .container, .card, .row, .panel {
+    margin-left: auto !important;
+    margin-right: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* --- Centrado en pantallas de inicio o vacías --- */
+  .main-content, .inicio, .welcome-section {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 85vh;
+    text-align: center;
+    padding: 1rem;
+  }
+
+  /* --- Cards y métricas --- */
+  .cards {
+    flex-direction: column;
+  }
+  .card {
+    margin-bottom: 1rem;
+    text-align: center;
+  }
+
+  /* --- Tablas --- */
+  .table th, .table td {
+    font-size: 0.9rem;
+  }
+  .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* --- Formularios (cotizador) --- */
+  #frm-cotizacion .form-control,
+  #frm-cotizacion .form-select {
+    font-size: 0.9rem;
+    border-radius: 0.4rem;
+  }
+  #frm-cotizacion label {
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+  #frm-cotizacion .card {
+    margin-bottom: 1rem;
+  }
+
+  /* --- Botones --- */
+  .btn, button {
+    font-size: 0.9rem !important;
+    border-radius: 0.4rem !important;
+  }
+
+  /* --- Espaciado vertical entre campos --- */
+  #frm-cotizacion .row > div {
+    margin-bottom: 0.5rem;
+  }
+
+  /* --- Gráficas --- */
+  canvas {
+    max-height: 220px !important;
+  }
+
+  /* --- Footer y centrado --- */
+  footer {
+    text-align: center;
+    font-size: 0.8rem;
+    margin-top: 2rem;
+  }
+}
+
+/* ============================================================
+   💻 TABLETS (768px – 1024px)
+   ============================================================ */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .card {
+    padding: 1.2rem;
+  }
+  .table th, .table td {
+    font-size: 0.9rem;
+  }
+  canvas {
+    max-height: 250px !important;
+  }
+}
