@@ -23,6 +23,7 @@ class Cliente(db.Model):
     telefono = db.Column(db.String(50))
     direccion = db.Column(db.String(200))
     rfc = db.Column(db.String(50))
+    sistema = db.Column(db.String(120))  # ✅ nuevo campo: sistema asociado al cliente
 
     cotizaciones = db.relationship("Cotizacion", backref="cliente", cascade="all, delete-orphan")
 
@@ -56,10 +57,13 @@ class Cotizacion(db.Model):
     total = db.Column(db.Float, default=0.0)
     notas = db.Column(db.String(3000))
     last_whatsapp_at = db.Column(db.DateTime, nullable=True)
-    responsable = db.Column(db.String(120))  # <— sustituye al viejo 'representante'
+    responsable = db.Column(db.String(120))  # <— campo correcto (no representante)
 
-    detalles = db.relationship("CotizacionDetalle", backref="cotizacion",
-                               cascade="all, delete-orphan")
+    detalles = db.relationship(
+        "CotizacionDetalle",
+        backref="cotizacion",
+        cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<Cotizacion {self.folio or self.id}>"
@@ -74,7 +78,7 @@ class CotizacionDetalle(db.Model):
     unidad = db.Column(db.String(50))
     cantidad = db.Column(db.Float, default=1)
     precio_unitario = db.Column(db.Float, default=0)
-    sistema = db.Column(db.String(200))  # campo nuevo
+    sistema = db.Column(db.String(200))  # ✅ ya incluido correctamente
     descripcion = db.Column(db.String(1000))
     subtotal = db.Column(db.Float, default=0)
 
