@@ -100,6 +100,16 @@ def ensure_schema():
             print("✅ Campo 'responsable' agregado en 'cliente'.")
     except Exception as e:
         print("⚠️ ensure_schema(cliente.responsable):", e)
+            # --- CLIENTE.sistema ---
+    try:
+        cols_cli = _table_columns("cliente")
+        if "sistema" not in cols_cli:
+            db.session.execute(text("ALTER TABLE cliente ADD COLUMN sistema VARCHAR(120)"))
+            db.session.commit()
+            print("✅ Campo 'sistema' agregado en 'cliente'.")
+    except Exception as e:
+        print("⚠️ ensure_schema(cliente.sistema):", e)
+
 
     # --- COTIZACION.responsable ---
     try:
@@ -297,9 +307,16 @@ def api_clientes_suggest():
     q = (request.args.get("q", "")).strip()
     if len(q) < 1:
         return jsonify([])
+
     res = (Cliente.query
-           .filter(Cliente.nombre_cliente.ilike(f"%{q}%"))
-           .order_by(Cliente.nombre_cliente).limit(10).all())
+           .filter(
+               (Cliente.nombre_cliente.ilike(f"%{q}%")) |
+               (Cliente.empresa.ilike(f"%{q}%"))
+           )
+           .order_by(Cliente.nombre_cliente)
+           .limit(10)
+           .all())
+
     return jsonify([{
         "label": f"{c.nombre_cliente} · {c.empresa}" if c.empresa else c.nombre_cliente,
         "nombre_cliente": c.nombre_cliente,
@@ -309,7 +326,9 @@ def api_clientes_suggest():
         "telefono": c.telefono,
         "direccion": c.direccion,
         "rfc": c.rfc,
+        "sistema": c.sistema or ""   # ✅ NUEVO CAMPO
     } for c in res])
+
 
 @app.route("/api/conceptos/suggest")
 def api_conceptos_suggest():
