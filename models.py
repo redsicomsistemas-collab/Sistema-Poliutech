@@ -1,5 +1,3 @@
-este es mi models, damelo completo con las correccines necesarias:
-
 # =========================================================
 # models.py — Sistema MARWHATS / Poliutech
 # =========================================================
@@ -7,9 +5,7 @@ este es mi models, damelo completo con las correccines necesarias:
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 
-# Instancia global reutilizable
 db = SQLAlchemy()
-
 
 # ---------------------------------------------------------
 # MODELOS
@@ -20,11 +16,11 @@ class Cliente(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nombre_cliente = db.Column(db.String(120), nullable=False)
     empresa = db.Column(db.String(120))
-    responsable = db.Column(db.String(120))  # <— campo correcto y único
+    responsable = db.Column(db.String(120))  # campo correcto y único
     correo = db.Column(db.String(120))
     telefono = db.Column(db.String(50))
     direccion = db.Column(db.String(200))
-    rfc = db.Column(db.String(50))
+    rfc = db.Column(db.String(50))  # se mantiene en BD por compatibilidad
 
     cotizaciones = db.relationship("Cotizacion", backref="cliente", cascade="all, delete-orphan")
 
@@ -38,6 +34,8 @@ class Concepto(db.Model):
     nombre_concepto = db.Column(db.String(500), nullable=False)
     unidad = db.Column(db.String(50))
     precio_unitario = db.Column(db.Float, default=0)
+    # 👇 NUEVO: sistema en el catálogo para que se “jale” automático
+    sistema = db.Column(db.String(200))
     descripcion = db.Column(db.String(1000))
 
     def __repr__(self):
@@ -58,7 +56,7 @@ class Cotizacion(db.Model):
     total = db.Column(db.Float, default=0.0)
     notas = db.Column(db.String(3000))
     last_whatsapp_at = db.Column(db.DateTime, nullable=True)
-    responsable = db.Column(db.String(120))  # <— sustituye al viejo 'representante'
+    responsable = db.Column(db.String(120))  # sustituye a “representante”
 
     detalles = db.relationship("CotizacionDetalle", backref="cotizacion",
                                cascade="all, delete-orphan")
@@ -76,7 +74,7 @@ class CotizacionDetalle(db.Model):
     unidad = db.Column(db.String(50))
     cantidad = db.Column(db.Float, default=1)
     precio_unitario = db.Column(db.Float, default=0)
-    sistema = db.Column(db.String(200))  # campo nuevo
+    sistema = db.Column(db.String(200))  # ya existía en tus detalles
     descripcion = db.Column(db.String(1000))
     subtotal = db.Column(db.Float, default=0)
 
