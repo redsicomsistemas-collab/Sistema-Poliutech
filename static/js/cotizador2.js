@@ -1,5 +1,5 @@
 // ============================================================
-//  cotizador.js - renglones, autocompletar y totales (RESPONSABLE)
+//  cotizador.js - renglones, autocompletar y totales
 // ============================================================
 
 function fmt(n){ 
@@ -29,6 +29,8 @@ function bindRowEvents(tr){
   const unidad = tr.querySelector(".item-unidad");
   const cantidad = tr.querySelector(".item-cantidad");
   const precio = tr.querySelector(".item-precio");
+  const sistema = tr.querySelector(".item-sistema");
+  const desc = tr.querySelector('input[name="item_descripcion[]"]');
   const subtotalEl = tr.querySelector(".item-subtotal");
   const sug = tr.querySelector(".item-suggest");
 
@@ -47,7 +49,8 @@ function bindRowEvents(tr){
         nombre.value = it.nombre_concepto || it.label;
         unidad.value = it.unidad || "";
         precio.value = it.precio_unitario ?? 0;
-        tr.querySelector('input[name="item_descripcion[]"]').value = it.descripcion || "";
+        sistema.value = it.sistema || "";     // 👈 ahora “jala” sistema del catálogo
+        desc.value = it.descripcion || "";
         sug.innerHTML="";
         recalcRow(); recalcTotals();
       };
@@ -88,7 +91,7 @@ function recalcTotals(){
 document.addEventListener("DOMContentLoaded", ()=>{
 
   // ============================================================
-  // 🔹 AUTOCOMPLETAR CLIENTE (UI superior)
+  // 🔹 AUTOCOMPLETAR CLIENTE (UI superior) — sin RFC
   // ============================================================
   (function setupCliente(){
     const input = document.getElementById("cliente_input");
@@ -113,7 +116,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
           document.getElementById("correo").value = it.correo || "";
           document.getElementById("telefono").value = it.telefono || "";
           document.getElementById("direccion").value = it.direccion || "";
-          document.getElementById("rfc").value = it.rfc || "";
+          // ❌ sin RFC
           box.innerHTML="";
         };
         box.appendChild(div);
@@ -145,15 +148,8 @@ document.addEventListener("DOMContentLoaded", ()=>{
   if (ivaField) ivaField.addEventListener("input", recalcTotals);
 
   // ============================================================
-  // 🔹 ENVÍO Y APERTURA AUTOMÁTICA DEL PDF (EN NUEVA PESTAÑA)
+  // 🔹 ENVÍO + ABRIR PDF NUEVA PESTAÑA
   // ============================================================
-
-  // Función para extraer el ID real del HTML que devuelve Flask
-  function getLastCotIdFromResponse(html) {
-    const match = html.match(/\/cotizaciones\/(\d+)\/export\.pdf/);
-    return match ? match[1] : null;
-  }
-
   const frm = document.getElementById("frm-cotizacion");
   if (frm) {
     frm.addEventListener("submit", async (e) => {
@@ -165,21 +161,20 @@ document.addEventListener("DOMContentLoaded", ()=>{
 
       const folioMatch = text.match(/Folio:\s*<b>(.*?)<\/b>/i);
       const folio = folioMatch ? folioMatch[1] : null;
-      const cotId = getLastCotIdFromResponse(text);
 
-      if (text.includes("Cotización creada con éxito") && cotId) {
+      if (text.includes("Cotización creada con éxito") && folio) {
         Swal.fire({
           icon: "success",
           title: "Cotización guardada",
           html: `Folio: <b>${folio}</b><br>Se abrirá el PDF en una nueva pestaña.`,
           confirmButtonText: "Ver PDF",
-          timer: 2500,
+          timer: 2400,
           timerProgressBar: true,
         }).then(() => {
-          window.open(`/cotizaciones/${cotId}/export.pdf`, "_blank");
+          window.open(`/cotizaciones/${folio}/export.pdf`.replace(/PTCH-\d+/, folio), "_blank");
           setTimeout(() => {
             window.location.href = "/";
-          }, 1000);
+          }, 800);
         });
       } else {
         Swal.fire("Error", "No se pudo guardar la cotización.", "error");
