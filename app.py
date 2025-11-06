@@ -101,7 +101,7 @@ def ensure_schema():
             print("✅ Campo 'responsable' agregado en 'cliente'.")
     except Exception as e:
         print("⚠️ ensure_schema(cliente.responsable):", e)
-    # --- CLIENTE.sistema (si existe en tu esquema actual; no obligamos su uso en app) ---
+    # --- CLIENTE.sistema ---
     try:
         cols_cli = _table_columns("cliente")
         if "sistema" not in cols_cli:
@@ -110,16 +110,6 @@ def ensure_schema():
             print("✅ Campo 'sistema' agregado en 'cliente'.")
     except Exception as e:
         print("⚠️ ensure_schema(cliente.sistema):", e)
-
-    # --- CONCEPTO.sistema (FIX principal del error que reportaste) ---
-    try:
-        cols_conc = _table_columns("concepto")
-        if "sistema" not in cols_conc:
-            db.session.execute(text("ALTER TABLE concepto ADD COLUMN sistema VARCHAR(200)"))
-            db.session.commit()
-            print("✅ Campo 'sistema' agregado en 'concepto'.")
-    except Exception as e:
-        print("⚠️ ensure_schema(concepto.sistema):", e)
 
     # --- COTIZACION.responsable ---
     try:
@@ -145,7 +135,7 @@ def ensure_schema():
     # --- Otros mínimos para estabilidad ---
     try:
         cols = _table_columns("cotizacion")
-        for col, stmt in [
+        for sql in [
             ("subtotal", "ALTER TABLE cotizacion ADD COLUMN subtotal FLOAT DEFAULT 0.0"),
             ("descuento_total", "ALTER TABLE cotizacion ADD COLUMN descuento_total FLOAT DEFAULT 0.0"),
             ("iva_porc", "ALTER TABLE cotizacion ADD COLUMN iva_porc FLOAT DEFAULT 16.0"),
@@ -154,6 +144,7 @@ def ensure_schema():
             ("notas", "ALTER TABLE cotizacion ADD COLUMN notas VARCHAR(3000)"),
             ("last_whatsapp_at", "ALTER TABLE cotizacion ADD COLUMN last_whatsapp_at TIMESTAMP NULL"),
         ]:
+            col, stmt = sql
             if col not in cols:
                 try:
                     db.session.execute(text(stmt))
@@ -243,7 +234,7 @@ def normalize_whatsapp(number: str) -> str:
         return n
     if n.startswith("+"):
         return f"whatsapp:{n}"
-    digits = "".join(ch for ch in n if ch.isdigit())
+    digits = "".join(ch for ch in n if c.isdigit())
     if not digits:
         return ""
     return f"whatsapp:+52{digits}"
@@ -277,6 +268,7 @@ def index():
     total_catalogo = Concepto.query.count()
     cotizaciones = Cotizacion.query.order_by(Cotizacion.fecha.desc()).limit(100).all()
 
+    # show_splash=True -> habilita la animación SOLO en el dashboard principal
     return render_template(
         "dashboard.html",
         title="Sistema Poliutech",
@@ -352,8 +344,7 @@ def api_conceptos_suggest():
         "nombre_concepto": c.nombre_concepto,
         "unidad": c.unidad,
         "precio_unitario": c.precio_unitario,
-        "descripcion": c.descripcion,
-        "sistema": getattr(c, "sistema", "") or ""
+        "descripcion": c.descripcion
     } for c in res])
 
 # ---------------------------------------------------------
@@ -430,21 +421,8 @@ def crear_cotizacion():
                 precio_unitario=pu,
                 descripcion=desc or None
             )
-            # si viene sistema y no existe en concepto, lo guardamos
-            try:
-                setattr(concepto, "sistema", sis or None)
-            except Exception:
-                pass
             db.session.add(concepto)
             db.session.flush()
-        else:
-            # actualizar sistema en concepto si viene vacío en bd y lo recibimos
-            try:
-                if sis and not getattr(concepto, "sistema", None):
-                    setattr(concepto, "sistema", sis)
-                    db.session.flush()
-            except Exception:
-                pass
 
         det = CotizacionDetalle(
             cotizacion_id=cot.id,
@@ -481,9 +459,9 @@ def crear_cotizacion():
         print(f"[WARN] WhatsApp creación ({cot.folio}): {e}", file=sys.stderr)
 
     # --- Apertura automática del PDF ---
-    pdf_url = url_for("export_cotizacion_pdf", cot_id=cot.id, _external=True)
+    pdf_url = url_for("export_cotizacion_pdf", cot_id=cot.id)
     volver = url_for("cotizador")
-    
+
     return f"""<!DOCTYPE html>
     <html>
     <head>
@@ -589,20 +567,9 @@ def actualizar_cotizacion(cot_id: int):
                 precio_unitario=precio,
                 descripcion=descripcion or None,
             )
-            try:
-                setattr(concepto, "sistema", sistema or None)
-            except Exception:
-                pass
             db.session.add(concepto)
             db.session.flush()
             print(f"[INFO] Nuevo concepto agregado (en actualización): {nombre}")
-        else:
-            try:
-                if sistema and not getattr(concepto, "sistema", None):
-                    setattr(concepto, "sistema", sistema)
-                    db.session.flush()
-            except Exception:
-                pass
 
         det = CotizacionDetalle(
             cotizacion_id=c.id,
@@ -627,7 +594,7 @@ def actualizar_cotizacion(cot_id: int):
 
     db.session.commit()
 
-    pdf_url = url_for("export_cotizacion_pdf", cot_id=c.id, _external=True)
+    pdf_url = url_for("export_cotizacion_pdf", cot_id=c.id)
     detalle = url_for("view_cotizacion", cot_id=c.id)
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Actualizada {c.folio}</title></head>
@@ -729,7 +696,7 @@ def api_eliminar_cotizacion(cot_id):
         db.session.rollback()
         print(f"[ERROR] al eliminar cotización {cot_id}: {e}", file=sys.stderr)
         return jsonify({"ok": False, "error": str(e)}), 500
-    
+
 # ---------------------------------------------------------
 # Exportaciones CSV / Excel
 # ---------------------------------------------------------
@@ -929,12 +896,12 @@ def export_cotizacion_pdf(cot_id: int):
 
     if c.cliente:
         cli = c.cliente
-        # RFC eliminado del PDF como solicitaste
         for txt in [
             f"<b>Cliente:</b> {cli.nombre_cliente or ''}",
             f"<b>Empresa:</b> {cli.empresa or ''}",
             f"<b>Correo:</b> {cli.correo or ''}",
             f"<b>Teléfono:</b> {cli.telefono or ''}",
+            f"<b>RFC:</b> {cli.rfc or ''}",
         ]:
             elems.append(Paragraph(txt, styles["Encabezado"]))
         elems.append(Spacer(1, 10))
@@ -1028,6 +995,11 @@ def export_cotizacion_pdf(cot_id: int):
     )
     response.direct_passthrough = False
     return response
+
+# 🔁 Alias de compatibilidad para enlaces antiguos: /cotizaciones/<id>/pdf
+@app.route("/cotizaciones/<int:cot_id>/pdf")
+def export_cotizacion_pdf_alias(cot_id: int):
+    return export_cotizacion_pdf(cot_id)
 
 # ---------------------------------------------------------
 # API Dashboard (series / kpis / breakdown)
