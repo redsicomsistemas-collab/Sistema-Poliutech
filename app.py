@@ -973,12 +973,25 @@ def export_cotizacion_pdf(cot_id: int):
     elems.append(Spacer(1, 10))
 
     # === NOTAS ===
+    # === NOTAS (con formato y saltos de línea) ===
     if c.notas:
         elems.append(Paragraph("<b>Notas:</b>", styles["Encabezado"]))
-        for line in str(c.notas).replace("\\r\\n", "\\n").split("\\n"):
-            if line.strip():
-                elems.append(Paragraph(line.strip(), styles["Normal"]))
+        from reportlab.lib.enums import TA_JUSTIFY
+        from reportlab.lib.styles import ParagraphStyle
+    
+        nota_style = ParagraphStyle(
+            'NotasJustify',
+            parent=styles['Normal'],
+            alignment=TA_JUSTIFY,
+            leading=11,
+            fontSize=9
+        )
+    
+        # Respetar saltos de línea reales
+        notas_text = str(c.notas).replace("\r\n", "<br/>").replace("\n", "<br/>")
+        elems.append(Paragraph(notas_text, nota_style))
         elems.append(Spacer(1, 8))
+
 
     # === GENERAR PDF ===
     doc.build(
