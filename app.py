@@ -87,7 +87,7 @@ def _table_columns(table_name: str) -> set[str]:
     return {r["name"] for r in rows}
 
 def ensure_schema():
-    """Crea tablas si no existen y agrega/normaliza columnas clave (responsable)."""
+    """Crea tablas si no existen y agrega/normaliza columnas clave (responsable y sistema en cliente)."""
     print("🔍 Verificando estructura de la base de datos...")
     db.create_all()
 
@@ -100,7 +100,8 @@ def ensure_schema():
             print("✅ Campo 'responsable' agregado en 'cliente'.")
     except Exception as e:
         print("⚠️ ensure_schema(cliente.responsable):", e)
-            # --- CLIENTE.sistema ---
+
+    # --- CLIENTE.sistema (nuevo) ---
     try:
         cols_cli = _table_columns("cliente")
         if "sistema" not in cols_cli:
@@ -109,7 +110,6 @@ def ensure_schema():
             print("✅ Campo 'sistema' agregado en 'cliente'.")
     except Exception as e:
         print("⚠️ ensure_schema(cliente.sistema):", e)
-
 
     # --- COTIZACION.responsable ---
     try:
@@ -135,7 +135,7 @@ def ensure_schema():
     # --- Otros mínimos para estabilidad ---
     try:
         cols = _table_columns("cotizacion")
-        for sql in [
+        for col, stmt in [
             ("subtotal", "ALTER TABLE cotizacion ADD COLUMN subtotal FLOAT DEFAULT 0.0"),
             ("descuento_total", "ALTER TABLE cotizacion ADD COLUMN descuento_total FLOAT DEFAULT 0.0"),
             ("iva_porc", "ALTER TABLE cotizacion ADD COLUMN iva_porc FLOAT DEFAULT 16.0"),
@@ -144,7 +144,6 @@ def ensure_schema():
             ("notas", "ALTER TABLE cotizacion ADD COLUMN notas VARCHAR(3000)"),
             ("last_whatsapp_at", "ALTER TABLE cotizacion ADD COLUMN last_whatsapp_at TIMESTAMP NULL"),
         ]:
-            col, stmt = sql
             if col not in cols:
                 try:
                     db.session.execute(text(stmt))
@@ -299,17 +298,6 @@ def admin_catalogos():
         conceptos_pag=conceptos_pag
     )
 
-    # --- CONCEPTO.sistema ---
-    try:
-        cols_con = _table_columns("concepto")
-        if "sistema" not in cols_con:
-            db.session.execute(text("ALTER TABLE concepto ADD COLUMN sistema VARCHAR(200)"))
-            db.session.commit()
-            print("✅ Campo 'sistema' agregado en 'concepto'.")
-    except Exception as e:
-        print("⚠️ ensure_schema(concepto.sistema):", e)
-    
-
 # ---------------------------------------------------------
 # Autocompletar
 # ---------------------------------------------------------
@@ -336,8 +324,8 @@ def api_clientes_suggest():
         "correo": c.correo,
         "telefono": c.telefono,
         "direccion": c.direccion,
-        "rfc": c.rfc,
-        "sistema": c.sistema or ""   # ✅ NUEVO CAMPO
+        # "rfc": c.rfc,  # RFC sigue existiendo en BD pero no lo enviamos si no quieres usarlo en UI
+        "sistema": getattr(c, "sistema", "") or ""   # ✅ NUEVO CAMPO
     } for c in res])
 
 
@@ -348,18 +336,14 @@ def api_conceptos_suggest():
         return jsonify([])
     res = (Concepto.query
            .filter(Concepto.nombre_concepto.ilike(f"%{q}%"))
-           .order_by(Concepto.nombre_concepto)
-           .limit(10)
-           .all())
+           .order_by(Concepto.nombre_concepto).limit(10).all())
     return jsonify([{
         "label": c.nombre_concepto,
         "nombre_concepto": c.nombre_concepto,
         "unidad": c.unidad,
         "precio_unitario": c.precio_unitario,
-        "sistema": c.sistema,                # 👈 nuevo campo
         "descripcion": c.descripcion
     } for c in res])
-
 
 # ---------------------------------------------------------
 # Crear/Editar/Ver/Exportar Cotizaciones
@@ -387,7 +371,7 @@ def crear_cotizacion():
                 correo=(f.get("correo") or "").strip() or None,
                 telefono=(f.get("telefono") or "").strip() or None,
                 direccion=(f.get("direccion") or "").strip() or None,
-                rfc=(f.get("rfc") or "").strip() or None,
+                # rfc=(f.get("rfc") or "").strip() or None,  # RFC ya no se usa en el cotizador
             )
             db.session.add(cliente)
             db.session.flush()
@@ -433,10 +417,8 @@ def crear_cotizacion():
                 nombre_concepto=nom,
                 unidad=uni or None,
                 precio_unitario=pu,
-                sistema=sis or None,      # 👈 ahora también se guarda sistema
                 descripcion=desc or None
-                )
-
+            )
             db.session.add(concepto)
             db.session.flush()
 
@@ -522,7 +504,7 @@ def actualizar_cotizacion(cot_id: int):
     correo = (f.get("correo") or "").strip()
     telefono = (f.get("telefono") or "").strip()
     direccion = (f.get("direccion") or "").strip()
-    rfc = (f.get("rfc") or "").strip()
+    # rfc = (f.get("rfc") or "").strip()  # RFC fuera del flujo
 
     cliente = None
     if cliente_nombre:
@@ -535,7 +517,7 @@ def actualizar_cotizacion(cot_id: int):
                 correo=correo or None,
                 telefono=telefono or None,
                 direccion=direccion or None,
-                rfc=rfc or None,
+                # rfc=rfc or None,
             )
             db.session.add(cliente)
             db.session.flush()
@@ -581,10 +563,8 @@ def actualizar_cotizacion(cot_id: int):
                 nombre_concepto=nombre,
                 unidad=unidad or None,
                 precio_unitario=precio,
-                sistema=sistema or None,   # 👈 también aquí
                 descripcion=descripcion or None,
             )
-
             db.session.add(concepto)
             db.session.flush()
             print(f"[INFO] Nuevo concepto agregado (en actualización): {nombre}")
@@ -919,7 +899,7 @@ def export_cotizacion_pdf(cot_id: int):
             f"<b>Empresa:</b> {cli.empresa or ''}",
             f"<b>Correo:</b> {cli.correo or ''}",
             f"<b>Teléfono:</b> {cli.telefono or ''}",
-            
+            # RFC eliminado del PDF
         ]:
             elems.append(Paragraph(txt, styles["Encabezado"]))
         elems.append(Spacer(1, 10))
@@ -1151,4 +1131,3 @@ if __name__ == "__main__":
     except Exception:
         pass
     app.run(host="0.0.0.0", port=int(os.getenv("PORT","5000")), debug=True)
-
