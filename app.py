@@ -481,7 +481,7 @@ def crear_cotizacion():
         print(f"[WARN] WhatsApp creación ({cot.folio}): {e}", file=sys.stderr)
 
     # --- Apertura automática del PDF ---
-    pdf_url = url_for("export_cotizacion_pdf", cot_id=cot.id)
+    pdf_url = url_for("export_cotizacion_pdf", cot_id=cot.id, _external=True)
     volver = url_for("cotizador")
     
     return f"""<!DOCTYPE html>
@@ -627,7 +627,7 @@ def actualizar_cotizacion(cot_id: int):
 
     db.session.commit()
 
-    pdf_url = url_for("export_cotizacion_pdf", cot_id=c.id)
+    pdf_url = url_for("export_cotizacion_pdf", cot_id=c.id, _external=True)
     detalle = url_for("view_cotizacion", cot_id=c.id)
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Actualizada {c.folio}</title></head>
