@@ -69,7 +69,7 @@ body {
   color: white;
 }
 .btn-outline-warning:hover {
-  background-color: #ffffff;
+  background-color: #f01fff;
   color: white;
 }
 
@@ -195,5 +195,9 @@ canvas {
 
 .table tbody tr:nth-child(even) {
   background-color: #fafafa;
+}
+
+.bg-light {
+  background-color: #ffffff !important;
 }
 
