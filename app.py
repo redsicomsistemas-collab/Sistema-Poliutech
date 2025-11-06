@@ -299,6 +299,17 @@ def admin_catalogos():
         conceptos_pag=conceptos_pag
     )
 
+    # --- CONCEPTO.sistema ---
+    try:
+        cols_con = _table_columns("concepto")
+        if "sistema" not in cols_con:
+            db.session.execute(text("ALTER TABLE concepto ADD COLUMN sistema VARCHAR(200)"))
+            db.session.commit()
+            print("✅ Campo 'sistema' agregado en 'concepto'.")
+    except Exception as e:
+        print("⚠️ ensure_schema(concepto.sistema):", e)
+    
+
 # ---------------------------------------------------------
 # Autocompletar
 # ---------------------------------------------------------
@@ -337,14 +348,18 @@ def api_conceptos_suggest():
         return jsonify([])
     res = (Concepto.query
            .filter(Concepto.nombre_concepto.ilike(f"%{q}%"))
-           .order_by(Concepto.nombre_concepto).limit(10).all())
+           .order_by(Concepto.nombre_concepto)
+           .limit(10)
+           .all())
     return jsonify([{
         "label": c.nombre_concepto,
         "nombre_concepto": c.nombre_concepto,
         "unidad": c.unidad,
         "precio_unitario": c.precio_unitario,
+        "sistema": c.sistema,                # 👈 nuevo campo
         "descripcion": c.descripcion
     } for c in res])
+
 
 # ---------------------------------------------------------
 # Crear/Editar/Ver/Exportar Cotizaciones
@@ -418,8 +433,10 @@ def crear_cotizacion():
                 nombre_concepto=nom,
                 unidad=uni or None,
                 precio_unitario=pu,
+                sistema=sis or None,      # 👈 ahora también se guarda sistema
                 descripcion=desc or None
-            )
+                )
+
             db.session.add(concepto)
             db.session.flush()
 
@@ -564,8 +581,10 @@ def actualizar_cotizacion(cot_id: int):
                 nombre_concepto=nombre,
                 unidad=unidad or None,
                 precio_unitario=precio,
+                sistema=sistema or None,   # 👈 también aquí
                 descripcion=descripcion or None,
             )
+
             db.session.add(concepto)
             db.session.flush()
             print(f"[INFO] Nuevo concepto agregado (en actualización): {nombre}")
@@ -900,7 +919,7 @@ def export_cotizacion_pdf(cot_id: int):
             f"<b>Empresa:</b> {cli.empresa or ''}",
             f"<b>Correo:</b> {cli.correo or ''}",
             f"<b>Teléfono:</b> {cli.telefono or ''}",
-            f"<b>RFC:</b> {cli.rfc or ''}",
+            
         ]:
             elems.append(Paragraph(txt, styles["Encabezado"]))
         elems.append(Spacer(1, 10))
