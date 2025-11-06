@@ -59,11 +59,11 @@ def export_clientes_csv():
 def export_conceptos_csv():
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["ID", "Nombre", "Unidad", "Precio Unitario", "Descripción"])
+    writer.writerow(["ID", "Nombre", "Unidad", "Precio Unitario", "Sistema", "Descripción"])
     for c in Concepto.query.order_by(Concepto.id.asc()).all():
         writer.writerow([
             c.id, c.nombre_concepto, c.unidad or "",
-            f"{c.precio_unitario:.2f}", c.descripcion or ""
+            f"{c.precio_unitario:.2f}", c.sistema or "", c.descripcion or ""
         ])
     return Response(
         output.getvalue(),
@@ -119,20 +119,43 @@ def import_catalogo():
                         count += 1
 
             elif tipo.lower() == "conceptos":
+                def _get_key(d, *candidatos):
+                    for k in d.keys():
+                        for c in candidatos:
+                            if k.strip().lower() == c.lower():
+                                return k
+                    return None
+
                 for row in reader:
-                    nombre = (row.get("Nombre") or row.get("nombre_concepto") or "").strip()
+                    k_nombre = _get_key(row, "Nombre", "NOMBRE_CONCEPTO", "nombre_concepto", "concepto")
+                    k_unidad = _get_key(row, "Unidad", "unidad")
+                    k_precio = _get_key(row, "Precio Unitario", "PRECIO_UNITARIO", "precio_unitario", "precio")
+                    k_desc   = _get_key(row, "Descripción", "DESCRIPCION", "descripcion", "descripción")
+                    k_sis    = _get_key(row, "Sistema", "SISTEMA", "sistema")
+
+                    nombre = (row.get(k_nombre) or "").strip()
                     if not nombre:
                         continue
+                    unidad = (row.get(k_unidad) or "").strip() or None
+                    precio = float((str(row.get(k_precio) or "0").replace("$","").replace(",","").strip() or "0"))
+                    descripcion = (row.get(k_desc) or "").strip() or None
+                    sistema = (row.get(k_sis) or "").strip() or None
+
                     concepto = Concepto.query.filter_by(nombre_concepto=nombre).first()
                     if not concepto:
                         concepto = Concepto(
                             nombre_concepto=nombre,
-                            unidad=row.get("Unidad") or row.get("unidad"),
-                            precio_unitario=float(row.get("Precio Unitario") or 0),
-                            descripcion=row.get("Descripción") or row.get("descripcion")
+                            unidad=unidad,
+                            precio_unitario=precio,
+                            sistema=sistema,  # 👈 nuevo campo soportado
+                            descripcion=descripcion
                         )
                         db.session.add(concepto)
                         count += 1
+                    else:
+                        # Si viene sistema y no lo tiene en BD, se actualiza
+                        if sistema and not concepto.sistema:
+                            concepto.sistema = sistema
 
             db.session.commit()
             flash(f"Catálogo '{tipo}' importado correctamente ({count} nuevos registros).", "success")
