@@ -22,6 +22,8 @@ from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.utils import ImageReader
+from reportlab.lib.enums import TA_JUSTIFY
+
 
 # Excel
 try:
@@ -974,10 +976,9 @@ def export_cotizacion_pdf(cot_id: int):
 
     # === NOTAS ===
     # === NOTAS (con formato y saltos de línea) ===
+# === NOTAS (con formato y saltos de línea) ===
     if c.notas:
         elems.append(Paragraph("<b>Notas:</b>", styles["Encabezado"]))
-        from reportlab.lib.enums import TA_JUSTIFY
-        from reportlab.lib.styles import ParagraphStyle
     
         nota_style = ParagraphStyle(
             'NotasJustify',
@@ -987,7 +988,6 @@ def export_cotizacion_pdf(cot_id: int):
             fontSize=9
         )
     
-        # Respetar saltos de línea reales
         notas_text = str(c.notas).replace("\r\n", "<br/>").replace("\n", "<br/>")
         elems.append(Paragraph(notas_text, nota_style))
         elems.append(Spacer(1, 8))
