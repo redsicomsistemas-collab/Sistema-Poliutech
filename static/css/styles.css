@@ -4,7 +4,7 @@
 
 /* === Base general (solo pequeños ajustes visuales globales) === */
 body {
-  background-color: #f8f9fa;
+  background-color: #ffffff;
   font-family: "Inter", "Segoe UI", sans-serif;
   color: #222;
 }
@@ -177,4 +177,22 @@ canvas {
   .table th, .table td {
     font-size: 0.9rem;
   }
+}
+/* === CORRECCIÓN DE BORDES EN TABLAS === */
+.table {
+  border-collapse: collapse !important;
+  border: 1px solid #dee2e6 !important;
+}
+
+.table th, .table td {
+  border: 1px solid #dee2e6 !important;
+}
+
+.table thead th {
+  background-color: #f1f3f5;
+  border-bottom: 2px solid #dee2e6 !important;
+}
+
+.table tbody tr:nth-child(even) {
+  background-color: #fafafa;
 }
