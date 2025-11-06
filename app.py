@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import os, io, csv, sys, math, re, traceback
@@ -87,7 +88,7 @@ def _table_columns(table_name: str) -> set[str]:
     return {r["name"] for r in rows}
 
 def ensure_schema():
-    """Crea tablas si no existen y agrega/normaliza columnas clave (responsable y sistema en cliente)."""
+    """Crea tablas si no existen y agrega/normaliza columnas clave (responsable)."""
     print("🔍 Verificando estructura de la base de datos...")
     db.create_all()
 
@@ -100,8 +101,7 @@ def ensure_schema():
             print("✅ Campo 'responsable' agregado en 'cliente'.")
     except Exception as e:
         print("⚠️ ensure_schema(cliente.responsable):", e)
-
-    # --- CLIENTE.sistema (nuevo) ---
+    # --- CLIENTE.sistema (si existe en tu esquema actual; no obligamos su uso en app) ---
     try:
         cols_cli = _table_columns("cliente")
         if "sistema" not in cols_cli:
@@ -110,6 +110,16 @@ def ensure_schema():
             print("✅ Campo 'sistema' agregado en 'cliente'.")
     except Exception as e:
         print("⚠️ ensure_schema(cliente.sistema):", e)
+
+    # --- CONCEPTO.sistema (FIX principal del error que reportaste) ---
+    try:
+        cols_conc = _table_columns("concepto")
+        if "sistema" not in cols_conc:
+            db.session.execute(text("ALTER TABLE concepto ADD COLUMN sistema VARCHAR(200)"))
+            db.session.commit()
+            print("✅ Campo 'sistema' agregado en 'concepto'.")
+    except Exception as e:
+        print("⚠️ ensure_schema(concepto.sistema):", e)
 
     # --- COTIZACION.responsable ---
     try:
@@ -324,8 +334,8 @@ def api_clientes_suggest():
         "correo": c.correo,
         "telefono": c.telefono,
         "direccion": c.direccion,
-        # "rfc": c.rfc,  # RFC sigue existiendo en BD pero no lo enviamos si no quieres usarlo en UI
-        "sistema": getattr(c, "sistema", "") or ""   # ✅ NUEVO CAMPO
+        "rfc": c.rfc,
+        "sistema": getattr(c, "sistema", "") or ""
     } for c in res])
 
 
@@ -342,7 +352,8 @@ def api_conceptos_suggest():
         "nombre_concepto": c.nombre_concepto,
         "unidad": c.unidad,
         "precio_unitario": c.precio_unitario,
-        "descripcion": c.descripcion
+        "descripcion": c.descripcion,
+        "sistema": getattr(c, "sistema", "") or ""
     } for c in res])
 
 # ---------------------------------------------------------
@@ -371,7 +382,7 @@ def crear_cotizacion():
                 correo=(f.get("correo") or "").strip() or None,
                 telefono=(f.get("telefono") or "").strip() or None,
                 direccion=(f.get("direccion") or "").strip() or None,
-                # rfc=(f.get("rfc") or "").strip() or None,  # RFC ya no se usa en el cotizador
+                rfc=(f.get("rfc") or "").strip() or None,
             )
             db.session.add(cliente)
             db.session.flush()
@@ -419,8 +430,21 @@ def crear_cotizacion():
                 precio_unitario=pu,
                 descripcion=desc or None
             )
+            # si viene sistema y no existe en concepto, lo guardamos
+            try:
+                setattr(concepto, "sistema", sis or None)
+            except Exception:
+                pass
             db.session.add(concepto)
             db.session.flush()
+        else:
+            # actualizar sistema en concepto si viene vacío en bd y lo recibimos
+            try:
+                if sis and not getattr(concepto, "sistema", None):
+                    setattr(concepto, "sistema", sis)
+                    db.session.flush()
+            except Exception:
+                pass
 
         det = CotizacionDetalle(
             cotizacion_id=cot.id,
@@ -504,7 +528,7 @@ def actualizar_cotizacion(cot_id: int):
     correo = (f.get("correo") or "").strip()
     telefono = (f.get("telefono") or "").strip()
     direccion = (f.get("direccion") or "").strip()
-    # rfc = (f.get("rfc") or "").strip()  # RFC fuera del flujo
+    rfc = (f.get("rfc") or "").strip()
 
     cliente = None
     if cliente_nombre:
@@ -517,7 +541,7 @@ def actualizar_cotizacion(cot_id: int):
                 correo=correo or None,
                 telefono=telefono or None,
                 direccion=direccion or None,
-                # rfc=rfc or None,
+                rfc=rfc or None,
             )
             db.session.add(cliente)
             db.session.flush()
@@ -565,9 +589,20 @@ def actualizar_cotizacion(cot_id: int):
                 precio_unitario=precio,
                 descripcion=descripcion or None,
             )
+            try:
+                setattr(concepto, "sistema", sistema or None)
+            except Exception:
+                pass
             db.session.add(concepto)
             db.session.flush()
             print(f"[INFO] Nuevo concepto agregado (en actualización): {nombre}")
+        else:
+            try:
+                if sistema and not getattr(concepto, "sistema", None):
+                    setattr(concepto, "sistema", sistema)
+                    db.session.flush()
+            except Exception:
+                pass
 
         det = CotizacionDetalle(
             cotizacion_id=c.id,
@@ -894,12 +929,12 @@ def export_cotizacion_pdf(cot_id: int):
 
     if c.cliente:
         cli = c.cliente
+        # RFC eliminado del PDF como solicitaste
         for txt in [
             f"<b>Cliente:</b> {cli.nombre_cliente or ''}",
             f"<b>Empresa:</b> {cli.empresa or ''}",
             f"<b>Correo:</b> {cli.correo or ''}",
             f"<b>Teléfono:</b> {cli.telefono or ''}",
-            # RFC eliminado del PDF
         ]:
             elems.append(Paragraph(txt, styles["Encabezado"]))
         elems.append(Spacer(1, 10))
