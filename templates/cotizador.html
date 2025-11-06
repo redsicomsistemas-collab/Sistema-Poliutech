@@ -38,14 +38,11 @@
     </div>
 
     <div class="row g-3 mt-2">
-      <div class="col-md-9">
+      <div class="col-md-12">
         <label for="direccion" class="form-label fw-semibold">Dirección</label>
         <input type="text" id="direccion" name="direccion" class="form-control">
       </div>
-      <div class="col-md-3">
-        <label for="rfc" class="form-label fw-semibold">RFC</label>
-        <input type="text" id="rfc" name="rfc" class="form-control">
-      </div>
+      <!-- ❌ Se quita RFC del formulario -->
     </div>
   </section>
 
@@ -71,7 +68,7 @@
           </tr>
         </thead>
         <tbody id="items-body">
-          <!-- Las filas se generan dinámicamente por static/js/cotizador.js -->
+          <!-- Genera filas cotizador.js -->
         </tbody>
       </table>
     </div>
@@ -99,7 +96,6 @@
     </div>
   </section>
 
-  <!-- BOTONES -->
   <div class="d-flex justify-content-between">
     <button type="submit" class="btn btn-success fw-bold px-4">💾 Guardar Cotización</button>
     <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">⬅ Volver al Dashboard</a>
