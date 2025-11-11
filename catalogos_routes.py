@@ -1,9 +1,11 @@
 # =========================================================
 # catalogos_routes.py — Sistema MARWHATS / Poliutech
-# Versión estable con paginación, importación y exportación.
+# Versión con soporte CSV, XLS/XLSX y PDF en importación.
 # =========================================================
 
-import io, csv, traceback
+import io, csv, traceback, os
+import pandas as pd
+import pdfplumber
 from flask import (
     Blueprint, request, redirect, url_for,
     render_template, flash, jsonify, Response
@@ -88,19 +90,45 @@ def import_catalogo():
             flash("Selecciona un archivo para importar.", "danger")
             return redirect(url_for("catalogos.catalogos_index"))
 
+        filename = file.filename.lower()
+        ext = os.path.splitext(filename)[-1]
+        data = []
+        count = 0
+
         try:
-            # Intentar decodificar de forma robusta
-            try:
-                data = file.read().decode("utf-8").splitlines()
-            except UnicodeDecodeError:
-                file.seek(0)
-                data = file.read().decode("latin-1").splitlines()
+            # === Cargar datos según tipo de archivo ===
+            if ext in [".xls", ".xlsx"]:
+                df = pd.read_excel(file)
+                data = df.to_dict(orient="records")
 
-            reader = csv.DictReader(data)
-            count = 0
+            elif ext == ".pdf":
+                with pdfplumber.open(file) as pdf:
+                    tables = []
+                    for page in pdf.pages:
+                        t = page.extract_table()
+                        if t:
+                            tables.extend(t)
+                    if not tables:
+                        raise ValueError("No se detectaron tablas legibles en el PDF.")
+                    headers = [h.strip() for h in tables[0] if h]
+                    rows = tables[1:]
+                    for row in rows:
+                        item = dict(zip(headers, row))
+                        data.append(item)
 
+            else:
+                # CSV tradicional
+                try:
+                    content = file.read().decode("utf-8").splitlines()
+                except UnicodeDecodeError:
+                    file.seek(0)
+                    content = file.read().decode("latin-1").splitlines()
+                reader = csv.DictReader(content)
+                data = list(reader)
+
+            # === Procesamiento de datos ===
             if tipo.lower() == "clientes":
-                for row in reader:
+                for row in data:
                     nombre = (row.get("Nombre") or row.get("nombre_cliente") or "").strip()
                     if not nombre:
                         continue
@@ -126,7 +154,7 @@ def import_catalogo():
                                 return k
                     return None
 
-                for row in reader:
+                for row in data:
                     k_nombre = _get_key(row, "Nombre", "NOMBRE_CONCEPTO", "nombre_concepto", "concepto")
                     k_unidad = _get_key(row, "Unidad", "unidad")
                     k_precio = _get_key(row, "Precio Unitario", "PRECIO_UNITARIO", "precio_unitario", "precio")
@@ -137,7 +165,10 @@ def import_catalogo():
                     if not nombre:
                         continue
                     unidad = (row.get(k_unidad) or "").strip() or None
-                    precio = float((str(row.get(k_precio) or "0").replace("$","").replace(",","").strip() or "0"))
+                    try:
+                        precio = float((str(row.get(k_precio) or "0").replace("$","").replace(",","").strip() or "0"))
+                    except:
+                        precio = 0
                     descripcion = (row.get(k_desc) or "").strip() or None
                     sistema = (row.get(k_sis) or "").strip() or None
 
@@ -147,18 +178,18 @@ def import_catalogo():
                             nombre_concepto=nombre,
                             unidad=unidad,
                             precio_unitario=precio,
-                            sistema=sistema,  # 👈 nuevo campo soportado
+                            sistema=sistema,
                             descripcion=descripcion
                         )
                         db.session.add(concepto)
                         count += 1
                     else:
-                        # Si viene sistema y no lo tiene en BD, se actualiza
                         if sistema and not concepto.sistema:
                             concepto.sistema = sistema
 
             db.session.commit()
             flash(f"Catálogo '{tipo}' importado correctamente ({count} nuevos registros).", "success")
+
         except Exception as e:
             db.session.rollback()
             print("[IMPORT ERROR]", e)
