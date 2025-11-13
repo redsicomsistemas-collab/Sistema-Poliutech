@@ -614,17 +614,17 @@ def actualizar_cotizacion(cot_id: int):
     db.session.commit()
 
     # --- WhatsApp en actualización ---
-try:
-    if twilio_client:
-        body = (
-            "🔄 *Actualización de Cotización*\\n"
-            f"Folio: *{c.folio}*\\n"
-            f"Estatus: *{c.estatus}*\\n"
-            f"Total: {money(c.total)}"
-        )
-        send_whatsapp_multi(ADMIN_LIST, body)
-except Exception as e:
-    print(f"[Twilio] Error en actualización: {e}", file=sys.stderr)
+    try:
+        if twilio_client:
+            body = (
+                "🔄 *Actualización de Cotización*\\n"
+                f"Folio: *{c.folio}*\\n"
+                f"Estatus: *{c.estatus}*\\n"
+                f"Total: {money(c.total)}"
+            )
+            send_whatsapp_multi(ADMIN_LIST, body)
+    except Exception as e:
+        print(f"[Twilio] Error en actualización: {e}", file=sys.stderr)
 
 
     pdf_url = url_for("export_cotizacion_pdf", cot_id=c.id)
