@@ -70,17 +70,34 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db.init_app(app)
 
 # ---------------------------------------------------------
-# Twilio (opcional)
+# Twilio + Scheduler (carga segura de variables en Render)
 # ---------------------------------------------------------
+from twilio.rest import Client as TwilioClient
+from apscheduler.schedulers.background import BackgroundScheduler
+
 twilio_client: Optional[TwilioClient] = None
-if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
+
+def init_twilio_client():
+    """Inicializa Twilio con variables cargadas correctamente en Render."""
+    global twilio_client
     try:
-        twilio_client = TwilioClient(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-        print("[Twilio] Cliente inicializado.")
+        sid = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
+        token = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
+        wsp_from = os.getenv("TWILIO_WHATSAPP", "whatsapp:+14155238886").strip()
+
+        if sid and token:
+            twilio_client = TwilioClient(sid, token)
+            print(f"[Twilio] Cliente inicializado correctamente.")
+            print(f"[Twilio] Remitente WhatsApp configurado: {wsp_from}")
+        else:
+            print("[Twilio] SIN credenciales. Envío WhatsApp deshabilitado.")
     except Exception as e:
-        print(f"[Twilio] No se pudo inicializar: {e}", file=sys.stderr)
-else:
-    print("[Twilio] SIN credenciales. Envío WhatsApp deshabilitado.", file=sys.stderr)
+        print(f"[Twilio] Error al inicializar cliente: {e}", file=sys.stderr)
+
+# Ejecutar dentro del contexto Flask
+with app.app_context():
+    init_twilio_client()
+
 
 # ---------------------------------------------------------
 # Migraciones mínimas
