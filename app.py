@@ -68,7 +68,6 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 # Vincula la instancia global de db (creada en models.py) a este app
 db.init_app(app)
-
 # ---------------------------------------------------------
 # Twilio + Scheduler (carga segura de variables en Render)
 # ---------------------------------------------------------
@@ -97,6 +96,7 @@ def init_twilio_client():
 # Ejecutar dentro del contexto Flask
 with app.app_context():
     init_twilio_client()
+
 
 
 # ---------------------------------------------------------
