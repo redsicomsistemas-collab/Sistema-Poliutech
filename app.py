@@ -660,7 +660,6 @@ def list_cotizaciones():
 def view_cotizacion(cot_id: int):
     c = Cotizacion.query.get_or_404(cot_id)
     return render_template("cotizacion_view.html", c=c, title=f"Ver {c.folio}")
-
 # ---------------------------------------------------------
 # API: actualizar estatus (inline)
 # ---------------------------------------------------------
@@ -669,7 +668,7 @@ def api_update_estatus(cot_id):
     c = Cotizacion.query.get_or_404(cot_id)
 
     nuevo = None
-    ct = request.headers.get("Content-Type","")
+    ct = request.headers.get("Content-Type", "")
     if "application/json" in ct:
         data = request.get_json(silent=True) or {}
         nuevo = (data.get("estatus") or "").upper().strip()
@@ -683,38 +682,28 @@ def api_update_estatus(cot_id):
     c.estatus = nuevo
     db.session.commit()
 
+    # 🔔 Envío de notificación WhatsApp (solo si cambia)
     try:
         if twilio_client and nuevo != anterior:
             body = (
-                f"🔄 *Actualización de estatus*\\n"
-                f"Folio: *{c.folio}*\\n"
-                f"Anterior: {anterior}\\n"
-                f"Nuevo: *{nuevo}*\\n"
+                f"🔄 *Actualización de estatus*\n"
+                f"Folio: *{c.folio}*\n"
+                f"Anterior: {anterior}\n"
+                f"Nuevo: *{nuevo}*\n"
                 f"Total: {money(c.total)}"
             )
             send_whatsapp_multi(ADMIN_LIST, body)
     except Exception as e:
         print(f"[Twilio] Error al enviar notificación de estatus: {e}", file=sys.stderr)
 
-    return jsonify({"ok": True, "estatus": nuevo})
+    # ✅ Confirmación clara para el navegador
+    return jsonify({
+        "ok": True,
+        "folio": c.folio,
+        "estatus": nuevo,
+        "mensaje": f"Estatus de la cotización {c.folio} actualizado a {nuevo}."
+    })
 
-# ---------------------------------------------------------
-# 🗑️ API: Eliminar cotización (para botón en dashboard)
-# ---------------------------------------------------------
-@app.route("/api/cotizaciones/<int:cot_id>/eliminar", methods=["DELETE"])
-def api_eliminar_cotizacion(cot_id):
-    cot = Cotizacion.query.get(cot_id)
-    if not cot:
-        return jsonify({"ok": False, "error": "Cotización no encontrada."}), 404
-    try:
-        CotizacionDetalle.query.filter_by(cotizacion_id=cot.id).delete()
-        db.session.delete(cot)
-        db.session.commit()
-        return jsonify({"ok": True})
-    except Exception as e:
-        db.session.rollback()
-        print(f"[ERROR] al eliminar cotización {cot_id}: {e}", file=sys.stderr)
-        return jsonify({"ok": False, "error": str(e)}), 500
 
 # ---------------------------------------------------------
 # Exportaciones CSV / Excel
