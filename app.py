@@ -77,21 +77,22 @@ from apscheduler.schedulers.background import BackgroundScheduler
 twilio_client: Optional[TwilioClient] = None
 
 def init_twilio_client():
-    """Inicializa Twilio con variables cargadas correctamente en Render."""
-    global twilio_client
+    global twilio_client, TWILIO_WHATSAPP
     try:
         sid = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
         token = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
-        wsp_from = os.getenv("TWILIO_WHATSAPP", "whatsapp:+14155238886").strip()
+        wsp_from = os.getenv("TWILIO_WHATSAPP", "").strip()
 
-        if sid and token:
+        if sid and token and wsp_from:
             twilio_client = TwilioClient(sid, token)
-            print(f"[Twilio] Cliente inicializado correctamente.")
-            print(f"[Twilio] Remitente WhatsApp configurado: {wsp_from}")
+            TWILIO_WHATSAPP = wsp_from  # 👈 ESTA LÍNEA FALTABA
+            print("[Twilio] Cliente inicializado correctamente.")
+            print(f"[Twilio] Remitente WhatsApp: {TWILIO_WHATSAPP}")
         else:
-            print("[Twilio] SIN credenciales. Envío WhatsApp deshabilitado.")
+            print("[Twilio] Configuración incompleta. WhatsApp deshabilitado.")
     except Exception as e:
         print(f"[Twilio] Error al inicializar cliente: {e}", file=sys.stderr)
+
 
 # Ejecutar dentro del contexto Flask
 with app.app_context():
