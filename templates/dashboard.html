@@ -301,5 +301,38 @@ function cambiarEstatus(id, selectElem) {
 }
 </script>
 
+<script>
+function cambiarEstatus(id, selectElem) {
+    const nuevo = selectElem.value;
+
+    fetch(`/api/cotizaciones/${id}/estatus`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estatus: nuevo })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            Swal.fire({
+                icon: "success",
+                title: "Estatus actualizado",
+                text: data.mensaje,
+                timer: 1500,
+                showConfirmButton: false
+            });
+
+            const fila = selectElem.closest("tr");
+            if (fila) fila.dataset.estatus = nuevo;
+        } else {
+            Swal.fire("Error", data.error, "error");
+        }
+    })
+    .catch(err => {
+        Swal.fire("Error", "No se pudo actualizar el estatus.", "error");
+        console.error(err);
+    });
+}
+</script>
+
 
 {% endblock %}
