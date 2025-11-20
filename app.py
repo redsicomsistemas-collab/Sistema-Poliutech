@@ -915,8 +915,7 @@ def export_cotizacion_pdf(cot_id: int):
         f"<b>Fecha:</b> {c.fecha.strftime('%d/%m/%Y %H:%M')}",
         styles["Encabezado"]
     ))
-    elems.append(Spacer(1, 8))
-
+   
     if c.cliente:
         cli = c.cliente
         for txt in [
