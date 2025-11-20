@@ -911,9 +911,9 @@ def export_cotizacion_pdf(cot_id: int):
 
     # === DATOS PRINCIPALES ===
     elems.append(Paragraph(f"<b>Folio:</b> {c.folio}", styles["Encabezado"]))
-    elems.append(Paragraph(f"<b>Fecha:</b> {c.fecha.strftime('%d/%m/%Y %H:%M')} | "
-                           f"<b>Responsable:</b> {c.responsable or ''}", 
-                           styles["Encabezado"]
+    elems.append(Paragraph(
+        f"<b>Fecha:</b> {c.fecha.strftime('%d/%m/%Y %H:%M')}",
+        styles["Encabezado"]
     ))
     elems.append(Spacer(1, 8))
 
@@ -924,6 +924,7 @@ def export_cotizacion_pdf(cot_id: int):
             f"<b>Empresa:</b> {cli.empresa or ''}",
             f"<b>Correo:</b> {cli.correo or ''}",
             f"<b>Teléfono:</b> {cli.telefono or ''}",
+            f"<b>Representante:</b> {c.responsable or ''}",
             
         ]:
             elems.append(Paragraph(txt, styles["Encabezado"]))
