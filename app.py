@@ -924,7 +924,7 @@ def export_cotizacion_pdf(cot_id: int):
             f"<b>Empresa:</b> {cli.empresa or ''}",
             f"<b>Correo:</b> {cli.correo or ''}",
             f"<b>Teléfono:</b> {cli.telefono or ''}",
-            f"<b>RFC:</b> {cli.rfc or ''}",
+            
         ]:
             elems.append(Paragraph(txt, styles["Encabezado"]))
         elems.append(Spacer(1, 10))
@@ -999,7 +999,7 @@ def export_cotizacion_pdf(cot_id: int):
     # === NOTAS (con formato y saltos de línea) ===
 # === NOTAS (con formato y saltos de línea) ===
     if c.notas:
-        elems.append(Paragraph("<b>Notas:</b>", styles["Encabezado"]))
+        elems.append(Paragraph("<b>Condiciones Comerciales:</b>", styles["Encabezado"]))
     
         nota_style = ParagraphStyle(
             'NotasJustify',
