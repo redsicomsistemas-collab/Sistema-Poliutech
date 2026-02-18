@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Editar Cotización {{ c.folio }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4 mb-5">
+  <div class="card shadow-sm border-0">
+    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">Editar Cotización <b>{{ c.folio }}</b></h5>
+      <a href="{{ url_for('index') }}" class="btn btn-light btn-sm">← Volver</a>
+    </div>
+
+    <div class="card-body">
+      <form method="POST" action="{{ url_for('actualizar_cotizacion', cot_id=c.id) }}">
+
+        <!-- 🧾 DATOS DEL CLIENTE -->
+        <h5 class="fw-bold text-primary mb-3">Datos del cliente</h5>
+        <div class="row mb-3">
+          <div class="col-md-6">
+            <label class="form-label">Nombre del cliente</label>
+            <input type="text" name="cliente_nombre" class="form-control" value="{{ c.cliente.nombre_cliente if c.cliente else '' }}" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Empresa</label>
+            <input type="text" name="empresa" class="form-control" value="{{ c.cliente.empresa if c.cliente else '' }}">
+          </div>
+          <div class="col-md-4 mt-3">
+            <label class="form-label">Responsable</label>
+            <input type="text" name="responsable" class="form-control" value="{{ c.cliente.responsable if c.cliente else '' }}">
+          </div>
+          <div class="col-md-4 mt-3">
+            <label class="form-label">Correo</label>
+            <input type="email" name="correo" class="form-control" value="{{ c.cliente.correo if c.cliente else '' }}">
+          </div>
+          <div class="col-md-4 mt-3">
+            <label class="form-label">Teléfono</label>
+            <input type="text" name="telefono" class="form-control" value="{{ c.cliente.telefono if c.cliente else '' }}">
+          </div>
+        </div>
+
+        <!-- 🧮 DETALLES DE CONCEPTOS -->
+        <h5 class="fw-bold text-primary mt-4 mb-3">Renglones de cotización</h5>
+        <div id="items">
+          {% for d in c.detalles %}
+          <div class="row g-2 align-items-end mb-2 border-bottom pb-2">
+            <div class="col-md-3">
+              <label class="form-label">Concepto</label>
+              <input type="text" name="item_nombre_concepto[]" class="form-control" value="{{ d.nombre_concepto }}">
+            </div>
+            <div class="col-md-1">
+              <label class="form-label">Unidad</label>
+              <input type="text" name="item_unidad[]" class="form-control" value="{{ d.unidad }}">
+            </div>
+            <div class="col-md-1">
+              <label class="form-label">Cantidad</label>
+              <input type="number" step="any" name="item_cantidad[]" class="form-control" value="{{ d.cantidad }}">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">Precio unitario</label>
+              <input type="number" step="any" name="item_precio[]" class="form-control" value="{{ d.precio_unitario }}">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">Sistema</label>
+              <input type="text" name="item_sistema[]" class="form-control" value="{{ d.sistema }}">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">Descripción</label>
+              <input type="text" name="item_descripcion[]" class="form-control" value="{{ d.descripcion }}">
+            </div>
+            <div class="col-md-1 text-end">
+              <button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.row').remove()">🗑</button>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="text-end mb-3">
+          <button type="button" class="btn btn-outline-success btn-sm" onclick="agregarRenglon()">➕ Agregar renglón</button>
+        </div>
+
+        <!-- 💬 NOTAS Y ESTATUS -->
+        <h5 class="fw-bold text-primary mt-4 mb-3">Notas y estatus</h5>
+        <div class="row mb-3">
+          <div class="col-md-6">
+            <label class="form-label fw-bold">Zona (descuento)</label>
+            <select class="form-select" name="zona">
+              <option value="" {% if not zona_actual %}selected{% endif %}>Sin zona</option>
+              <option value="Zona Norte" {% if zona_actual == 'Zona Norte' %}selected{% endif %}>Zona Norte (10%)</option>
+              <option value="Zona Centro" {% if zona_actual == 'Zona Centro' %}selected{% endif %}>Zona Centro (5%)</option>
+              <option value="Bajío" {% if zona_actual == 'Bajío' %}selected{% endif %}>Bajío (10%)</option>
+              <option value="Zona Sur" {% if zona_actual == 'Zona Sur' %}selected{% endif %}>Zona Sur (15%)</option>
+              <option value="Frontera" {% if zona_actual == 'Frontera' %}selected{% endif %}>Frontera (8%)</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-bold">Estatus actual</label>
+            <select class="form-select" name="estatus">
+              <option value="PENDIENTE" {% if c.estatus == 'PENDIENTE' %}selected{% endif %}>PENDIENTE</option>
+              <option value="ENVIADA" {% if c.estatus == 'ENVIADA' %}selected{% endif %}>ENVIADA</option>
+              <option value="GANADA" {% if c.estatus == 'GANADA' %}selected{% endif %}>GANADA</option>
+              <option value="PERDIDA" {% if c.estatus == 'PERDIDA' %}selected{% endif %}>PERDIDA</option>
+            </select>
+          </div>
+          <div class="col-md-12 mt-3">
+            <label class="form-label fw-bold">Notas de la cotización</label>
+            <textarea name="notas" class="form-control" rows="3">{{ c.notas }}</textarea>
+          </div>
+        </div>
+
+        <!-- 💰 TOTALES -->
+        <div class="row mb-3 text-end">
+          <div class="col-md-4 offset-md-8">
+            <table class="table table-sm table-borderless">
+              <tr>
+                <th>Subtotal:</th>
+                <td>${{ "%.2f"|format(c.subtotal) }}</td>
+              </tr>
+              {% if c.descuento_total and c.descuento_total > 0 %}
+              <tr>
+                <th>Descuento:</th>
+                <td>- ${{ "%.2f"|format(c.descuento_total) }}</td>
+              </tr>
+              <tr>
+                <th>Subtotal c/ desc.:</th>
+                <td>${{ "%.2f"|format(c.subtotal - c.descuento_total) }}</td>
+              </tr>
+              {% endif %}
+              <tr>
+                <th>IVA ({{ "%.2f"|format(c.iva_porc) }}%):</th>
+                <td>${{ "%.2f"|format(c.iva_monto) }}</td>
+              </tr>
+              <tr class="fw-bold text-success">
+                <th>Total:</th>
+                <td>${{ "%.2f"|format(c.total) }}</td>
+              </tr>
+            </table>
+          </div>
+        </div>
+
+        <!-- 🧭 BOTONES -->
+        <div class="d-flex justify-content-end">
+          <button type="submit" class="btn btn-primary me-2">💾 Guardar cambios</button>
+          <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">Cancelar</a>
+        </div>
+
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function agregarRenglon() {
+  const html = `
+  <div class="row g-2 align-items-end mb-2 border-bottom pb-2">
+    <div class="col-md-3"><input type="text" name="item_nombre_concepto[]" class="form-control" placeholder="Concepto"></div>
+    <div class="col-md-1"><input type="text" name="item_unidad[]" class="form-control" placeholder="Unidad"></div>
+    <div class="col-md-1"><input type="number" step="any" name="item_cantidad[]" class="form-control" placeholder="Cant."></div>
+    <div class="col-md-2"><input type="number" step="any" name="item_precio[]" class="form-control" placeholder="Precio"></div>
+    <div class="col-md-2"><input type="text" name="item_sistema[]" class="form-control" placeholder="Sistema"></div>
+    <div class="col-md-2"><input type="text" name="item_descripcion[]" class="form-control" placeholder="Descripción"></div>
+    <div class="col-md-1 text-end"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.row').remove()">🗑</button></div>
+  </div>`;
+  document.getElementById('items').insertAdjacentHTML('beforeend', html);
+}
+</script>
+{% endblock %}

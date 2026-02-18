@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container" style="max-width:420px; margin-top:80px;">
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h4 class="mb-3">Iniciar sesión</h4>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, msg in messages %}
+            <div class="alert alert-{{ 'danger' if category=='danger' else category }} py-2">
+              {{ msg }}
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      <form method="POST" action="{{ url_for('login') }}">
+        <div class="mb-3">
+          <label class="form-label">Nombre</label>
+          <input type="text" class="form-control" name="nombre" placeholder="Rafa" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Contraseña</label>
+          <input type="password" class="form-control" name="password" required>
+        </div>
+        <button class="btn btn-primary w-100" type="submit">Entrar</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

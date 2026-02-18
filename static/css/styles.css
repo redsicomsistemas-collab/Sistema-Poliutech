@@ -1,0 +1,203 @@
+/* =========================================================
+   🌐 ESTILOS RESPONSIVOS POLIUTECH
+   ========================================================= */
+
+/* === Base general (solo pequeños ajustes visuales globales) === */
+body {
+  background-color: #ffffff;
+  font-family: "Inter", "Segoe UI", sans-serif;
+  color: #222;
+}
+
+/* Centrado y alineación general */
+.container, main, .row {
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 1300px;
+}
+
+/* Sombras y bordes suaves */
+.card {
+  border-radius: 0.75rem;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+.card-title {
+  font-weight: 600;
+  color: #0d47a1;
+}
+
+/* === TABLAS === */
+.table {
+  font-size: 0.95rem;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.table th {
+  background-color: #f1f3f5;
+  font-weight: 600;
+  color: #333;
+}
+.table td {
+  vertical-align: middle;
+}
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 0.5rem;
+}
+.table th, .table td {
+  white-space: nowrap;
+  text-align: center;
+  padding: 0.6rem 0.8rem;
+}
+
+/* === BOTONES === */
+.btn {
+  border-radius: 0.4rem;
+  font-weight: 500;
+}
+.btn-outline-primary:hover {
+  background-color: #0d47a1;
+  color: white;
+}
+.btn-outline-success:hover {
+  background-color: #43a047;
+  color: white;
+}
+.btn-outline-danger:hover {
+  background-color: #e53935;
+  color: white;
+}
+.btn-outline-warning:hover {
+  background-color: #f01fff;
+  color: white;
+}
+
+/* === GRÁFICAS === */
+canvas {
+  max-height: 260px;
+}
+.card-body canvas {
+  display: block;
+  margin: 0 auto;
+}
+
+/* =========================================================
+   📱 MOBILE (pantallas menores a 768px)
+   ========================================================= */
+@media (max-width: 768px) {
+
+  /* Centrado general */
+  body {
+    padding: 0 10px !important;
+  }
+
+  main, .container, .card, .row {
+    margin-left: auto !important;
+    margin-right: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Página de inicio o pantallas vacías */
+  .main-content, .inicio, .welcome-section {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 85vh;
+    text-align: center;
+    padding: 1rem;
+  }
+
+  /* Cards y métricas */
+  .card {
+    margin-bottom: 1rem;
+  }
+  .card-body {
+    padding: 1rem 0.8rem;
+  }
+  .card-title {
+    font-size: 1rem;
+    text-align: center;
+  }
+
+  /* Tablas */
+  .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .table th, .table td {
+    white-space: nowrap;
+    font-size: 0.85rem;
+  }
+
+  /* Formularios del cotizador */
+  #frm-cotizacion .form-control, 
+  #frm-cotizacion .form-select {
+    font-size: 0.9rem;
+  }
+  #frm-cotizacion label {
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+  #frm-cotizacion .card {
+    margin-bottom: 1rem;
+  }
+  .btn, button {
+    font-size: 0.9rem !important;
+  }
+
+  /* Campos alineados verticalmente */
+  #frm-cotizacion .row > div {
+    margin-bottom: 0.5rem;
+  }
+
+  /* Inputs con mejor tactilidad */
+  input, select, textarea {
+    border-radius: 0.4rem !important;
+  }
+
+  /* Ajuste gráfico y dashboard */
+  .card-body canvas {
+    max-height: 200px;
+  }
+  .row > [class*='col-'] {
+    margin-bottom: 1rem;
+  }
+}
+
+/* =========================================================
+   💻 TABLETS (768–1024px)
+   ========================================================= */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .card-body canvas {
+    max-height: 230px;
+  }
+  .table th, .table td {
+    font-size: 0.9rem;
+  }
+}
+/* === CORRECCIÓN DE BORDES EN TABLAS === */
+.table {
+  border-collapse: collapse !important;
+  border: 1px solid #dee2e6 !important;
+}
+
+.table th, .table td {
+  border: 1px solid #dee2e6 !important;
+}
+
+.table thead th {
+  background-color: #f1f3f5;
+  border-bottom: 2px solid #dee2e6 !important;
+}
+
+.table tbody tr:nth-child(even) {
+  background-color: #fafafa;
+}
+
+.bg-light {
+  background-color: #ffffff !important;
+}
+

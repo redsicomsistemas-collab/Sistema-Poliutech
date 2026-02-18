@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mt-4 mb-3">
+  <div>
+    <h3 class="mb-1">🧾 Bitácora del sistema</h3>
+    <div class="text-muted small">
+      Total registros: <strong>{{ total }}</strong> · Página <strong>{{ page }}</strong>
+    </div>
+  </div>
+  <div class="text-end">
+    <span class="badge bg-dark">ADMIN</span>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-12 col-md-4">
+        <label class="form-label fw-semibold">Buscar</label>
+        <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="usuario, ruta, acción, endpoint...">
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label fw-semibold">Usuario</label>
+        <select name="usuario" class="form-select">
+          <option value="">(Todos)</option>
+          {% for u in usuarios %}
+            <option value="{{ u }}" {% if usuario_f == u %}selected{% endif %}>{{ u }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label fw-semibold">Método</label>
+        <select name="metodo" class="form-select">
+          <option value="">(Todos)</option>
+          {% for m in ["GET","POST","PUT","PATCH","DELETE"] %}
+            <option value="{{ m }}" {% if metodo_f == m %}selected{% endif %}>{{ m }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-1">
+        <label class="form-label fw-semibold">HTTP</label>
+        <input type="text" name="status" value="{{ status_f }}" class="form-control" placeholder="200">
+      </div>
+      <div class="col-12 col-md-2 d-grid">
+        <button class="btn btn-primary fw-bold">Filtrar</button>
+      </div>
+      <input type="hidden" name="per" value="{{ per_page }}">
+    </form>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover table-striped align-middle mb-0">
+        <thead class="table-primary">
+          <tr>
+            <th style="min-width:160px;">Fecha</th>
+            <th>Usuario</th>
+            <th>Rol</th>
+            <th>Método</th>
+            <th>Status</th>
+            <th style="min-width:280px;">Ruta</th>
+            <th style="min-width:260px;">Acción</th>
+            <th style="min-width:180px;">IP</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for log in logs %}
+          <tr>
+            <td class="small text-muted">{{ log.fecha.strftime("%Y-%m-%d %H:%M:%S") if log.fecha else "" }}</td>
+            <td class="fw-semibold">{{ log.usuario }}</td>
+            <td><span class="badge {% if (log.rol or '')|upper == 'ADMIN' %}bg-dark{% else %}bg-secondary{% endif %}">{{ log.rol or '-' }}</span></td>
+            <td><span class="badge bg-info text-dark">{{ log.metodo }}</span></td>
+            <td>
+              {% if log.status_code and log.status_code >= 400 %}
+                <span class="badge bg-danger">{{ log.status_code }}</span>
+              {% else %}
+                <span class="badge bg-success">{{ log.status_code }}</span>
+              {% endif %}
+            </td>
+            <td class="small">
+              <div class="fw-semibold">{{ log.ruta }}</div>
+              <div class="text-muted">{{ log.endpoint or "" }}</div>
+            </td>
+            <td class="small">
+              <div class="fw-semibold">{{ log.accion }}</div>
+              {% if log.query_string %}
+                <div class="text-muted">?{{ log.query_string }}</div>
+              {% endif %}
+              {% if log.form_keys %}
+                <div class="text-muted">form: {{ log.form_keys }}</div>
+              {% endif %}
+              {% if log.json_keys %}
+                <div class="text-muted">json: {{ log.json_keys }}</div>
+              {% endif %}
+            </td>
+            <td class="small text-muted">
+              <div>{{ log.ip or "" }}</div>
+              <div class="text-muted" style="max-width:260px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ log.user_agent or "" }}</div>
+            </td>
+          </tr>
+          {% endfor %}
+          {% if logs|length == 0 %}
+          <tr><td colspan="8" class="text-center text-muted py-4">Sin registros con esos filtros.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% set total_pages = (total // per_page) + (1 if (total % per_page) else 0) %}
+<nav class="mt-3">
+  <ul class="pagination justify-content-center">
+    {% set prev_page = page - 1 %}
+    {% set next_page = page + 1 %}
+    <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+      <a class="page-link" href="{{ url_for('admin_bitacora', page=prev_page, per=per_page, q=q, usuario=usuario_f, metodo=metodo_f, status=status_f) }}">Anterior</a>
+    </li>
+    <li class="page-item disabled">
+      <span class="page-link">Página {{ page }} / {{ total_pages if total_pages>0 else 1 }}</span>
+    </li>
+    <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+      <a class="page-link" href="{{ url_for('admin_bitacora', page=next_page, per=per_page, q=q, usuario=usuario_f, metodo=metodo_f, status=status_f) }}">Siguiente</a>
+    </li>
+  </ul>
+</nav>
+{% endblock %}

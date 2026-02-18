@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2 class="mb-4 fw-bold text-primary">💰 Cotizador de Poliutech</h2>
+
+<form id="frm-cotizacion" method="POST" action="{{ url_for('crear_cotizacion') }}">
+  <!-- DATOS DEL CLIENTE -->
+  <section class="panel mb-4">
+    <h5 class="mb-3 text-secondary">Datos del Cliente</h5>
+    <div class="row g-3">
+      <div class="col-md-6 position-relative">
+        <label for="cliente_input" class="form-label fw-semibold">Cliente</label>
+        <input type="text" id="cliente_input" name="cliente" class="form-control" required
+               placeholder="Escribe para buscar cliente..." autocomplete="off">
+        <div id="cliente_suggestions" class="list-group position-absolute w-100" 
+             style="z-index:1000; max-height:200px; overflow:auto;"></div>
+      </div>
+
+      <div class="col-md-6">
+        <label for="empresa" class="form-label fw-semibold">Empresa</label>
+        <input type="text" id="empresa" name="empresa" class="form-control" placeholder="Empresa o razón social">
+      </div>
+    </div>
+
+    <div class="row g-3 mt-2">
+      <div class="col-md-4">
+        <label for="correo" class="form-label fw-semibold">Correo</label>
+        <input type="email" id="correo" name="correo" class="form-control">
+      </div>
+      <div class="col-md-4">
+        <label for="telefono" class="form-label fw-semibold">Teléfono</label>
+        <input type="text" id="telefono" name="telefono" class="form-control">
+      </div>
+      <div class="col-md-4">
+        <label for="responsable">Responsable</label>
+        <input type="text" class="form-control" id="responsable" name="responsable" placeholder="Nombre del responsable">
+      </div>
+    </div>
+
+    <div class="row g-3 mt-2">
+      <div class="col-md-12">
+        <label for="direccion" class="form-label fw-semibold">Dirección</label>
+        <input type="text" id="direccion" name="direccion" class="form-control">
+      </div>
+      <!-- ❌ Se quita RFC del formulario -->
+    </div>
+  </section>
+
+  <!-- LISTA DE CONCEPTOS -->
+  <section class="panel mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="text-secondary mb-0">Conceptos de Cotización</h5>
+      <button type="button" id="btn-add-row" class="btn btn-outline-primary btn-sm">➕ Agregar Concepto</button>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-bordered align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Concepto</th>
+            <th>Unidad</th>
+            <th>Cantidad</th>
+            <th>Precio Unitario</th>
+            <th>Sistema</th>
+            <th>Subtotal</th>
+            <th>Descripción</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="items-body">
+          <!-- Genera filas cotizador.js -->
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- TOTALES -->
+  <section class="panel mb-4">
+    <div class="row g-3 text-end">
+      <div class="col-md-3 ms-auto">
+        <label class="form-label fw-semibold">Zona (descuento):</label>
+        <select id="zona" name="zona" class="form-select">
+          <option value="" selected>Selecciona...</option>
+          <option value="Zona Norte">Zona Norte (10%)</option>
+          <option value="Zona Centro">Zona Centro (5%)</option>
+          <option value="Bajío">Bajío (10%)</option>
+          <option value="Zona Sur">Zona Sur (15%)</option>
+          <option value="Frontera">Frontera (8%)</option>
+        </select>
+      </div>
+      <div class="col-md-3 ms-auto">
+        <label class="form-label fw-semibold">IVA %:</label>
+        <input type="number" id="iva_porc" name="iva_porc" class="form-control text-end" value="16">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label fw-semibold">Subtotal:</label>
+        <div id="ui-subtotal" class="form-control-plaintext text-end">$0.00</div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label fw-semibold">Descuento:</label>
+        <div id="ui-descuento" class="form-control-plaintext text-end">$0.00</div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label fw-semibold">Subtotal c/ desc.:</label>
+        <div id="ui-subtotal-desc" class="form-control-plaintext text-end">$0.00</div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label fw-semibold">IVA:</label>
+        <div id="ui-iva" class="form-control-plaintext text-end">$0.00</div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label fw-semibold">Total:</label>
+        <div id="ui-total" class="form-control-plaintext fw-bold text-success text-end">$0.00</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="d-flex justify-content-between">
+    <button type="submit" class="btn btn-success fw-bold px-4">💾 Guardar Cotización</button>
+    <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">⬅ Volver al Dashboard</a>
+  </div>
+</form>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ url_for('static', filename='js/cotizador2.js') }}"></script>
+
+{% endblock %}

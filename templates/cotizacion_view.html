@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Vista de Cotización {{ c.folio }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4 mb-5">
+  <div class="card shadow-sm border-0">
+    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">Cotización <b>{{ c.folio }}</b></h5>
+      <a href="{{ url_for('index') }}" class="btn btn-light btn-sm">← Volver</a>
+    </div>
+
+    <div class="card-body">
+
+      <!-- DATOS DEL CLIENTE -->
+      <div class="border rounded p-3 mb-4">
+        <h6 class="fw-bold text-primary mb-3">Datos del Cliente</h6>
+        <div class="row">
+          <div class="col-md-6 mb-2">
+            <label class="fw-bold">Nombre:</label>
+            <div>{{ c.cliente.nombre_cliente if c.cliente else "—" }}</div>
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="fw-bold">Empresa:</label>
+            <div>{{ c.cliente.empresa if c.cliente else "—" }}</div>
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="fw-bold">Correo:</label>
+            <div>{{ c.cliente.correo if c.cliente else "—" }}</div>
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="fw-bold">Teléfono:</label>
+            <div>{{ c.cliente.telefono if c.cliente else "—" }}</div>
+          </div>
+        </div>
+        <div class="mt-2">
+          <label class="fw-bold">Representante:</label>
+          <div>{{ c.representante or "—" }}</div>
+        </div>
+      </div>
+
+      <!-- CONCEPTOS -->
+      <div class="border rounded p-3 mb-4">
+        <h6 class="fw-bold text-primary mb-3">Conceptos</h6>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead class="table-light">
+              <tr>
+                <th scope="col">Cantidad</th>
+                <th scope="col">Unidad</th>
+                <th scope="col">Concepto</th>
+                <th scope="col">Sistema</th>
+                <th scope="col" class="text-end">Precio Unitario</th>
+                <th scope="col" class="text-end">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for d in c.detalles %}
+              <tr>
+                <td>{{ d.cantidad }}</td>
+                <td>{{ d.unidad }}</td>
+                <td>{{ d.nombre_concepto }}</td>
+                <td class="text-center">{{ d.sistema or '-' }}</td>
+                <td class="text-end">${{ "%.2f"|format(d.precio_unitario) }}</td>
+                <td class="text-end">${{ "%.2f"|format(d.subtotal) }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="6" class="text-center text-muted">No hay conceptos registrados.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- NOTAS Y ESTATUS -->
+      <div class="border rounded p-3 mb-4">
+        <h6 class="fw-bold text-primary mb-3">Notas y Estatus</h6>
+        <p><b>Estatus:</b> 
+          <span class="badge 
+            {% if c.estatus == 'PENDIENTE' %} bg-warning text-dark
+            {% elif c.estatus == 'ENVIADA' %} bg-info text-dark
+            {% elif c.estatus == 'GANADA' %} bg-success
+            {% elif c.estatus == 'PERDIDA' %} bg-danger
+            {% else %} bg-secondary {% endif %}">
+            {{ c.estatus }}
+          </span>
+        </p>
+        <p><b>Notas:</b></p>
+        <div class="border rounded bg-light p-2">{{ c.notas or "Sin notas" }}</div>
+      </div>
+
+      <!-- TOTALES -->
+      <div class="row">
+        <div class="col-md-4">
+          <label class="form-label">Subtotal:</label>
+          <input type="text" readonly class="form-control-plaintext" value="${{ "%.2f"|format(c.subtotal) }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Descuento{% if zona_actual %} ({{ zona_actual }}){% endif %}:</label>
+          <input type="text" readonly class="form-control-plaintext" value="-${{ "%.2f"|format(c.descuento_total or 0) }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Subtotal c/ desc.:</label>
+          <input type="text" readonly class="form-control-plaintext" value="${{ "%.2f"|format((c.subtotal or 0) - (c.descuento_total or 0)) }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">IVA ({{ "%.2f"|format(c.iva_porc) }}%):</label>
+          <input type="text" readonly class="form-control-plaintext" value="${{ "%.2f"|format(c.iva_monto) }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Total:</label>
+          <input type="text" readonly class="form-control-plaintext fw-bold text-success" value="${{ "%.2f"|format(c.total) }}">
+        </div>
+      </div>
+
+      <div class="text-end mt-4">
+        <a href="{{ url_for('editar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-primary">✏️ Editar</a>
+        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">← Volver al Dashboard</a>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

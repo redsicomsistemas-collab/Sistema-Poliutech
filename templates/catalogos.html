@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Catálogos</h1>
+
+<form id="frm-import" class="box" enctype="multipart/form-data">
+  <label>Importar CSV/Excel (CSV): <input type="file" name="file" required></label>
+  <button type="submit">Importar</button>
+</form>
+
+<div class="filters">
+  <input id="q" placeholder="Buscar por nombre o descripción">
+  <select id="unidad">
+    <option value="">Unidad (todas)</option>
+    <option>pieza</option><option>servicio</option><option>m2</option><option>kg</option>
+  </select>
+  <input id="anio_min" placeholder="Año min" type="number">
+  <input id="anio_max" placeholder="Año max" type="number">
+  <button id="btn-buscar">Buscar</button>
+</div>
+
+<table class="table" id="tbl-cat">
+  <thead><tr><th>Nombre</th><th>Descripción</th><th>Unidad</th><th>Precio</th><th>Año</th></tr></thead>
+  <tbody></tbody>
+</table>
+
+<div class="pager">
+  <button id="prev">◀</button>
+  <span id="page">1</span>
+  <button id="next">▶</button>
+</div>
+
+<script src="/static/js/catalogos.js"></script>
+{% endblock %}

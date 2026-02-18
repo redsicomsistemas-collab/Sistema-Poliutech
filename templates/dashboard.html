@@ -1,0 +1,613 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- 🔢 MÉTRICAS -->
+<div class="row mb-4 text-center">
+  <div class="col-md-4">
+    <div class="card border-success shadow-sm">
+      <div class="card-body">
+        <h6 class="text-success">Importe Total</h6>
+        <h3 class="fw-bold text-dark">${{ "{:,.2f}".format(total_importe) }}</h3>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-primary shadow-sm">
+      <div class="card-body">
+        <h6 class="text-primary">Cotizaciones Totales</h6>
+        <h3 class="fw-bold text-dark">{{ total_cotizaciones }}</h3>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-info shadow-sm">
+      <div class="card-body">
+        <h6 class="text-info">Conceptos Registrados</h6>
+        <h3 class="fw-bold text-dark">{{ total_catalogo }}</h3>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 📊 GRÁFICAS -->
+<div class="row mt-4">
+  <div class="col-md-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-body" style="height: 340px;">
+        <h5 class="card-title text-primary">Importe Total por Mes</h5>
+        <div style="position: relative; height: 250px;">
+          <canvas id="chartImporte"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-body" style="height: 340px;">
+        <h5 class="card-title text-success">Cotizaciones por Mes</h5>
+        <div style="position: relative; height: 250px;">
+          <canvas id="chartCantidad"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-body" style="height: 340px;">
+        <h5 class="card-title">Distribución por Estatus</h5>
+        <div style="position: relative; height: 250px;">
+          <canvas id="chartEstatus"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 📋 TABLA DE COTIZACIONES + FILTROS -->
+<div class="mt-5">
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h5 class="card-title mb-3">Últimas Cotizaciones</h5>
+
+      <!-- 🔍 FILTROS -->
+      <div class="row g-2 align-items-end mb-3">
+        <div class="col-md-3 col-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Desde</label>
+          <input type="date" id="filtro-desde" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-3 col-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Hasta</label>
+          <input type="date" id="filtro-hasta" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-3 col-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Estatus</label>
+          <select id="filtro-estatus" class="form-select form-select-sm">
+            <option value="">Todos</option>
+            <option value="PENDIENTE">PENDIENTE</option>
+            <option value="ENVIADA">ENVIADA</option>
+            <option value="GANADA">GANADA</option>
+            <option value="PERDIDA">PERDIDA</option>
+          </select>
+        </div>
+        <div class="col-md-2 col-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Cliente / Empresa</label>
+          <input type="text" id="filtro-cliente" class="form-control form-control-sm" placeholder="Buscar...">
+        </div>
+        <div class="col-md-1 text-end">
+          <button id="btn-limpiar-filtros" class="btn btn-outline-secondary btn-sm w-100">🔄</button>
+        </div>
+        {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
+        <div class="col-12 mt-2 d-flex flex-wrap gap-2 justify-content-end align-items-center">
+          <span class="small text-secondary me-2" id="bulk-selected-label">Seleccionadas: <b id="bulk-selected-count">0</b></span>
+          <span class="small text-secondary me-2" id="bulk-visible-label">Visibles: <b id="bulk-visible-count">0</b></span>
+
+          <button id="btn-bulk-delete" class="btn btn-danger btn-sm" disabled>
+            🗑️ Eliminar seleccionadas
+          </button>
+          <button id="btn-bulk-delete-visible" class="btn btn-outline-danger btn-sm" disabled>
+            🗑️ Eliminar visibles (filtradas)
+          </button>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- 📋 TABLA -->
+      <div class="table-responsive">
+        <table class="table table-bordered align-middle">
+          <thead class="table-light">
+            <tr>
+              {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
+              <th style="width:36px" class="text-center">
+                <input type="checkbox" id="chk-select-all" title="Seleccionar todo (visibles)">
+              </th>
+              {% endif %}
+              <th>Folio</th>
+              <th>Fecha</th>
+              <th>Cliente</th>
+              <th>Empresa</th>
+              <th>Total</th>
+              <th>Estatus</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tablaCotizaciones">
+            {% for c in cotizaciones %}
+            <tr data-id="{{ c.id }}" 
+                data-fecha="{{ c.fecha.strftime('%Y-%m-%d') }}"
+                data-estatus="{{ c.estatus }}"
+                data-cliente="{{ (c.cliente.nombre_cliente if c.cliente else '')|lower }}"
+                data-empresa="{{ (c.cliente.empresa if c.cliente else '')|lower }}">
+              {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
+              <td class="text-center">
+                <input type="checkbox" class="chk-cot" value="{{ c.id }}" aria-label="Seleccionar {{ c.folio }}">
+              </td>
+              {% endif %}
+              <td>{{ c.folio }}</td>
+              <td>{{ c.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
+              <td>{{ c.cliente.nombre_cliente if c.cliente else '' }}</td>
+              <td>{{ c.cliente.empresa if c.cliente else '' }}</td>
+              <td>${{ "{:,.2f}".format(c.total) }}</td>
+              <td>
+                <select class="status-select" onchange="cambiarEstatus({{ c.id }}, this)">
+                  {% for estado in ['PENDIENTE','ENVIADA','GANADA','PERDIDA'] %}
+                    <option value="{{ estado }}" {% if c.estatus == estado %}selected{% endif %}>{{ estado }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td class="text-center">
+                <a href="{{ url_for('view_cotizacion', cot_id=c.id) }}" class="btn btn-outline-primary btn-sm" title="Ver">👁️</a>
+                <a href="{{ url_for('export_cotizacion_pdf', cot_id=c.id) }}" target="_blank" class="btn btn-outline-danger btn-sm" title="PDF">📄</a>
+                <a href="{{ url_for('export_cotizacion_xlsx', cot_id=c.id) }}" class="btn btn-outline-success btn-sm" title="Excel">📊</a>
+                <a href="{{ url_for('editar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-warning btn-sm" title="Editar">✏️</a>
+                {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
+                <a href="{{ url_for('eliminar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-danger btn-sm" title="Eliminar">🗑️</a>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 📈 SCRIPTS -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<!-- ✅ FILTROS FUNCIONALES EN TIEMPO REAL -->
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const IS_ADMIN = {{ 'true' if (current_user.is_authenticated and current_user.rol == 'ADMIN') else 'false' }};
+  const desde = document.getElementById("filtro-desde");
+  const hasta = document.getElementById("filtro-hasta");
+  const estatus = document.getElementById("filtro-estatus");
+  const cliente = document.getElementById("filtro-cliente");
+  const limpiar = document.getElementById("btn-limpiar-filtros");
+
+  // ✅ Selección masiva + borrado (solo admin)
+  const chkAll = document.getElementById("chk-select-all");
+  const btnBulkDelete = document.getElementById("btn-bulk-delete");
+  const btnBulkDeleteVisible = document.getElementById("btn-bulk-delete-visible");
+  const selCountEl = document.getElementById("bulk-selected-count");
+  const visCountEl = document.getElementById("bulk-visible-count");
+
+  function getVisibleRowCheckboxes() {
+    return Array.from(document.querySelectorAll("#tablaCotizaciones tr"))
+      .filter(tr => tr.style.display !== "none")
+      .map(tr => tr.querySelector(".chk-cot"))
+      .filter(Boolean);
+  }
+
+  function updateBulkDeleteState() {
+    if (!IS_ADMIN) return;
+    const allChecks = Array.from(document.querySelectorAll(".chk-cot"));
+    const anyChecked = allChecks.some(chk => chk.checked);
+    const checkedCount = allChecks.filter(chk => chk.checked).length;
+    if (selCountEl) selCountEl.textContent = String(checkedCount);
+    if (btnBulkDelete) btnBulkDelete.disabled = !anyChecked;
+
+    const visible = getVisibleRowCheckboxes();
+    if (visCountEl) visCountEl.textContent = String(visible.length);
+    if (btnBulkDeleteVisible) btnBulkDeleteVisible.disabled = visible.length === 0;
+    if (visible.length === 0) {
+      if (chkAll) {
+        chkAll.checked = false;
+        chkAll.indeterminate = false;
+      }
+      return;
+    }
+    const visChecked = visible.filter(chk => chk.checked).length;
+    if (chkAll) {
+      chkAll.checked = visChecked === visible.length;
+      chkAll.indeterminate = visChecked > 0 && visChecked < visible.length;
+    }
+  }
+
+  if (IS_ADMIN && chkAll) {
+    chkAll.addEventListener("change", () => {
+      const visible = getVisibleRowCheckboxes();
+      visible.forEach(chk => (chk.checked = chkAll.checked));
+      updateBulkDeleteState();
+    });
+  }
+
+  if (IS_ADMIN) {
+    document.addEventListener("change", (e) => {
+      if (e.target && e.target.classList.contains("chk-cot")) {
+        updateBulkDeleteState();
+      }
+    });
+  }
+
+  async function confirmIfGanadas(ids) {
+    // detectar si hay GANADA en selección
+    const ganadas = ids.filter(id => {
+      const tr = document.querySelector(`#tablaCotizaciones tr[data-id="${id}"]`);
+      return tr && (tr.dataset.estatus || "").toUpperCase() === "GANADA";
+    });
+    if (ganadas.length === 0) return true;
+
+    const step1 = await Swal.fire({
+      icon: "warning",
+      title: "¡Ojo! Hay cotizaciones GANADAS",
+      html: `Estás por eliminar <b>${ganadas.length}</b> cotización(es) con estatus <b>GANADA</b>.<br><br>Para continuar escribe <b>ELIMINAR</b>.`,
+      input: "text",
+      inputPlaceholder: "Escribe ELIMINAR",
+      showCancelButton: true,
+      confirmButtonText: "Continuar",
+      cancelButtonText: "Cancelar",
+      confirmButtonColor: "#dc3545",
+      preConfirm: (val) => {
+        if ((val || "").trim().toUpperCase() !== "ELIMINAR") {
+          Swal.showValidationMessage("Debes escribir ELIMINAR para confirmar.");
+          return false;
+        }
+        return true;
+      }
+    });
+    return !!step1.isConfirmed;
+  }
+
+  if (IS_ADMIN && btnBulkDelete) btnBulkDelete.addEventListener("click", async () => {
+    const ids = Array.from(document.querySelectorAll(".chk-cot"))
+      .filter(chk => chk.checked)
+      .map(chk => parseInt(chk.value, 10))
+      .filter(n => Number.isFinite(n));
+
+    if (ids.length === 0) return;
+
+    if (!(await confirmIfGanadas(ids))) return;
+
+    const res = await Swal.fire({
+      icon: "warning",
+      title: "¿Eliminar cotizaciones seleccionadas?",
+      html: `Vas a eliminar <b>${ids.length}</b> cotización(es). Esta acción no se puede deshacer.`,
+      showCancelButton: true,
+      confirmButtonText: "Sí, eliminar",
+      cancelButtonText: "Cancelar",
+      confirmButtonColor: "#dc3545",
+    });
+    if (!res.isConfirmed) return;
+
+    try {
+      const r = await fetch("{{ url_for('bulk_eliminar_cotizaciones') }}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data?.error || "Error al eliminar");
+
+      // Quitar filas eliminadas
+      (data.deleted_ids || ids).forEach((id) => {
+        const tr = document.querySelector(`#tablaCotizaciones tr[data-id="${id}"]`);
+        if (tr) tr.remove();
+      });
+
+      // Reset UI
+      chkAll.checked = false;
+      chkAll.indeterminate = false;
+      updateBulkDeleteState();
+
+      await Swal.fire({
+        icon: "success",
+        title: "Listo",
+        text: `Eliminadas: ${data.deleted || 0}. Omitidas (sin permiso / no encontradas): ${data.skipped || 0}.`,
+      });
+    } catch (err) {
+      await Swal.fire({
+        icon: "error",
+        title: "No se pudo eliminar",
+        text: err?.message || "Error desconocido",
+      });
+    }
+  });
+
+  // Eliminar visibles por filtros
+  if (IS_ADMIN && btnBulkDeleteVisible) btnBulkDeleteVisible.addEventListener("click", async () => {
+    const visibleIds = Array.from(document.querySelectorAll("#tablaCotizaciones tr"))
+      .filter(tr => tr.style.display !== "none")
+      .map(tr => parseInt(tr.dataset.id, 10))
+      .filter(n => Number.isFinite(n));
+    if (visibleIds.length === 0) return;
+
+    if (!(await confirmIfGanadas(visibleIds))) return;
+
+    const res = await Swal.fire({
+      icon: "warning",
+      title: "¿Eliminar cotizaciones visibles (filtradas)?",
+      html: `Vas a eliminar <b>${visibleIds.length}</b> cotización(es) que coinciden con los filtros actuales.<br>Esta acción no se puede deshacer.`,
+      showCancelButton: true,
+      confirmButtonText: "Sí, eliminar",
+      cancelButtonText: "Cancelar",
+      confirmButtonColor: "#dc3545",
+    });
+    if (!res.isConfirmed) return;
+
+    try {
+      const r = await fetch("{{ url_for('bulk_eliminar_filtradas') }}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filters: {
+            desde: (desde?.value || ""),
+            hasta: (hasta?.value || ""),
+            estatus: (estatus?.value || ""),
+            cliente: (cliente?.value || ""),
+          }
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data?.error || "Error al eliminar");
+
+      (data.deleted_ids || visibleIds).forEach((id) => {
+        const tr = document.querySelector(`#tablaCotizaciones tr[data-id="${id}"]`);
+        if (tr) tr.remove();
+      });
+
+      if (chkAll) {
+        chkAll.checked = false;
+        chkAll.indeterminate = false;
+      }
+      updateBulkDeleteState();
+
+      await Swal.fire({
+        icon: "success",
+        title: "Listo",
+        text: `Eliminadas: ${data.deleted || 0}.`,
+      });
+    } catch (err) {
+      await Swal.fire({
+        icon: "error",
+        title: "No se pudo eliminar",
+        text: err?.message || "Error desconocido",
+      });
+    }
+  });
+  const filas = document.querySelectorAll("#tablaCotizaciones tr");
+
+  function filtrar() {
+    const d = desde.value ? new Date(desde.value + "T00:00:00") : null;
+    const h = hasta.value ? new Date(hasta.value + "T23:59:59") : null;
+    const e = estatus.value.trim();
+    const c = cliente.value.trim().toLowerCase();
+
+    filas.forEach(tr => {
+      const f = new Date(tr.dataset.fecha);
+      const est = tr.dataset.estatus?.trim() || "";
+      const cli = tr.dataset.cliente || "";
+      const emp = tr.dataset.empresa || "";
+      let visible = true;
+
+      if (d && f < d) visible = false;
+      if (h && f > h) visible = false;
+      if (e && est !== e) visible = false;
+      if (c && !(cli.includes(c) || emp.includes(c))) visible = false;
+
+      tr.style.display = visible ? "" : "none";
+    });
+
+    // recalcular estado del checkbox "seleccionar todo" y botón
+    updateBulkDeleteState();
+  }
+
+  ["input", "change", "keyup"].forEach(evt => {
+    [desde, hasta, estatus, cliente].forEach(el => el.addEventListener(evt, filtrar));
+  });
+
+  limpiar.addEventListener("click", () => {
+    [desde, hasta, estatus, cliente].forEach(el => el.value = "");
+    filas.forEach(tr => tr.style.display = "");
+    updateBulkDeleteState();
+  });
+
+  // estado inicial
+  updateBulkDeleteState();
+});
+</script>
+
+<script>
+async function cargarGraficas() {
+  try {
+    const res1 = await fetch("/api/dashboard/metrics");
+    const data1 = await res1.json();
+
+    const labels = data1.series.map(x => x.mes);
+    const importes = data1.series.map(x => x.total);
+    const cantidades = data1.series.map(x => x.cotizaciones);
+
+    new Chart(document.getElementById("chartImporte"), {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [{
+          label: "Importe Total ($)",
+          data: importes,
+          backgroundColor: "#0d47a1",
+          borderRadius: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { y: { beginAtZero: true } }
+      }
+    });
+
+    new Chart(document.getElementById("chartCantidad"), {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [{
+          label: "Cotizaciones",
+          data: cantidades,
+          backgroundColor: "#43a047",
+          borderRadius: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { y: { beginAtZero: true } }
+      }
+    });
+
+    const res2 = await fetch("/api/dashboard/status_breakdown");
+    const data2 = await res2.json();
+
+    new Chart(document.getElementById("chartEstatus"), {
+      type: "doughnut",
+      data: {
+        labels: data2.labels,
+        datasets: [{
+          data: data2.counts,
+          backgroundColor: ["#4caf50", "#ffeb3b", "#2196f3", "#f44336"]
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: "bottom" } }
+      }
+    });
+  } catch (err) {
+    console.error("Error cargando gráficas", err);
+  }
+}
+
+document.addEventListener("DOMContentLoaded", cargarGraficas);
+</script>
+
+<script>
+function cambiarEstatus(id, selectElem) {
+    const nuevo = selectElem.value;
+
+    fetch(`/api/cotizaciones/${id}/estatus`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estatus: nuevo })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            Swal.fire({
+                icon: "success",
+                title: "Estatus actualizado",
+                text: data.mensaje,
+                timer: 1500,
+                showConfirmButton: false
+            });
+
+            const fila = selectElem.closest("tr");
+            if (fila) fila.dataset.estatus = nuevo;
+        } else {
+            Swal.fire("Error", data.error, "error");
+        }
+    })
+    .catch(err => {
+        Swal.fire("Error", "No se pudo actualizar el estatus.", "error");
+        console.error(err);
+    });
+}
+</script>
+
+<script>
+function cambiarEstatus(id, selectElem) {
+    const nuevo = selectElem.value;
+
+    fetch(`/api/cotizaciones/${id}/estatus`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estatus: nuevo })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            Swal.fire({
+                icon: "success",
+                title: "Estatus actualizado",
+                text: data.mensaje,
+                timer: 1500,
+                showConfirmButton: false
+            });
+
+            const fila = selectElem.closest("tr");
+            if (fila) fila.dataset.estatus = nuevo;
+        } else {
+            Swal.fire("Error", data.error, "error");
+        }
+    })
+    .catch(err => {
+        Swal.fire("Error", "No se pudo actualizar el estatus.", "error");
+        console.error(err);
+    });
+}
+</script>
+
+
+{% endblock %}
+
+<script>
+async function cambiarEstatus(cotId, selectEl) {
+  const nuevo = (selectEl.value || "").trim().toUpperCase();
+
+  try {
+    const res = await fetch(`/api/cotizaciones/${cotId}/estatus`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estatus: nuevo })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || "No se pudo actualizar el estatus");
+    }
+
+    // importante: mantener dataset en sync para filtros
+    const tr = selectEl.closest("tr");
+    if (tr) tr.dataset.estatus = nuevo;
+
+    Swal.fire({
+      icon: "success",
+      title: "Estatus actualizado",
+      text: data.mensaje || `Actualizado a ${nuevo}`,
+      timer: 1400,
+      showConfirmButton: false
+    });
+  } catch (err) {
+    Swal.fire({
+      icon: "error",
+      title: "Error",
+      text: err.message || "Falló el cambio de estatus"
+    });
+
+    // rollback visual (opcional): recargar para restaurar el valor real
+    window.location.reload();
+  }
+}
+</script>
