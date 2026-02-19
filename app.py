@@ -429,6 +429,47 @@ with app.app_context():
 with app.app_context():
     ensure_schema()
 
+# ---------------------------------------------------------
+# Seed de usuarios base (idempotente)
+# ---------------------------------------------------------
+def seed_default_users() -> None:
+    """Crea usuarios base (USER) si no existen. No modifica usuarios existentes."""
+    defaults = [
+        ("Ing. Antonio Azcona", "Azcona123!", "USER"),
+        ("Ing. José Solis", "Solis123!", "USER"),
+    ]
+    try:
+        created = 0
+        for nombre, password, rol in defaults:
+            u = Usuario.query.filter_by(nombre=nombre).first()
+            if u:
+                continue
+            u = Usuario(nombre=nombre, rol=rol)
+            # Usa el helper del modelo (hash seguro)
+            try:
+                u.set_password(password)
+            except Exception:
+                # Fallback: si el modelo no tuviera set_password por alguna razón
+                from werkzeug.security import generate_password_hash
+                u.password = generate_password_hash(password)
+            db.session.add(u)
+            created += 1
+        if created:
+            db.session.commit()
+            print(f"✅ Seed usuarios: creados {created}")
+        else:
+            # nada que hacer
+            pass
+    except Exception as e:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        print(f"⚠️ Seed usuarios error: {e}", file=sys.stderr)
+
+with app.app_context():
+    seed_default_users()
+
 
 # ==============================
 # SETUP TEMPORAL ADMIN
@@ -1577,7 +1618,7 @@ def export_cotizacion_pdf(cot_id: int):
         ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
         ("WORDWRAP", (0, 0), (-1, -1), True),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
     ]))
 
     elems.append(tbl)
@@ -1894,4 +1935,4 @@ if __name__ == "__main__":
         os.makedirs(app.static_folder or "static", exist_ok=True)
     except Exception:
         pass
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True) 
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True)
