@@ -8,3 +8,4 @@ apscheduler==3.10.4
 num2words==0.5.13
 pdfplumber==0.11.4
 Flask-Login
+gunicorn
