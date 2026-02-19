@@ -1894,4 +1894,4 @@ if __name__ == "__main__":
         os.makedirs(app.static_folder or "static", exist_ok=True)
     except Exception:
         pass
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True) 
