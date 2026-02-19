@@ -42,6 +42,24 @@
         <label for="direccion" class="form-label fw-semibold">Dirección</label>
         <input type="text" id="direccion" name="direccion" class="form-control">
       </div>
+    </div>
+
+    <div class="row g-3 mt-2">
+
+      <div class="col-md-4">
+        <label for="estatus" class="form-label fw-semibold">Estatus</label>
+        <select id="estatus" name="estatus" class="form-select">
+          <option value="PENDIENTE" selected>PENDIENTE</option>
+          <option value="ENVIADA">ENVIADA</option>
+          <option value="EN NEGOCIACION">EN NEGOCIACION</option>
+          <option value="GANADA">GANADA</option>
+          <option value="PERDIDA">PERDIDA</option>
+        </select>
+      </div>
+      <div class="col-md-8">
+        <label for="notas" class="form-label fw-semibold">Condiciones comerciales</label>
+        <textarea id="notas" name="notas" class="form-control" rows="2" placeholder="Ej. tiempos de entrega, forma de pago, vigencia..."></textarea>
+      </div>
       <!-- ❌ Se quita RFC del formulario -->
     </div>
   </section>
@@ -78,14 +96,14 @@
   <section class="panel mb-4">
     <div class="row g-3 text-end">
       <div class="col-md-3 ms-auto">
-        <label class="form-label fw-semibold">Zona (descuento):</label>
+        <label class="form-label fw-semibold">Zona:</label>
         <select id="zona" name="zona" class="form-select">
           <option value="" selected>Selecciona...</option>
-          <option value="Zona Norte">Zona Norte (10%)</option>
-          <option value="Zona Centro">Zona Centro (5%)</option>
-          <option value="Bajío">Bajío (10%)</option>
-          <option value="Zona Sur">Zona Sur (15%)</option>
-          <option value="Frontera">Frontera (8%)</option>
+          <option value="Zona Norte">Zona Norte</option>
+          <option value="Zona Centro">Zona Centro</option>
+          <option value="Bajío">Bajío</option>
+          <option value="Zona Sur">Zona Sur</option>
+          <option value="Frontera">Frontera</option>
         </select>
       </div>
       <div class="col-md-3 ms-auto">
