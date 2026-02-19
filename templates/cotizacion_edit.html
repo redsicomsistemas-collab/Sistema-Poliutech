@@ -17,7 +17,7 @@
         <div class="row mb-3">
           <div class="col-md-6">
             <label class="form-label">Nombre del cliente</label>
-            <input type="text" name="cliente_nombre" class="form-control" value="{{ c.cliente.nombre_cliente if c.cliente else '' }}" required>
+            <input type="text" name="cliente" class="form-control" value="{{ c.cliente.nombre_cliente if c.cliente else '' }}" required>
           </div>
           <div class="col-md-6">
             <label class="form-label">Empresa</label>
@@ -37,7 +37,15 @@
           </div>
         </div>
 
-        <!-- 🧮 DETALLES DE CONCEPTOS -->
+        
+        <div class="row mb-3">
+          <div class="col-md-12">
+            <label class="form-label">Dirección</label>
+            <input type="text" name="direccion" class="form-control" value="{{ c.direccion or '' }}">
+          </div>
+        </div>
+
+<!-- 🧮 DETALLES DE CONCEPTOS -->
         <h5 class="fw-bold text-primary mt-4 mb-3">Renglones de cotización</h5>
         <div id="items">
           {% for d in c.detalles %}
@@ -80,18 +88,24 @@
         <!-- 💬 NOTAS Y ESTATUS -->
         <h5 class="fw-bold text-primary mt-4 mb-3">Notas y estatus</h5>
         <div class="row mb-3">
-          <div class="col-md-6">
-            <label class="form-label fw-bold">Zona (descuento)</label>
+          <div class="col-md-4">
+            <label class="form-label fw-bold">Zona</label>
             <select class="form-select" name="zona">
               <option value="" {% if not zona_actual %}selected{% endif %}>Sin zona</option>
-              <option value="Zona Norte" {% if zona_actual == 'Zona Norte' %}selected{% endif %}>Zona Norte (10%)</option>
-              <option value="Zona Centro" {% if zona_actual == 'Zona Centro' %}selected{% endif %}>Zona Centro (5%)</option>
-              <option value="Bajío" {% if zona_actual == 'Bajío' %}selected{% endif %}>Bajío (10%)</option>
-              <option value="Zona Sur" {% if zona_actual == 'Zona Sur' %}selected{% endif %}>Zona Sur (15%)</option>
-              <option value="Frontera" {% if zona_actual == 'Frontera' %}selected{% endif %}>Frontera (8%)</option>
+              <option value="Zona Norte" {% if zona_actual == 'Zona Norte' %}selected{% endif %}>Zona Norte</option>
+              <option value="Zona Centro" {% if zona_actual == 'Zona Centro' %}selected{% endif %}>Zona Centro</option>
+              <option value="Bajío" {% if zona_actual == 'Bajío' %}selected{% endif %}>Bajío</option>
+              <option value="Zona Sur" {% if zona_actual == 'Zona Sur' %}selected{% endif %}>Zona Sur</option>
+              <option value="Frontera" {% if zona_actual == 'Frontera' %}selected{% endif %}>Frontera</option>
             </select>
           </div>
-          <div class="col-md-6">
+
+          <div class="col-md-4">
+            <label class="form-label fw-bold">IVA (%)</label>
+            <input type="number" step="0.01" min="0" name="iva_porc" class="form-control" value="{{ '%.2f'|format(c.iva_porc) }}">
+          </div>
+
+          <div class="col-md-4">
             <label class="form-label fw-bold">Estatus actual</label>
             <select class="form-select" name="estatus">
               <option value="PENDIENTE" {% if c.estatus == 'PENDIENTE' %}selected{% endif %}>PENDIENTE</option>
