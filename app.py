@@ -59,6 +59,14 @@ ADMIN_WHATSAPP_RECIPIENTS = os.getenv(
 ).strip()
 ADMIN_LIST: List[str] = [x.strip() for x in ADMIN_WHATSAPP_RECIPIENTS.split(",") if x.strip()]
 
+# WhatsApp: enviar a un "admin principal" para evitar quemar límites (1 evento = 1 mensaje).
+PRIMARY_ADMIN_WHATSAPP = os.getenv("PRIMARY_ADMIN_WHATSAPP", "").strip()
+if not PRIMARY_ADMIN_WHATSAPP and ADMIN_LIST:
+    PRIMARY_ADMIN_WHATSAPP = ADMIN_LIST[0]
+
+# Recordatorios inteligentes (opción B): solo PENDIENTE con antigüedad mínima y solo al admin principal.
+PENDING_REMINDER_MIN_DAYS = int(os.getenv("PENDING_REMINDER_MIN_DAYS", "1"))
+
 # Usa SIEMPRE los modelos desde models.py para evitar duplicados
 from models import db, Cliente, Concepto, Cotizacion, CotizacionDetalle, Usuario, ActivityLog
 # ---------------------------------------------------------
@@ -424,48 +432,46 @@ def ensure_schema():
     except Exception as e:
         print("⚠️ ensure_schema(detalle extras):", e)
 
-with app.app_context():
-    ensure_schema()
-with app.app_context():
-    ensure_schema()
-
 # ---------------------------------------------------------
-# Seed de usuarios base (idempotente)
+# Seed: usuarios base (idempotente)
 # ---------------------------------------------------------
-def seed_default_users() -> None:
-    """Crea usuarios base (USER) si no existen. No modifica usuarios existentes."""
+def seed_default_users():
+    """Crea usuarios base si no existen (no duplica)."""
     defaults = [
         ("Ing. Antonio Azcona", "Azcona123!", "USER"),
         ("Ing. José Solis", "Solis123!", "USER"),
     ]
-    try:
-        created = 0
-        for nombre, password, rol in defaults:
-            u = Usuario.query.filter_by(nombre=nombre).first()
-            if u:
+    created = 0
+    for nombre, password, rol in defaults:
+        try:
+            exists = Usuario.query.filter(db.func.lower(Usuario.nombre) == nombre.lower()).first()
+            if exists:
                 continue
             u = Usuario(nombre=nombre, rol=rol)
-            # Usa el helper del modelo (hash seguro)
+            # Usa el helper del modelo para hashear
             try:
                 u.set_password(password)
             except Exception:
-                # Fallback: si el modelo no tuviera set_password por alguna razón
                 from werkzeug.security import generate_password_hash
                 u.password = generate_password_hash(password)
             db.session.add(u)
             created += 1
-        if created:
-            db.session.commit()
-            print(f"✅ Seed usuarios: creados {created}")
-        else:
-            # nada que hacer
-            pass
-    except Exception as e:
+        except Exception:
+            continue
+    try:
+        db.session.commit()
+    except Exception:
         try:
             db.session.rollback()
         except Exception:
             pass
-        print(f"⚠️ Seed usuarios error: {e}", file=sys.stderr)
+    if created:
+        print(f"✅ Seed users: creados {created} usuario(s).")
+
+with app.app_context():
+    ensure_schema()
+with app.app_context():
+    ensure_schema()
 
 with app.app_context():
     seed_default_users()
@@ -612,6 +618,20 @@ def send_whatsapp_multi(to_list: Iterable[str], body: str) -> None:
         except Exception as e:
             print(f"[Twilio] ERROR enviando a {to_norm}: {e}", file=sys.stderr)
             traceback.print_exc()
+
+def send_whatsapp_admin(body: str, *, to_all: bool = False) -> None:
+    """Envia WhatsApp a admins.
+    - to_all=False: solo al admin principal (evita reventar límites)
+    - to_all=True: a toda la lista
+    """
+    if to_all:
+        send_whatsapp_admin(body)
+        return
+    if PRIMARY_ADMIN_WHATSAPP:
+        send_whatsapp_multi([PRIMARY_ADMIN_WHATSAPP], body)
+    else:
+        # fallback: primer admin si existe
+        send_whatsapp_multi(ADMIN_LIST[:1], body)
 
 # ---------------------------------------------------------
 # 🔐 Login / Logout
@@ -927,7 +947,7 @@ def crear_cotizacion():
             f"Fecha (UTC): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\\n"
             f"Total: {money(cot.total)}"
         )
-        send_whatsapp_multi(ADMIN_LIST, msg)
+        send_whatsapp_admin(msg)
     except Exception as e:
         print(f"[WARN] WhatsApp creación ({cot.folio}): {e}", file=sys.stderr)
 
@@ -1027,7 +1047,11 @@ def actualizar_cotizacion(cot_id: int):
         c.cliente_id = cliente.id
 
     # === ENCABEZADO ===
+    _prev_estatus = (c.estatus or "").upper()
     c.estatus = (f.get("estatus") or c.estatus).upper()
+    # Si vuelve a PENDIENTE, reiniciamos recordatorios
+    if c.estatus == "PENDIENTE" and _prev_estatus != "PENDIENTE":
+        c.last_whatsapp_at = None
     c.notas = f.get("notas") or c.notas
     c.responsable = (responsable_final or c.responsable)
     iva_porc = parse_float(f.get("iva_porc"), c.iva_porc or 16.0)
@@ -1124,7 +1148,7 @@ def actualizar_cotizacion(cot_id: int):
             f"Estatus: *{c.estatus}*\\n"
             f"Total: {money(c.total)}"
         )
-        send_whatsapp_multi(ADMIN_LIST, body)
+        send_whatsapp_admin(body)
     except Exception as e:
         print(f"[Twilio] Error en actualización: {e}", file=sys.stderr)
 
@@ -1357,6 +1381,9 @@ def api_update_estatus(cot_id):
         return jsonify({"ok": True, "folio": c.folio, "estatus": nuevo, "mensaje": "Sin cambios."})
 
     c.estatus = nuevo
+    # Si vuelve a PENDIENTE, reiniciamos recordatorios
+    if nuevo == "PENDIENTE":
+        c.last_whatsapp_at = None
     db.session.commit()
 
     try:
@@ -1367,7 +1394,7 @@ def api_update_estatus(cot_id):
             f"Nuevo: *{nuevo}*\\n"
             f"Total: {money(c.total)}"
         )
-        send_whatsapp_multi(ADMIN_LIST, body)
+        send_whatsapp_admin(body)
     except Exception as e:
         print(f"[Twilio] Error al enviar notificación de estatus: {e}", file=sys.stderr)
 
@@ -1618,7 +1645,7 @@ def export_cotizacion_pdf(cot_id: int):
         ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
         ("WORDWRAP", (0, 0), (-1, -1), True),
-        ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
 
     elems.append(tbl)
@@ -1810,7 +1837,7 @@ def debug_send_test():
     if not is_admin():
         abort(403)
     msg = "✅ Mensaje de prueba - Sistema Poliutech (debug_send_test)."
-    send_whatsapp_multi(ADMIN_LIST, msg)
+    send_whatsapp_admin(msg)
     return jsonify({"sent": True, "to": ADMIN_LIST})
 
 @app.route("/debug/force_reminders")
@@ -1830,7 +1857,9 @@ def enviar_notificaciones_pendientes():
         hace_24h = ahora - timedelta(hours=24)
 
         q = Cotizacion.query.filter_by(estatus="PENDIENTE")
-        # En recordatorios, normalmente quieres avisar admins siempre (no depende de rol)
+        # Opción B: solo pendientes con antigüedad mínima
+        min_age = ahora - timedelta(days=PENDING_REMINDER_MIN_DAYS)
+        q = q.filter(Cotizacion.fecha <= min_age)
         pendientes = q.all()
 
         for cot in pendientes:
@@ -1842,7 +1871,7 @@ def enviar_notificaciones_pendientes():
                         f"Fecha (UTC): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\\n"
                         f"Total: {money(cot.total)}"
                     )
-                    send_whatsapp_multi(ADMIN_LIST, body)
+                    send_whatsapp_admin(body)
                     cot.last_whatsapp_at = ahora
                     db.session.commit()
                 except Exception as e:
@@ -1855,7 +1884,7 @@ try:
         scheduler.add_job(
             enviar_notificaciones_pendientes,
             "interval",
-            minutes=60,
+            hours=24,
             id="pending_quotes_reminder",
             replace_existing=True
         )
