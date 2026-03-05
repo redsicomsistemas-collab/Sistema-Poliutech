@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os, io, csv, sys, math, re, traceback
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from typing import Iterable, Optional, List
 from urllib.parse import urlparse
 from pathlib import Path
@@ -43,6 +44,12 @@ from flask_login import LoginManager, login_user, login_required, logout_user, c
 # ---------------------------------------------------------
 # Config
 # ---------------------------------------------------------
+TZ_CDMX = ZoneInfo("America/Mexico_City")
+
+def now_cdmx_naive() -> datetime:
+    """Hora CDMX (naive). Úsala para timestamps en DB/UX sin desfases."""
+    return datetime.now(TZ_CDMX).replace(tzinfo=None)
+
 DEFAULT_SECRET_KEY = "poliutech_mar_checkpoint_superseguro"
 DEFAULT_DATABASE_URL = "sqlite:///mar3.db"
 
@@ -183,7 +190,7 @@ def cleanup_audit_logs(retention_days: int | None = None) -> int:
     # Delete ActivityLog rows older than retention_days. Returns deleted count (best-effort).
     try:
         days = int(retention_days if retention_days is not None else AUDIT_LOG_RETENTION_DAYS)
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = now_cdmx_naive() - timedelta(days=days)
         deleted = ActivityLog.query.filter(ActivityLog.fecha < cutoff).delete(synchronize_session=False)
         db.session.commit()
         return int(deleted or 0)
@@ -197,7 +204,7 @@ def cleanup_audit_logs(retention_days: int | None = None) -> int:
 def maybe_cleanup_audit_logs() -> None:
     # Best-effort periodic cleanup.
     try:
-        now = datetime.utcnow()
+        now = now_cdmx_naive()
         if _should_run_audit_cleanup(now):
             cleanup_audit_logs()
             _mark_audit_cleanup(now)
@@ -248,7 +255,7 @@ def _audit_before_request():
             return
         g._skip_audit = False
 
-        g._audit_started_at = datetime.utcnow()
+        g._audit_started_at = now_cdmx_naive()
 
         # Captura keys sin valores
         form_keys = None
@@ -291,7 +298,7 @@ def _audit_after_request(response):
         accion = _describe_action()
 
         log = ActivityLog(
-            fecha=datetime.utcnow(),
+            fecha=now_cdmx_naive(),
             usuario_id=usuario_id,
             usuario=usuario,
             rol=rol,
@@ -839,6 +846,7 @@ def crear_cotizacion():
 
     cot = Cotizacion(
         folio=generar_folio(),
+        fecha=now_cdmx_naive(),
         cliente_id=cliente.id if cliente else None,
         estatus=(f.get("estatus") or "PENDIENTE").upper(),
         notas=f.get("notas"),
@@ -922,7 +930,7 @@ def crear_cotizacion():
             "🧾 *Nueva Cotización Creada*\\n"
             f"Folio: *{cot.folio}*\\n"
             f"Estatus: *{cot.estatus}*\\n"
-            f"Fecha (UTC): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\\n"
+            f"Fecha (CDMX): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\\n"
             f"Total: {money(cot.total)}"
         )
         send_whatsapp_multi(ADMIN_LIST, msg)
@@ -1814,7 +1822,7 @@ def api_dashboard_status_breakdown():
 # ---------------------------------------------------------
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok", "now_utc": datetime.utcnow().isoformat()}), 200
+    return jsonify({"status": "ok", "now_cdmx": now_cdmx_naive().isoformat()}), 200
 
 @app.route("/debug/send_test")
 @login_required
@@ -1838,7 +1846,7 @@ def debug_force_reminders():
 
 def enviar_notificaciones_pendientes():
     with app.app_context():
-        ahora = datetime.utcnow()
+        ahora = now_cdmx_naive()
         hace_24h = ahora - timedelta(hours=24)
 
         q = Cotizacion.query.filter_by(estatus="PENDIENTE")
@@ -1851,7 +1859,7 @@ def enviar_notificaciones_pendientes():
                     body = (
                         "🔔 *Recordatorio: Cotización PENDIENTE*\\n"
                         f"Folio: *{cot.folio}*\\n"
-                        f"Fecha (UTC): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\\n"
+                        f"Fecha (CDMX): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\\n"
                         f"Total: {money(cot.total)}"
                     )
                     send_whatsapp_multi(ADMIN_LIST, body)
