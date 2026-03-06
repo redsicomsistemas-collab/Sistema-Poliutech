@@ -34,7 +34,7 @@
         </div>
         <div class="mt-2">
           <label class="fw-bold">Representante:</label>
-          <div>{{ c.representante or "—" }}</div>
+          <div>{{ c.responsable or "—" }}</div>
         </div>
       </div>
 
@@ -84,8 +84,12 @@
             {{ c.estatus }}
           </span>
         </p>
-        <p><b>Notas:</b></p>
-        <div class="border rounded bg-light p-2">{{ c.notas or "Sin notas" }}</div>
+        <p><b>Condiciones Comerciales:</b></p>
+        <div class="border rounded bg-light p-3">
+          <ul class="mb-0">
+            {% for item in condiciones_finales %}<li>{{ item }}</li>{% endfor %}
+          </ul>
+        </div>
       </div>
 
       <!-- TOTALES -->
