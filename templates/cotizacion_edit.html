@@ -37,15 +37,7 @@
           </div>
         </div>
 
-        
-        <div class="row mb-3">
-          <div class="col-md-12">
-            <label class="form-label">Dirección</label>
-            <input type="text" name="direccion" class="form-control" value="{{ c.direccion or '' }}">
-          </div>
-        </div>
-
-<!-- 🧮 DETALLES DE CONCEPTOS -->
+        <!-- 🧮 DETALLES DE CONCEPTOS -->
         <h5 class="fw-bold text-primary mt-4 mb-3">Renglones de cotización</h5>
         <div id="items">
           {% for d in c.detalles %}
@@ -88,8 +80,8 @@
         <!-- 💬 NOTAS Y ESTATUS -->
         <h5 class="fw-bold text-primary mt-4 mb-3">Notas y estatus</h5>
         <div class="row mb-3">
-          <div class="col-md-4">
-            <label class="form-label fw-bold">Zona</label>
+          <div class="col-md-6">
+            <label class="form-label fw-bold">Zona (descuento)</label>
             <select class="form-select" name="zona">
               <option value="" {% if not zona_actual %}selected{% endif %}>Sin zona</option>
               <option value="Zona Norte" {% if zona_actual == 'Zona Norte' %}selected{% endif %}>Zona Norte</option>
@@ -99,13 +91,7 @@
               <option value="Frontera" {% if zona_actual == 'Frontera' %}selected{% endif %}>Frontera</option>
             </select>
           </div>
-
-          <div class="col-md-4">
-            <label class="form-label fw-bold">IVA (%)</label>
-            <input type="number" step="0.01" min="0" name="iva_porc" class="form-control" value="{{ '%.2f'|format(c.iva_porc) }}">
-          </div>
-
-          <div class="col-md-4">
+          <div class="col-md-6">
             <label class="form-label fw-bold">Estatus actual</label>
             <select class="form-select" name="estatus">
               <option value="PENDIENTE" {% if c.estatus == 'PENDIENTE' %}selected{% endif %}>PENDIENTE</option>
@@ -115,8 +101,13 @@
             </select>
           </div>
           <div class="col-md-12 mt-3">
-            <label class="form-label fw-bold">Notas de la cotización</label>
-            <textarea name="notas" class="form-control" rows="3">{{ c.notas }}</textarea>
+            <label class="form-label fw-bold">Condiciones adicionales</label>
+            <div class="small text-muted mb-2">Las condiciones comerciales por defecto ya van incluidas automáticamente en el PDF.</div>
+            <textarea name="notas" class="form-control" rows="4">{{ notas_adicionales }}</textarea>
+            <div class="alert alert-light border mt-3 mb-0">
+              <div class="fw-semibold mb-2">Condiciones por defecto incluidas:</div>
+              <ul class="mb-0">{% for item in default_condiciones %}<li>{{ item }}</li>{% endfor %}</ul>
+            </div>
           </div>
         </div>
 
@@ -176,4 +167,4 @@ function agregarRenglon() {
   document.getElementById('items').insertAdjacentHTML('beforeend', html);
 }
 </script>
-{% endblock %} 
+{% endblock %}
