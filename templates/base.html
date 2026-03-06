@@ -219,10 +219,9 @@
           {% if current_user.is_authenticated and (current_user.rol or "")|upper == "ADMIN" %}
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('admin_bitacora') }}">🧾 Bitácora</a></li>
           {% endif %}
+
           {% if current_user.is_authenticated %}
-          <li class="nav-item d-flex align-items-center justify-content-center px-2">
-            <span class="text-white-50 small">👤 {{ current_user.nombre }}</span>
-          </li>
+          <li class="nav-item"><span class="nav-link text-white-50">👤 {{ current_user.nombre }}</span></li>
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('logout') }}">🚪 Cerrar sesión</a></li>
           {% endif %}
         </ul>
