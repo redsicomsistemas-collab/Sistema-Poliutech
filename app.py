@@ -438,7 +438,7 @@ def seed_default_users():
     """Crea usuarios base si no existen (no duplica)."""
     defaults = [
         ("Ing. Antonio Azcona", "Azcona123!", "USER"),
-        ("Ing. José Solis", "Solis123!", "USER"),
+        ("Ing. José Solis", "Solis123!", "ADMIN"),
     ]
     created = 0
     for nombre, password, rol in defaults:
