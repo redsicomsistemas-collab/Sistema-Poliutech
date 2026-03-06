@@ -696,16 +696,6 @@ def login():
 
     return render_template("login.html", title="Login")
 
-@app.route("/logout", methods=["GET"])
-@login_required
-def logout():
-    try:
-        logout_user()
-        flash("Sesión cerrada correctamente.", "success")
-    except Exception:
-        pass
-    return redirect(url_for("login"))
-
 
 # ---------------------------------------------------------
 # Dashboard / Catálogos / Cotizador
@@ -1527,9 +1517,6 @@ def export_cotizacion_xlsx(cot_id: int):
 # - "Condiciones comerciales"
 # - RESPONSABLE: poner valor debajo del label (rellena el “espacio en blanco”)
 # ---------------------------------------------------------
-@app.route("/cotizaciones/<int:cot_id>/export.pdf")
-@login_required
-
 def draw_watermark(canvas, app):
     try:
         import os
@@ -1549,6 +1536,8 @@ def draw_watermark(canvas, app):
         pass
 
 
+@app.route("/cotizaciones/<int:cot_id>/export.pdf")
+@login_required
 def export_cotizacion_pdf(cot_id: int):
     c = Cotizacion.query.get_or_404(cot_id)
     require_owner_or_admin(c)
@@ -1741,8 +1730,8 @@ def export_cotizacion_pdf(cot_id: int):
 
     doc.build(
         elems,
-        onFirstPage=lambda canv, d: (encabezado(canv, d), footer(canv, d)),
-        onLaterPages=lambda canv, d: (encabezado(canv, d), footer(canv, d))
+        onFirstPage=lambda canv, d: (draw_watermark(canv, app), encabezado(canv, d), footer(canv, d)),
+        onLaterPages=lambda canv, d: (draw_watermark(canv, app), encabezado(canv, d), footer(canv, d))
     )
 
     buf.seek(0)
