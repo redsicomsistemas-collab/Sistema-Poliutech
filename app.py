@@ -32,6 +32,34 @@ DEFAULT_CONDICIONES = [
 "Garantía contra desprendimientos de 1 año en condiciones normales de uso."
 ]
 
+
+
+def _split_notas_y_zona(notas_raw: str) -> tuple[str, str]:
+    notas_raw = (notas_raw or "").strip()
+    extras = []
+    zona_line = ""
+    for ln in notas_raw.splitlines():
+        s = ln.strip()
+        if not s:
+            continue
+        if s.lower().startswith("zona:"):
+            zona_line = s
+        else:
+            extras.append(s)
+    return "\n".join(extras).strip(), zona_line
+
+def _condiciones_comerciales_finales(notas_raw: str) -> list[str]:
+    extras_txt, zona_line = _split_notas_y_zona(notas_raw)
+    items = list(DEFAULT_CONDICIONES)
+    if zona_line:
+        items.append(zona_line)
+    if extras_txt:
+        for ln in extras_txt.splitlines():
+            s = ln.strip()
+            if s:
+                items.append(s)
+    return items
+
 from flask import (
     Flask, render_template, request, redirect, url_for,
     flash, jsonify, Response, abort, g
@@ -696,15 +724,11 @@ def login():
 
     return render_template("login.html", title="Login")
 
-
 @app.route("/logout")
 @login_required
 def logout():
     logout_user()
     return redirect(url_for("login"))
-
-
-
 
 # ---------------------------------------------------------
 # Dashboard / Catálogos / Cotizador
@@ -741,7 +765,7 @@ def index():
 @app.route("/cotizador")
 @login_required
 def cotizador():
-    return render_template("cotizador.html", title="Nuevo - Sistema Poliutech")
+    return render_template("cotizador.html", title="Nuevo - Sistema Poliutech", default_condiciones=DEFAULT_CONDICIONES)
 
 @app.route("/admin/catalogos")
 @login_required
@@ -880,7 +904,7 @@ def crear_cotizacion():
         fecha=now_cdmx_naive(),
         cliente_id=cliente.id if cliente else None,
         estatus=(f.get("estatus") or "PENDIENTE").upper(),
-        notas=f.get("notas"),
+        notas=(f.get("notas") or "").strip() or None,
         last_whatsapp_at=None,
         responsable=responsable_final
     )
@@ -1016,7 +1040,8 @@ def editar_cotizacion(cot_id: int):
                     break
     except Exception:
         zona_actual = ""
-    return render_template("cotizacion_edit.html", c=c, zona_actual=zona_actual, title=f"Editar {c.folio}")
+    notas_adicionales, _ = _split_notas_y_zona(c.notas or "")
+    return render_template("cotizacion_edit.html", c=c, zona_actual=zona_actual, notas_adicionales=notas_adicionales, default_condiciones=DEFAULT_CONDICIONES, title=f"Editar {c.folio}")
 
 @app.route("/cotizaciones/<int:cot_id>/actualizar", methods=["POST"])
 @login_required
@@ -1065,7 +1090,7 @@ def actualizar_cotizacion(cot_id: int):
 
     # === ENCABEZADO ===
     c.estatus = (f.get("estatus") or c.estatus).upper()
-    c.notas = f.get("notas") or c.notas
+    c.notas = (f.get("notas") or "").strip()
     c.responsable = (responsable_final or c.responsable)
     iva_porc = parse_float(f.get("iva_porc"), c.iva_porc or 16.0)
 
@@ -1361,14 +1386,18 @@ def view_cotizacion(cot_id: int):
                     break
     except Exception:
         zona_actual = ""
-    return render_template("cotizacion_view.html", c=c, zona_actual=zona_actual, title=f"Ver {c.folio}")
+    condiciones_finales = _condiciones_comerciales_finales(c.notas or "")
+    notas_adicionales, _ = _split_notas_y_zona(c.notas or "")
+    return render_template("cotizacion_view.html", c=c, zona_actual=zona_actual, condiciones_finales=condiciones_finales, notas_adicionales=notas_adicionales, title=f"Ver {c.folio}")
 
 @app.route("/cotizaciones/<int:cot_id>/ver")
 @login_required
 def ver_cotizacion(cot_id: int):
     cot = Cotizacion.query.get_or_404(cot_id)
     require_owner_or_admin(cot)
-    return render_template("cotizacion_view.html", c=cot, title=f"Vista de {cot.folio}")
+    condiciones_finales = _condiciones_comerciales_finales(cot.notas or "")
+    notas_adicionales, _ = _split_notas_y_zona(cot.notas or "")
+    return render_template("cotizacion_view.html", c=cot, condiciones_finales=condiciones_finales, notas_adicionales=notas_adicionales, title=f"Vista de {cot.folio}")
 
 # ---------------------------------------------------------
 # API: actualizar estatus (inline) + WhatsApp
@@ -1722,19 +1751,19 @@ def export_cotizacion_pdf(cot_id: int):
     elems.append(Spacer(1, 10))
 
     # === CONDICIONES COMERCIALES ===
-    if c.notas:
+    condiciones = _condiciones_comerciales_finales(c.notas or "")
+    if condiciones:
         elems.append(Paragraph("<b>Condiciones Comerciales:</b>", styles["Encabezado"]))
-
         nota_style = ParagraphStyle(
             "NotasJustify",
             parent=styles["Normal"],
             alignment=TA_JUSTIFY,
             leading=11,
-            fontSize=9
+            fontSize=9,
+            leftIndent=8,
         )
-
-        notas_text = str(c.notas).replace("\r\n", "<br/>").replace("\n", "<br/>")
-        elems.append(Paragraph(notas_text, nota_style))
+        bullets = "<br/>".join([f"• {x}" for x in condiciones if str(x).strip()])
+        elems.append(Paragraph(bullets, nota_style))
         elems.append(Spacer(1, 8))
 
     doc.build(
