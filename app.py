@@ -697,6 +697,15 @@ def login():
     return render_template("login.html", title="Login")
 
 
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for("login"))
+
+
+
+
 # ---------------------------------------------------------
 # Dashboard / Catálogos / Cotizador
 # ---------------------------------------------------------
