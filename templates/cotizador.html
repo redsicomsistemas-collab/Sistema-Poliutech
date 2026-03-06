@@ -42,24 +42,6 @@
         <label for="direccion" class="form-label fw-semibold">Dirección</label>
         <input type="text" id="direccion" name="direccion" class="form-control">
       </div>
-    </div>
-
-    <div class="row g-3 mt-2">
-
-      <div class="col-md-4">
-        <label for="estatus" class="form-label fw-semibold">Estatus</label>
-        <select id="estatus" name="estatus" class="form-select">
-          <option value="PENDIENTE" selected>PENDIENTE</option>
-          <option value="ENVIADA">ENVIADA</option>
-          <option value="EN NEGOCIACION">EN NEGOCIACION</option>
-          <option value="GANADA">GANADA</option>
-          <option value="PERDIDA">PERDIDA</option>
-        </select>
-      </div>
-      <div class="col-md-8">
-        <label for="notas" class="form-label fw-semibold">Condiciones comerciales</label>
-        <textarea id="notas" name="notas" class="form-control" rows="2" placeholder="Ej. tiempos de entrega, forma de pago, vigencia..."></textarea>
-      </div>
       <!-- ❌ Se quita RFC del formulario -->
     </div>
   </section>
@@ -96,7 +78,7 @@
   <section class="panel mb-4">
     <div class="row g-3 text-end">
       <div class="col-md-3 ms-auto">
-        <label class="form-label fw-semibold">Zona:</label>
+        <label class="form-label fw-semibold">Zona (descuento):</label>
         <select id="zona" name="zona" class="form-select">
           <option value="" selected>Selecciona...</option>
           <option value="Zona Norte">Zona Norte</option>
@@ -133,11 +115,27 @@
     </div>
   </section>
 
+
+  <!-- CONDICIONES COMERCIALES -->
+  <section class="panel mb-4">
+    <h5 class="mb-3 text-secondary">Condiciones comerciales</h5>
+    <div class="alert alert-light border">
+      <div class="fw-semibold mb-2">Condiciones por defecto incluidas automáticamente en el PDF:</div>
+      <ul class="mb-0">
+        {% for item in default_condiciones %}<li>{{ item }}</li>{% endfor %}
+      </ul>
+    </div>
+    <div class="mt-3">
+      <label for="notas" class="form-label fw-semibold">Condiciones adicionales (opcionales)</label>
+      <textarea id="notas" name="notas" class="form-control" rows="4" placeholder="Aquí solo agrega condiciones extras; las de cajón ya van incluidas."></textarea>
+    </div>
+  </section>
+
   <div class="d-flex justify-content-between">
     <button type="submit" class="btn btn-success fw-bold px-4">💾 Guardar Cotización</button>
     <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">⬅ Volver al Dashboard</a>
   </div>
-</form> 
+</form>
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="{{ url_for('static', filename='js/cotizador2.js') }}"></script>
