@@ -459,7 +459,8 @@ def seed_default_users():
     """Crea usuarios base si no existen (no duplica)."""
     defaults = [
         ("Ing. Antonio Azcona", "Azcona123!", "USER"),
-        ("Ing. José Solis", "Solis123!", "USER"),
+        ("Joandlc", "Joan123!", "USER"),
+        ("JSolis", "Solis123!", "ADMIN"),
     ]
     created = 0
     for nombre, password, rol in defaults:
@@ -694,6 +695,16 @@ def login():
         return redirect(url_for("index"))
 
     return render_template("login.html", title="Login")
+
+@app.route("/logout", methods=["GET"])
+@login_required
+def logout():
+    try:
+        logout_user()
+        flash("Sesión cerrada correctamente.", "success")
+    except Exception:
+        pass
+    return redirect(url_for("login"))
 
 
 # ---------------------------------------------------------
@@ -1519,7 +1530,6 @@ def export_cotizacion_xlsx(cot_id: int):
 @app.route("/cotizaciones/<int:cot_id>/export.pdf")
 @login_required
 
-
 def draw_watermark(canvas, app):
     try:
         import os
@@ -1537,29 +1547,6 @@ def draw_watermark(canvas, app):
             canvas.restoreState()
     except Exception:
         pass
-
-
-def build_condiciones_comerciales(adicionales: str | None) -> list[str]:
-    """Regresa condiciones comerciales por defecto + adicionales (sin duplicados)."""
-    base = [x.strip("•\t ").strip() for x in DEFAULT_CONDICIONES if str(x).strip()]
-    extra_lines: list[str] = []
-    if adicionales:
-        extra_lines = [
-            ln.strip("•\t ").strip()
-            for ln in str(adicionales).replace("\r\n", "\n").split("\n")
-            if ln.strip()
-        ]
-
-    merged: list[str] = []
-    seen: set[str] = set()
-
-    for item in base + extra_lines:
-        key = item.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        merged.append(item)
-    return merged
 
 
 def export_cotizacion_pdf(cot_id: int):
@@ -1737,8 +1724,7 @@ def export_cotizacion_pdf(cot_id: int):
     elems.append(Spacer(1, 10))
 
     # === CONDICIONES COMERCIALES ===
-    condiciones = build_condiciones_comerciales(c.notas)
-    if condiciones:
+    if c.notas:
         elems.append(Paragraph("<b>Condiciones Comerciales:</b>", styles["Encabezado"]))
 
         nota_style = ParagraphStyle(
@@ -1749,14 +1735,14 @@ def export_cotizacion_pdf(cot_id: int):
             fontSize=9
         )
 
-        notas_text = "<br/>".join([f"• {x}" for x in condiciones])
+        notas_text = str(c.notas).replace("\r\n", "<br/>").replace("\n", "<br/>")
         elems.append(Paragraph(notas_text, nota_style))
         elems.append(Spacer(1, 8))
 
     doc.build(
         elems,
-        onFirstPage=lambda canv, d: (draw_watermark(canv, app), encabezado(canv, d), footer(canv, d)),
-        onLaterPages=lambda canv, d: (draw_watermark(canv, app), encabezado(canv, d), footer(canv, d))
+        onFirstPage=lambda canv, d: (encabezado(canv, d), footer(canv, d)),
+        onLaterPages=lambda canv, d: (encabezado(canv, d), footer(canv, d))
     )
 
     buf.seek(0)
@@ -1916,29 +1902,23 @@ def enviar_notificaciones_pendientes():
         hace_24h = ahora - timedelta(hours=24)
 
         q = Cotizacion.query.filter_by(estatus="PENDIENTE")
+        # En recordatorios, normalmente quieres avisar admins siempre (no depende de rol)
         pendientes = q.all()
 
         for cot in pendientes:
-            try:
-                # Primer recordatorio: exactamente a partir de las 24 horas de creada
-                if ahora < (cot.fecha + timedelta(hours=24)):
-                    continue
-
-                # Después del primero: máximo 1 vez cada 24 horas si sigue pendiente
-                if cot.last_whatsapp_at is not None and cot.last_whatsapp_at > hace_24h:
-                    continue
-
-                body = (
-                    "🔔 *Recordatorio: Cotización PENDIENTE*\\n"
-                    f"Folio: *{cot.folio}*\\n"
-                    f"Fecha (CDMX): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\\n"
-                    f"Total: {money(cot.total)}"
-                )
-                send_whatsapp_multi(ADMIN_LIST, body)
-                cot.last_whatsapp_at = ahora
-                db.session.commit()
-            except Exception as e:
-                print(f"[Scheduler] ERROR recordatorio ({cot.folio}): {e}", file=sys.stderr)
+            if cot.last_whatsapp_at is None or cot.last_whatsapp_at <= hace_24h:
+                try:
+                    body = (
+                        "🔔 *Recordatorio: Cotización PENDIENTE*\\n"
+                        f"Folio: *{cot.folio}*\\n"
+                        f"Fecha (CDMX): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\\n"
+                        f"Total: {money(cot.total)}"
+                    )
+                    send_whatsapp_multi(ADMIN_LIST, body)
+                    cot.last_whatsapp_at = ahora
+                    db.session.commit()
+                except Exception as e:
+                    print(f"[Scheduler] ERROR recordatorio ({cot.folio}): {e}", file=sys.stderr)
 
 scheduler: Optional[BackgroundScheduler] = None
 try:
