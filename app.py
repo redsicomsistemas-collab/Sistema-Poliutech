@@ -11,6 +11,27 @@ from typing import Iterable, Optional, List
 from urllib.parse import urlparse
 from pathlib import Path
 
+
+# -------------------------------
+# Condiciones comerciales por defecto
+# -------------------------------
+DEFAULT_CONDICIONES = [
+"Precios en moneda nacional.",
+"El precio se respeta siempre que se haga el trabajo en una sola aplicación.",
+"La superficie debe de estar limpia, seca, firme y contar con las características que indican las cartas técnicas.",
+"Se requiere de áreas completamente libres de cualquier obstáculo que impida la instalación del sistema, areas iluminadas y lugar cercano seguro donde guardar equipos y herramientas.",
+"Se requiere corriente eléctrica 220 V y 127 V en sitio.",
+"No están consideradas fianzas, cuotas sindicales ni SIROC.",
+"No están consideradas certificaciones DC3.",
+"No está considerado personal de seguridad, brigadista ni rescatista.",
+"No están considerados exámenes médicos, clínicos ni toxicológicos.",
+"No están considerados equipos especiales.",
+"No están considerados acarreos fuera de la obra ni disposición de residuos.",
+"Todos los accesos y permisos corren por cuenta del cliente.",
+"Es importante que los sistemas sean aplicados por POLIUTECH (Aplicador certificado) para efectos de garantía.",
+"Garantía contra desprendimientos de 1 año en condiciones normales de uso."
+]
+
 from flask import (
     Flask, render_template, request, redirect, url_for,
     flash, jsonify, Response, abort, g
@@ -1498,6 +1519,28 @@ def export_cotizacion_xlsx(cot_id: int):
 # ---------------------------------------------------------
 @app.route("/cotizaciones/<int:cot_id>/export.pdf")
 @login_required
+
+from reportlab.lib.utils import ImageReader
+
+def draw_watermark(canvas, app):
+    try:
+        import os
+        watermark_path = os.path.join(app.static_folder, "watermark.png")
+        if os.path.exists(watermark_path):
+            canvas.saveState()
+            canvas.setFillAlpha(0.08)
+            img = ImageReader(watermark_path)
+            page_width, page_height = canvas._pagesize
+            width = 300
+            height = 300
+            x = (page_width - width) / 2
+            y = (page_height / 2) - 150
+            canvas.drawImage(img, x, y, width=width, height=height, mask='auto')
+            canvas.restoreState()
+    except Exception:
+        pass
+
+
 def export_cotizacion_pdf(cot_id: int):
     c = Cotizacion.query.get_or_404(cot_id)
     require_owner_or_admin(c)
