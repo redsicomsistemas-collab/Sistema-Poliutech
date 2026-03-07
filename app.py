@@ -117,6 +117,8 @@ ADMIN_LIST: List[str] = [x.strip() for x in ADMIN_WHATSAPP_RECIPIENTS.split(",")
 
 # Usa SIEMPRE los modelos desde models.py para evitar duplicados
 from models import db, Cliente, Concepto, Cotizacion, CotizacionDetalle, Usuario, ActivityLog
+from neodata_personal.routes import apu_bp  # módulo NEODATA PERSONAL
+
 # ---------------------------------------------------------
 # Flask + DB + Login
 # ---------------------------------------------------------
@@ -126,6 +128,8 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", DEFAULT_DATABA
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db.init_app(app)
+app.register_blueprint(apu_bp)  # registrar módulo NEODATA
+
 
 login_manager = LoginManager()
 login_manager.init_app(app)

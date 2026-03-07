@@ -1,0 +1,23 @@
+
+<h1>APU</h1>
+
+<a href="/apu/crear">Nuevo APU</a>
+
+<table border="1">
+<tr>
+<th>ID</th>
+<th>Concepto</th>
+<th>Unidad</th>
+<th>Precio Unitario</th>
+</tr>
+
+{% for apu in apus %}
+<tr>
+<td>{{ apu.id }}</td>
+<td>{{ apu.concepto }}</td>
+<td>{{ apu.unidad }}</td>
+<td>{{ apu.precio_unitario }}</td>
+</tr>
+{% endfor %}
+
+</table>
