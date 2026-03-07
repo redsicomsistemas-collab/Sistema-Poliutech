@@ -1,6 +1,7 @@
 
 from flask import Blueprint, render_template, request, redirect, url_for
-from .models import db, APU
+from models import db
+from .models import APU
 from .calc import recalcular_apu
 
 apu_bp = Blueprint("apu", __name__, url_prefix="/apu")

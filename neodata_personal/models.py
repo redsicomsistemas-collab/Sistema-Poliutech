@@ -1,36 +1,34 @@
 
 from datetime import datetime
-from flask_sqlalchemy import SQLAlchemy
-
-db = SQLAlchemy()
+from models import db  # usar el db central del sistema
 
 class Material(db.Model):
-    __tablename__ = 'materiales'
+    __tablename__ = 'apu_material'
 
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(200), unique=True, nullable=False)
-    unidad = db.Column(db.String(50), nullable=False)
+    unidad = db.Column(db.String(50))
     precio_unitario = db.Column(db.Float, default=0.0)
     proveedor = db.Column(db.String(200))
     fecha_actualizacion = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class ManoObra(db.Model):
-    __tablename__ = 'mano_obra'
+    __tablename__ = 'apu_mano_obra'
 
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(200), unique=True, nullable=False)
-    unidad = db.Column(db.String(50), nullable=False)
+    unidad = db.Column(db.String(50))
     precio_unitario = db.Column(db.Float, default=0.0)
     fecha_actualizacion = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class Maquinaria(db.Model):
-    __tablename__ = 'maquinaria'
+    __tablename__ = 'apu_maquinaria'
 
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(200), unique=True, nullable=False)
-    unidad = db.Column(db.String(50), nullable=False)
+    unidad = db.Column(db.String(50))
     precio_unitario = db.Column(db.Float, default=0.0)
     fecha_actualizacion = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -57,7 +55,7 @@ class APU(db.Model):
     creado_en = db.Column(db.DateTime, default=datetime.utcnow)
     actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    detalles = db.relationship("APUDetalle", backref="apu", cascade="all, delete-orphan", lazy=True)
+    detalles = db.relationship("APUDetalle", backref="apu", cascade="all, delete-orphan")
 
 
 class APUDetalle(db.Model):
@@ -66,7 +64,7 @@ class APUDetalle(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     apu_id = db.Column(db.Integer, db.ForeignKey("apu.id"), nullable=False)
 
-    tipo_insumo = db.Column(db.String(20))  # material, mano_obra, maquinaria
+    tipo_insumo = db.Column(db.String(20))
     descripcion = db.Column(db.String(300))
 
     unidad = db.Column(db.String(50))
