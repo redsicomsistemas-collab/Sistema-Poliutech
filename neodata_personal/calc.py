@@ -5,7 +5,6 @@ def round4(n):
     except Exception:
         return 0.0
 
-
 def recalcular_apu(apu):
     costo_materiales = 0.0
     costo_mano_obra = 0.0
@@ -13,7 +12,6 @@ def recalcular_apu(apu):
 
     for d in apu.detalles:
         d.subtotal = round4((d.cantidad or 0) * (d.precio_unitario or 0))
-
         if d.tipo_insumo == "material":
             costo_materiales += d.subtotal
         elif d.tipo_insumo == "mano_obra":
@@ -25,8 +23,7 @@ def recalcular_apu(apu):
     apu.costo_mano_obra = round4(costo_mano_obra)
     apu.costo_maquinaria = round4(costo_maquinaria)
 
-    costo_directo = costo_materiales + costo_mano_obra + costo_maquinaria
-    apu.costo_directo = round4(costo_directo)
+    apu.costo_directo = round4(costo_materiales + costo_mano_obra + costo_maquinaria)
 
     factor = (
         (apu.indirecto_pct or 0)
@@ -35,5 +32,5 @@ def recalcular_apu(apu):
         + (apu.cargos_adicionales_pct or 0)
     ) / 100.0
 
-    apu.precio_unitario = round4(costo_directo * (1 + factor))
+    apu.precio_unitario = round4(apu.costo_directo * (1 + factor))
     return apu

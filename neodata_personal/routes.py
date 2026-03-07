@@ -67,9 +67,6 @@ def index():
         title="MAR DATA"
     )
 
-# -----------------------------
-# MATERIALES
-# -----------------------------
 @apu_bp.route("/materiales")
 @login_required
 def materiales_list():
@@ -118,9 +115,6 @@ def materiales_delete(item_id):
     flash("Material eliminado.", "success")
     return redirect(url_for("apu.materiales_list"))
 
-# -----------------------------
-# MANO DE OBRA
-# -----------------------------
 @apu_bp.route("/mano-obra")
 @login_required
 def mano_obra_list():
@@ -167,9 +161,6 @@ def mano_obra_delete(item_id):
     flash("Mano de obra eliminada.", "success")
     return redirect(url_for("apu.mano_obra_list"))
 
-# -----------------------------
-# MAQUINARIA
-# -----------------------------
 @apu_bp.route("/maquinaria")
 @login_required
 def maquinaria_list():
@@ -216,9 +207,6 @@ def maquinaria_delete(item_id):
     flash("Maquinaria eliminada.", "success")
     return redirect(url_for("apu.maquinaria_list"))
 
-# -----------------------------
-# APU
-# -----------------------------
 @apu_bp.route("/lista")
 @login_required
 def apu_list():
@@ -389,12 +377,14 @@ def apu_to_catalogo(apu_id):
             nombre_concepto=apu.concepto,
             unidad=apu.unidad,
             precio_unitario=apu.precio_unitario,
+            sistema="MAR DATA",
             descripcion=f"Generado desde MAR DATA {apu.clave or apu.id}",
         )
         db.session.add(concepto)
     else:
         concepto.unidad = apu.unidad
         concepto.precio_unitario = apu.precio_unitario
+        concepto.sistema = "MAR DATA"
         if not concepto.descripcion:
             concepto.descripcion = f"Actualizado desde MAR DATA {apu.clave or apu.id}"
 
@@ -402,9 +392,6 @@ def apu_to_catalogo(apu_id):
     flash("APU enviado al catálogo de conceptos.", "success")
     return redirect(url_for("apu.apu_edit", apu_id=apu.id))
 
-# -----------------------------
-# PLANTILLAS Y GENERADOR
-# -----------------------------
 @apu_bp.route("/plantillas")
 @login_required
 def plantillas():
@@ -465,8 +452,4 @@ def generador():
         flash("APU generado automáticamente desde plantilla.", "success")
         return redirect(url_for("apu.apu_edit", apu_id=apu.id))
 
-    return render_template(
-        "neodata/generador.html",
-        plantillas=plantillas,
-        title="Generador automático MAR DATA"
-    )
+    return render_template("neodata/generador.html", plantillas=plantillas, title="Generador automático MAR DATA")

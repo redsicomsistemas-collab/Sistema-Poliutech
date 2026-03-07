@@ -117,7 +117,7 @@ ADMIN_LIST: List[str] = [x.strip() for x in ADMIN_WHATSAPP_RECIPIENTS.split(",")
 
 # Usa SIEMPRE los modelos desde models.py para evitar duplicados
 from models import db, Cliente, Concepto, Cotizacion, CotizacionDetalle, Usuario, ActivityLog
-from neodata_personal.routes import apu_bp  # módulo NEODATA PERSONAL
+from neodata_personal.routes import apu_bp  # módulo MAR DATA
 
 # ---------------------------------------------------------
 # Flask + DB + Login
@@ -128,7 +128,7 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", DEFAULT_DATABA
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db.init_app(app)
-app.register_blueprint(apu_bp)  # registrar módulo NEODATA
+app.register_blueprint(apu_bp)  # registrar módulo MAR DATA
 
 
 login_manager = LoginManager()
@@ -758,7 +758,7 @@ def index():
 
     return render_template(
         "dashboard.html",
-        title="Sistema Poliutech",
+        title="Sistema MAR",
         total_cotizaciones=total_cotizaciones,
         total_importe=float(total_importe),
         total_catalogo=total_catalogo,
@@ -769,7 +769,7 @@ def index():
 @app.route("/cotizador")
 @login_required
 def cotizador():
-    return render_template("cotizador.html", title="Nuevo - Sistema Poliutech", default_condiciones=DEFAULT_CONDICIONES)
+    return render_template("cotizador.html", title="Nuevo - Sistema MAR", default_condiciones=DEFAULT_CONDICIONES)
 
 @app.route("/admin/catalogos")
 @login_required
@@ -1372,7 +1372,7 @@ def list_cotizaciones():
     return render_template(
         "cotizaciones_list.html",
         items=items, page=page, pages=pages, total=total,
-        title="Cotizaciones · Sistema Poliutech"
+        title="Cotizaciones · Sistema MAR"
     )
 
 @app.route("/cotizaciones/<int:cot_id>")
