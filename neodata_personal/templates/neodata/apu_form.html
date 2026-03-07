@@ -1,0 +1,133 @@
+
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4">
+  <h1>{{ title }}</h1>
+
+  <form method="post" style="border:1px solid #ddd;padding:16px;border-radius:12px;margin-bottom:20px;">
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:14px;">
+      <div>
+        <label>Clave</label><br>
+        <input name="clave" value="{{ apu.clave if apu else '' }}" style="width:100%;">
+      </div>
+      <div style="grid-column:span 2;">
+        <label>Concepto</label><br>
+        <input name="concepto" value="{{ apu.concepto if apu else '' }}" style="width:100%;" required>
+      </div>
+      <div>
+        <label>Unidad</label><br>
+        <input name="unidad" value="{{ apu.unidad if apu else 'm2' }}" style="width:100%;">
+      </div>
+      <div>
+        <label>Indirecto %</label><br>
+        <input name="indirecto_pct" type="number" step="0.0001" value="{{ apu.indirecto_pct if apu else 0 }}" style="width:100%;">
+      </div>
+      <div>
+        <label>Utilidad %</label><br>
+        <input name="utilidad_pct" type="number" step="0.0001" value="{{ apu.utilidad_pct if apu else 0 }}" style="width:100%;">
+      </div>
+      <div>
+        <label>Financiamiento %</label><br>
+        <input name="financiamiento_pct" type="number" step="0.0001" value="{{ apu.financiamiento_pct if apu else 0 }}" style="width:100%;">
+      </div>
+      <div>
+        <label>Cargos adicionales %</label><br>
+        <input name="cargos_adicionales_pct" type="number" step="0.0001" value="{{ apu.cargos_adicionales_pct if apu else 0 }}" style="width:100%;">
+      </div>
+    </div>
+    <div style="margin-top:16px;">
+      <button type="submit">Guardar encabezado</button>
+      <a href="{{ url_for('apu.apu_list') }}">Volver</a>
+    </div>
+  </form>
+
+  {% if apu %}
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px;">
+    <form method="post" action="{{ url_for('apu.apu_detalle_add', apu_id=apu.id) }}" style="border:1px solid #ddd;padding:16px;border-radius:12px;">
+      <h3>Agregar material</h3>
+      <input type="hidden" name="tipo_insumo" value="material">
+      <p>Material<br>
+        <select name="referencia_id" style="width:100%;">
+          {% for i in materiales %}
+          <option value="{{ i.id }}">{{ i.nombre }} — {{ i.unidad }} — ${{ '%.2f'|format(i.precio_unitario or 0) }}</option>
+          {% endfor %}
+        </select>
+      </p>
+      <p>Cantidad<br><input name="cantidad" type="number" step="0.0001" value="1" style="width:100%;"></p>
+      <button type="submit">Agregar</button>
+    </form>
+
+    <form method="post" action="{{ url_for('apu.apu_detalle_add', apu_id=apu.id) }}" style="border:1px solid #ddd;padding:16px;border-radius:12px;">
+      <h3>Agregar mano de obra</h3>
+      <input type="hidden" name="tipo_insumo" value="mano_obra">
+      <p>Recurso<br>
+        <select name="referencia_id" style="width:100%;">
+          {% for i in mano_obra %}
+          <option value="{{ i.id }}">{{ i.nombre }} — {{ i.unidad }} — ${{ '%.2f'|format(i.precio_unitario or 0) }}</option>
+          {% endfor %}
+        </select>
+      </p>
+      <p>Cantidad<br><input name="cantidad" type="number" step="0.0001" value="1" style="width:100%;"></p>
+      <button type="submit">Agregar</button>
+    </form>
+
+    <form method="post" action="{{ url_for('apu.apu_detalle_add', apu_id=apu.id) }}" style="border:1px solid #ddd;padding:16px;border-radius:12px;">
+      <h3>Agregar maquinaria</h3>
+      <input type="hidden" name="tipo_insumo" value="maquinaria">
+      <p>Equipo<br>
+        <select name="referencia_id" style="width:100%;">
+          {% for i in maquinarias %}
+          <option value="{{ i.id }}">{{ i.nombre }} — {{ i.unidad }} — ${{ '%.2f'|format(i.precio_unitario or 0) }}</option>
+          {% endfor %}
+        </select>
+      </p>
+      <p>Cantidad<br><input name="cantidad" type="number" step="0.0001" value="1" style="width:100%;"></p>
+      <button type="submit">Agregar</button>
+    </form>
+  </div>
+
+  <h3>Detalle del análisis</h3>
+  <table border="1" cellpadding="8" cellspacing="0" width="100%">
+    <tr>
+      <th>Tipo</th><th>Descripción</th><th>Unidad</th><th>Cantidad</th><th>PU</th><th>Subtotal</th><th>Acciones</th>
+    </tr>
+    {% for d in apu.detalles %}
+    <tr>
+      <td>{{ d.tipo_insumo }}</td>
+      <td>{{ d.descripcion }}</td>
+      <td>{{ d.unidad }}</td>
+      <td>
+        <form method="post" action="{{ url_for('apu.apu_detalle_update', detalle_id=d.id) }}" style="display:flex;gap:6px;align-items:center;">
+          <input name="cantidad" type="number" step="0.0001" value="{{ d.cantidad }}" style="width:90px;">
+      </td>
+      <td>
+          <input name="precio_unitario" type="number" step="0.0001" value="{{ d.precio_unitario }}" style="width:110px;">
+      </td>
+      <td>${{ '%.2f'|format(d.subtotal or 0) }}</td>
+      <td>
+          <button type="submit">Actualizar</button>
+        </form>
+        <form method="post" action="{{ url_for('apu.apu_detalle_delete', detalle_id=d.id) }}" style="display:inline;" onsubmit="return confirm('¿Eliminar renglón?');">
+          <button type="submit">Eliminar</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <div style="margin-top:20px;display:grid;grid-template-columns:repeat(2,minmax(220px,320px));gap:10px;">
+    <div style="border:1px solid #ddd;padding:14px;border-radius:12px;">Materiales: <b>${{ '%.2f'|format(apu.costo_materiales or 0) }}</b></div>
+    <div style="border:1px solid #ddd;padding:14px;border-radius:12px;">Mano de obra: <b>${{ '%.2f'|format(apu.costo_mano_obra or 0) }}</b></div>
+    <div style="border:1px solid #ddd;padding:14px;border-radius:12px;">Maquinaria: <b>${{ '%.2f'|format(apu.costo_maquinaria or 0) }}</b></div>
+    <div style="border:1px solid #ddd;padding:14px;border-radius:12px;">Costo directo: <b>${{ '%.2f'|format(apu.costo_directo or 0) }}</b></div>
+    <div style="border:2px solid #0d47a1;padding:14px;border-radius:12px;background:#eef4ff;">Precio unitario final: <b>${{ '%.2f'|format(apu.precio_unitario or 0) }}</b> / {{ apu.unidad }}</div>
+  </div>
+
+  <div style="margin-top:16px;">
+    <form method="post" action="{{ url_for('apu.apu_to_catalogo', apu_id=apu.id) }}" style="display:inline;">
+      <button type="submit">Mandar a catálogo de conceptos</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

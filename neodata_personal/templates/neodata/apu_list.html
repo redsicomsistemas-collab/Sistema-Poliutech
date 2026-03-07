@@ -1,0 +1,30 @@
+
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4">
+  <h1>Lista de APU</h1>
+  <p><a href="{{ url_for('apu.apu_new') }}">+ Nuevo APU</a> | <a href="{{ url_for('apu.index') }}">Volver al módulo APU</a></p>
+  <table border="1" cellpadding="8" cellspacing="0" width="100%">
+    <tr>
+      <th>ID</th><th>Clave</th><th>Concepto</th><th>Unidad</th>
+      <th>Directo</th><th>PU</th><th>Acciones</th>
+    </tr>
+    {% for item in items %}
+    <tr>
+      <td>{{ item.id }}</td>
+      <td>{{ item.clave or '' }}</td>
+      <td>{{ item.concepto }}</td>
+      <td>{{ item.unidad }}</td>
+      <td>${{ '%.2f'|format(item.costo_directo or 0) }}</td>
+      <td>${{ '%.2f'|format(item.precio_unitario or 0) }}</td>
+      <td>
+        <a href="{{ url_for('apu.apu_edit', apu_id=item.id) }}">Editar</a>
+        <form method="post" action="{{ url_for('apu.apu_delete', apu_id=item.id) }}" style="display:inline;" onsubmit="return confirm('¿Eliminar APU?');">
+          <button type="submit">Eliminar</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}
