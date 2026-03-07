@@ -5,7 +5,7 @@ from models import db, Concepto
 from .models import Material, ManoObra, Maquinaria, APU, APUDetalle
 from .calc import recalcular_apu
 
-apu_bp = Blueprint("apu", __name__, url_prefix="/apu")
+apu_bp = Blueprint("apu", __name__, url_prefix="/apu", template_folder="templates")
 
 def _f(v, default=0.0):
     try:
