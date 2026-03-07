@@ -5,7 +5,7 @@
   <h1>MAR DATA</h1>
   <p>Módulo de análisis de precios unitarios integrado a Sistema MAR.</p>
 
-  <div class="row" style="display:grid;grid-template-columns:repeat(4,minmax(180px,1fr));gap:16px;margin:20px 0;">
+  <div style="display:grid;grid-template-columns:repeat(4,minmax(180px,1fr));gap:16px;margin:20px 0;">
     <div style="padding:16px;border:1px solid #ddd;border-radius:12px;"><b>Materiales</b><br>{{ total_materiales }}</div>
     <div style="padding:16px;border:1px solid #ddd;border-radius:12px;"><b>Mano de obra</b><br>{{ total_mano_obra }}</div>
     <div style="padding:16px;border:1px solid #ddd;border-radius:12px;"><b>Maquinaria</b><br>{{ total_maquinaria }}</div>
@@ -18,6 +18,8 @@
     <a href="{{ url_for('apu.maquinaria_list') }}">Maquinaria</a>
     <a href="{{ url_for('apu.apu_list') }}">Lista APU</a>
     <a href="{{ url_for('apu.apu_new') }}">Nuevo APU</a>
+    <a href="{{ url_for('apu.plantillas') }}">Plantillas</a>
+    <a href="{{ url_for('apu.generador') }}">Generador automático</a>
   </div>
 
   <h3>Últimos APU</h3>

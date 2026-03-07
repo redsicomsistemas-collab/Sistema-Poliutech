@@ -5,7 +5,7 @@
   <h1>{{ title }}</h1>
   <form method="post">
     <p>Nombre<br><input name="nombre" value="{{ item.nombre if item else '' }}" required style="width:420px;"></p>
-    <p>Unidad<br><input name="unidad" value="{{ item.unidad if item else 'pza' }}" style="width:160px;"></p>
+    <p>Unidad<br><input name="unidad" value="{{ item.unidad if item else 'kg' }}" style="width:160px;"></p>
     <p>Precio unitario<br><input name="precio_unitario" type="number" step="0.0001" value="{{ item.precio_unitario if item else 0 }}" style="width:200px;"></p>
     <p>Proveedor<br><input name="proveedor" value="{{ item.proveedor if item else '' }}" style="width:420px;"></p>
     <button type="submit">Guardar</button>

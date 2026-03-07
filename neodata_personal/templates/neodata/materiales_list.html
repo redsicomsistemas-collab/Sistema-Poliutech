@@ -3,7 +3,7 @@
 {% block content %}
 <div class="container py-4">
   <h1>Materiales</h1>
-  <p><a href="{{ url_for('apu.materiales_new') }}">+ Nuevo material</a> | <a href="{{ url_for('apu.index') }}">Volver al módulo APU</a></p>
+  <p><a href="{{ url_for('apu.materiales_new') }}">+ Nuevo material</a> | <a href="{{ url_for('apu.index') }}">Volver a MAR DATA</a></p>
   <table border="1" cellpadding="8" cellspacing="0" width="100%">
     <tr><th>ID</th><th>Nombre</th><th>Unidad</th><th>PU</th><th>Proveedor</th><th>Acciones</th></tr>
     {% for item in items %}

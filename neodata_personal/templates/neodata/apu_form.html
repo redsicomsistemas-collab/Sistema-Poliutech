@@ -42,6 +42,15 @@
   </form>
 
   {% if apu %}
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+    <form method="post" action="{{ url_for('apu.apu_duplica', apu_id=apu.id) }}" style="display:inline;">
+      <button type="submit">Duplicar APU</button>
+    </form>
+    <form method="post" action="{{ url_for('apu.apu_to_catalogo', apu_id=apu.id) }}" style="display:inline;">
+      <button type="submit">Mandar a catálogo de conceptos</button>
+    </form>
+  </div>
+
   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px;">
     <form method="post" action="{{ url_for('apu.apu_detalle_add', apu_id=apu.id) }}" style="border:1px solid #ddd;padding:16px;border-radius:12px;">
       <h3>Agregar material</h3>
@@ -121,12 +130,6 @@
     <div style="border:1px solid #ddd;padding:14px;border-radius:12px;">Maquinaria: <b>${{ '%.2f'|format(apu.costo_maquinaria or 0) }}</b></div>
     <div style="border:1px solid #ddd;padding:14px;border-radius:12px;">Costo directo: <b>${{ '%.2f'|format(apu.costo_directo or 0) }}</b></div>
     <div style="border:2px solid #0d47a1;padding:14px;border-radius:12px;background:#eef4ff;">Precio unitario final: <b>${{ '%.2f'|format(apu.precio_unitario or 0) }}</b> / {{ apu.unidad }}</div>
-  </div>
-
-  <div style="margin-top:16px;">
-    <form method="post" action="{{ url_for('apu.apu_to_catalogo', apu_id=apu.id) }}" style="display:inline;">
-      <button type="submit">Mandar a catálogo de conceptos</button>
-    </form>
   </div>
   {% endif %}
 </div>

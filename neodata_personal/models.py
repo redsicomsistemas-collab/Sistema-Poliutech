@@ -7,7 +7,7 @@ class Material(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(200), unique=True, nullable=False)
-    unidad = db.Column(db.String(50), nullable=False, default="pza")
+    unidad = db.Column(db.String(50), nullable=False, default="kg")
     precio_unitario = db.Column(db.Float, nullable=False, default=0.0)
     proveedor = db.Column(db.String(200))
     fecha_actualizacion = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -85,7 +85,7 @@ class APUDetalle(db.Model):
     referencia_id = db.Column(db.Integer, nullable=True)
     descripcion = db.Column(db.String(300), nullable=False)
 
-    unidad = db.Column(db.String(50), nullable=False, default="pza")
+    unidad = db.Column(db.String(50), nullable=False, default="kg")
     cantidad = db.Column(db.Float, nullable=False, default=0.0)
     precio_unitario = db.Column(db.Float, nullable=False, default=0.0)
     subtotal = db.Column(db.Float, nullable=False, default=0.0)

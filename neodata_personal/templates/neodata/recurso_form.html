@@ -8,11 +8,7 @@
     <p>Unidad<br><input name="unidad" value="{{ item.unidad if item else '' }}" style="width:160px;"></p>
     <p>Precio unitario<br><input name="precio_unitario" type="number" step="0.0001" value="{{ item.precio_unitario if item else 0 }}" style="width:200px;"></p>
     <button type="submit">Guardar</button>
-    {% if tipo == 'mano_obra' %}
-      <a href="{{ url_for('apu.mano_obra_list') }}">Cancelar</a>
-    {% else %}
-      <a href="{{ url_for('apu.maquinaria_list') }}">Cancelar</a>
-    {% endif %}
+    <a href="{{ back }}">Cancelar</a>
   </form>
 </div>
 {% endblock %}

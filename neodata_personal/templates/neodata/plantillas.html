@@ -1,0 +1,23 @@
+
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4">
+  <h1>Plantillas MAR DATA</h1>
+  <p><a href="{{ url_for('apu.generador') }}">Ir al generador automático</a> | <a href="{{ url_for('apu.index') }}">Volver a MAR DATA</a></p>
+  <table border="1" cellpadding="8" cellspacing="0" width="100%">
+    <tr>
+      <th>Clave</th><th>Nombre</th><th>Unidad</th><th>Indirecto</th><th>Utilidad</th><th>Espesor default</th>
+    </tr>
+    {% for item in items %}
+    <tr>
+      <td>{{ item.clave }}</td>
+      <td>{{ item.nombre }}</td>
+      <td>{{ item.unidad }}</td>
+      <td>{{ item.indirecto }}%</td>
+      <td>{{ item.utilidad }}%</td>
+      <td>{{ item.espesor_default }} mm</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}
