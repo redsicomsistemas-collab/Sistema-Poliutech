@@ -28,7 +28,7 @@ def index():
         total_maquinaria=Maquinaria.query.count(),
         total_apu=APU.query.count(),
         apus=APU.query.order_by(APU.actualizado_en.desc()).limit(20).all(),
-        title="APU / NEODATA PERSONAL"
+        title="APU / MAR DATA"
     )
 
 # -------------------------------------------------
