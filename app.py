@@ -117,9 +117,7 @@ ADMIN_LIST: List[str] = [x.strip() for x in ADMIN_WHATSAPP_RECIPIENTS.split(",")
 
 # Usa SIEMPRE los modelos desde models.py para evitar duplicados
 from models import db, Cliente, Concepto, Cotizacion, CotizacionDetalle, Usuario, ActivityLog
-from neodata_personal.routes import apu_bp
-from mar_data_pro_blueprint import mar_data_pro_bp
-from mar_data_advanced_blueprint import mar_data_advanced_bp  # módulo MAR DATA
+from neodata_personal.routes import apu_bp  # módulo MAR DATA
 
 # ---------------------------------------------------------
 # Flask + DB + Login
@@ -130,9 +128,7 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", DEFAULT_DATABA
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db.init_app(app)
-app.register_blueprint(apu_bp)
-app.register_blueprint(mar_data_pro_bp)
-app.register_blueprint(mar_data_advanced_bp)  # registrar módulo MAR DATA
+app.register_blueprint(apu_bp)  # registrar módulo MAR DATA
 
 
 login_manager = LoginManager()
@@ -586,22 +582,6 @@ def require_cliente_owner_or_admin(cli: Cliente) -> None:
     if not ra or (cli.responsable or "") != ra:
         abort(403)
 
-
-
-def _parse_float_loose(v, default=0.0):
-    try:
-        if v is None or v == "":
-            return default
-        return float(str(v).replace(",", "").replace("$", "").strip())
-    except Exception:
-        return default
-
-def _read_mar_data_extras_from_form(f):
-    area_total = _parse_float_loose(f.get("area_total"), 0.0)
-    memoria_tecnica = (f.get("memoria_tecnica") or "").strip() or None
-    lista_materiales_json = (f.get("lista_materiales_json") or "").strip() or None
-    return area_total, memoria_tecnica, lista_materiales_json
-
 def generar_folio() -> str:
     prefix = "PTCH-"
     maxn = 0
@@ -775,11 +755,6 @@ def index():
                         .order_by(Cotizacion.fecha.desc()).limit(100).all())
 
     total_catalogo = Concepto.query.count()
-    try:
-        from neodata_personal.models import APU
-        total_apu = APU.query.count()
-    except Exception:
-        total_apu = 0
 
     return render_template(
         "dashboard.html",
@@ -787,7 +762,6 @@ def index():
         total_cotizaciones=total_cotizaciones,
         total_importe=float(total_importe),
         total_catalogo=total_catalogo,
-        total_apu=total_apu,
         cotizaciones=cotizaciones,
         show_splash=True
     )
@@ -938,10 +912,6 @@ def crear_cotizacion():
         last_whatsapp_at=None,
         responsable=responsable_final
     )
-    area_total, memoria_tecnica, lista_materiales_json = _read_mar_data_extras_from_form(f)
-    cot.area_total = area_total
-    cot.memoria_tecnica = memoria_tecnica
-    cot.lista_materiales_json = lista_materiales_json
     db.session.add(cot)
     db.session.flush()
 
@@ -1126,10 +1096,6 @@ def actualizar_cotizacion(cot_id: int):
     c.estatus = (f.get("estatus") or c.estatus).upper()
     c.notas = (f.get("notas") or "").strip()
     c.responsable = (responsable_final or c.responsable)
-    area_total, memoria_tecnica, lista_materiales_json = _read_mar_data_extras_from_form(f)
-    c.area_total = area_total
-    c.memoria_tecnica = memoria_tecnica
-    c.lista_materiales_json = lista_materiales_json
     iva_porc = parse_float(f.get("iva_porc"), c.iva_porc or 16.0)
 
     # --- Zona (descuento) ---
@@ -1804,55 +1770,6 @@ def export_cotizacion_pdf(cot_id: int):
         elems.append(Paragraph(bullets, nota_style))
         elems.append(Spacer(1, 8))
 
-
-# === ÁREA CALCULADA ===
-if float(c.area_total or 0) > 0:
-    elems.append(Paragraph("<b>Área calculada:</b>", styles["Encabezado"]))
-    elems.append(Paragraph(f"Área total considerada: {c.area_total:.2f} m²", styles["Encabezado"]))
-    elems.append(Spacer(1, 6))
-
-# === LISTA DE MATERIALES ===
-if c.lista_materiales_json:
-    try:
-        lm = json.loads(c.lista_materiales_json)
-        items = lm.get("items", []) if isinstance(lm, dict) else []
-        if items:
-            elems.append(Paragraph("<b>Lista de materiales:</b>", styles["Encabezado"]))
-            mat_data = [["Material", "Unidad", "Consumo", "Cantidad total", "Costo total"]]
-            for it in items:
-                mat_data.append([
-                    Paragraph(str(it.get("nombre","")), styles["BodyText"]),
-                    str(it.get("unidad","")),
-                    f'{float(it.get("consumo_unitario",0)):.4f}',
-                    f'{float(it.get("cantidad_total",0)):.2f}',
-                    money(float(it.get("costo_total",0))),
-                ])
-            mt = Table(mat_data, colWidths=[65*mm, 18*mm, 24*mm, 28*mm, 28*mm], repeatRows=1)
-            mt.setStyle(TableStyle([
-                ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#dce6f1")),
-                ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
-                ("FONTSIZE", (0,0), (-1,-1), 8),
-                ("VALIGN", (0,0), (-1,-1), "TOP"),
-            ]))
-            elems.append(mt)
-            elems.append(Spacer(1, 8))
-    except Exception as e:
-        print(f"[PDF] lista_materiales_json error: {e}", file=sys.stderr)
-
-# === MEMORIA TÉCNICA ===
-if c.memoria_tecnica:
-    elems.append(Paragraph("<b>Memoria técnica:</b>", styles["Encabezado"]))
-    mem_style = ParagraphStyle(
-        "MemoriaJustify",
-        parent=styles["Normal"],
-        alignment=TA_JUSTIFY,
-        leading=11,
-        fontSize=9,
-    )
-    memoria_html = "<br/>".join([ln for ln in str(c.memoria_tecnica).splitlines()])
-    elems.append(Paragraph(memoria_html, mem_style))
-    elems.append(Spacer(1, 8))
-
     doc.build(
         elems,
         onFirstPage=lambda canv, d: (draw_watermark(canv, app), encabezado(canv, d), footer(canv, d)),
@@ -2122,3 +2039,4 @@ if __name__ == "__main__":
     except Exception:
         pass
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True)
+
