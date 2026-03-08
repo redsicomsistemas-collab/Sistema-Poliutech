@@ -1,0 +1,41 @@
+
+<div class="card shadow-sm mb-4">
+  <div class="card-body py-2">
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{{ url_for('apu.materiales_list') }}"
+         class="btn btn-sm {% if request.endpoint in ['apu.materiales_list','apu.materiales_new','apu.materiales_edit'] %}btn-primary{% else %}btn-outline-primary{% endif %}">
+         Materiales
+      </a>
+
+      <a href="{{ url_for('apu.mano_obra_list') }}"
+         class="btn btn-sm {% if request.endpoint in ['apu.mano_obra_list','apu.mano_obra_new','apu.mano_obra_edit'] %}btn-primary{% else %}btn-outline-primary{% endif %}">
+         Mano de obra
+      </a>
+
+      <a href="{{ url_for('apu.maquinaria_list') }}"
+         class="btn btn-sm {% if request.endpoint in ['apu.maquinaria_list','apu.maquinaria_new','apu.maquinaria_edit'] %}btn-primary{% else %}btn-outline-primary{% endif %}">
+         Maquinaria
+      </a>
+
+      <a href="{{ url_for('apu.apu_list') }}"
+         class="btn btn-sm {% if request.endpoint == 'apu.apu_list' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+         Lista APU
+      </a>
+
+      <a href="{{ url_for('apu.apu_new') }}"
+         class="btn btn-sm {% if request.endpoint == 'apu.apu_new' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+         Nuevo APU
+      </a>
+
+      <a href="{{ url_for('apu.plantillas') }}"
+         class="btn btn-sm {% if request.endpoint == 'apu.plantillas' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+         Plantillas
+      </a>
+
+      <a href="{{ url_for('apu.generador') }}"
+         class="btn btn-sm {% if request.endpoint == 'apu.generador' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+         Generador automático
+      </a>
+    </div>
+  </div>
+</div>

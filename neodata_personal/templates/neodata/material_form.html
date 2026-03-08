@@ -3,6 +3,7 @@
 {% block content %}
 <div class="container py-4">
   <h1>{{ title }}</h1>
+  {% include "partials/mar_data_nav.html" %}
   <form method="post">
     <p>Nombre<br><input name="nombre" value="{{ item.nombre if item else '' }}" required style="width:420px;"></p>
     <p>Unidad<br><input name="unidad" value="{{ item.unidad if item else 'kg' }}" style="width:160px;"></p>
