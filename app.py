@@ -65,7 +65,7 @@ from flask import (
     flash, jsonify, Response, abort, g
 )
 
-from sqlalchemy import text, or_
+from sqlalchemy import text, or_, case
 
 # ReportLab (PDF)
 from reportlab.lib.pagesizes import A4
@@ -555,6 +555,14 @@ def setup_admin():
 # ---------------------------------------------------------
 def is_admin() -> bool:
     return bool(getattr(current_user, "is_authenticated", False) and (getattr(current_user, "rol", "") or "").upper() == "ADMIN")
+
+def normalize_user_role(value: str) -> str:
+    rol = (value or "").strip().upper()
+    return "ADMIN" if rol == "ADMIN" else "USER"
+
+def admin_users_base_query():
+    admin_first = case((db.func.upper(Usuario.rol) == "ADMIN", 0), else_=1)
+    return Usuario.query.order_by(admin_first, Usuario.nombre.asc())
 
 def responsable_actual() -> str:
     """
@@ -2022,6 +2030,119 @@ def admin_bitacora():
     )
 
 # ---------------------------------------------------------
+@app.route("/admin/usuarios", methods=["GET", "POST"])
+@login_required
+def admin_usuarios():
+    if not is_admin():
+        abort(403)
+
+    if request.method == "POST":
+        nombre = (request.form.get("nombre") or "").strip()
+        password = (request.form.get("password") or "").strip()
+        rol = normalize_user_role(request.form.get("rol"))
+
+        if not nombre:
+            flash("El nombre del usuario es obligatorio.", "danger")
+            return redirect(url_for("admin_usuarios"))
+        if not password:
+            flash("La contrasena es obligatoria para crear un usuario.", "danger")
+            return redirect(url_for("admin_usuarios"))
+
+        exists = Usuario.query.filter(db.func.lower(Usuario.nombre) == nombre.lower()).first()
+        if exists:
+            flash("Ya existe un usuario con ese nombre.", "danger")
+            return redirect(url_for("admin_usuarios"))
+
+        nuevo = Usuario(nombre=nombre, rol=rol)
+        nuevo.set_password(password)
+        db.session.add(nuevo)
+        db.session.commit()
+        flash(f"Usuario '{nombre}' creado correctamente.", "success")
+        return redirect(url_for("admin_usuarios"))
+
+    q = (request.args.get("q") or "").strip()
+    usuarios_query = admin_users_base_query()
+    if q:
+        usuarios_query = usuarios_query.filter(Usuario.nombre.ilike(f"%{q}%"))
+
+    usuarios = usuarios_query.all()
+    total_admins = Usuario.query.filter(db.func.upper(Usuario.rol) == "ADMIN").count()
+    return render_template(
+        "admin_usuarios.html",
+        usuarios=usuarios,
+        q=q,
+        total=len(usuarios),
+        total_admins=total_admins,
+    )
+
+@app.route("/admin/usuarios/<int:user_id>/editar", methods=["POST"])
+@login_required
+def admin_usuario_editar(user_id: int):
+    if not is_admin():
+        abort(403)
+
+    usuario = Usuario.query.get_or_404(user_id)
+    nombre = (request.form.get("nombre") or "").strip()
+    password = (request.form.get("password") or "").strip()
+    rol = normalize_user_role(request.form.get("rol"))
+
+    if not nombre:
+        flash("El nombre del usuario es obligatorio.", "danger")
+        return redirect(url_for("admin_usuarios"))
+
+    duplicado = Usuario.query.filter(
+        db.func.lower(Usuario.nombre) == nombre.lower(),
+        Usuario.id != usuario.id,
+    ).first()
+    if duplicado:
+        flash("Ya existe otro usuario con ese nombre.", "danger")
+        return redirect(url_for("admin_usuarios"))
+
+    if usuario.id == current_user.id and rol != "ADMIN":
+        admins_restantes = Usuario.query.filter(
+            db.func.upper(Usuario.rol) == "ADMIN",
+            Usuario.id != usuario.id,
+        ).count()
+        if admins_restantes == 0:
+            flash("No puedes quitar el rol ADMIN al unico administrador del sistema.", "danger")
+            return redirect(url_for("admin_usuarios"))
+
+    usuario.nombre = nombre
+    usuario.rol = rol
+    if password:
+        usuario.set_password(password)
+
+    db.session.commit()
+    flash(f"Usuario '{nombre}' actualizado correctamente.", "success")
+    return redirect(url_for("admin_usuarios"))
+
+@app.route("/admin/usuarios/<int:user_id>/eliminar", methods=["POST"])
+@login_required
+def admin_usuario_eliminar(user_id: int):
+    if not is_admin():
+        abort(403)
+
+    usuario = Usuario.query.get_or_404(user_id)
+
+    if usuario.id == current_user.id:
+        flash("No puedes eliminar tu propio usuario mientras tienes la sesion activa.", "danger")
+        return redirect(url_for("admin_usuarios"))
+
+    if (usuario.rol or "").upper() == "ADMIN":
+        admins_restantes = Usuario.query.filter(
+            db.func.upper(Usuario.rol) == "ADMIN",
+            Usuario.id != usuario.id,
+        ).count()
+        if admins_restantes == 0:
+            flash("No puedes eliminar al ultimo administrador del sistema.", "danger")
+            return redirect(url_for("admin_usuarios"))
+
+    nombre = usuario.nombre
+    db.session.delete(usuario)
+    db.session.commit()
+    flash(f"Usuario '{nombre}' eliminado correctamente.", "success")
+    return redirect(url_for("admin_usuarios"))
+
 # Blueprints (Catálogos) — si existen en tu repo
 # ---------------------------------------------------------
 try:

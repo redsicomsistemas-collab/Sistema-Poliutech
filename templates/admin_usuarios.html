@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between mt-4 mb-3 gap-3">
+  <div>
+    <h3 class="mb-1">Administracion de usuarios</h3>
+    <div class="text-muted small">
+      Total usuarios: <strong>{{ total }}</strong> | Administradores: <strong>{{ total_admins }}</strong>
+    </div>
+  </div>
+  <div class="text-end">
+    <span class="badge bg-dark">Solo ADMIN</span>
+  </div>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, msg in messages %}
+      <div class="alert alert-{{ 'danger' if category == 'danger' else category }} shadow-sm">{{ msg }}</div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+<div class="row g-4">
+  <div class="col-12 col-xl-4">
+    <div class="card shadow-sm">
+      <div class="card-header bg-primary text-white fw-bold">Crear usuario</div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('admin_usuarios') }}" class="row g-3">
+          <div class="col-12">
+            <label class="form-label fw-semibold">Nombre</label>
+            <input type="text" name="nombre" class="form-control" placeholder="Ej. Rafael" required>
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold">Contrasena</label>
+            <input type="password" name="password" class="form-control" placeholder="Contrasena inicial" required>
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold">Rol</label>
+            <select name="rol" class="form-select">
+              <option value="USER">Usuario</option>
+              <option value="ADMIN">Administrador</option>
+            </select>
+          </div>
+          <div class="col-12 d-grid">
+            <button type="submit" class="btn btn-primary fw-bold">Crear usuario</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-xl-8">
+    <div class="card shadow-sm">
+      <div class="card-body border-bottom">
+        <form method="get" class="row g-2 align-items-end">
+          <div class="col-12 col-md-9">
+            <label class="form-label fw-semibold">Buscar usuario</label>
+            <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Nombre del usuario">
+          </div>
+          <div class="col-12 col-md-3 d-grid">
+            <button class="btn btn-outline-primary fw-semibold">Buscar</button>
+          </div>
+        </form>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-primary">
+              <tr>
+                <th style="min-width:220px;">Usuario</th>
+                <th style="min-width:140px;">Rol</th>
+                <th style="min-width:360px;">Editar</th>
+                <th style="min-width:140px;">Eliminar</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for usuario in usuarios %}
+              <tr>
+                <td>
+                  <div class="fw-bold">{{ usuario.nombre }}</div>
+                  <div class="small text-muted">ID {{ usuario.id }}</div>
+                </td>
+                <td>
+                  <span class="badge {% if (usuario.rol or '')|upper == 'ADMIN' %}bg-dark{% else %}bg-secondary{% endif %}">
+                    {{ (usuario.rol or 'USER')|upper }}
+                  </span>
+                </td>
+                <td>
+                  <form method="post" action="{{ url_for('admin_usuario_editar', user_id=usuario.id) }}" class="row g-2">
+                    <div class="col-12 col-lg-4">
+                      <input type="text" name="nombre" value="{{ usuario.nombre }}" class="form-control" required>
+                    </div>
+                    <div class="col-12 col-lg-4">
+                      <input type="password" name="password" class="form-control" placeholder="Nueva contrasena (opcional)">
+                    </div>
+                    <div class="col-8 col-lg-2">
+                      <select name="rol" class="form-select">
+                        <option value="USER" {% if (usuario.rol or '')|upper != 'ADMIN' %}selected{% endif %}>Usuario</option>
+                        <option value="ADMIN" {% if (usuario.rol or '')|upper == 'ADMIN' %}selected{% endif %}>Administrador</option>
+                      </select>
+                    </div>
+                    <div class="col-4 col-lg-2 d-grid">
+                      <button type="submit" class="btn btn-outline-primary">Guardar</button>
+                    </div>
+                  </form>
+                </td>
+                <td>
+                  <form method="post" action="{{ url_for('admin_usuario_eliminar', user_id=usuario.id) }}" onsubmit="return confirm('Seguro que quieres eliminar este usuario?');">
+                    <button type="submit" class="btn btn-outline-danger w-100">Eliminar</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+              {% if usuarios|length == 0 %}
+              <tr>
+                <td colspan="4" class="text-center text-muted py-4">No hay usuarios que coincidan con la busqueda.</td>
+              </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
