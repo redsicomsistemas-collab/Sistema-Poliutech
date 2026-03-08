@@ -1,9 +1,7 @@
-
 {% extends "base.html" %}
 {% block content %}
 <div class="container py-4">
   <h1>Cotizador rápido MAR DATA</h1>
-  {% include "partials/mar_data_nav.html" %}
   <p>Genera una cotización de una sola partida directamente desde un APU.</p>
 
   <div class="card shadow-sm">
@@ -20,7 +18,6 @@
             <label class="form-label">Cantidad</label>
             <input type="number" step="0.0001" class="form-control" name="cantidad" value="1">
           </div>
-
           <div class="col-md-4"><label class="form-label">Cliente</label><input class="form-control" name="cliente"></div>
           <div class="col-md-4"><label class="form-label">Empresa</label><input class="form-control" name="empresa"></div>
           <div class="col-md-4"><label class="form-label">Correo</label><input class="form-control" name="correo"></div>
@@ -28,59 +25,9 @@
           <div class="col-md-8"><label class="form-label">Dirección</label><input class="form-control" name="direccion"></div>
           <div class="col-12"><label class="form-label">Notas</label><textarea class="form-control" name="notas" rows="3"></textarea></div>
         </div>
-
-        <div class="card mt-4 border-primary">
-          <div class="card-body">
-            <h5 class="card-title">Resumen APU seleccionado</h5>
-            <div id="apu_resumen" class="text-muted">Busca y selecciona un APU.</div>
-          </div>
-        </div>
-
-        <div class="mt-3">
-          <button type="submit" class="btn btn-primary">Generar cotización rápida</button>
-        </div>
+        <div class="mt-3"><button type="submit" class="btn btn-primary">Generar cotización rápida</button></div>
       </form>
     </div>
   </div>
 </div>
-
-<script>
-const search = document.getElementById("apu_search");
-const sug = document.getElementById("apu_suggestions");
-const apuId = document.getElementById("apu_id");
-const resumen = document.getElementById("apu_resumen");
-
-async function cargarResumen(id){
-  const r = await fetch(`/apu/api/${id}/resumen`);
-  const data = await r.json();
-  resumen.innerHTML = `
-    <div><b>Concepto:</b> ${data.concepto}</div>
-    <div><b>Unidad:</b> ${data.unidad}</div>
-    <div><b>Precio unitario:</b> $${Number(data.precio_unitario || 0).toFixed(2)}</div>
-    <div><b>Costo directo:</b> $${Number(data.costo_directo || 0).toFixed(2)}</div>
-  `;
-}
-
-search.addEventListener("input", async () => {
-  const q = search.value.trim();
-  if (q.length < 1) { sug.innerHTML = ""; return; }
-  const r = await fetch(`/apu/api/suggest?q=${encodeURIComponent(q)}`);
-  const data = await r.json();
-  sug.innerHTML = "";
-  data.forEach(item => {
-    const a = document.createElement("a");
-    a.href = "#";
-    a.className = "list-group-item list-group-item-action";
-    a.textContent = `${item.concepto} — ${item.unidad} — $${Number(item.precio_unitario || 0).toFixed(2)}`;
-    a.onclick = async (e) => {
-      e.preventDefault();
-      search.value = item.concepto;
-      apuId.value = item.id;
-      sug.innerHTML = "";
-      await cargarResumen(item.id);
-    };
-    sug.appendChild(a);
-  });
-});
-</script>
 {% endblock %}
