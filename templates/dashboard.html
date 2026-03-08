@@ -1,25 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
 
-<div class="row mb-4">
-  <div class="col-12">
-    <div class="card border-dark shadow-sm">
-      <div class="card-body">
-        <h5 class="card-title mb-3">Accesos rápidos MAR DATA</h5>
-        <div class="d-flex flex-wrap gap-2">
-          <a href="{{ url_for('apu.index') }}" class="btn btn-outline-dark btn-sm">🧮 MAR DATA</a>
-          <a href="{{ url_for('apu.apu_list') }}" class="btn btn-outline-primary btn-sm">📋 Lista APU</a>
-          <a href="{{ url_for('apu.apu_new') }}" class="btn btn-outline-success btn-sm">➕ Nuevo APU</a>
-          <a href="{{ url_for('apu.plantillas') }}" class="btn btn-outline-secondary btn-sm">🧩 Plantillas</a>
-          <a href="{{ url_for('apu.generador') }}" class="btn btn-outline-warning btn-sm">⚙️ Generador automático</a>
-          <a href="{{ url_for('apu.materiales_list') }}" class="btn btn-outline-info btn-sm">🧱 Materiales</a>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-
 <!-- 🔢 MÉTRICAS -->
 <div class="row mb-4 text-center">
   <div class="col-md-4">

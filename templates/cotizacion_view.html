@@ -1,3 +1,4 @@
+
 {% extends "base.html" %}
 {% block title %}Vista de Cotización {{ c.folio }}{% endblock %}
 
@@ -11,7 +12,6 @@
 
     <div class="card-body">
 
-      <!-- DATOS DEL CLIENTE -->
       <div class="border rounded p-3 mb-4">
         <h6 class="fw-bold text-primary mb-3">Datos del Cliente</h6>
         <div class="row">
@@ -38,7 +38,14 @@
         </div>
       </div>
 
-      <!-- CONCEPTOS -->
+      <div class="alert alert-light border mb-4">
+        <div class="fw-semibold mb-1">Origen de conceptos</div>
+        <div>
+          {% set mar_count = c.detalles|selectattr('sistema', 'equalto', 'MAR DATA')|list|length %}
+          Esta cotización contiene <b>{{ mar_count }}</b> concepto(s) provenientes de <b>MAR DATA</b>.
+        </div>
+      </div>
+
       <div class="border rounded p-3 mb-4">
         <h6 class="fw-bold text-primary mb-3">Conceptos</h6>
         <div class="table-responsive">
@@ -59,7 +66,13 @@
                 <td>{{ d.cantidad }}</td>
                 <td>{{ d.unidad }}</td>
                 <td>{{ d.nombre_concepto }}</td>
-                <td class="text-center">{{ d.sistema or '-' }}</td>
+                <td class="text-center">
+                  {% if d.sistema == 'MAR DATA' %}
+                    <span class="badge bg-dark">MAR DATA</span>
+                  {% else %}
+                    {{ d.sistema or '-' }}
+                  {% endif %}
+                </td>
                 <td class="text-end">${{ "%.2f"|format(d.precio_unitario) }}</td>
                 <td class="text-end">${{ "%.2f"|format(d.subtotal) }}</td>
               </tr>
@@ -71,7 +84,6 @@
         </div>
       </div>
 
-      <!-- NOTAS Y ESTATUS -->
       <div class="border rounded p-3 mb-4">
         <h6 class="fw-bold text-primary mb-3">Notas y Estatus</h6>
         <p><b>Estatus:</b> 
@@ -92,7 +104,6 @@
         </div>
       </div>
 
-      <!-- TOTALES -->
       <div class="row">
         <div class="col-md-4">
           <label class="form-label">Subtotal:</label>
@@ -118,6 +129,7 @@
 
       <div class="text-end mt-4">
         <a href="{{ url_for('editar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-primary">✏️ Editar</a>
+        <a href="{{ url_for('apu.index') }}" class="btn btn-outline-dark">🧮 MAR DATA</a>
         <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">← Volver al Dashboard</a>
       </div>
 
