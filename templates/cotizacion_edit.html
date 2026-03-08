@@ -1,6 +1,6 @@
-
 {% extends "base.html" %}
 {% block title %}Editar Cotización {{ c.folio }}{% endblock %}
+
 {% block content %}
 <div class="container mt-4 mb-5">
   <div class="card shadow-sm border-0">
@@ -8,11 +8,9 @@
       <h5 class="mb-0">Editar Cotización <b>{{ c.folio }}</b></h5>
       <a href="{{ url_for('index') }}" class="btn btn-light btn-sm">← Volver</a>
     </div>
+
     <div class="card-body">
       <form method="POST" action="{{ url_for('actualizar_cotizacion', cot_id=c.id) }}">
-        <input type="hidden" id="area_total" name="area_total" value="{{ c.area_total or 0 }}">
-        <input type="hidden" id="lista_materiales_json" name="lista_materiales_json" value='{{ c.lista_materiales_json or "" }}'>
-        <textarea id="memoria_tecnica" name="memoria_tecnica" hidden>{{ c.memoria_tecnica or "" }}</textarea>
 
         <h5 class="fw-bold text-primary mb-3">Datos del cliente</h5>
         <div class="row mb-3">
@@ -28,8 +26,6 @@
             <div class="d-flex justify-content-between align-items-center mb-3">
               <h5 class="fw-bold text-primary mb-0">MAR DATA · Agregar APU a esta cotización</h5>
               <a href="{{ url_for('apu.index') }}" class="btn btn-outline-dark btn-sm">🧮 Ir a MAR DATA</a>
-      <a href="{{ url_for('mar_data_advanced.propuesta') }}" class="btn btn-outline-success btn-sm">📝 Propuesta automática</a>
-      <a href="{{ url_for('mar_data_advanced.costeo') }}" class="btn btn-outline-dark btn-sm">📈 Costeo real</a>
             </div>
             <div class="row g-3">
               <div class="col-md-7 position-relative">
@@ -37,42 +33,17 @@
                 <input type="text" id="apu_search_edit" class="form-control" placeholder="Escribe clave o concepto del APU..." autocomplete="off">
                 <div id="apu_suggestions_edit" class="list-group position-absolute w-100" style="z-index:1000; max-height:220px; overflow:auto;"></div>
               </div>
-              <div class="col-md-2"><label for="apu_cantidad_edit" class="form-label">Cantidad</label><input type="number" id="apu_cantidad_edit" class="form-control" step="0.01" value="1"></div>
-              <div class="col-md-3 d-flex align-items-end"><button type="button" id="btn-add-apu-edit" class="btn btn-primary w-100">➕ Agregar APU</button></div>
-            </div>
-            <div class="mt-3 border rounded bg-light p-3"><div class="fw-semibold mb-2">Resumen del APU seleccionado</div><div id="apu_resumen_edit" class="text-muted">Busca un APU y selecciónalo para agregarlo como renglón.</div></div>
-          </div>
-        </div>
-
-        <div class="card border-danger-subtle mb-4">
-          <div class="card-body">
-            <h5 class="fw-bold text-danger mb-3">Área + materiales + memoria técnica</h5>
-            <div class="row g-3">
-              <div class="col-md-8">
-                <label class="form-label fw-semibold">Áreas (largo × ancho × piezas)</label>
-                <div id="area-rows"></div>
-                <button type="button" id="add-area-row" class="btn btn-outline-secondary btn-sm mt-2">Agregar área</button>
+              <div class="col-md-2">
+                <label for="apu_cantidad_edit" class="form-label">Cantidad</label>
+                <input type="number" id="apu_cantidad_edit" class="form-control" step="0.01" value="1">
               </div>
-              <div class="col-md-4">
-                <label class="form-label fw-semibold">Merma %</label>
-                <input id="waste_pct" type="number" class="form-control" value="5">
-                <button type="button" id="calc-area" class="btn btn-outline-primary btn-sm mt-2">Calcular área</button>
-                <div class="mt-2"><b>Área total:</b> <span id="area-total-view">{{ '%.2f'|format(c.area_total or 0) }}</span> m²</div>
+              <div class="col-md-3 d-flex align-items-end">
+                <button type="button" id="btn-add-apu-edit" class="btn btn-primary w-100">➕ Agregar APU</button>
               </div>
             </div>
-            <div class="mt-3">
-              <label class="form-label fw-semibold">Materiales (JSON)</label>
-              <textarea id="materials-json" class="form-control" rows="5">{{ c.lista_materiales_json or '[{"nombre":"Resina epóxica","unidad":"kg","consumo_unitario":1.2,"precio_unitario":180}]' }}</textarea>
-              <button type="button" id="calc-materials" class="btn btn-outline-primary btn-sm mt-2">Generar lista de materiales</button>
-            </div>
-            <div class="mt-3">
-              <label class="form-label fw-semibold">Configuración de memoria técnica</label>
-              <textarea id="memory-json" class="form-control" rows="8">{"sistema":"Recubrimiento epóxico autonivelante","espesor":"3 mm","preparacion":"Desbaste mecánico, aspirado y limpieza del sustrato.","capas":["Primer epóxico","Capa autonivelante","Sellado final"],"rendimiento":"120 m² por jornada","observaciones":"La superficie debe estar seca, limpia y libre de contaminantes."}</textarea>
-              <button type="button" id="generate-memory" class="btn btn-outline-primary btn-sm mt-2">Generar memoria técnica</button>
-            </div>
-            <div class="row mt-3">
-              <div class="col-md-6"><label class="form-label fw-semibold">Lista de materiales generada</label><pre id="materials-output" class="border rounded bg-light p-2" style="min-height:160px; white-space:pre-wrap;">{{ c.lista_materiales_json or '' }}</pre></div>
-              <div class="col-md-6"><label class="form-label fw-semibold">Memoria técnica generada</label><pre id="memory-output" class="border rounded bg-light p-2" style="min-height:160px; white-space:pre-wrap;">{{ c.memoria_tecnica or '' }}</pre></div>
+            <div class="mt-3 border rounded bg-light p-3">
+              <div class="fw-semibold mb-2">Resumen del APU seleccionado</div>
+              <div id="apu_resumen_edit" class="text-muted">Busca un APU y selecciónalo para agregarlo como renglón.</div>
             </div>
           </div>
         </div>
@@ -91,18 +62,48 @@
           </div>
           {% endfor %}
         </div>
-        <div class="text-end mb-3"><button type="button" class="btn btn-outline-success btn-sm" onclick="agregarRenglon()">➕ Agregar renglón</button></div>
+
+        <div class="text-end mb-3">
+          <button type="button" class="btn btn-outline-success btn-sm" onclick="agregarRenglon()">➕ Agregar renglón</button>
+        </div>
 
         <h5 class="fw-bold text-primary mt-4 mb-3">Notas y estatus</h5>
         <div class="row mb-3">
-          <div class="col-md-6"><label class="form-label fw-bold">Zona (descuento)</label><select class="form-select" name="zona"><option value="" {% if not zona_actual %}selected{% endif %}>Sin zona</option><option value="Zona Norte" {% if zona_actual == 'Zona Norte' %}selected{% endif %}>Zona Norte</option><option value="Zona Centro" {% if zona_actual == 'Zona Centro' %}selected{% endif %}>Zona Centro</option><option value="Bajío" {% if zona_actual == 'Bajío' %}selected{% endif %}>Bajío</option><option value="Zona Sur" {% if zona_actual == 'Zona Sur' %}selected{% endif %}>Zona Sur</option><option value="Frontera" {% if zona_actual == 'Frontera' %}selected{% endif %}>Frontera</option></select></div>
-          <div class="col-md-6"><label class="form-label fw-bold">Estatus actual</label><select class="form-select" name="estatus"><option value="PENDIENTE" {% if c.estatus == 'PENDIENTE' %}selected{% endif %}>PENDIENTE</option><option value="ENVIADA" {% if c.estatus == 'ENVIADA' %}selected{% endif %}>ENVIADA</option><option value="GANADA" {% if c.estatus == 'GANADA' %}selected{% endif %}>GANADA</option><option value="PERDIDA" {% if c.estatus == 'PERDIDA' %}selected{% endif %}>PERDIDA</option></select></div>
-          <div class="col-md-12 mt-3"><label class="form-label fw-bold">Condiciones adicionales</label><div class="small text-muted mb-2">Las condiciones comerciales por defecto ya van incluidas automáticamente en el PDF.</div><textarea name="notas" class="form-control" rows="4">{{ notas_adicionales }}</textarea><div class="alert alert-light border mt-3 mb-0"><div class="fw-semibold mb-2">Condiciones por defecto incluidas:</div><ul class="mb-0">{% for item in default_condiciones %}<li>{{ item }}</li>{% endfor %}</ul></div></div>
+          <div class="col-md-6">
+            <label class="form-label fw-bold">Zona (descuento)</label>
+            <select class="form-select" name="zona">
+              <option value="" {% if not zona_actual %}selected{% endif %}>Sin zona</option>
+              <option value="Zona Norte" {% if zona_actual == 'Zona Norte' %}selected{% endif %}>Zona Norte</option>
+              <option value="Zona Centro" {% if zona_actual == 'Zona Centro' %}selected{% endif %}>Zona Centro</option>
+              <option value="Bajío" {% if zona_actual == 'Bajío' %}selected{% endif %}>Bajío</option>
+              <option value="Zona Sur" {% if zona_actual == 'Zona Sur' %}selected{% endif %}>Zona Sur</option>
+              <option value="Frontera" {% if zona_actual == 'Frontera' %}selected{% endif %}>Frontera</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-bold">Estatus actual</label>
+            <select class="form-select" name="estatus">
+              <option value="PENDIENTE" {% if c.estatus == 'PENDIENTE' %}selected{% endif %}>PENDIENTE</option>
+              <option value="ENVIADA" {% if c.estatus == 'ENVIADA' %}selected{% endif %}>ENVIADA</option>
+              <option value="GANADA" {% if c.estatus == 'GANADA' %}selected{% endif %}>GANADA</option>
+              <option value="PERDIDA" {% if c.estatus == 'PERDIDA' %}selected{% endif %}>PERDIDA</option>
+            </select>
+          </div>
+          <div class="col-md-12 mt-3">
+            <label class="form-label fw-bold">Condiciones adicionales</label>
+            <div class="small text-muted mb-2">Las condiciones comerciales por defecto ya van incluidas automáticamente en el PDF.</div>
+            <textarea name="notas" class="form-control" rows="4">{{ notas_adicionales }}</textarea>
+            <div class="alert alert-light border mt-3 mb-0">
+              <div class="fw-semibold mb-2">Condiciones por defecto incluidas:</div>
+              <ul class="mb-0">{% for item in default_condiciones %}<li>{{ item }}</li>{% endfor %}</ul>
+            </div>
+          </div>
         </div>
 
-        <div class="row mb-3 text-end"><div class="col-md-4 offset-md-8"><table class="table table-sm table-borderless"><tr><th>Subtotal:</th><td>${{ "%.2f"|format(c.subtotal) }}</td></tr>{% if c.descuento_total and c.descuento_total > 0 %}<tr><th>Descuento:</th><td>- ${{ "%.2f"|format(c.descuento_total) }}</td></tr><tr><th>Subtotal c/ desc.:</th><td>${{ "%.2f"|format(c.subtotal - c.descuento_total) }}</td></tr>{% endif %}<tr><th>IVA ({{ "%.2f"|format(c.iva_porc) }}%):</th><td>${{ "%.2f"|format(c.iva_monto) }}</td></tr><tr class="fw-bold text-success"><th>Total:</th><td>${{ "%.2f"|format(c.total) }}</td></tr></table></div></div>
-
-        <div class="d-flex justify-content-end"><button type="submit" class="btn btn-primary me-2">💾 Guardar cambios</button><a href="{{ url_for('index') }}" class="btn btn-outline-secondary">Cancelar</a></div>
+        <div class="d-flex justify-content-end">
+          <button type="submit" class="btn btn-primary me-2">💾 Guardar cambios</button>
+          <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">Cancelar</a>
+        </div>
       </form>
     </div>
   </div>
@@ -124,5 +125,4 @@ function agregarRenglon() {
 }
 </script>
 <script src="{{ url_for('static', filename='js/cotizacion_edit_apu_bridge.js') }}"></script>
-<script src="{{ url_for('static', filename='js/mar_data_pro_embed.js') }}"></script>
 {% endblock %}

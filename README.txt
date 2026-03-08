@@ -1,21 +1,26 @@
+PAQUETE COMPLETO CORREGIDO
 
-FIX DE NAVEGACIÓN MAR DATA
+Incluye:
+- app.py corregido para el bloque PDF
+- templates/base.html
+- templates/dashboard.html
+- templates/cotizador.html
+- templates/cotizacion_edit.html
+- templates/cotizacion_view.html
+- templates/partials/mar_data_nav.html
+- neodata_personal/routes.py
+- templates/apu_cotizador_rapido.html
+- static/js/cotizador_apu_bridge.js
+- static/js/cotizacion_edit_apu_bridge.js
 
-Este paquete agrega un submenú reutilizable de MAR DATA para que aparezca
-en todas las vistas del módulo.
+Este paquete elimina referencias rotas a:
+- mar_data_advanced.propuesta
+- otros endpoints avanzados no registrados
 
-Qué hace:
-- Crea: templates/partials/mar_data_nav.html
-- Actualiza los templates de MAR DATA para incluir ese partial
-
-Cómo instalar:
-1. Descarga y descomprime este ZIP.
-2. Copia:
-   - templates/partials/mar_data_nav.html
-   - los archivos dentro de neodata_personal/templates/neodata/
-3. Reemplaza los archivos existentes en tu proyecto.
-4. Reinicia Render.
-
-Resultado:
-En todas las pantallas de MAR DATA aparecerá el submenú:
-Materiales | Mano de obra | Maquinaria | Lista APU | Nuevo APU | Plantillas | Generador automático
+Y deja solo endpoints seguros:
+- apu.index
+- apu.apu_list
+- apu.apu_new
+- apu.plantillas
+- apu.generador
+- apu.apu_cotizador_rapido

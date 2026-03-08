@@ -2,23 +2,57 @@
 {% block content %}
 
 <div class="row mb-4 text-center">
-  <div class="col-md-3"><div class="card border-success shadow-sm"><div class="card-body"><h6 class="text-success">Importe Total</h6><h3 class="fw-bold text-dark">${{ "{:,.2f}".format(total_importe) }}</h3></div></div></div>
-  <div class="col-md-3"><div class="card border-primary shadow-sm"><div class="card-body"><h6 class="text-primary">Cotizaciones Totales</h6><h3 class="fw-bold text-dark">{{ total_cotizaciones }}</h3></div></div></div>
-  <div class="col-md-3"><div class="card border-info shadow-sm"><div class="card-body"><h6 class="text-info">Conceptos Registrados</h6><h3 class="fw-bold text-dark">{{ total_catalogo }}</h3></div></div></div>
-  <div class="col-md-3"><div class="card border-dark shadow-sm"><div class="card-body"><h6 class="text-dark">APU registrados</h6><h3 class="fw-bold text-dark">{{ total_apu or 0 }}</h3></div></div></div>
+  <div class="col-md-3">
+    <div class="card border-success shadow-sm">
+      <div class="card-body">
+        <h6 class="text-success">Importe Total</h6>
+        <h3 class="fw-bold text-dark">${{ "{:,.2f}".format(total_importe) }}</h3>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-primary shadow-sm">
+      <div class="card-body">
+        <h6 class="text-primary">Cotizaciones Totales</h6>
+        <h3 class="fw-bold text-dark">{{ total_cotizaciones }}</h3>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-info shadow-sm">
+      <div class="card-body">
+        <h6 class="text-info">Conceptos Registrados</h6>
+        <h3 class="fw-bold text-dark">{{ total_catalogo }}</h3>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-dark shadow-sm">
+      <div class="card-body">
+        <h6 class="text-dark">APU registrados</h6>
+        <h3 class="fw-bold text-dark">{{ total_apu or 0 }}</h3>
+      </div>
+    </div>
+  </div>
 </div>
 
-<div class="row mb-4"><div class="col-12"><div class="card border-dark shadow-sm"><div class="card-body">
-  <h5 class="card-title mb-3">Accesos rápidos MAR DATA</h5>
-  <div class="d-flex flex-wrap gap-2">
-    <a href="{{ url_for('apu.index') }}" class="btn btn-outline-dark btn-sm">🧮 MAR DATA</a>
-    <a href="{{ url_for('apu.apu_list') }}" class="btn btn-outline-primary btn-sm">📋 Lista APU</a>
-    <a href="{{ url_for('apu.apu_new') }}" class="btn btn-outline-success btn-sm">➕ Nuevo APU</a>
-    <a href="{{ url_for('apu.plantillas') }}" class="btn btn-outline-secondary btn-sm">🧩 Plantillas</a>
-    <a href="{{ url_for('apu.generador') }}" class="btn btn-outline-warning btn-sm">⚙️ Generador automático</a>
-    <a href="{{ url_for('apu.apu_cotizador_rapido') }}" class="btn btn-outline-info btn-sm">💸 Cotizador rápido</a>
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card border-dark shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title mb-3">Accesos rápidos MAR DATA</h5>
+        <div class="d-flex flex-wrap gap-2">
+          <a href="{{ url_for('apu.index') }}" class="btn btn-outline-dark btn-sm">🧮 MAR DATA</a>
+          <a href="{{ url_for('apu.apu_list') }}" class="btn btn-outline-primary btn-sm">📋 Lista APU</a>
+          <a href="{{ url_for('apu.apu_new') }}" class="btn btn-outline-success btn-sm">➕ Nuevo APU</a>
+          <a href="{{ url_for('apu.plantillas') }}" class="btn btn-outline-secondary btn-sm">🧩 Plantillas</a>
+          <a href="{{ url_for('apu.generador') }}" class="btn btn-outline-warning btn-sm">⚙️ Generador automático</a>
+          <a href="{{ url_for('apu.apu_cotizador_rapido') }}" class="btn btn-outline-info btn-sm">💸 Cotizador rápido</a>
+        </div>
+      </div>
+    </div>
   </div>
-</div></div></div></div>
+</div>
 
 
 <!-- 🔢 MÉTRICAS -->
