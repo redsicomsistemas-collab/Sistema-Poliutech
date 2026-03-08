@@ -1,0 +1,15 @@
+
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4">
+  <h1>Costeo real y margen</h1>
+  {% include "partials/mar_data_nav.html" %}
+  <div class="row g-3">
+    <div class="col-md-3"><label class="form-label">Venta cotizada</label><input id="costeo-venta" class="form-control" type="number" value="100000" step="0.01"></div>
+    <div class="col-md-3"><label class="form-label">Costo real</label><input id="costeo-real" class="form-control" type="number" value="75000" step="0.01"></div>
+    <div class="col-md-3 d-flex align-items-end"><button id="btn-costeo" class="btn btn-dark w-100">Calcular margen real</button></div>
+  </div>
+  <div class="mt-4"><pre id="costeo-output" class="bg-light p-3 border rounded"></pre></div>
+</div>
+<script src="{{ url_for('static', filename='js/mar_data_advanced.js') }}"></script>
+{% endblock %}

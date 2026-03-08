@@ -118,7 +118,8 @@ ADMIN_LIST: List[str] = [x.strip() for x in ADMIN_WHATSAPP_RECIPIENTS.split(",")
 # Usa SIEMPRE los modelos desde models.py para evitar duplicados
 from models import db, Cliente, Concepto, Cotizacion, CotizacionDetalle, Usuario, ActivityLog
 from neodata_personal.routes import apu_bp
-from mar_data_pro_blueprint import mar_data_pro_bp  # módulo MAR DATA
+from mar_data_pro_blueprint import mar_data_pro_bp
+from mar_data_advanced_blueprint import mar_data_advanced_bp  # módulo MAR DATA
 
 # ---------------------------------------------------------
 # Flask + DB + Login
@@ -130,7 +131,8 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db.init_app(app)
 app.register_blueprint(apu_bp)
-app.register_blueprint(mar_data_pro_bp)  # registrar módulo MAR DATA
+app.register_blueprint(mar_data_pro_bp)
+app.register_blueprint(mar_data_advanced_bp)  # registrar módulo MAR DATA
 
 
 login_manager = LoginManager()

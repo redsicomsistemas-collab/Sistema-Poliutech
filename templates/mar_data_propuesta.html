@@ -1,0 +1,24 @@
+
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4">
+  <h1>Propuesta técnica automática</h1>
+  {% include "partials/mar_data_nav.html" %}
+  <div class="row g-3">
+    <div class="col-md-3"><label class="form-label">Sistema</label><select id="adv-slug" class="form-select">{% for s in systems %}<option value="{{ s.slug }}">{{ s.nombre }}</option>{% endfor %}</select></div>
+    <div class="col-md-2"><label class="form-label">Área m²</label><input id="adv-area" class="form-control" type="number" value="100" step="0.01"></div>
+    <div class="col-md-2"><label class="form-label">Espesor mm</label><input id="adv-espesor" class="form-control" type="number" value="3" step="0.01"></div>
+    <div class="col-md-2"><label class="form-label">Merma %</label><input id="adv-merma" class="form-control" type="number" value="5" step="0.01"></div>
+    <div class="col-md-3"><label class="form-label">Rendimiento m²/día</label><input id="adv-rend" class="form-control" type="number" value="120" step="0.01"></div>
+  </div>
+  <div class="mt-3 d-flex gap-2">
+    <button id="btn-gen-propuesta" class="btn btn-primary">Generar propuesta</button>
+    <button id="btn-gen-param" class="btn btn-outline-dark">Ver cálculo paramétrico</button>
+  </div>
+  <div class="row mt-4">
+    <div class="col-md-6"><h5>Cálculo</h5><pre id="adv-calc" class="bg-light p-3 border rounded"></pre></div>
+    <div class="col-md-6"><h5>Propuesta</h5><pre id="adv-propuesta" class="bg-light p-3 border rounded"></pre></div>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='js/mar_data_advanced.js') }}"></script>
+{% endblock %}

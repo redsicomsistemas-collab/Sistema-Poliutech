@@ -1,0 +1,25 @@
+
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4">
+  <h1>Biblioteca paramétrica de sistemas</h1>
+  {% include "partials/mar_data_nav.html" %}
+  <div class="accordion" id="acc">
+    {% for s in systems %}
+    <div class="accordion-item">
+      <h2 class="accordion-header"><button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#sys{{ loop.index }}">{{ s.nombre }}</button></h2>
+      <div id="sys{{ loop.index }}" class="accordion-collapse collapse" data-bs-parent="#acc">
+        <div class="accordion-body">
+          <p><b>Categoría:</b> {{ s.categoria }}</p>
+          <p><b>Preparación:</b> {{ s.preparacion }}</p>
+          <p><b>Capas:</b></p>
+          <ul>{% for c in s.capas %}<li>{{ c }}</li>{% endfor %}</ul>
+          <p><b>Componentes:</b></p>
+          <ul>{% for c in s.componentes %}<li>{{ c.tipo }} · {{ c.nombre }} · {{ c.unidad }}</li>{% endfor %}</ul>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

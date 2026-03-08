@@ -11,6 +11,9 @@
       <a href="{{ url_for('apu.generador') }}" class="btn btn-sm {% if request.endpoint == 'apu.generador' %}btn-primary{% else %}btn-outline-primary{% endif %}">Generador automático</a>
       <a href="{{ url_for('apu.apu_cotizador_rapido') }}" class="btn btn-sm {% if request.endpoint == 'apu.apu_cotizador_rapido' %}btn-success{% else %}btn-outline-success{% endif %}">Cotizador rápido</a>
       <a href="{{ url_for('mar_data_pro.fase2_home') }}" class="btn btn-sm {% if request.endpoint == 'mar_data_pro.fase2_home' %}btn-danger{% else %}btn-outline-danger{% endif %}">Área + materiales + memoria</a>
+          <a href="{{ url_for('mar_data_advanced.library') }}" class="btn btn-sm {% if request.endpoint == 'mar_data_advanced.library' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">Biblioteca</a>
+      <a href="{{ url_for('mar_data_advanced.propuesta') }}" class="btn btn-sm {% if request.endpoint == 'mar_data_advanced.propuesta' %}btn-success{% else %}btn-outline-success{% endif %}">Propuesta</a>
+      <a href="{{ url_for('mar_data_advanced.costeo') }}" class="btn btn-sm {% if request.endpoint == 'mar_data_advanced.costeo' %}btn-dark{% else %}btn-outline-dark{% endif %}">Costeo real</a>
     </div>
   </div>
 </div>

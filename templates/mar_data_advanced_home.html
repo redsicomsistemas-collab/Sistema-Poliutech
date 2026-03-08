@@ -1,0 +1,29 @@
+
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4">
+  <h1>MAR DATA Advanced</h1>
+  <p>Biblioteca paramétrica, propuesta técnica automática y costeo real.</p>
+  {% include "partials/mar_data_nav.html" %}
+  <div class="d-flex flex-wrap gap-2 mb-4">
+    <a class="btn btn-outline-primary" href="{{ url_for('mar_data_advanced.library') }}">Biblioteca paramétrica</a>
+    <a class="btn btn-outline-success" href="{{ url_for('mar_data_advanced.propuesta') }}">Propuesta automática</a>
+    <a class="btn btn-outline-dark" href="{{ url_for('mar_data_advanced.costeo') }}">Costeo real</a>
+  </div>
+  <div class="row">
+    {% for s in systems %}
+    <div class="col-md-4 mb-3">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">{{ s.nombre }}</h5>
+          <div class="small text-muted">{{ s.categoria }}</div>
+          <div class="mt-2">Espesores: {{ s.espesores_mm|join(', ') }} mm</div>
+          <div>Rendimiento base: {{ s.rendimiento_base_m2_dia }} m²/día</div>
+          <div>Merma default: {{ s.merma_pct_default }}%</div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

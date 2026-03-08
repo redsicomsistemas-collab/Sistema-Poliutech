@@ -1,0 +1,186 @@
+{
+  "systems": [
+    {
+      "slug": "epoxico_autonivelante",
+      "nombre": "Epóxico Autonivelante",
+      "categoria": "Epóxicos",
+      "unidad": "m2",
+      "espesores_mm": [
+        2,
+        3,
+        4
+      ],
+      "rendimiento_base_m2_dia": 120,
+      "merma_pct_default": 5,
+      "preparacion": "Desbaste mecánico, aspirado y limpieza del sustrato antes de la aplicación.",
+      "capas": [
+        "Primer epóxico",
+        "Capa autonivelante",
+        "Sellado final"
+      ],
+      "observaciones": "Aplicación sujeta a temperatura, humedad y condición del sustrato.",
+      "componentes": [
+        {
+          "tipo": "material",
+          "nombre": "Resina epóxica",
+          "unidad": "kg",
+          "consumo_por_mm": 0.55,
+          "precio_unitario": 180
+        },
+        {
+          "tipo": "material",
+          "nombre": "Arena sílica",
+          "unidad": "kg",
+          "consumo_por_mm": 0.3,
+          "precio_unitario": 12
+        },
+        {
+          "tipo": "mano_obra",
+          "nombre": "Aplicador",
+          "unidad": "jor",
+          "consumo_fijo": 0.08,
+          "precio_unitario": 850
+        },
+        {
+          "tipo": "mano_obra",
+          "nombre": "Ayudante",
+          "unidad": "jor",
+          "consumo_fijo": 0.06,
+          "precio_unitario": 500
+        },
+        {
+          "tipo": "herramienta",
+          "nombre": "Pulidora",
+          "unidad": "día",
+          "consumo_fijo": 0.03,
+          "precio_unitario": 300
+        },
+        {
+          "tipo": "indirecto",
+          "nombre": "Indirectos",
+          "unidad": "%",
+          "porcentaje": 10
+        }
+      ]
+    },
+    {
+      "slug": "poliuretano",
+      "nombre": "Poliuretano",
+      "categoria": "Poliuretanos",
+      "unidad": "m2",
+      "espesores_mm": [
+        1,
+        2,
+        3
+      ],
+      "rendimiento_base_m2_dia": 140,
+      "merma_pct_default": 6,
+      "preparacion": "Limpieza, perfil de anclaje y reparación de puntos críticos del sustrato.",
+      "capas": [
+        "Primer",
+        "Capa de poliuretano",
+        "Sellado"
+      ],
+      "observaciones": "El sistema debe aplicarse sobre superficie seca y estructuralmente sana.",
+      "componentes": [
+        {
+          "tipo": "material",
+          "nombre": "Poliuretano",
+          "unidad": "kg",
+          "consumo_por_mm": 0.6,
+          "precio_unitario": 220
+        },
+        {
+          "tipo": "material",
+          "nombre": "Primer",
+          "unidad": "kg",
+          "consumo_fijo": 0.1,
+          "precio_unitario": 160
+        },
+        {
+          "tipo": "mano_obra",
+          "nombre": "Aplicador",
+          "unidad": "jor",
+          "consumo_fijo": 0.06,
+          "precio_unitario": 850
+        },
+        {
+          "tipo": "mano_obra",
+          "nombre": "Ayudante",
+          "unidad": "jor",
+          "consumo_fijo": 0.04,
+          "precio_unitario": 500
+        },
+        {
+          "tipo": "herramienta",
+          "nombre": "Mezcladora",
+          "unidad": "día",
+          "consumo_fijo": 0.02,
+          "precio_unitario": 250
+        },
+        {
+          "tipo": "indirecto",
+          "nombre": "Indirectos",
+          "unidad": "%",
+          "porcentaje": 12
+        }
+      ]
+    },
+    {
+      "slug": "impermeabilizante_acrilico",
+      "nombre": "Impermeabilizante Acrílico",
+      "categoria": "Impermeabilización",
+      "unidad": "m2",
+      "espesores_mm": [
+        1,
+        1.5,
+        2
+      ],
+      "rendimiento_base_m2_dia": 180,
+      "merma_pct_default": 4,
+      "preparacion": "Limpieza, sellado de grietas y revisión de pendientes y desagües.",
+      "capas": [
+        "Primera mano",
+        "Refuerzo con malla",
+        "Segunda mano"
+      ],
+      "observaciones": "La superficie debe estar seca y libre de humedad atrapada.",
+      "componentes": [
+        {
+          "tipo": "material",
+          "nombre": "Impermeabilizante acrílico",
+          "unidad": "kg",
+          "consumo_por_mm": 0.65,
+          "precio_unitario": 95
+        },
+        {
+          "tipo": "material",
+          "nombre": "Malla",
+          "unidad": "m2",
+          "consumo_fijo": 1.0,
+          "precio_unitario": 18
+        },
+        {
+          "tipo": "mano_obra",
+          "nombre": "Aplicador",
+          "unidad": "jor",
+          "consumo_fijo": 0.05,
+          "precio_unitario": 850
+        },
+        {
+          "tipo": "mano_obra",
+          "nombre": "Ayudante",
+          "unidad": "jor",
+          "consumo_fijo": 0.04,
+          "precio_unitario": 500
+        },
+        {
+          "tipo": "indirecto",
+          "nombre": "Indirectos",
+          "unidad": "%",
+          "porcentaje": 8
+        }
+      ]
+    }
+  ]
+}
