@@ -1,0 +1,41 @@
+{
+  "area_rows": [
+    {
+      "largo": 10,
+      "ancho": 5,
+      "piezas": 1
+    },
+    {
+      "largo": 2,
+      "ancho": 1.5,
+      "piezas": 4
+    }
+  ],
+  "waste_pct": 5,
+  "materials": [
+    {
+      "nombre": "Resina epóxica",
+      "unidad": "kg",
+      "consumo_unitario": 1.2,
+      "precio_unitario": 180
+    },
+    {
+      "nombre": "Arena sílica",
+      "unidad": "kg",
+      "consumo_unitario": 0.8,
+      "precio_unitario": 12
+    }
+  ],
+  "memory": {
+    "sistema": "Recubrimiento epóxico autonivelante",
+    "espesor": "3 mm",
+    "preparacion": "Desbaste mecánico, aspirado y limpieza del sustrato.",
+    "capas": [
+      "Primer epóxico",
+      "Capa autonivelante",
+      "Sellado final"
+    ],
+    "rendimiento": "120 m² por jornada",
+    "observaciones": "La superficie debe estar seca, limpia y libre de contaminantes."
+  }
+}

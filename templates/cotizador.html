@@ -1,143 +1,144 @@
+
 {% extends "base.html" %}
 {% block content %}
-
 <h2 class="mb-4 fw-bold text-primary">💰 Cotizador de Poliutech</h2>
 
 <form id="frm-cotizacion" method="POST" action="{{ url_for('crear_cotizacion') }}">
-  <!-- DATOS DEL CLIENTE -->
+  <input type="hidden" id="area_total" name="area_total">
+  <input type="hidden" id="lista_materiales_json" name="lista_materiales_json">
+  <textarea id="memoria_tecnica" name="memoria_tecnica" hidden></textarea>
+
   <section class="panel mb-4">
     <h5 class="mb-3 text-secondary">Datos del Cliente</h5>
     <div class="row g-3">
       <div class="col-md-6 position-relative">
         <label for="cliente_input" class="form-label fw-semibold">Cliente</label>
-        <input type="text" id="cliente_input" name="cliente" class="form-control" required
-               placeholder="Escribe para buscar cliente..." autocomplete="off">
-        <div id="cliente_suggestions" class="list-group position-absolute w-100" 
-             style="z-index:1000; max-height:200px; overflow:auto;"></div>
+        <input type="text" id="cliente_input" name="cliente" class="form-control" required placeholder="Escribe para buscar cliente..." autocomplete="off">
+        <div id="cliente_suggestions" class="list-group position-absolute w-100" style="z-index:1000; max-height:200px; overflow:auto;"></div>
       </div>
-
       <div class="col-md-6">
         <label for="empresa" class="form-label fw-semibold">Empresa</label>
         <input type="text" id="empresa" name="empresa" class="form-control" placeholder="Empresa o razón social">
       </div>
     </div>
-
     <div class="row g-3 mt-2">
-      <div class="col-md-4">
-        <label for="correo" class="form-label fw-semibold">Correo</label>
-        <input type="email" id="correo" name="correo" class="form-control">
-      </div>
-      <div class="col-md-4">
-        <label for="telefono" class="form-label fw-semibold">Teléfono</label>
-        <input type="text" id="telefono" name="telefono" class="form-control">
-      </div>
-      <div class="col-md-4">
-        <label for="responsable">Responsable</label>
-        <input type="text" class="form-control" id="responsable" name="responsable" placeholder="Nombre del responsable">
-      </div>
+      <div class="col-md-4"><label for="correo" class="form-label fw-semibold">Correo</label><input type="email" id="correo" name="correo" class="form-control"></div>
+      <div class="col-md-4"><label for="telefono" class="form-label fw-semibold">Teléfono</label><input type="text" id="telefono" name="telefono" class="form-control"></div>
+      <div class="col-md-4"><label for="responsable">Responsable</label><input type="text" class="form-control" id="responsable" name="responsable" placeholder="Nombre del responsable"></div>
     </div>
-
     <div class="row g-3 mt-2">
-      <div class="col-md-12">
-        <label for="direccion" class="form-label fw-semibold">Dirección</label>
-        <input type="text" id="direccion" name="direccion" class="form-control">
-      </div>
-      <!-- ❌ Se quita RFC del formulario -->
+      <div class="col-md-12"><label for="direccion" class="form-label fw-semibold">Dirección</label><input type="text" id="direccion" name="direccion" class="form-control"></div>
     </div>
   </section>
 
-  <!-- LISTA DE CONCEPTOS -->
+  <section class="panel mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="text-secondary mb-0">MAR DATA · Agregar desde APU</h5>
+      <a href="{{ url_for('apu.index') }}" class="btn btn-outline-dark btn-sm">🧮 Ir a MAR DATA</a>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-7 position-relative">
+        <label for="apu_search" class="form-label fw-semibold">Buscar APU</label>
+        <input type="text" id="apu_search" class="form-control" placeholder="Escribe clave o concepto del APU..." autocomplete="off">
+        <div id="apu_suggestions" class="list-group position-absolute w-100" style="z-index:1000; max-height:220px; overflow:auto;"></div>
+      </div>
+      <div class="col-md-2"><label for="apu_cantidad" class="form-label fw-semibold">Cantidad</label><input type="number" id="apu_cantidad" class="form-control" step="0.01" value="1"></div>
+      <div class="col-md-3 d-flex align-items-end"><button type="button" id="btn-add-apu-to-quote" class="btn btn-primary w-100">➕ Agregar APU a cotización</button></div>
+    </div>
+    <div class="card mt-3 border-primary-subtle"><div class="card-body"><div class="fw-semibold mb-2">Resumen del APU seleccionado</div><div id="apu_resumen" class="text-muted">Busca un APU y selecciónalo para ver su precio unitario y cargarlo al cotizador.</div></div></div>
+  </section>
+
+  <section class="panel mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="text-secondary mb-0">Ingeniería comercial · Área + materiales + memoria</h5>
+      <button type="button" class="btn btn-outline-danger btn-sm" id="btn-open-fase2-demo" onclick="window.open('{{ url_for('mar_data_pro.fase2_home') }}','_blank')">Abrir demo aparte</button>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-8">
+        <label class="form-label fw-semibold">Áreas (largo × ancho × piezas)</label>
+        <div id="area-rows"></div>
+        <button type="button" id="add-area-row" class="btn btn-outline-secondary btn-sm mt-2">Agregar área</button>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label fw-semibold">Merma %</label>
+        <input id="waste_pct" type="number" class="form-control" value="5">
+        <button type="button" id="calc-area" class="btn btn-outline-primary btn-sm mt-2">Calcular área</button>
+        <div class="mt-2"><b>Área total:</b> <span id="area-total-view">0.00</span> m²</div>
+      </div>
+    </div>
+    <div class="mt-3">
+      <label class="form-label fw-semibold">Materiales (JSON)</label>
+      <textarea id="materials-json" class="form-control" rows="5">[
+  {"nombre":"Resina epóxica","unidad":"kg","consumo_unitario":1.2,"precio_unitario":180},
+  {"nombre":"Arena sílica","unidad":"kg","consumo_unitario":0.8,"precio_unitario":12}
+]</textarea>
+      <button type="button" id="calc-materials" class="btn btn-outline-primary btn-sm mt-2">Generar lista de materiales</button>
+    </div>
+    <div class="mt-3">
+      <label class="form-label fw-semibold">Sistema / espesor / memoria técnica</label>
+      <textarea id="memory-json" class="form-control" rows="8">{
+  "sistema":"Recubrimiento epóxico autonivelante",
+  "espesor":"3 mm",
+  "preparacion":"Desbaste mecánico, aspirado y limpieza del sustrato.",
+  "capas":["Primer epóxico","Capa autonivelante","Sellado final"],
+  "rendimiento":"120 m² por jornada",
+  "observaciones":"La superficie debe estar seca, limpia y libre de contaminantes."
+}</textarea>
+      <button type="button" id="generate-memory" class="btn btn-outline-primary btn-sm mt-2">Generar memoria técnica</button>
+    </div>
+    <div class="row mt-3">
+      <div class="col-md-6">
+        <label class="form-label fw-semibold">Lista de materiales generada</label>
+        <pre id="materials-output" class="border rounded bg-light p-2" style="min-height:160px; white-space:pre-wrap;"></pre>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label fw-semibold">Memoria técnica generada</label>
+        <pre id="memory-output" class="border rounded bg-light p-2" style="min-height:160px; white-space:pre-wrap;"></pre>
+      </div>
+    </div>
+  </section>
+
   <section class="panel mb-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h5 class="text-secondary mb-0">Conceptos de Cotización</h5>
       <button type="button" id="btn-add-row" class="btn btn-outline-primary btn-sm">➕ Agregar Concepto</button>
     </div>
-
     <div class="table-responsive">
       <table class="table table-bordered align-middle">
-        <thead class="table-light">
-          <tr>
-            <th>Concepto</th>
-            <th>Unidad</th>
-            <th>Cantidad</th>
-            <th>Precio Unitario</th>
-            <th>Sistema</th>
-            <th>Subtotal</th>
-            <th>Descripción</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="items-body">
-          <!-- Genera filas cotizador.js -->
-        </tbody>
+        <thead class="table-light"><tr><th>Concepto</th><th>Unidad</th><th>Cantidad</th><th>Precio Unitario</th><th>Sistema</th><th>Subtotal</th><th>Descripción</th><th></th></tr></thead>
+        <tbody id="items-body"></tbody>
       </table>
     </div>
   </section>
 
-  <!-- TOTALES -->
   <section class="panel mb-4">
     <div class="row g-3 text-end">
       <div class="col-md-3 ms-auto">
         <label class="form-label fw-semibold">Zona (descuento):</label>
         <select id="zona" name="zona" class="form-select">
-          <option value="" selected>Selecciona...</option>
-          <option value="Zona Norte">Zona Norte</option>
-          <option value="Zona Centro">Zona Centro</option>
-          <option value="Bajío">Bajío</option>
-          <option value="Zona Sur">Zona Sur</option>
-          <option value="Frontera">Frontera</option>
+          <option value="" selected>Selecciona...</option><option value="Zona Norte">Zona Norte</option><option value="Zona Centro">Zona Centro</option><option value="Bajío">Bajío</option><option value="Zona Sur">Zona Sur</option><option value="Frontera">Frontera</option>
         </select>
       </div>
-      <div class="col-md-3 ms-auto">
-        <label class="form-label fw-semibold">IVA %:</label>
-        <input type="number" id="iva_porc" name="iva_porc" class="form-control text-end" value="16">
-      </div>
-      <div class="col-md-3">
-        <label class="form-label fw-semibold">Subtotal:</label>
-        <div id="ui-subtotal" class="form-control-plaintext text-end">$0.00</div>
-      </div>
-      <div class="col-md-3">
-        <label class="form-label fw-semibold">Descuento:</label>
-        <div id="ui-descuento" class="form-control-plaintext text-end">$0.00</div>
-      </div>
-      <div class="col-md-3">
-        <label class="form-label fw-semibold">Subtotal c/ desc.:</label>
-        <div id="ui-subtotal-desc" class="form-control-plaintext text-end">$0.00</div>
-      </div>
-      <div class="col-md-3">
-        <label class="form-label fw-semibold">IVA:</label>
-        <div id="ui-iva" class="form-control-plaintext text-end">$0.00</div>
-      </div>
-      <div class="col-md-3">
-        <label class="form-label fw-semibold">Total:</label>
-        <div id="ui-total" class="form-control-plaintext fw-bold text-success text-end">$0.00</div>
-      </div>
+      <div class="col-md-3 ms-auto"><label class="form-label fw-semibold">IVA %:</label><input type="number" id="iva_porc" name="iva_porc" class="form-control text-end" value="16"></div>
+      <div class="col-md-3"><label class="form-label fw-semibold">Subtotal:</label><div id="ui-subtotal" class="form-control-plaintext text-end">$0.00</div></div>
+      <div class="col-md-3"><label class="form-label fw-semibold">Descuento:</label><div id="ui-descuento" class="form-control-plaintext text-end">$0.00</div></div>
+      <div class="col-md-3"><label class="form-label fw-semibold">Subtotal c/ desc.:</label><div id="ui-subtotal-desc" class="form-control-plaintext text-end">$0.00</div></div>
+      <div class="col-md-3"><label class="form-label fw-semibold">IVA:</label><div id="ui-iva" class="form-control-plaintext text-end">$0.00</div></div>
+      <div class="col-md-3"><label class="form-label fw-semibold">Total:</label><div id="ui-total" class="form-control-plaintext fw-bold text-success text-end">$0.00</div></div>
     </div>
   </section>
 
-
-  <!-- CONDICIONES COMERCIALES -->
   <section class="panel mb-4">
     <h5 class="mb-3 text-secondary">Condiciones comerciales</h5>
-    <div class="alert alert-light border">
-      <div class="fw-semibold mb-2">Condiciones por defecto incluidas automáticamente en el PDF:</div>
-      <ul class="mb-0">
-        {% for item in default_condiciones %}<li>{{ item }}</li>{% endfor %}
-      </ul>
-    </div>
-    <div class="mt-3">
-      <label for="notas" class="form-label fw-semibold">Condiciones adicionales (opcionales)</label>
-      <textarea id="notas" name="notas" class="form-control" rows="4" placeholder="Aquí solo agrega condiciones extras; las de cajón ya van incluidas."></textarea>
-    </div>
+    <div class="alert alert-light border"><div class="fw-semibold mb-2">Condiciones por defecto incluidas automáticamente en el PDF:</div><ul class="mb-0">{% for item in default_condiciones %}<li>{{ item }}</li>{% endfor %}</ul></div>
+    <div class="mt-3"><label for="notas" class="form-label fw-semibold">Condiciones adicionales (opcionales)</label><textarea id="notas" name="notas" class="form-control" rows="4" placeholder="Aquí solo agrega condiciones extras; las de cajón ya van incluidas."></textarea></div>
   </section>
 
-  <div class="d-flex justify-content-between">
-    <button type="submit" class="btn btn-success fw-bold px-4">💾 Guardar Cotización</button>
-    <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">⬅ Volver al Dashboard</a>
-  </div>
+  <div class="d-flex justify-content-between"><button type="submit" class="btn btn-success fw-bold px-4">💾 Guardar Cotización</button><a href="{{ url_for('index') }}" class="btn btn-outline-secondary">⬅ Volver al Dashboard</a></div>
 </form>
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="{{ url_for('static', filename='js/cotizador2.js') }}"></script>
-
+<script src="{{ url_for('static', filename='js/cotizador_apu_bridge.js') }}"></script>
+<script src="{{ url_for('static', filename='js/mar_data_pro_embed.js') }}"></script>
 {% endblock %}

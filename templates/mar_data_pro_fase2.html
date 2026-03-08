@@ -1,0 +1,63 @@
+
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>MAR DATA Pro – Área + materiales + memoria</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    .box { border: 1px solid #ddd; border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+    .rowx { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 10px; }
+    input, textarea, button { padding: 8px; width: 100%; box-sizing: border-box; }
+    button { cursor: pointer; }
+    pre { white-space: pre-wrap; background: #f7f7f7; padding: 12px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h1>MAR DATA Pro – Área + materiales + memoria</h1>
+  <p>Calculadora de área, lista de materiales y memoria técnica.</p>
+
+  <div class="box">
+    <h2>Cálculo de m²</h2>
+    <div id="area-rows"></div>
+    <button type="button" id="add-area-row">Agregar área</button>
+    <div class="rowx" style="margin-top:12px;">
+      <div>
+        <label>Merma %</label>
+        <input id="waste_pct" type="number" value="5">
+      </div>
+      <div style="align-self:end;">
+        <button type="button" id="calc-area">Calcular área</button>
+      </div>
+    </div>
+    <pre id="area-output"></pre>
+  </div>
+
+  <div class="box">
+    <h2>Lista de materiales</h2>
+    <textarea id="materials-json" rows="8">[
+  {"nombre":"Resina epóxica","unidad":"kg","consumo_unitario":1.2,"precio_unitario":180},
+  {"nombre":"Arena sílica","unidad":"kg","consumo_unitario":0.8,"precio_unitario":12}
+]</textarea>
+    <button type="button" id="calc-materials">Generar lista</button>
+    <pre id="materials-output"></pre>
+  </div>
+
+  <div class="box">
+    <h2>Memoria técnica automática</h2>
+    <textarea id="memory-json" rows="10">{
+  "sistema":"Recubrimiento epóxico autonivelante",
+  "espesor":"3 mm",
+  "preparacion":"Desbaste mecánico, aspirado y limpieza del sustrato.",
+  "capas":["Primer epóxico","Capa autonivelante","Sellado final"],
+  "rendimiento":"120 m² por jornada",
+  "observaciones":"La superficie debe estar seca, limpia y libre de contaminantes."
+}</textarea>
+    <button type="button" id="generate-memory">Generar memoria</button>
+    <pre id="memory-output"></pre>
+  </div>
+
+  <script src="/static/mar_data_pro_fase2.js"></script>
+</body>
+</html>

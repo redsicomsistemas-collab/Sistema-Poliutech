@@ -3,7 +3,7 @@
 {% block content %}
 <div class="container py-4">
   <h1>Lista de APU</h1>
-  {% include "partials/mar_data_nav.html" %}
+  <p><a href="{{ url_for('apu.apu_new') }}">+ Nuevo APU</a> | <a href="{{ url_for('apu.plantillas') }}">Plantillas</a> | <a href="{{ url_for('apu.generador') }}">Generador automático</a></p>
   <table border="1" cellpadding="8" cellspacing="0" width="100%">
     <tr>
       <th>ID</th><th>Clave</th><th>Concepto</th><th>Unidad</th>

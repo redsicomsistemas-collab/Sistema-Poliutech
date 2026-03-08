@@ -3,8 +3,7 @@
 {% block content %}
 <div class="container py-4">
   <h1>Maquinaria</h1>
-  {% include "partials/mar_data_nav.html" %}
-  <p><a href="{{ url_for('apu.maquinaria_new') }}">+ Nueva maquinaria</a></p>
+  <p><a href="{{ url_for('apu.maquinaria_new') }}">+ Nueva maquinaria</a> | <a href="{{ url_for('apu.index') }}">Volver a MAR DATA</a></p>
   <table border="1" cellpadding="8" cellspacing="0" width="100%">
     <tr><th>ID</th><th>Nombre</th><th>Unidad</th><th>PU</th><th>Acciones</th></tr>
     {% for item in items %}

@@ -1,7 +1,6 @@
 
 {% extends "base.html" %}
 {% block title %}Vista de Cotización {{ c.folio }}{% endblock %}
-
 {% block content %}
 <div class="container mt-4 mb-5">
   <div class="card shadow-sm border-0">
@@ -9,70 +8,56 @@
       <h5 class="mb-0">Cotización <b>{{ c.folio }}</b></h5>
       <a href="{{ url_for('index') }}" class="btn btn-light btn-sm">← Volver</a>
     </div>
-
     <div class="card-body">
-
       <div class="border rounded p-3 mb-4">
         <h6 class="fw-bold text-primary mb-3">Datos del Cliente</h6>
         <div class="row">
-          <div class="col-md-6 mb-2">
-            <label class="fw-bold">Nombre:</label>
-            <div>{{ c.cliente.nombre_cliente if c.cliente else "—" }}</div>
-          </div>
-          <div class="col-md-6 mb-2">
-            <label class="fw-bold">Empresa:</label>
-            <div>{{ c.cliente.empresa if c.cliente else "—" }}</div>
-          </div>
-          <div class="col-md-6 mb-2">
-            <label class="fw-bold">Correo:</label>
-            <div>{{ c.cliente.correo if c.cliente else "—" }}</div>
-          </div>
-          <div class="col-md-6 mb-2">
-            <label class="fw-bold">Teléfono:</label>
-            <div>{{ c.cliente.telefono if c.cliente else "—" }}</div>
-          </div>
+          <div class="col-md-6 mb-2"><label class="fw-bold">Nombre:</label><div>{{ c.cliente.nombre_cliente if c.cliente else "—" }}</div></div>
+          <div class="col-md-6 mb-2"><label class="fw-bold">Empresa:</label><div>{{ c.cliente.empresa if c.cliente else "—" }}</div></div>
+          <div class="col-md-6 mb-2"><label class="fw-bold">Correo:</label><div>{{ c.cliente.correo if c.cliente else "—" }}</div></div>
+          <div class="col-md-6 mb-2"><label class="fw-bold">Teléfono:</label><div>{{ c.cliente.telefono if c.cliente else "—" }}</div></div>
         </div>
-        <div class="mt-2">
-          <label class="fw-bold">Representante:</label>
-          <div>{{ c.responsable or "—" }}</div>
-        </div>
+        <div class="mt-2"><label class="fw-bold">Representante:</label><div>{{ c.responsable or "—" }}</div></div>
       </div>
 
       <div class="alert alert-light border mb-4">
         <div class="fw-semibold mb-1">Origen de conceptos</div>
-        <div>
-          {% set mar_count = c.detalles|selectattr('sistema', 'equalto', 'MAR DATA')|list|length %}
-          Esta cotización contiene <b>{{ mar_count }}</b> concepto(s) provenientes de <b>MAR DATA</b>.
-        </div>
+        <div>{% set mar_count = c.detalles|selectattr('sistema', 'equalto', 'MAR DATA')|list|length %}Esta cotización contiene <b>{{ mar_count }}</b> concepto(s) provenientes de <b>MAR DATA</b>.</div>
       </div>
+
+      {% if c.area_total %}
+      <div class="border rounded p-3 mb-4">
+        <h6 class="fw-bold text-primary mb-3">Área calculada</h6>
+        <div><b>Área total:</b> {{ '%.2f'|format(c.area_total or 0) }} m²</div>
+      </div>
+      {% endif %}
+
+      {% if c.lista_materiales_json %}
+      <div class="border rounded p-3 mb-4">
+        <h6 class="fw-bold text-primary mb-3">Lista de materiales</h6>
+        <pre class="mb-0" style="white-space:pre-wrap;">{{ c.lista_materiales_json }}</pre>
+      </div>
+      {% endif %}
+
+      {% if c.memoria_tecnica %}
+      <div class="border rounded p-3 mb-4">
+        <h6 class="fw-bold text-primary mb-3">Memoria técnica</h6>
+        <pre class="mb-0" style="white-space:pre-wrap;">{{ c.memoria_tecnica }}</pre>
+      </div>
+      {% endif %}
 
       <div class="border rounded p-3 mb-4">
         <h6 class="fw-bold text-primary mb-3">Conceptos</h6>
         <div class="table-responsive">
           <table class="table table-sm align-middle">
-            <thead class="table-light">
-              <tr>
-                <th scope="col">Cantidad</th>
-                <th scope="col">Unidad</th>
-                <th scope="col">Concepto</th>
-                <th scope="col">Sistema</th>
-                <th scope="col" class="text-end">Precio Unitario</th>
-                <th scope="col" class="text-end">Subtotal</th>
-              </tr>
-            </thead>
+            <thead class="table-light"><tr><th>Cantidad</th><th>Unidad</th><th>Concepto</th><th>Sistema</th><th class="text-end">Precio Unitario</th><th class="text-end">Subtotal</th></tr></thead>
             <tbody>
               {% for d in c.detalles %}
               <tr>
                 <td>{{ d.cantidad }}</td>
                 <td>{{ d.unidad }}</td>
                 <td>{{ d.nombre_concepto }}</td>
-                <td class="text-center">
-                  {% if d.sistema == 'MAR DATA' %}
-                    <span class="badge bg-dark">MAR DATA</span>
-                  {% else %}
-                    {{ d.sistema or '-' }}
-                  {% endif %}
-                </td>
+                <td class="text-center">{% if d.sistema == 'MAR DATA' %}<span class="badge bg-dark">MAR DATA</span>{% else %}{{ d.sistema or '-' }}{% endif %}</td>
                 <td class="text-end">${{ "%.2f"|format(d.precio_unitario) }}</td>
                 <td class="text-end">${{ "%.2f"|format(d.subtotal) }}</td>
               </tr>
@@ -86,45 +71,17 @@
 
       <div class="border rounded p-3 mb-4">
         <h6 class="fw-bold text-primary mb-3">Notas y Estatus</h6>
-        <p><b>Estatus:</b> 
-          <span class="badge 
-            {% if c.estatus == 'PENDIENTE' %} bg-warning text-dark
-            {% elif c.estatus == 'ENVIADA' %} bg-info text-dark
-            {% elif c.estatus == 'GANADA' %} bg-success
-            {% elif c.estatus == 'PERDIDA' %} bg-danger
-            {% else %} bg-secondary {% endif %}">
-            {{ c.estatus }}
-          </span>
-        </p>
+        <p><b>Estatus:</b> <span class="badge {% if c.estatus == 'PENDIENTE' %} bg-warning text-dark{% elif c.estatus == 'ENVIADA' %} bg-info text-dark{% elif c.estatus == 'GANADA' %} bg-success{% elif c.estatus == 'PERDIDA' %} bg-danger{% else %} bg-secondary {% endif %}">{{ c.estatus }}</span></p>
         <p><b>Condiciones Comerciales:</b></p>
-        <div class="border rounded bg-light p-3">
-          <ul class="mb-0">
-            {% for item in condiciones_finales %}<li>{{ item }}</li>{% endfor %}
-          </ul>
-        </div>
+        <div class="border rounded bg-light p-3"><ul class="mb-0">{% for item in condiciones_finales %}<li>{{ item }}</li>{% endfor %}</ul></div>
       </div>
 
       <div class="row">
-        <div class="col-md-4">
-          <label class="form-label">Subtotal:</label>
-          <input type="text" readonly class="form-control-plaintext" value="${{ "%.2f"|format(c.subtotal) }}">
-        </div>
-        <div class="col-md-4">
-          <label class="form-label">Descuento{% if zona_actual %} ({{ zona_actual }}){% endif %}:</label>
-          <input type="text" readonly class="form-control-plaintext" value="-${{ "%.2f"|format(c.descuento_total or 0) }}">
-        </div>
-        <div class="col-md-4">
-          <label class="form-label">Subtotal c/ desc.:</label>
-          <input type="text" readonly class="form-control-plaintext" value="${{ "%.2f"|format((c.subtotal or 0) - (c.descuento_total or 0)) }}">
-        </div>
-        <div class="col-md-4">
-          <label class="form-label">IVA ({{ "%.2f"|format(c.iva_porc) }}%):</label>
-          <input type="text" readonly class="form-control-plaintext" value="${{ "%.2f"|format(c.iva_monto) }}">
-        </div>
-        <div class="col-md-4">
-          <label class="form-label">Total:</label>
-          <input type="text" readonly class="form-control-plaintext fw-bold text-success" value="${{ "%.2f"|format(c.total) }}">
-        </div>
+        <div class="col-md-4"><label class="form-label">Subtotal:</label><input type="text" readonly class="form-control-plaintext" value="${{ "%.2f"|format(c.subtotal) }}"></div>
+        <div class="col-md-4"><label class="form-label">Descuento{% if zona_actual %} ({{ zona_actual }}){% endif %}:</label><input type="text" readonly class="form-control-plaintext" value="-${{ "%.2f"|format(c.descuento_total or 0) }}"></div>
+        <div class="col-md-4"><label class="form-label">Subtotal c/ desc.:</label><input type="text" readonly class="form-control-plaintext" value="${{ "%.2f"|format((c.subtotal or 0) - (c.descuento_total or 0)) }}"></div>
+        <div class="col-md-4"><label class="form-label">IVA ({{ "%.2f"|format(c.iva_porc) }}%):</label><input type="text" readonly class="form-control-plaintext" value="${{ "%.2f"|format(c.iva_monto) }}"></div>
+        <div class="col-md-4"><label class="form-label">Total:</label><input type="text" readonly class="form-control-plaintext fw-bold text-success" value="${{ "%.2f"|format(c.total) }}"></div>
       </div>
 
       <div class="text-end mt-4">
@@ -132,7 +89,6 @@
         <a href="{{ url_for('apu.index') }}" class="btn btn-outline-dark">🧮 MAR DATA</a>
         <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">← Volver al Dashboard</a>
       </div>
-
     </div>
   </div>
 </div>
