@@ -482,7 +482,48 @@ def ensure_schema():
             db.session.execute(text("ALTER TABLE cotizacion_detalle ADD COLUMN descripcion VARCHAR(1000)"))
         db.session.commit()
     except Exception as e:
-        print("⚠️ ensure_schema(detalle extras):", e)
+        print("[WARN] ensure_schema(detalle extras):", e)
+
+    try:
+        apu_cols = _table_columns("apu")
+        for col, stmt in [
+            ("clave", "ALTER TABLE apu ADD COLUMN clave VARCHAR(50)"),
+            ("concepto", "ALTER TABLE apu ADD COLUMN concepto VARCHAR(300)"),
+            ("unidad", "ALTER TABLE apu ADD COLUMN unidad VARCHAR(50) DEFAULT 'm2'"),
+            ("indirecto_pct", "ALTER TABLE apu ADD COLUMN indirecto_pct FLOAT DEFAULT 0.0"),
+            ("utilidad_pct", "ALTER TABLE apu ADD COLUMN utilidad_pct FLOAT DEFAULT 0.0"),
+            ("financiamiento_pct", "ALTER TABLE apu ADD COLUMN financiamiento_pct FLOAT DEFAULT 0.0"),
+            ("cargos_adicionales_pct", "ALTER TABLE apu ADD COLUMN cargos_adicionales_pct FLOAT DEFAULT 0.0"),
+            ("costo_materiales", "ALTER TABLE apu ADD COLUMN costo_materiales FLOAT DEFAULT 0.0"),
+            ("costo_mano_obra", "ALTER TABLE apu ADD COLUMN costo_mano_obra FLOAT DEFAULT 0.0"),
+            ("costo_maquinaria", "ALTER TABLE apu ADD COLUMN costo_maquinaria FLOAT DEFAULT 0.0"),
+            ("costo_directo", "ALTER TABLE apu ADD COLUMN costo_directo FLOAT DEFAULT 0.0"),
+            ("precio_unitario", "ALTER TABLE apu ADD COLUMN precio_unitario FLOAT DEFAULT 0.0"),
+            ("creado_en", "ALTER TABLE apu ADD COLUMN creado_en DATETIME"),
+            ("actualizado_en", "ALTER TABLE apu ADD COLUMN actualizado_en DATETIME"),
+        ]:
+            if col not in apu_cols:
+                db.session.execute(text(stmt))
+        db.session.commit()
+    except Exception as e:
+        print("[WARN] ensure_schema(apu):", e)
+
+    try:
+        apu_det_cols = _table_columns("apu_detalle")
+        for col, stmt in [
+            ("tipo_insumo", "ALTER TABLE apu_detalle ADD COLUMN tipo_insumo VARCHAR(20) DEFAULT 'material'"),
+            ("referencia_id", "ALTER TABLE apu_detalle ADD COLUMN referencia_id INTEGER"),
+            ("descripcion", "ALTER TABLE apu_detalle ADD COLUMN descripcion VARCHAR(300) DEFAULT ''"),
+            ("unidad", "ALTER TABLE apu_detalle ADD COLUMN unidad VARCHAR(50) DEFAULT 'kg'"),
+            ("cantidad", "ALTER TABLE apu_detalle ADD COLUMN cantidad FLOAT DEFAULT 0.0"),
+            ("precio_unitario", "ALTER TABLE apu_detalle ADD COLUMN precio_unitario FLOAT DEFAULT 0.0"),
+            ("subtotal", "ALTER TABLE apu_detalle ADD COLUMN subtotal FLOAT DEFAULT 0.0"),
+        ]:
+            if col not in apu_det_cols:
+                db.session.execute(text(stmt))
+        db.session.commit()
+    except Exception as e:
+        print("[WARN] ensure_schema(apu_detalle):", e)
 
 # ---------------------------------------------------------
 # Seed: usuarios base (idempotente)
@@ -521,8 +562,6 @@ def seed_default_users():
     if created:
         print(f"✅ Seed users: creados {created} usuario(s).")
 
-with app.app_context():
-    ensure_schema()
 with app.app_context():
     ensure_schema()
 
