@@ -4,7 +4,7 @@
 # =========================================================
 from __future__ import annotations
 
-import os, io, csv, sys, math, re, json, traceback
+import os, io, csv, sys, math, re, json, traceback, unicodedata
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from typing import Iterable, Optional, List
@@ -731,6 +731,204 @@ def sample_import_payload() -> dict:
     }
 
 
+def _normalize_text_for_match(value: str) -> str:
+    raw = str(value or "")
+    normalized = unicodedata.normalize("NFKD", raw)
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch)).lower().strip()
+
+
+def _clean_pdf_text(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def _extract_pdf_text_and_tables(pdf_bytes: bytes) -> tuple[str, list[list[list[str]]]]:
+    try:
+        import pdfplumber
+    except Exception as e:
+        raise ValueError("El servidor no tiene habilitada la lectura de PDFs. Instala las dependencias del proyecto.") from e
+
+    text_parts: list[str] = []
+    tables: list[list[list[str]]] = []
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        for page in pdf.pages:
+            page_text = page.extract_text() or ""
+            if page_text.strip():
+                text_parts.append(page_text)
+            for table in page.extract_tables() or []:
+                normalized_rows = []
+                for row in table or []:
+                    cells = [_clean_pdf_text(cell) for cell in (row or [])]
+                    if any(cells):
+                        normalized_rows.append(cells)
+                if normalized_rows:
+                    tables.append(normalized_rows)
+
+    full_text = "\n".join(text_parts).strip()
+    if not full_text:
+        raise ValueError("No se pudo extraer texto legible del PDF.")
+    return full_text, tables
+
+
+def _extract_prefixed_line(text: str, prefix: str) -> str:
+    prefix_norm = _normalize_text_for_match(prefix)
+    for line in text.splitlines():
+        clean = line.strip()
+        if not clean:
+            continue
+        norm = _normalize_text_for_match(clean)
+        if norm.startswith(prefix_norm):
+            parts = clean.split(":", 1)
+            return parts[1].strip() if len(parts) > 1 else clean
+    return ""
+
+
+def _parse_spanish_date_from_pdf(text: str) -> Optional[datetime]:
+    match = re.search(r"Ciudad de M[e?]xico a\s+(\d{1,2})\s+de\s+([A-Za-z????????????]+)\s+de\s+(\d{4})", text, re.IGNORECASE)
+    if not match:
+        return None
+
+    months = {
+        "enero": 1,
+        "febrero": 2,
+        "marzo": 3,
+        "abril": 4,
+        "mayo": 5,
+        "junio": 6,
+        "julio": 7,
+        "agosto": 8,
+        "septiembre": 9,
+        "setiembre": 9,
+        "octubre": 10,
+        "noviembre": 11,
+        "diciembre": 12,
+    }
+    day = int(match.group(1))
+    month_name = _normalize_text_for_match(match.group(2))
+    month = months.get(month_name)
+    year = int(match.group(3))
+    if not month:
+        return None
+    return datetime(year, month, day)
+
+
+def _parse_pdf_currency(value: str) -> float:
+    match = re.search(r"([\d,]+\.\d{2})", str(value or ""))
+    return parse_float(match.group(1), 0.0) if match else 0.0
+
+
+def _parse_pdf_quantity_and_unit(value: str) -> tuple[float, str]:
+    raw = str(value or "").replace(",", "")
+    match = re.search(r"([\d.]+)\s*([A-Za-z???????????0-9/]+)?", raw)
+    if not match:
+        return 0.0, ""
+    quantity = parse_float(match.group(1), 0.0)
+    unit = (match.group(2) or "").strip()
+    unit = unit.replace("?", "2")
+    return quantity, unit.lower()
+
+
+def _build_concept_name(system: str, description: str) -> str:
+    base = re.split(r"incluye\s*:", description, maxsplit=1, flags=re.IGNORECASE)[0].strip(" .;:-")
+    if len(base) >= 12:
+        return base[:220]
+    return (system or description or "Concepto importado")[:220]
+
+
+def _extract_items_from_pdf_tables(tables: list[list[list[str]]]) -> list[dict]:
+    items: list[dict] = []
+    for table in tables:
+        for row in table:
+            cells = [_clean_pdf_text(cell) for cell in row]
+            if len(cells) < 5:
+                continue
+            header_norm = _normalize_text_for_match(" ".join(cells[:2]))
+            if "area / unidad" in header_norm or header_norm.startswith("subtotal") or header_norm.startswith("iva") or header_norm.startswith("total"):
+                continue
+
+            quantity, unit = _parse_pdf_quantity_and_unit(cells[0])
+            unit_price = _parse_pdf_currency(cells[3])
+            line_subtotal = _parse_pdf_currency(cells[4])
+            if quantity <= 0 or unit_price <= 0 or line_subtotal <= 0:
+                continue
+
+            system = cells[1]
+            description = cells[2]
+            items.append({
+                "nombre_concepto": _build_concept_name(system, description),
+                "unidad": unit or "m2",
+                "cantidad": quantity,
+                "precio_unitario": unit_price,
+                "sistema": system or None,
+                "descripcion": description,
+            })
+    return items
+
+
+def _extract_conditions_from_pdf(text: str) -> str:
+    match = re.search(r"CONDICIONES COMERCIALES\s*:(.*?)(?:Esperando contar con su preferencia|Atte\.|Ing\.)", text, re.IGNORECASE | re.DOTALL)
+    if not match:
+        return ""
+    lines = []
+    for raw in match.group(1).splitlines():
+        clean = raw.strip().lstrip("-?* ").strip()
+        if clean:
+            lines.append(clean)
+    return "\n".join(lines)
+
+
+def build_import_payload_from_pdf(pdf_bytes: bytes, filename: str, responsable_hint: Optional[str] = None) -> dict:
+    text, tables = _extract_pdf_text_and_tables(pdf_bytes)
+    items = _extract_items_from_pdf_tables(tables)
+    if not items:
+        raise ValueError("No pude identificar conceptos importables dentro del PDF.")
+
+    folio_match = re.search(r"Folio\s*:\s*([A-Z0-9\-]+)", text, re.IGNORECASE)
+    folio = folio_match.group(1).strip() if folio_match else None
+
+    fecha = _parse_spanish_date_from_pdf(text) or now_cdmx_naive()
+    contacto = _extract_prefixed_line(text, "Con atenci?n a")
+    empresa = _extract_prefixed_line(text, "Empresa")
+
+    ubicacion = ""
+    location_match = re.search(r"se realizar(?:an|?n)\s+en\s+(.+?)(?:\.|\n)", text, re.IGNORECASE)
+    if location_match:
+        ubicacion = _clean_pdf_text(location_match.group(1))
+
+    iva_porc = 16.0
+    iva_pct_match = re.search(r"IVA\s*(\d+(?:\.\d+)?)\s*%", text, re.IGNORECASE)
+    if iva_pct_match:
+        iva_porc = parse_float(iva_pct_match.group(1), 16.0)
+
+    notas = "Importada desde PDF externo."
+    conditions = _extract_conditions_from_pdf(text)
+    if conditions:
+        notas = _append_note(notas, conditions)
+
+    total_match = re.search(r"Total\s*\$?\s*([\d,]+\.\d{2})", text, re.IGNORECASE)
+    if total_match:
+        notas = _append_note(notas, f"Total detectado en PDF: ${parse_float(total_match.group(1), 0.0):,.2f}")
+
+    cliente_nombre = contacto or empresa or Path(filename).stem[:120]
+    return {
+        "folio": folio,
+        "fecha": fecha.isoformat(sep=" "),
+        "estatus": "PENDIENTE",
+        "responsable": responsable_hint or "",
+        "cliente": {
+            "nombre_cliente": cliente_nombre,
+            "empresa": empresa or None,
+            "correo": None,
+            "telefono": None,
+            "direccion": ubicacion or None,
+            "rfc": None,
+        },
+        "zona": "",
+        "iva_porc": iva_porc,
+        "notas": notas,
+        "items": items,
+    }
+
+
 def _normalize_import_payload(payload: dict) -> dict:
     if not isinstance(payload, dict):
         raise ValueError("El JSON debe ser un objeto.")
@@ -1058,34 +1256,40 @@ def importar_cotizacion_externa():
     if not is_admin():
         abort(403)
 
-    payload_json = json.dumps(sample_import_payload(), ensure_ascii=False, indent=2)
-    preview = None
-    source_label = ""
+    detected = None
 
     if request.method == "POST":
-        source_label = (request.form.get("source_label") or "").strip()
-        payload_json = (request.form.get("payload_json") or "").strip() or payload_json
-        try:
-            payload = json.loads(payload_json)
-            normalized = _normalize_import_payload(payload)
-            preview = json.dumps(normalized, ensure_ascii=False, indent=2, default=str)
-            if request.form.get("preview") == "1":
-                flash("JSON v?lido. Revisa la vista previa antes de importar.", "info")
-            else:
-                cot = import_external_quote_payload(payload, source_label=source_label)
+        uploaded = request.files.get("cotizacion_pdf")
+        responsable_destino = (request.form.get("responsable_destino") or "").strip() or responsable_actual()
+
+        if not uploaded or not (uploaded.filename or "").strip():
+            flash("Selecciona un PDF antes de importar.", "danger")
+        else:
+            try:
+                pdf_bytes = uploaded.read()
+                if not pdf_bytes:
+                    raise ValueError("El archivo PDF lleg? vac?o.")
+
+                payload = build_import_payload_from_pdf(
+                    pdf_bytes,
+                    uploaded.filename or "cotizacion.pdf",
+                    responsable_hint=responsable_destino,
+                )
+                detected = _normalize_import_payload(payload)
+                subtotal_detectado = sum((it.get("cantidad") or 0) * (it.get("precio_unitario") or 0) for it in detected["items"])
+                total_detectado = subtotal_detectado * (1 + ((detected.get("iva_porc") or 0) / 100.0))
+                detected["total_calculado"] = fmt(total_detectado)
+                cot = import_external_quote_payload(payload, source_label=uploaded.filename or "cotizacion.pdf")
                 flash(f"Cotizaci?n importada correctamente: {cot.folio}", "success")
                 return redirect(url_for("view_cotizacion", cot_id=cot.id))
-        except Exception as e:
-            flash(f"No se pudo importar la cotizaci?n: {e}", "danger")
+            except Exception as e:
+                flash(f"No se pudo importar la cotizaci?n: {e}", "danger")
 
     return render_template(
         "cotizacion_import.html",
         title="Importar cotizaci?n ? Sistema MAR",
-        payload_json=payload_json,
-        preview=preview,
-        source_label=source_label,
+        detected=detected,
     )
-
 @app.route("/admin/catalogos")
 @login_required
 def admin_catalogos():
