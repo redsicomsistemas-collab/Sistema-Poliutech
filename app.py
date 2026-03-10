@@ -1283,6 +1283,11 @@ def importar_cotizacion_externa():
                 flash(f"Cotizaci?n importada correctamente: {cot.folio}", "success")
                 return redirect(url_for("view_cotizacion", cot_id=cot.id))
             except Exception as e:
+                try:
+                    print(f"[IMPORTADOR PDF] ERROR: {e}", file=sys.stderr)
+                    traceback.print_exc()
+                except Exception:
+                    pass
                 flash(f"No se pudo importar la cotizaci?n: {e}", "danger")
 
     return render_template(
