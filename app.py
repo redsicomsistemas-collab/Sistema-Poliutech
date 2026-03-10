@@ -4,7 +4,7 @@
 # =========================================================
 from __future__ import annotations
 
-import os, io, csv, sys, math, re, traceback
+import os, io, csv, sys, math, re, json, traceback
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from typing import Iterable, Optional, List
@@ -662,6 +662,239 @@ def parse_float(v, default=0.0) -> float:
     except Exception:
         return default
 
+
+def parse_datetime_flexible(v) -> Optional[datetime]:
+    if v in (None, ""):
+        return None
+    if isinstance(v, datetime):
+        return v
+    raw = str(v).strip()
+    if not raw:
+        return None
+    candidates = [raw, raw.replace("Z", "+00:00"), raw + " 00:00:00"]
+    formats = [
+        "%Y-%m-%d",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d %H:%M:%S",
+        "%d/%m/%Y",
+        "%d/%m/%Y %H:%M",
+        "%d/%m/%Y %H:%M:%S",
+    ]
+    for cand in candidates:
+        try:
+            return datetime.fromisoformat(cand)
+        except Exception:
+            pass
+        for fmt_s in formats:
+            try:
+                return datetime.strptime(cand, fmt_s)
+            except Exception:
+                continue
+    return None
+
+
+def _append_note(base: Optional[str], extra: Optional[str]) -> Optional[str]:
+    b = (base or "").strip()
+    e = (extra or "").strip()
+    if not e:
+        return b or None
+    return f"{b}\n{e}".strip() if b else e
+
+
+def sample_import_payload() -> dict:
+    return {
+        "folio": "COT-2026-02-026-2",
+        "fecha": "2026-02-26",
+        "estatus": "PENDIENTE",
+        "responsable": responsable_actual() or "",
+        "cliente": {
+            "nombre_cliente": "Ing. Adriana Vazquez / Ing. Karla Reyes",
+            "empresa": "GIA",
+            "correo": "",
+            "telefono": "",
+            "direccion": "Oracle, Guadalajara",
+            "rfc": ""
+        },
+        "zona": "",
+        "iva_porc": 16,
+        "notas": "Importada desde cotizacion externa.\nVigencia de la cotizacion: 30 dias.\nAnticipo: 50%.\nEl precio se respeta siempre que se haga el trabajo total en aplicacion continua.\nEl precio no respeta siempre que las areas no sean continuas.\nSe requiere muestreo de tablero de 150 cm a 150 cm por ejecucion que impide la instalacion del sistema.\nEsperando contar con su preferencia me despido y quedo a sus apreciables ordenes.",
+        "items": [
+            {
+                "nombre_concepto": "Suministro y aplicacion de sistema impermeable de curado rapido sobre superficie de concreto",
+                "unidad": "m2",
+                "cantidad": 880,
+                "precio_unitario": 1907.69,
+                "sistema": "TREMPROOF JARDIN",
+                "descripcion": "Incluye: preparacion de superficie por medios manual mecanicos hasta alcanzar perfil de anclaje; limpieza y sello de juntas con sellador de poliuretano flexible; aplicacion de Tremproof 250 GC; aplicacion de Vapor Barrier; trazo, corte y colocacion de Eucodrain H15P Geotextil; incluye material, equipos, herramienta y personal altamente especializado."
+            }
+        ]
+    }
+
+
+def _normalize_import_payload(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("El JSON debe ser un objeto.")
+
+    cliente_in = payload.get("cliente") or {}
+    if not isinstance(cliente_in, dict):
+        raise ValueError("'cliente' debe ser un objeto.")
+
+    items_in = payload.get("items") or payload.get("conceptos") or payload.get("detalles") or []
+    if not isinstance(items_in, list) or not items_in:
+        raise ValueError("Debes enviar al menos un concepto en 'items'.")
+
+    cliente = {
+        "nombre_cliente": (cliente_in.get("nombre_cliente") or cliente_in.get("cliente") or payload.get("cliente_nombre") or payload.get("cliente") or "").strip(),
+        "empresa": (cliente_in.get("empresa") or payload.get("empresa") or "").strip() or None,
+        "correo": (cliente_in.get("correo") or payload.get("correo") or "").strip() or None,
+        "telefono": (cliente_in.get("telefono") or payload.get("telefono") or "").strip() or None,
+        "direccion": (cliente_in.get("direccion") or payload.get("direccion") or "").strip() or None,
+        "rfc": (cliente_in.get("rfc") or payload.get("rfc") or "").strip() or None,
+    }
+    if not cliente["nombre_cliente"]:
+        raise ValueError("Falta 'cliente.nombre_cliente'.")
+
+    normalized_items = []
+    for idx, item in enumerate(items_in, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"El concepto #{idx} debe ser un objeto.")
+        nombre = (item.get("nombre_concepto") or item.get("concepto") or item.get("nombre") or "").strip()
+        if not nombre:
+            raise ValueError(f"El concepto #{idx} no tiene nombre.")
+        normalized_items.append({
+            "nombre_concepto": nombre,
+            "unidad": (item.get("unidad") or "").strip(),
+            "cantidad": parse_float(item.get("cantidad"), 1.0),
+            "precio_unitario": parse_float(item.get("precio_unitario", item.get("precio")), 0.0),
+            "sistema": (item.get("sistema") or "").strip() or None,
+            "descripcion": (item.get("descripcion") or "").strip(),
+        })
+
+    return {
+        "folio": (payload.get("folio") or payload.get("folio_externo") or "").strip() or None,
+        "fecha": parse_datetime_flexible(payload.get("fecha")) or now_cdmx_naive(),
+        "estatus": (payload.get("estatus") or "PENDIENTE").strip().upper(),
+        "responsable": (payload.get("responsable") or "").strip() or None,
+        "cliente": cliente,
+        "zona": (payload.get("zona") or "").strip(),
+        "iva_porc": parse_float(payload.get("iva_porc"), 16.0),
+        "notas": (payload.get("notas") or "").strip() or None,
+        "items": normalized_items,
+    }
+
+
+def _find_or_create_cliente_import(cliente_data: dict, responsable_final: Optional[str]) -> Cliente:
+    nombre_cliente = (cliente_data.get("nombre_cliente") or "").strip()
+    empresa = (cliente_data.get("empresa") or "").strip()
+
+    q = Cliente.query.filter(db.func.lower(Cliente.nombre_cliente) == nombre_cliente.lower())
+    if empresa:
+        q = q.filter(db.func.lower(Cliente.empresa) == empresa.lower())
+    cliente = q.first()
+    if cliente:
+        return cliente
+
+    cliente = Cliente(
+        nombre_cliente=nombre_cliente,
+        empresa=empresa or None,
+        responsable=responsable_final,
+        correo=cliente_data.get("correo"),
+        telefono=cliente_data.get("telefono"),
+        direccion=cliente_data.get("direccion"),
+        rfc=cliente_data.get("rfc"),
+    )
+    db.session.add(cliente)
+    db.session.flush()
+    return cliente
+
+
+def _pick_import_folio(preferred_folio: Optional[str]) -> str:
+    preferred = (preferred_folio or "").strip()
+    if preferred:
+        exists = db.session.execute(text("SELECT 1 FROM cotizacion WHERE folio=:f LIMIT 1"), {"f": preferred}).fetchone()
+        if not exists:
+            return preferred
+    return generar_folio()
+
+
+def import_external_quote_payload(payload: dict, source_label: Optional[str] = None) -> Cotizacion:
+    normalized = _normalize_import_payload(payload)
+    responsable_final = normalized["responsable"] or None
+    cliente = _find_or_create_cliente_import(normalized["cliente"], responsable_final)
+
+    subtotal = 0.0
+    detail_rows = []
+    for item in normalized["items"]:
+        line_subtotal = fmt(item["cantidad"] * item["precio_unitario"])
+        subtotal += line_subtotal
+        detail_rows.append((item, line_subtotal))
+
+    zona = normalized["zona"]
+    desc_porc = float({
+        "Zona Norte": 10.0,
+        "Zona Centro": 5.0,
+        "Baj?o": 10.0,
+        "Zona Sur": 15.0,
+        "Frontera": 8.0,
+    }.get(zona, 0.0))
+    descuento_total = subtotal * (desc_porc / 100.0)
+    subtotal_desc = subtotal - descuento_total
+    iva_monto = subtotal_desc * (normalized["iva_porc"] / 100.0)
+    total = subtotal_desc + iva_monto
+
+    notas = normalized["notas"]
+    if source_label:
+        notas = _append_note(notas, f"Importada desde: {source_label}")
+    if normalized["folio"]:
+        notas = _append_note(notas, f"Folio externo original: {normalized['folio']}")
+    if zona and desc_porc > 0:
+        notas = _append_note(notas, f"Zona: {zona} ({int(desc_porc)}% descuento)")
+
+    cot = Cotizacion(
+        folio=_pick_import_folio(normalized["folio"]),
+        fecha=normalized["fecha"],
+        cliente_id=cliente.id,
+        estatus=normalized["estatus"],
+        subtotal=fmt(subtotal),
+        descuento_total=fmt(descuento_total),
+        iva_porc=fmt(normalized["iva_porc"]),
+        iva_monto=fmt(iva_monto),
+        total=fmt(total),
+        notas=notas,
+        last_whatsapp_at=None,
+        responsable=responsable_final,
+    )
+    db.session.add(cot)
+    db.session.flush()
+
+    for item, line_subtotal in detail_rows:
+        concepto = Concepto.query.filter_by(nombre_concepto=item["nombre_concepto"]).first()
+        if not concepto:
+            concepto = Concepto(
+                nombre_concepto=item["nombre_concepto"],
+                unidad=item["unidad"] or None,
+                precio_unitario=item["precio_unitario"],
+                descripcion=item["descripcion"] or None,
+            )
+            db.session.add(concepto)
+            db.session.flush()
+
+        det = CotizacionDetalle(
+            cotizacion_id=cot.id,
+            concepto_id=concepto.id if concepto else None,
+            nombre_concepto=item["nombre_concepto"],
+            unidad=item["unidad"],
+            cantidad=item["cantidad"],
+            precio_unitario=item["precio_unitario"],
+            sistema=item["sistema"],
+            descripcion=item["descripcion"],
+            subtotal=line_subtotal,
+        )
+        db.session.add(det)
+
+    db.session.commit()
+    return cot
+
 def money(n: float) -> str:
     try:
         return "${:,.2f}".format(float(n or 0))
@@ -817,6 +1050,41 @@ def index():
 @login_required
 def cotizador():
     return render_template("cotizador.html", title="Nuevo - Sistema MAR", default_condiciones=DEFAULT_CONDICIONES)
+
+
+@app.route("/admin/cotizaciones/importar", methods=["GET", "POST"])
+@login_required
+def importar_cotizacion_externa():
+    if not is_admin():
+        abort(403)
+
+    payload_json = json.dumps(sample_import_payload(), ensure_ascii=False, indent=2)
+    preview = None
+    source_label = ""
+
+    if request.method == "POST":
+        source_label = (request.form.get("source_label") or "").strip()
+        payload_json = (request.form.get("payload_json") or "").strip() or payload_json
+        try:
+            payload = json.loads(payload_json)
+            normalized = _normalize_import_payload(payload)
+            preview = json.dumps(normalized, ensure_ascii=False, indent=2, default=str)
+            if request.form.get("preview") == "1":
+                flash("JSON v?lido. Revisa la vista previa antes de importar.", "info")
+            else:
+                cot = import_external_quote_payload(payload, source_label=source_label)
+                flash(f"Cotizaci?n importada correctamente: {cot.folio}", "success")
+                return redirect(url_for("view_cotizacion", cot_id=cot.id))
+        except Exception as e:
+            flash(f"No se pudo importar la cotizaci?n: {e}", "danger")
+
+    return render_template(
+        "cotizacion_import.html",
+        title="Importar cotizaci?n ? Sistema MAR",
+        payload_json=payload_json,
+        preview=preview,
+        source_label=source_label,
+    )
 
 @app.route("/admin/catalogos")
 @login_required

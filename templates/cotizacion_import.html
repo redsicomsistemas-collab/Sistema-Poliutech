@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+
+<section class="panel mb-4">
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+      <h2 class="mb-1 fw-bold text-primary">Importador de cotizaciones externas</h2>
+      <p class="text-muted mb-0">Solo administradores. Pega un JSON estructurado y el sistema lo insertará en cliente, cotización y detalles.</p>
+    </div>
+    <a href="{{ url_for('cotizador') }}" class="btn btn-outline-secondary">Ir al cotizador</a>
+  </div>
+
+  <div class="alert alert-info">
+    <div class="fw-semibold mb-1">Flujo recomendado</div>
+    <div>1. Pega el JSON en el formato mostrado abajo.</div>
+    <div>2. Usa "Validar JSON" para revisar que todo esté correcto.</div>
+    <div>3. Importa y el sistema te mandará a la cotización creada.</div>
+  </div>
+
+  <form method="POST" action="{{ url_for('importar_cotizacion_externa') }}">
+    <div class="row g-3">
+      <div class="col-md-12">
+        <label for="source_label" class="form-label fw-semibold">Ruta o referencia del PDF original (opcional)</label>
+        <input type="text" id="source_label" name="source_label" class="form-control"
+               placeholder="C:\Users\x\Downloads\Cotización Tremproof....pdf"
+               value="{{ source_label or '' }}">
+      </div>
+      <div class="col-md-12">
+        <label for="payload_json" class="form-label fw-semibold">JSON de importación</label>
+        <textarea id="payload_json" name="payload_json" class="form-control font-monospace" rows="24" required>{{ payload_json }}</textarea>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 mt-3">
+      <button type="submit" class="btn btn-success fw-bold">Importar a la base</button>
+      <button type="submit" name="preview" value="1" class="btn btn-outline-primary">Validar JSON</button>
+    </div>
+  </form>
+</section>
+
+{% if preview %}
+<section class="panel">
+  <h5 class="text-secondary mb-3">Vista previa validada</h5>
+  <pre class="bg-dark text-light p-3 rounded small">{{ preview }}</pre>
+</section>
+{% endif %}
+
+{% endblock %}
