@@ -783,7 +783,7 @@ def _extract_prefixed_line(text: str, prefix: str) -> str:
 
 
 def _parse_spanish_date_from_pdf(text: str) -> Optional[datetime]:
-    match = re.search(r"Ciudad de M(?:e|?)xico a\s+(\d{1,2})\s+de\s+([A-Za-zA-Za-z????????????]+)\s+de\s+(\d{4})", text, re.IGNORECASE)
+    match = re.search(r"Ciudad de Mexico a\s+(\d{1,2})\s+de\s+([A-Za-z?]+)\s+de\s+(\d{4})", _normalize_text_for_match(text), re.IGNORECASE)
     if not match:
         return None
 
@@ -922,7 +922,7 @@ def build_import_payload_from_pdf(pdf_bytes: bytes, filename: str, responsable_h
     empresa = _extract_prefixed_line(text, "Empresa")
 
     ubicacion = ""
-    location_match = re.search(r"se realizar(?:an|?n)\s+en\s+(.+?)(?:\.|\n)", text, re.IGNORECASE)
+    location_match = re.search(r"se realizaran\s+en\s+(.+?)(?:\.|\n)", _normalize_text_for_match(text), re.IGNORECASE)
     if location_match:
         ubicacion = _clean_pdf_text(location_match.group(1))
 
