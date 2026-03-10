@@ -783,7 +783,7 @@ def _extract_prefixed_line(text: str, prefix: str) -> str:
 
 
 def _parse_spanish_date_from_pdf(text: str) -> Optional[datetime]:
-    match = re.search(r"Ciudad de Mexico a\s+(\d{1,2})\s+de\s+([A-Za-z?]+)\s+de\s+(\d{4})", _normalize_text_for_match(text), re.IGNORECASE)
+    match = re.search(r"Ciudad de Mexico a\s+(\d{1,2})\s+de\s+([a-z]+)\s+de\s+(\d{4})", _normalize_text_for_match(text), re.IGNORECASE)
     if not match:
         return None
 
@@ -818,7 +818,7 @@ def _parse_pdf_currency(value: str) -> float:
 
 def _parse_pdf_quantity_and_unit(value: str) -> tuple[float, str]:
     raw = str(value or "").replace(",", "")
-    match = re.search(r"([\d.]+)\s*([A-Za-z???????????0-9/]+)?", raw)
+    match = re.search(r"([\d.]+)\s*([A-Za-z0-9/]+)?", raw)
     if not match:
         return 0.0, ""
     quantity = parse_float(match.group(1), 0.0)
@@ -869,7 +869,7 @@ def _extract_items_from_pdf_text(text: str) -> list[dict]:
     pattern = re.compile(
         r"(?P<cantidad>[\d,.]+)\s*m(?:2|?)?\s+"
         r"(?P<sistema>[A-Z][A-Z\s]{4,80}?)\s+"
-        r"(?P<descripcion>Suministro.*?|Aplicaci(?:on|?|o)\s+.*?|Sistema.*?|Servicio.*?|Trabajo.*?)(?=\$\s*[\d,]+\.\d{2}\s+\$\s*[\d,]+\.\d{2})"
+        r"(?P<descripcion>Suministro.*?|Aplicaci(?:on|o)\s+.*?|Sistema.*?|Servicio.*?|Trabajo.*?)(?=\$\s*[\d,]+\.\d{2}\s+\$\s*[\d,]+\.\d{2})"
         r"\$\s*(?P<precio>[\d,]+\.\d{2})\s+"
         r"\$\s*(?P<subtotal>[\d,]+\.\d{2})",
         re.IGNORECASE | re.DOTALL,
@@ -918,7 +918,7 @@ def build_import_payload_from_pdf(pdf_bytes: bytes, filename: str, responsable_h
     folio = folio_match.group(1).strip() if folio_match else None
 
     fecha = _parse_spanish_date_from_pdf(text) or now_cdmx_naive()
-    contacto = _extract_prefixed_line(text, "Con atenci?n a")
+    contacto = _extract_prefixed_line(text, "Con atencion a")
     empresa = _extract_prefixed_line(text, "Empresa")
 
     ubicacion = ""
@@ -1063,7 +1063,7 @@ def import_external_quote_payload(payload: dict, source_label: Optional[str] = N
     desc_porc = float({
         "Zona Norte": 10.0,
         "Zona Centro": 5.0,
-        "Baj?o": 10.0,
+        "Bajio": 10.0,
         "Zona Sur": 15.0,
         "Frontera": 8.0,
     }.get(zona, 0.0))
@@ -1300,7 +1300,7 @@ def importar_cotizacion_externa():
             try:
                 pdf_bytes = uploaded.read()
                 if not pdf_bytes:
-                    raise ValueError("El archivo PDF lleg? vac?o.")
+                    raise ValueError("El archivo PDF llego vacio.")
 
                 payload = build_import_payload_from_pdf(
                     pdf_bytes,
@@ -1312,7 +1312,7 @@ def importar_cotizacion_externa():
                 total_detectado = subtotal_detectado * (1 + ((detected.get("iva_porc") or 0) / 100.0))
                 detected["total_calculado"] = fmt(total_detectado)
                 cot = import_external_quote_payload(payload, source_label=uploaded.filename or "cotizacion.pdf")
-                flash(f"Cotizaci?n importada correctamente: {cot.folio}", "success")
+                flash(f"Cotizacion importada correctamente: {cot.folio}", "success")
                 return redirect(url_for("view_cotizacion", cot_id=cot.id))
             except Exception as e:
                 try:
@@ -1320,11 +1320,11 @@ def importar_cotizacion_externa():
                     traceback.print_exc()
                 except Exception:
                     pass
-                flash(f"No se pudo importar la cotizaci?n: {e}", "danger")
+                flash(f"No se pudo importar la cotizacion: {e}", "danger")
 
     return render_template(
         "cotizacion_import.html",
-        title="Importar cotizaci?n ? Sistema MAR",
+        title="Importar cotizacion - Sistema MAR",
         detected=detected,
     )
 @app.route("/admin/catalogos")

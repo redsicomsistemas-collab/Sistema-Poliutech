@@ -143,8 +143,8 @@
   <div class="import-hero">
     <div>
       <div class="import-kicker">Administrador</div>
-      <h1 class="import-title">Importar cotizaci?n externa</h1>
-      <p class="import-subtitle">Selecciona el PDF de la cotizaci?n y el sistema intentar? leerlo e insertarlo directamente en cliente, cotizaci?n y detalles.</p>
+      <h1 class="import-title">Importar cotizacion externa</h1>
+      <p class="import-subtitle">Selecciona el PDF de la cotizacion y el sistema intentara leerlo e insertarlo directamente en cliente, cotizacion y detalles.</p>
     </div>
     <div class="import-hero-actions">
       <a href="{{ url_for('cotizador') }}" class="btn btn-outline-secondary">Ir al cotizador</a>
@@ -152,7 +152,7 @@
   </div>
 
   <div class="import-upload-card">
-    <div class="import-upload-title">Subir cotizaci?n</div>
+    <div class="import-upload-title">Subir cotizacion</div>
     <div class="import-upload-copy">Flujo simple: examinar archivo, elegir PDF e importar. No necesitas editar JSON ni capturar conceptos manualmente.</div>
 
     <form method="POST" action="{{ url_for('importar_cotizacion_externa') }}" enctype="multipart/form-data">
@@ -175,7 +175,7 @@
 
 {% if detected %}
 <section class="panel quote-import-page">
-  <h5 class="text-secondary mb-3">Datos detectados del ?ltimo intento</h5>
+  <h5 class="text-secondary mb-3">Datos detectados del ultimo intento</h5>
   <div class="detected-grid">
     <div class="detected-card">
       <div class="detected-label">Folio</div>
