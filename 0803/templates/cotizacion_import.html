@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block content %}
+
+<section class="panel mb-4 quote-import-page">
+  <style>
+    .quote-import-page .import-hero {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid rgba(13, 110, 253, 0.12);
+      margin-bottom: 1rem;
+    }
+
+    .quote-import-page .import-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.3rem 0.7rem;
+      border-radius: 999px;
+      background: rgba(13, 110, 253, 0.08);
+      color: #0d6efd;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 0.75rem;
+    }
+
+    .quote-import-page .import-title {
+      margin: 0;
+      color: #0d47a1;
+      font-size: clamp(1.9rem, 3vw, 2.55rem);
+      line-height: 1.05;
+      font-weight: 800;
+    }
+
+    .quote-import-page .import-subtitle {
+      max-width: 760px;
+      margin: 0.65rem 0 0;
+      color: #5f6368;
+      font-size: 1.02rem;
+      line-height: 1.55;
+    }
+
+    .quote-import-page .import-hero-actions {
+      flex: 0 0 auto;
+      padding-top: 2.1rem;
+    }
+
+    .quote-import-page .import-hero-actions .btn {
+      min-width: 170px;
+      white-space: nowrap;
+    }
+
+    .quote-import-page .import-upload-card {
+      border: 1px solid rgba(13, 110, 253, 0.15);
+      background: linear-gradient(180deg, rgba(13,110,253,0.06), rgba(13,110,253,0.02));
+      border-radius: 18px;
+      padding: 1.15rem;
+    }
+
+    .quote-import-page .import-upload-title {
+      color: #0d47a1;
+      font-weight: 700;
+      margin-bottom: 0.35rem;
+    }
+
+    .quote-import-page .import-upload-copy {
+      color: #5f6368;
+      margin-bottom: 1rem;
+    }
+
+    .quote-import-page .detected-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.9rem;
+      margin-top: 1rem;
+    }
+
+    .quote-import-page .detected-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 0.9rem;
+      background: #fff;
+    }
+
+    .quote-import-page .detected-label {
+      color: #6b7280;
+      font-size: 0.82rem;
+      margin-bottom: 0.2rem;
+    }
+
+    .quote-import-page .detected-value {
+      color: #111827;
+      font-weight: 700;
+      word-break: break-word;
+    }
+
+    .quote-import-page .detected-items {
+      margin-top: 1rem;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      background: #fff;
+      padding: 1rem;
+    }
+
+    @media (max-width: 992px) {
+      .quote-import-page .detected-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 768px) {
+      .quote-import-page .import-hero {
+        flex-direction: column;
+      }
+
+      .quote-import-page .import-hero-actions {
+        width: 100%;
+        padding-top: 0;
+      }
+
+      .quote-import-page .import-hero-actions .btn {
+        width: 100%;
+      }
+
+      .quote-import-page .import-title {
+        font-size: 1.75rem;
+      }
+
+      .quote-import-page .import-subtitle {
+        font-size: 0.95rem;
+      }
+
+      .quote-import-page .detected-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+
+  <div class="import-hero">
+    <div>
+      <div class="import-kicker">Administrador</div>
+      <h1 class="import-title">Importar cotizaci?n externa</h1>
+      <p class="import-subtitle">Selecciona el PDF de la cotizaci?n y el sistema intentar? leerlo e insertarlo directamente en cliente, cotizaci?n y detalles.</p>
+    </div>
+    <div class="import-hero-actions">
+      <a href="{{ url_for('cotizador') }}" class="btn btn-outline-secondary">Ir al cotizador</a>
+    </div>
+  </div>
+
+  <div class="import-upload-card">
+    <div class="import-upload-title">Subir cotizaci?n</div>
+    <div class="import-upload-copy">Flujo simple: examinar archivo, elegir PDF e importar. No necesitas editar JSON ni capturar conceptos manualmente.</div>
+
+    <form method="POST" action="{{ url_for('importar_cotizacion_externa') }}" enctype="multipart/form-data">
+      <div class="row g-3 align-items-end">
+        <div class="col-lg-7">
+          <label for="cotizacion_pdf" class="form-label fw-semibold">Archivo PDF</label>
+          <input type="file" id="cotizacion_pdf" name="cotizacion_pdf" class="form-control" accept="application/pdf,.pdf" required>
+        </div>
+        <div class="col-lg-3">
+          <label for="responsable_destino" class="form-label fw-semibold">Responsable</label>
+          <input type="text" id="responsable_destino" name="responsable_destino" class="form-control" placeholder="Opcional">
+        </div>
+        <div class="col-lg-2 d-grid">
+          <button type="submit" class="btn btn-success fw-bold">Importar PDF</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</section>
+
+{% if detected %}
+<section class="panel quote-import-page">
+  <h5 class="text-secondary mb-3">Datos detectados del ?ltimo intento</h5>
+  <div class="detected-grid">
+    <div class="detected-card">
+      <div class="detected-label">Folio</div>
+      <div class="detected-value">{{ detected.folio or 'Sin folio' }}</div>
+    </div>
+    <div class="detected-card">
+      <div class="detected-label">Cliente</div>
+      <div class="detected-value">{{ detected.cliente.nombre_cliente }}</div>
+    </div>
+    <div class="detected-card">
+      <div class="detected-label">Empresa</div>
+      <div class="detected-value">{{ detected.cliente.empresa or 'Sin empresa' }}</div>
+    </div>
+    <div class="detected-card">
+      <div class="detected-label">Total estimado</div>
+      <div class="detected-value">${{ '%.2f'|format(detected.total_calculado or 0) }}</div>
+    </div>
+  </div>
+
+  <div class="detected-items">
+    <div class="fw-semibold mb-2">Conceptos detectados</div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Concepto</th>
+            <th>Sistema</th>
+            <th>Unidad</th>
+            <th>Cantidad</th>
+            <th>Precio Unitario</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in detected.items %}
+          <tr>
+            <td>{{ item.nombre_concepto }}</td>
+            <td>{{ item.sistema or '' }}</td>
+            <td>{{ item.unidad }}</td>
+            <td>{{ item.cantidad }}</td>
+            <td>${{ '%.2f'|format(item.precio_unitario or 0) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% endblock %}

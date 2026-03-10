@@ -65,11 +65,11 @@ from flask import (
     flash, jsonify, Response, abort, g
 )
 
-from sqlalchemy import text, or_, case
+from sqlalchemy import text, or_
 
 # ReportLab (PDF)
 from reportlab.lib.pagesizes import A4
-from reportlab.platypus import Table, TableStyle, Paragraph, SimpleDocTemplate, Spacer, KeepTogether
+from reportlab.platypus import Table, TableStyle, Paragraph, SimpleDocTemplate, Spacer
 from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -482,48 +482,7 @@ def ensure_schema():
             db.session.execute(text("ALTER TABLE cotizacion_detalle ADD COLUMN descripcion VARCHAR(1000)"))
         db.session.commit()
     except Exception as e:
-        print("[WARN] ensure_schema(detalle extras):", e)
-
-    try:
-        apu_cols = _table_columns("apu")
-        for col, stmt in [
-            ("clave", "ALTER TABLE apu ADD COLUMN clave VARCHAR(50)"),
-            ("concepto", "ALTER TABLE apu ADD COLUMN concepto VARCHAR(300)"),
-            ("unidad", "ALTER TABLE apu ADD COLUMN unidad VARCHAR(50) DEFAULT 'm2'"),
-            ("indirecto_pct", "ALTER TABLE apu ADD COLUMN indirecto_pct FLOAT DEFAULT 0.0"),
-            ("utilidad_pct", "ALTER TABLE apu ADD COLUMN utilidad_pct FLOAT DEFAULT 0.0"),
-            ("financiamiento_pct", "ALTER TABLE apu ADD COLUMN financiamiento_pct FLOAT DEFAULT 0.0"),
-            ("cargos_adicionales_pct", "ALTER TABLE apu ADD COLUMN cargos_adicionales_pct FLOAT DEFAULT 0.0"),
-            ("costo_materiales", "ALTER TABLE apu ADD COLUMN costo_materiales FLOAT DEFAULT 0.0"),
-            ("costo_mano_obra", "ALTER TABLE apu ADD COLUMN costo_mano_obra FLOAT DEFAULT 0.0"),
-            ("costo_maquinaria", "ALTER TABLE apu ADD COLUMN costo_maquinaria FLOAT DEFAULT 0.0"),
-            ("costo_directo", "ALTER TABLE apu ADD COLUMN costo_directo FLOAT DEFAULT 0.0"),
-            ("precio_unitario", "ALTER TABLE apu ADD COLUMN precio_unitario FLOAT DEFAULT 0.0"),
-            ("creado_en", "ALTER TABLE apu ADD COLUMN creado_en DATETIME"),
-            ("actualizado_en", "ALTER TABLE apu ADD COLUMN actualizado_en DATETIME"),
-        ]:
-            if col not in apu_cols:
-                db.session.execute(text(stmt))
-        db.session.commit()
-    except Exception as e:
-        print("[WARN] ensure_schema(apu):", e)
-
-    try:
-        apu_det_cols = _table_columns("apu_detalle")
-        for col, stmt in [
-            ("tipo_insumo", "ALTER TABLE apu_detalle ADD COLUMN tipo_insumo VARCHAR(20) DEFAULT 'material'"),
-            ("referencia_id", "ALTER TABLE apu_detalle ADD COLUMN referencia_id INTEGER"),
-            ("descripcion", "ALTER TABLE apu_detalle ADD COLUMN descripcion VARCHAR(300) DEFAULT ''"),
-            ("unidad", "ALTER TABLE apu_detalle ADD COLUMN unidad VARCHAR(50) DEFAULT 'kg'"),
-            ("cantidad", "ALTER TABLE apu_detalle ADD COLUMN cantidad FLOAT DEFAULT 0.0"),
-            ("precio_unitario", "ALTER TABLE apu_detalle ADD COLUMN precio_unitario FLOAT DEFAULT 0.0"),
-            ("subtotal", "ALTER TABLE apu_detalle ADD COLUMN subtotal FLOAT DEFAULT 0.0"),
-        ]:
-            if col not in apu_det_cols:
-                db.session.execute(text(stmt))
-        db.session.commit()
-    except Exception as e:
-        print("[WARN] ensure_schema(apu_detalle):", e)
+        print("⚠️ ensure_schema(detalle extras):", e)
 
 # ---------------------------------------------------------
 # Seed: usuarios base (idempotente)
@@ -564,6 +523,8 @@ def seed_default_users():
 
 with app.app_context():
     ensure_schema()
+with app.app_context():
+    ensure_schema()
 
 with app.app_context():
     seed_default_users()
@@ -594,14 +555,6 @@ def setup_admin():
 # ---------------------------------------------------------
 def is_admin() -> bool:
     return bool(getattr(current_user, "is_authenticated", False) and (getattr(current_user, "rol", "") or "").upper() == "ADMIN")
-
-def normalize_user_role(value: str) -> str:
-    rol = (value or "").strip().upper()
-    return "ADMIN" if rol == "ADMIN" else "USER"
-
-def admin_users_base_query():
-    admin_first = case((db.func.upper(Usuario.rol) == "ADMIN", 0), else_=1)
-    return Usuario.query.order_by(admin_first, Usuario.nombre.asc())
 
 def responsable_actual() -> str:
     """
@@ -2223,7 +2176,7 @@ def export_cotizacion_pdf(cot_id: int):
     # 👇 Aquí va el ajuste que pediste:
     # Mantiene el label RESPONSABLE y pone el valor debajo para ocupar ese espacio.
     elems.append(Paragraph(f"<b>RESPONSABLE:</b><br/>{c.responsable or ''}", styles["Encabezado"]))
-    elems.append(Spacer(1, 6))
+    elems.append(Spacer(1, 8))
 
     if c.cliente:
         cli = c.cliente
@@ -2234,7 +2187,7 @@ def export_cotizacion_pdf(cot_id: int):
             f"<b>Teléfono:</b> {cli.telefono or ''}",
         ]:
             elems.append(Paragraph(txt, styles["Encabezado"]))
-        elems.append(Spacer(1, 6))
+        elems.append(Spacer(1, 10))
 
     # === TABLA DE CONCEPTOS ===
     data = [["Concepto", "Uni.", "Cant.", "Sistema", "Precio Unitario", "Subtotal"]]
@@ -2267,10 +2220,9 @@ def export_cotizacion_pdf(cot_id: int):
     ]))
 
     elems.append(tbl)
-    elems.append(Spacer(1, 6))
+    elems.append(Spacer(1, 10))
 
     # === CANTIDAD EN LETRA ===
-    resumen_elems = []
     try:
         from num2words import num2words
         total = float(c.total or 0)
@@ -2281,8 +2233,8 @@ def export_cotizacion_pdf(cot_id: int):
             palabras = palabras[:-4] + " un"
         palabras = palabras.capitalize()
         cantidad_letra = f"{palabras} pesos {centavos:02d}/100 M.N."
-        resumen_elems.append(Paragraph(f"<b>Cantidad en letra:</b> {cantidad_letra}", styles["Encabezado"]))
-        resumen_elems.append(Spacer(1, 4))
+        elems.append(Paragraph(f"<b>Cantidad en letra:</b> {cantidad_letra}", styles["Encabezado"]))
+        elems.append(Spacer(1, 6))
     except Exception as e:
         print(f"[PDF] num2words error: {e}", file=sys.stderr)
 
@@ -2308,9 +2260,8 @@ def export_cotizacion_pdf(cot_id: int):
         ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
         ("LINEBELOW", (0, -1), (-1, -1), 0.5, colors.black),
     ]))
-    resumen_elems.append(t2)
-    elems.append(KeepTogether(resumen_elems))
-    elems.append(Spacer(1, 6))
+    elems.append(t2)
+    elems.append(Spacer(1, 10))
 
     # === CONDICIONES COMERCIALES ===
     condiciones = _condiciones_comerciales_finales(c.notas or "")
@@ -2580,119 +2531,6 @@ def admin_bitacora():
     )
 
 # ---------------------------------------------------------
-@app.route("/admin/usuarios", methods=["GET", "POST"])
-@login_required
-def admin_usuarios():
-    if not is_admin():
-        abort(403)
-
-    if request.method == "POST":
-        nombre = (request.form.get("nombre") or "").strip()
-        password = (request.form.get("password") or "").strip()
-        rol = normalize_user_role(request.form.get("rol"))
-
-        if not nombre:
-            flash("El nombre del usuario es obligatorio.", "danger")
-            return redirect(url_for("admin_usuarios"))
-        if not password:
-            flash("La contrasena es obligatoria para crear un usuario.", "danger")
-            return redirect(url_for("admin_usuarios"))
-
-        exists = Usuario.query.filter(db.func.lower(Usuario.nombre) == nombre.lower()).first()
-        if exists:
-            flash("Ya existe un usuario con ese nombre.", "danger")
-            return redirect(url_for("admin_usuarios"))
-
-        nuevo = Usuario(nombre=nombre, rol=rol)
-        nuevo.set_password(password)
-        db.session.add(nuevo)
-        db.session.commit()
-        flash(f"Usuario '{nombre}' creado correctamente.", "success")
-        return redirect(url_for("admin_usuarios"))
-
-    q = (request.args.get("q") or "").strip()
-    usuarios_query = admin_users_base_query()
-    if q:
-        usuarios_query = usuarios_query.filter(Usuario.nombre.ilike(f"%{q}%"))
-
-    usuarios = usuarios_query.all()
-    total_admins = Usuario.query.filter(db.func.upper(Usuario.rol) == "ADMIN").count()
-    return render_template(
-        "admin_usuarios.html",
-        usuarios=usuarios,
-        q=q,
-        total=len(usuarios),
-        total_admins=total_admins,
-    )
-
-@app.route("/admin/usuarios/<int:user_id>/editar", methods=["POST"])
-@login_required
-def admin_usuario_editar(user_id: int):
-    if not is_admin():
-        abort(403)
-
-    usuario = Usuario.query.get_or_404(user_id)
-    nombre = (request.form.get("nombre") or "").strip()
-    password = (request.form.get("password") or "").strip()
-    rol = normalize_user_role(request.form.get("rol"))
-
-    if not nombre:
-        flash("El nombre del usuario es obligatorio.", "danger")
-        return redirect(url_for("admin_usuarios"))
-
-    duplicado = Usuario.query.filter(
-        db.func.lower(Usuario.nombre) == nombre.lower(),
-        Usuario.id != usuario.id,
-    ).first()
-    if duplicado:
-        flash("Ya existe otro usuario con ese nombre.", "danger")
-        return redirect(url_for("admin_usuarios"))
-
-    if usuario.id == current_user.id and rol != "ADMIN":
-        admins_restantes = Usuario.query.filter(
-            db.func.upper(Usuario.rol) == "ADMIN",
-            Usuario.id != usuario.id,
-        ).count()
-        if admins_restantes == 0:
-            flash("No puedes quitar el rol ADMIN al unico administrador del sistema.", "danger")
-            return redirect(url_for("admin_usuarios"))
-
-    usuario.nombre = nombre
-    usuario.rol = rol
-    if password:
-        usuario.set_password(password)
-
-    db.session.commit()
-    flash(f"Usuario '{nombre}' actualizado correctamente.", "success")
-    return redirect(url_for("admin_usuarios"))
-
-@app.route("/admin/usuarios/<int:user_id>/eliminar", methods=["POST"])
-@login_required
-def admin_usuario_eliminar(user_id: int):
-    if not is_admin():
-        abort(403)
-
-    usuario = Usuario.query.get_or_404(user_id)
-
-    if usuario.id == current_user.id:
-        flash("No puedes eliminar tu propio usuario mientras tienes la sesion activa.", "danger")
-        return redirect(url_for("admin_usuarios"))
-
-    if (usuario.rol or "").upper() == "ADMIN":
-        admins_restantes = Usuario.query.filter(
-            db.func.upper(Usuario.rol) == "ADMIN",
-            Usuario.id != usuario.id,
-        ).count()
-        if admins_restantes == 0:
-            flash("No puedes eliminar al ultimo administrador del sistema.", "danger")
-            return redirect(url_for("admin_usuarios"))
-
-    nombre = usuario.nombre
-    db.session.delete(usuario)
-    db.session.commit()
-    flash(f"Usuario '{nombre}' eliminado correctamente.", "success")
-    return redirect(url_for("admin_usuarios"))
-
 # Blueprints (Catálogos) — si existen en tu repo
 # ---------------------------------------------------------
 try:
