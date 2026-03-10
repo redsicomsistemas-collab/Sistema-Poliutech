@@ -69,7 +69,7 @@ from sqlalchemy import text, or_, case
 
 # ReportLab (PDF)
 from reportlab.lib.pagesizes import A4
-from reportlab.platypus import Table, TableStyle, Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import Table, TableStyle, Paragraph, SimpleDocTemplate, Spacer, KeepTogether
 from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -1714,7 +1714,7 @@ def export_cotizacion_pdf(cot_id: int):
     # 👇 Aquí va el ajuste que pediste:
     # Mantiene el label RESPONSABLE y pone el valor debajo para ocupar ese espacio.
     elems.append(Paragraph(f"<b>RESPONSABLE:</b><br/>{c.responsable or ''}", styles["Encabezado"]))
-    elems.append(Spacer(1, 8))
+    elems.append(Spacer(1, 6))
 
     if c.cliente:
         cli = c.cliente
@@ -1725,7 +1725,7 @@ def export_cotizacion_pdf(cot_id: int):
             f"<b>Teléfono:</b> {cli.telefono or ''}",
         ]:
             elems.append(Paragraph(txt, styles["Encabezado"]))
-        elems.append(Spacer(1, 10))
+        elems.append(Spacer(1, 6))
 
     # === TABLA DE CONCEPTOS ===
     data = [["Concepto", "Uni.", "Cant.", "Sistema", "Precio Unitario", "Subtotal"]]
@@ -1758,9 +1758,10 @@ def export_cotizacion_pdf(cot_id: int):
     ]))
 
     elems.append(tbl)
-    elems.append(Spacer(1, 10))
+    elems.append(Spacer(1, 6))
 
     # === CANTIDAD EN LETRA ===
+    resumen_elems = []
     try:
         from num2words import num2words
         total = float(c.total or 0)
@@ -1771,8 +1772,8 @@ def export_cotizacion_pdf(cot_id: int):
             palabras = palabras[:-4] + " un"
         palabras = palabras.capitalize()
         cantidad_letra = f"{palabras} pesos {centavos:02d}/100 M.N."
-        elems.append(Paragraph(f"<b>Cantidad en letra:</b> {cantidad_letra}", styles["Encabezado"]))
-        elems.append(Spacer(1, 6))
+        resumen_elems.append(Paragraph(f"<b>Cantidad en letra:</b> {cantidad_letra}", styles["Encabezado"]))
+        resumen_elems.append(Spacer(1, 4))
     except Exception as e:
         print(f"[PDF] num2words error: {e}", file=sys.stderr)
 
@@ -1798,8 +1799,9 @@ def export_cotizacion_pdf(cot_id: int):
         ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
         ("LINEBELOW", (0, -1), (-1, -1), 0.5, colors.black),
     ]))
-    elems.append(t2)
-    elems.append(Spacer(1, 10))
+    resumen_elems.append(t2)
+    elems.append(KeepTogether(resumen_elems))
+    elems.append(Spacer(1, 6))
 
     # === CONDICIONES COMERCIALES ===
     condiciones = _condiciones_comerciales_finales(c.notas or "")
