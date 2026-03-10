@@ -1,20 +1,113 @@
 {% extends "base.html" %}
 {% block content %}
 
-<section class="panel mb-4">
-  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+<section class="panel mb-4 quote-import-page">
+  <style>
+    .quote-import-page .import-hero {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid rgba(13, 110, 253, 0.12);
+      margin-bottom: 1rem;
+    }
+
+    .quote-import-page .import-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.3rem 0.7rem;
+      border-radius: 999px;
+      background: rgba(13, 110, 253, 0.08);
+      color: #0d6efd;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 0.75rem;
+    }
+
+    .quote-import-page .import-title {
+      margin: 0;
+      color: #0d47a1;
+      font-size: clamp(1.9rem, 3vw, 2.55rem);
+      line-height: 1.05;
+      font-weight: 800;
+    }
+
+    .quote-import-page .import-subtitle {
+      max-width: 760px;
+      margin: 0.65rem 0 0;
+      color: #5f6368;
+      font-size: 1.02rem;
+      line-height: 1.55;
+    }
+
+    .quote-import-page .import-hero-actions {
+      flex: 0 0 auto;
+      padding-top: 2.1rem;
+    }
+
+    .quote-import-page .import-hero-actions .btn {
+      min-width: 170px;
+      white-space: nowrap;
+    }
+
+    .quote-import-page .import-help {
+      border: 1px solid rgba(13, 110, 253, 0.15);
+      background: linear-gradient(180deg, rgba(13,110,253,0.07), rgba(13,110,253,0.03));
+      color: #27415f;
+      border-radius: 16px;
+      padding: 1rem 1.1rem;
+    }
+
+    .quote-import-page .import-help-title {
+      font-weight: 700;
+      margin-bottom: 0.45rem;
+      color: #0d47a1;
+    }
+
+    @media (max-width: 768px) {
+      .quote-import-page .import-hero {
+        flex-direction: column;
+      }
+
+      .quote-import-page .import-hero-actions {
+        width: 100%;
+        padding-top: 0;
+      }
+
+      .quote-import-page .import-hero-actions .btn {
+        width: 100%;
+      }
+
+      .quote-import-page .import-title {
+        font-size: 1.75rem;
+      }
+
+      .quote-import-page .import-subtitle {
+        font-size: 0.95rem;
+      }
+    }
+  </style>
+
+  <div class="import-hero">
     <div>
-      <h2 class="mb-1 fw-bold text-primary">Importador de cotizaciones externas</h2>
-      <p class="text-muted mb-0">Solo administradores. Pega un JSON estructurado y el sistema lo insertará en cliente, cotización y detalles.</p>
+      <div class="import-kicker">Administrador</div>
+      <h1 class="import-title">Importar cotizaci?n externa</h1>
+      <p class="import-subtitle">Pega un JSON estructurado y el sistema lo insertar? en cliente, cotizaci?n y detalles sin capturarlo a mano otra vez.</p>
     </div>
-    <a href="{{ url_for('cotizador') }}" class="btn btn-outline-secondary">Ir al cotizador</a>
+    <div class="import-hero-actions">
+      <a href="{{ url_for('cotizador') }}" class="btn btn-outline-secondary">Ir al cotizador</a>
+    </div>
   </div>
 
-  <div class="alert alert-info">
-    <div class="fw-semibold mb-1">Flujo recomendado</div>
+  <div class="import-help mb-4">
+    <div class="import-help-title">Flujo recomendado</div>
     <div>1. Pega el JSON en el formato mostrado abajo.</div>
-    <div>2. Usa "Validar JSON" para revisar que todo esté correcto.</div>
-    <div>3. Importa y el sistema te mandará a la cotización creada.</div>
+    <div>2. Usa "Validar JSON" para revisar que todo est? correcto.</div>
+    <div>3. Importa y el sistema te mandar? a la cotizaci?n creada.</div>
   </div>
 
   <form method="POST" action="{{ url_for('importar_cotizacion_externa') }}">
@@ -22,16 +115,16 @@
       <div class="col-md-12">
         <label for="source_label" class="form-label fw-semibold">Ruta o referencia del PDF original (opcional)</label>
         <input type="text" id="source_label" name="source_label" class="form-control"
-               placeholder="C:\Users\x\Downloads\Cotización Tremproof....pdf"
+               placeholder="C:\Users\x\Downloads\Cotizaci?n Tremproof....pdf"
                value="{{ source_label or '' }}">
       </div>
       <div class="col-md-12">
-        <label for="payload_json" class="form-label fw-semibold">JSON de importación</label>
+        <label for="payload_json" class="form-label fw-semibold">JSON de importaci?n</label>
         <textarea id="payload_json" name="payload_json" class="form-control font-monospace" rows="24" required>{{ payload_json }}</textarea>
       </div>
     </div>
 
-    <div class="d-flex gap-2 mt-3">
+    <div class="d-flex gap-2 mt-3 flex-wrap">
       <button type="submit" class="btn btn-success fw-bold">Importar a la base</button>
       <button type="submit" name="preview" value="1" class="btn btn-outline-primary">Validar JSON</button>
     </div>
