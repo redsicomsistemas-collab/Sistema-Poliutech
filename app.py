@@ -864,6 +864,36 @@ def _extract_items_from_pdf_tables(tables: list[list[list[str]]]) -> list[dict]:
     return items
 
 
+def _extract_items_from_pdf_text(text: str) -> list[dict]:
+    compact = re.sub(r"\n{2,}", "\n", text or "")
+    pattern = re.compile(
+        r"(?P<cantidad>[\d,.]+)\s*m\s*[?2]?\s+"
+        r"(?P<sistema>[A-Z][A-Z\s]{4,80}?)\s+"
+        r"(?P<descripcion>Suministro.*?|Aplicaci[o?]n.*?|Sistema.*?|Servicio.*?|Trabajo.*?)(?=\$\s*[\d,]+\.\d{2}\s+\$\s*[\d,]+\.\d{2})"
+        r"\$\s*(?P<precio>[\d,]+\.\d{2})\s+"
+        r"\$\s*(?P<subtotal>[\d,]+\.\d{2})",
+        re.IGNORECASE | re.DOTALL,
+    )
+    items: list[dict] = []
+    for match in pattern.finditer(compact):
+        cantidad = parse_float(match.group("cantidad"), 0.0)
+        precio = parse_float(match.group("precio"), 0.0)
+        subtotal = parse_float(match.group("subtotal"), 0.0)
+        if cantidad <= 0 or precio <= 0 or subtotal <= 0:
+            continue
+        sistema = _clean_pdf_text(match.group("sistema")).replace("\n", " ")
+        descripcion = _clean_pdf_text(match.group("descripcion"))
+        items.append({
+            "nombre_concepto": _build_concept_name(sistema, descripcion),
+            "unidad": "m2",
+            "cantidad": cantidad,
+            "precio_unitario": precio,
+            "sistema": sistema or None,
+            "descripcion": descripcion,
+        })
+    return items
+
+
 def _extract_conditions_from_pdf(text: str) -> str:
     match = re.search(r"CONDICIONES COMERCIALES\s*:(.*?)(?:Esperando contar con su preferencia|Atte\.|Ing\.)", text, re.IGNORECASE | re.DOTALL)
     if not match:
@@ -879,6 +909,8 @@ def _extract_conditions_from_pdf(text: str) -> str:
 def build_import_payload_from_pdf(pdf_bytes: bytes, filename: str, responsable_hint: Optional[str] = None) -> dict:
     text, tables = _extract_pdf_text_and_tables(pdf_bytes)
     items = _extract_items_from_pdf_tables(tables)
+    if not items:
+        items = _extract_items_from_pdf_text(text)
     if not items:
         raise ValueError("No pude identificar conceptos importables dentro del PDF.")
 
