@@ -969,32 +969,112 @@ def _extract_items_from_sistema_descripcion_pdf_text(text: str) -> list[dict]:
 
 
 def _extract_items_from_pdf_tables(tables: list[list[list[str]]]) -> list[dict]:
+    def find_column_indexes(header_cells: list[str], aliases: dict[str, tuple[str, ...]]) -> dict[str, int]:
+        normalized = [_normalize_text_for_match(cell) for cell in header_cells]
+        indexes: dict[str, int] = {}
+        for field, options in aliases.items():
+            for idx, cell in enumerate(normalized):
+                if any(option in cell for option in options):
+                    indexes[field] = idx
+                    break
+        return indexes
+
+    def get_cell(cells: list[str], index_map: dict[str, int], field: str) -> str:
+        idx = index_map.get(field)
+        if idx is None or idx >= len(cells):
+            return ""
+        return cells[idx]
+
+    aliases_variants = [
+        {
+            "concepto": ("concepto", "descripcion del trabajo", "descripcion"),
+            "unidad": ("unidad", "uni.", "area / unidad", "area", "?rea / unidad"),
+            "cantidad": ("cantidad",),
+            "precio_unitario": ("p. unitario", "precio unitario", "p unitario"),
+            "importe": ("importe", "subtotal"),
+            "sistema": ("sistema",),
+            "codigo": ("codigo", "c?digo"),
+        },
+    ]
+
     items: list[dict] = []
     for table in tables:
-        for row in table:
+        if not table:
+            continue
+
+        header_row = None
+        header_map = None
+        for row in table[:4]:
             cells = [_clean_pdf_text(cell) for cell in row]
-            if len(cells) < 5:
+            if len(cells) < 4:
                 continue
-            header_norm = _normalize_text_for_match(" ".join(cells[:2]))
-            if "area / unidad" in header_norm or header_norm.startswith("subtotal") or header_norm.startswith("iva") or header_norm.startswith("total"):
+            for aliases in aliases_variants:
+                indexes = find_column_indexes(cells, aliases)
+                has_amounts = "precio_unitario" in indexes and "importe" in indexes
+                has_shape = (
+                    ("concepto" in indexes or "sistema" in indexes)
+                    and has_amounts
+                    and ("cantidad" in indexes or "unidad" in indexes)
+                )
+                if has_shape:
+                    header_row = row
+                    header_map = indexes
+                    break
+            if header_map:
+                break
+
+        if not header_map:
+            continue
+
+        start_index = table.index(header_row) + 1
+        for row in table[start_index:]:
+            cells = [_clean_pdf_text(cell) for cell in row]
+            if not any(cells):
                 continue
 
-            quantity, unit = _parse_pdf_quantity_and_unit(cells[0])
-            unit_price = _parse_pdf_currency(cells[3])
-            line_subtotal = _parse_pdf_currency(cells[4])
-            if quantity <= 0 or unit_price <= 0 or line_subtotal <= 0:
+            row_norm = _normalize_text_for_match(" ".join(cells))
+            if row_norm.startswith(("subtotal", "iva", "total", "condiciones comerciales")):
+                break
+
+            concepto = get_cell(cells, header_map, "concepto")
+            sistema = get_cell(cells, header_map, "sistema")
+            unidad_cell = get_cell(cells, header_map, "unidad")
+            cantidad_cell = get_cell(cells, header_map, "cantidad")
+            precio_cell = get_cell(cells, header_map, "precio_unitario")
+            importe_cell = get_cell(cells, header_map, "importe")
+
+            cantidad = 0.0
+            unidad = ""
+            if cantidad_cell:
+                cantidad = parse_float(cantidad_cell, 0.0)
+            if unidad_cell:
+                parsed_qty, parsed_unit = _parse_pdf_quantity_and_unit(unidad_cell)
+                if cantidad <= 0 and parsed_qty > 0:
+                    cantidad = parsed_qty
+                unidad = parsed_unit or unidad_cell.strip()
+
+            precio_unitario = _parse_pdf_currency(precio_cell)
+            subtotal_pdf = _parse_pdf_currency(importe_cell)
+
+            if cantidad <= 0 or precio_unitario <= 0:
+                continue
+            if not concepto and not sistema:
                 continue
 
-            system = cells[1]
-            description = cells[2]
+            descripcion = concepto or sistema
             items.append({
-                "nombre_concepto": _build_concept_name(system, description),
-                "unidad": unit or "m2",
-                "cantidad": quantity,
-                "precio_unitario": unit_price,
-                "sistema": system or None,
-                "descripcion": description,
+                "nombre_concepto": concepto or _build_concept_name(sistema, descripcion),
+                "unidad": unidad or "m2",
+                "cantidad": cantidad,
+                "precio_unitario": precio_unitario,
+                "sistema": sistema or None,
+                "descripcion": descripcion,
+                "subtotal_pdf": subtotal_pdf if subtotal_pdf > 0 else None,
             })
+
+        if items:
+            break
+
     return items
 
 
@@ -1180,26 +1260,33 @@ def build_import_payload_from_pdf(pdf_bytes: bytes, filename: str, responsable_h
     text, tables = _extract_pdf_text_and_tables(pdf_bytes)
     normalized_text = _normalize_text_for_match(text)
 
-    # Formato con columnas SISTEMA / DESCRIPCION / UNIDAD / CANTIDAD / P. UNITARIO / IMPORTE
-    # debe respetar cada bloque como una sola partida.
-    if "sistema descripcion unidad cantidad" in normalized_text and "p. unitario" in normalized_text:
-        items = _extract_items_from_sistema_descripcion_pdf_text(text)
-    elif "codigo" in normalized_text and "cantidad" in normalized_text and "importe" in normalized_text:
-        items = _extract_items_from_pdf_text(text)
-        if not items:
-            items = _extract_items_from_pdf_block_regex(text)
-    else:
-        items = _extract_items_from_pdf_tables(tables)
-        if not items:
+    # Regla principal: si pdfplumber detecta una tabla con encabezados reconocibles,
+    # se respeta el mapeo directo de columnas y no se intenta adivinar.
+    items = _extract_items_from_pdf_tables(tables)
+
+    # Fallbacks solo cuando no hubo tabla reconocible.
+    if not items:
+        if "sistema descripcion unidad cantidad" in normalized_text and "p. unitario" in normalized_text:
+            items = _extract_items_from_sistema_descripcion_pdf_text(text)
+        elif "codigo" in normalized_text and "cantidad" in normalized_text and "importe" in normalized_text:
             items = _extract_items_from_pdf_text(text)
-        if not items:
-            items = _extract_items_from_pdf_block_regex(text)
-        elif _looks_like_partida_numbers_as_quantity(items):
+            if not items:
+                items = _extract_items_from_pdf_block_regex(text)
+        else:
+            items = _extract_items_from_pdf_text(text)
+            if not items:
+                items = _extract_items_from_pdf_block_regex(text)
+
+    if _looks_like_partida_numbers_as_quantity(items):
+        text_items = []
+        if "sistema descripcion unidad cantidad" in normalized_text and "p. unitario" in normalized_text:
+            text_items = _extract_items_from_sistema_descripcion_pdf_text(text)
+        elif "codigo" in normalized_text and "cantidad" in normalized_text and "importe" in normalized_text:
             text_items = _extract_items_from_pdf_text(text)
             if not text_items:
                 text_items = _extract_items_from_pdf_block_regex(text)
-            if text_items:
-                items = text_items
+        if text_items and not _looks_like_partida_numbers_as_quantity(text_items):
+            items = text_items
 
     if not items:
         raise ValueError("No pude identificar conceptos importables dentro del PDF.")
