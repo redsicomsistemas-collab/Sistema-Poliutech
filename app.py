@@ -1000,9 +1000,17 @@ def _extract_conditions_from_pdf(text: str) -> str:
 
 def build_import_payload_from_pdf(pdf_bytes: bytes, filename: str, responsable_hint: Optional[str] = None) -> dict:
     text, tables = _extract_pdf_text_and_tables(pdf_bytes)
-    items = _extract_items_from_pdf_tables(tables)
-    if not items:
+    normalized_text = _normalize_text_for_match(text)
+
+    # Los PDFs tipo "CODIGO / CONCEPTO / UNIDAD / CANTIDAD / P.U. / IMPORTE"
+    # salen mejor por lectura secuencial que por tabla extraida.
+    if "codigo" in normalized_text and "importe" in normalized_text and "p.u." in text:
         items = _extract_items_from_pdf_text(text)
+    else:
+        items = _extract_items_from_pdf_tables(tables)
+        if not items:
+            items = _extract_items_from_pdf_text(text)
+
     if not items:
         raise ValueError("No pude identificar conceptos importables dentro del PDF.")
 
