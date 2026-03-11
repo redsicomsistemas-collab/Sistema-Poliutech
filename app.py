@@ -999,6 +999,37 @@ def _extract_items_from_pdf_text(text: str) -> list[dict]:
     return items
 
 
+def _extract_items_from_pdf_block_regex(text: str) -> list[dict]:
+    compact = re.sub(r"\n+", "\n", text or "")
+    pattern = re.compile(
+        r"(?ms)^\s*(?P<codigo>\d{2})\s+"
+        r"(?P<descripcion>.*?)\s+"
+        r"(?P<unidad>M2|M\s*2|M?)\s+"
+        r"(?P<cantidad>[\d,.]+)\s+"
+        r"\$(?P<precio>[\d,]+\.\d{2})\s+"
+        r"\$(?P<subtotal>[\d,]+\.\d{2})\s*"
+        r"(?=\d{2}\s+|Subtotal\s+\$|IVA\s+\d|Total\s+\$|$)",
+    )
+    items: list[dict] = []
+    for match in pattern.finditer(compact):
+        description = _clean_pdf_text(match.group("descripcion"))
+        quantity = parse_float(match.group("cantidad"), 0.0)
+        unit_price = parse_float(match.group("precio"), 0.0)
+        line_subtotal = parse_float(match.group("subtotal"), 0.0)
+        if quantity <= 0 or unit_price <= 0 or line_subtotal <= 0:
+            continue
+        items.append({
+            "nombre_concepto": _build_concept_name("", description),
+            "unidad": "m2",
+            "cantidad": quantity,
+            "precio_unitario": unit_price,
+            "sistema": None,
+            "descripcion": description,
+            "subtotal_pdf": line_subtotal,
+        })
+    return items
+
+
 def _extract_conditions_from_pdf(text: str) -> str:
     match = re.search(r"CONDICIONES COMERCIALES\s*:(.*?)(?:Esperando contar con su preferencia|Atte\.|Ing\.)", text, re.IGNORECASE | re.DOTALL)
     if not match:
@@ -1019,12 +1050,18 @@ def build_import_payload_from_pdf(pdf_bytes: bytes, filename: str, responsable_h
     # salen mejor por lectura secuencial que por tabla extraida.
     if "codigo" in normalized_text and "cantidad" in normalized_text and "importe" in normalized_text:
         items = _extract_items_from_pdf_text(text)
+        if not items:
+            items = _extract_items_from_pdf_block_regex(text)
     else:
         items = _extract_items_from_pdf_tables(tables)
         if not items:
             items = _extract_items_from_pdf_text(text)
+        if not items:
+            items = _extract_items_from_pdf_block_regex(text)
         elif _looks_like_partida_numbers_as_quantity(items):
             text_items = _extract_items_from_pdf_text(text)
+            if not text_items:
+                text_items = _extract_items_from_pdf_block_regex(text)
             if text_items:
                 items = text_items
 
