@@ -812,7 +812,7 @@ def _parse_spanish_date_from_pdf(text: str) -> Optional[datetime]:
 
 
 def _parse_pdf_currency(value: str) -> float:
-    match = re.search(r"([\d,]+\.\d{2})", str(value or ""))
+    match = re.search(r"([\d,]+\.\d{1,2})", str(value or ""))
     return parse_float(match.group(1), 0.0) if match else 0.0
 
 
@@ -985,12 +985,32 @@ def _extract_items_from_pdf_tables(tables: list[list[list[str]]]) -> list[dict]:
             return ""
         return cells[idx]
 
+    def extract_money_values(cells: list[str]) -> list[float]:
+        values = []
+        for cell in cells:
+            cell_text = str(cell or "")
+            if "$" not in cell_text:
+                continue
+            amount = _parse_pdf_currency(cell_text)
+            if amount > 0:
+                values.append(amount)
+        return values
+
+    def append_continuation(target: dict, extra_text: str) -> None:
+        extra = _clean_pdf_text(extra_text)
+        if not extra:
+            return
+        current_name = _clean_pdf_text(target.get("nombre_concepto") or "")
+        current_desc = _clean_pdf_text(target.get("descripcion") or current_name)
+        target["nombre_concepto"] = _clean_pdf_text(f"{current_name} {extra}")
+        target["descripcion"] = _clean_pdf_text(f"{current_desc} {extra}")
+
     aliases_variants = [
         {
             "concepto": ("concepto", "descripcion del trabajo", "descripcion"),
             "unidad": ("unidad", "uni.", "area / unidad", "area", "?rea / unidad"),
             "cantidad": ("cantidad",),
-            "precio_unitario": ("p. unitario", "precio unitario", "p unitario"),
+            "precio_unitario": ("p.u.", "p. unitario", "precio unitario", "p unitario"),
             "importe": ("importe", "subtotal"),
             "sistema": ("sistema",),
             "codigo": ("codigo", "c?digo"),
@@ -998,6 +1018,8 @@ def _extract_items_from_pdf_tables(tables: list[list[list[str]]]) -> list[dict]:
     ]
 
     items: list[dict] = []
+    active_header_map: dict[str, int] | None = None
+
     for table in tables:
         if not table:
             continue
@@ -1023,10 +1045,15 @@ def _extract_items_from_pdf_tables(tables: list[list[list[str]]]) -> list[dict]:
             if header_map:
                 break
 
-        if not header_map:
+        if header_map:
+            active_header_map = header_map
+            start_index = table.index(header_row) + 1
+        elif active_header_map:
+            header_map = active_header_map
+            start_index = 0
+        else:
             continue
 
-        start_index = table.index(header_row) + 1
         for row in table[start_index:]:
             cells = [_clean_pdf_text(cell) for cell in row]
             if not any(cells):
@@ -1043,21 +1070,43 @@ def _extract_items_from_pdf_tables(tables: list[list[list[str]]]) -> list[dict]:
             precio_cell = get_cell(cells, header_map, "precio_unitario")
             importe_cell = get_cell(cells, header_map, "importe")
 
-            cantidad = 0.0
+            cantidad = parse_float(cantidad_cell, 0.0) if cantidad_cell else 0.0
             unidad = ""
-            if cantidad_cell:
-                cantidad = parse_float(cantidad_cell, 0.0)
             if unidad_cell:
                 parsed_qty, parsed_unit = _parse_pdf_quantity_and_unit(unidad_cell)
                 if cantidad <= 0 and parsed_qty > 0:
                     cantidad = parsed_qty
                 unidad = parsed_unit or unidad_cell.strip()
 
+            money_values = extract_money_values(cells)
             precio_unitario = _parse_pdf_currency(precio_cell)
             subtotal_pdf = _parse_pdf_currency(importe_cell)
+            if precio_unitario <= 0 and money_values:
+                precio_unitario = money_values[0]
+            if subtotal_pdf <= 0 and len(money_values) >= 2:
+                subtotal_pdf = money_values[-1]
 
             if cantidad <= 0 or precio_unitario <= 0:
+                continuation_bits = []
+                for idx, cell in enumerate(cells):
+                    if not cell:
+                        continue
+                    if idx == header_map.get("codigo"):
+                        continue
+                    if idx == header_map.get("unidad"):
+                        continue
+                    if idx == header_map.get("cantidad"):
+                        continue
+                    if idx == header_map.get("precio_unitario"):
+                        continue
+                    if idx == header_map.get("importe"):
+                        continue
+                    continuation_bits.append(cell)
+                continuation_text = " ".join(bit for bit in continuation_bits if bit)
+                if items and continuation_text and not row_norm.startswith(("subtotal", "iva", "total")):
+                    append_continuation(items[-1], continuation_text)
                 continue
+
             if not concepto and not sistema:
                 continue
 
@@ -1071,9 +1120,6 @@ def _extract_items_from_pdf_tables(tables: list[list[list[str]]]) -> list[dict]:
                 "descripcion": descripcion,
                 "subtotal_pdf": subtotal_pdf if subtotal_pdf > 0 else None,
             })
-
-        if items:
-            break
 
     return items
 
@@ -1375,6 +1421,7 @@ def _normalize_import_payload(payload: dict) -> dict:
             "precio_unitario": parse_float(item.get("precio_unitario", item.get("precio")), 0.0),
             "sistema": (item.get("sistema") or "").strip() or None,
             "descripcion": (item.get("descripcion") or "").strip(),
+            "subtotal_pdf": parse_float(item.get("subtotal_pdf", item.get("importe")), 0.0),
         })
 
     return {
@@ -1432,7 +1479,7 @@ def import_external_quote_payload(payload: dict, source_label: Optional[str] = N
     subtotal = 0.0
     detail_rows = []
     for item in normalized["items"]:
-        line_subtotal = fmt(item["cantidad"] * item["precio_unitario"])
+        line_subtotal = fmt(item.get("subtotal_pdf") or (item["cantidad"] * item["precio_unitario"]))
         subtotal += line_subtotal
         detail_rows.append((item, line_subtotal))
 
