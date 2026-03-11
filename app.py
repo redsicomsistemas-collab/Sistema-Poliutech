@@ -834,6 +834,140 @@ def _build_concept_name(system: str, description: str) -> str:
     return (system or description or "Concepto importado")[:220]
 
 
+def _extract_items_from_sistema_descripcion_pdf_text(text: str) -> list[dict]:
+    lines = [_clean_pdf_text(line) for line in (text or "").splitlines() if _clean_pdf_text(line)]
+    if not lines:
+        return []
+
+    def is_header_or_footer(value: str) -> bool:
+        norm = _normalize_text_for_match(value)
+        return any(
+            norm.startswith(prefix)
+            for prefix in (
+                "folio:",
+                "campos eliseos",
+                "telefonos",
+                "www.poliutech.com",
+                "empresa 100% mexicana",
+                "ciudad de mexico a",
+                "atte.",
+                "ing.",
+                "director general",
+                "sistema descripcion unidad cantidad p. unitario importe",
+                "condiciones comerciales",
+            )
+        )
+
+    def is_unit_line(value: str) -> bool:
+        return _normalize_text_for_match(value) in {"m2", "m 2", "m?"}
+
+    def is_numeric_line(value: str) -> bool:
+        return bool(re.fullmatch(r"[\d,.]+", value.strip()))
+
+    def is_money_line(value: str) -> bool:
+        return bool(re.fullmatch(r"\$\s*[\d,]+\.\d{1,2}", value.strip()))
+
+    def parse_inline_values(value: str):
+        match = re.search(r"(?i)(m2|m?|m\s*2)\s+([\d,.]+)\s+\$\s*([\d,]+\.\d{1,2})\s+\$\s*([\d,]+\.\d{2})", value)
+        if not match:
+            return None
+        return {
+            "unidad": "m2",
+            "cantidad": parse_float(match.group(2), 0.0),
+            "precio_unitario": parse_float(match.group(3), 0.0),
+            "subtotal_pdf": parse_float(match.group(4), 0.0),
+        }
+
+    def is_system_like(value: str) -> bool:
+        s = value.strip()
+        if len(s) > 40:
+            return False
+        letters = [ch for ch in s if ch.isalpha()]
+        if not letters:
+            return False
+        upper_ratio = sum(1 for ch in letters if ch.isupper()) / max(len(letters), 1)
+        return upper_ratio >= 0.75
+
+    start_idx = 0
+    for idx, line in enumerate(lines):
+        norm = _normalize_text_for_match(line)
+        if norm.startswith("sistema descripcion unidad cantidad"):
+            start_idx = idx + 1
+            break
+
+    items = []
+    chunk = []
+    i = start_idx
+    while i < len(lines):
+        line = lines[i]
+        norm = _normalize_text_for_match(line)
+        if norm.startswith(("subtotal", "iva", "total", "condiciones comerciales")):
+            break
+        if is_header_or_footer(line):
+            i += 1
+            continue
+
+        parsed = parse_inline_values(line)
+        if parsed is None and is_unit_line(line):
+            unidad = "m2"
+            j = i + 1
+            while j < len(lines) and is_header_or_footer(lines[j]):
+                j += 1
+            if j < len(lines) and is_numeric_line(lines[j]):
+                cantidad = parse_float(lines[j], 0.0)
+                j += 1
+                while j < len(lines) and is_header_or_footer(lines[j]):
+                    j += 1
+                if j < len(lines) and is_money_line(lines[j]):
+                    precio = parse_float(lines[j], 0.0)
+                    j += 1
+                    while j < len(lines) and is_header_or_footer(lines[j]):
+                        j += 1
+                    if j < len(lines) and is_money_line(lines[j]):
+                        subtotal = parse_float(lines[j], 0.0)
+                        parsed = {
+                            "unidad": unidad,
+                            "cantidad": cantidad,
+                            "precio_unitario": precio,
+                            "subtotal_pdf": subtotal,
+                        }
+                        i = j
+        if parsed is not None:
+            parts = [part for part in chunk if not is_header_or_footer(part)]
+            system_lines = []
+            description_lines = []
+            seen_description = False
+            for part in parts:
+                if not seen_description and is_system_like(part):
+                    system_lines.append(part)
+                else:
+                    seen_description = True
+                    description_lines.append(part)
+            if not description_lines and system_lines:
+                description_lines = system_lines[:]
+                system_lines = []
+            descripcion = " ".join(description_lines).strip()
+            sistema = " ".join(system_lines).strip() or None
+            if descripcion and parsed["cantidad"] > 0 and parsed["precio_unitario"] > 0:
+                items.append({
+                    "nombre_concepto": descripcion,
+                    "unidad": parsed["unidad"],
+                    "cantidad": parsed["cantidad"],
+                    "precio_unitario": parsed["precio_unitario"],
+                    "sistema": sistema,
+                    "descripcion": descripcion,
+                    "subtotal_pdf": parsed["subtotal_pdf"],
+                })
+            chunk = []
+            i += 1
+            continue
+
+        chunk.append(line)
+        i += 1
+
+    return items
+
+
 def _extract_items_from_pdf_tables(tables: list[list[list[str]]]) -> list[dict]:
     items: list[dict] = []
     for table in tables:
@@ -1046,9 +1180,11 @@ def build_import_payload_from_pdf(pdf_bytes: bytes, filename: str, responsable_h
     text, tables = _extract_pdf_text_and_tables(pdf_bytes)
     normalized_text = _normalize_text_for_match(text)
 
-    # Los PDFs tipo "CODIGO / CONCEPTO / UNIDAD / CANTIDAD / P.U. / IMPORTE"
-    # salen mejor por lectura secuencial que por tabla extraida.
-    if "codigo" in normalized_text and "cantidad" in normalized_text and "importe" in normalized_text:
+    # Formato con columnas SISTEMA / DESCRIPCION / UNIDAD / CANTIDAD / P. UNITARIO / IMPORTE
+    # debe respetar cada bloque como una sola partida.
+    if "sistema descripcion unidad cantidad" in normalized_text and "p. unitario" in normalized_text:
+        items = _extract_items_from_sistema_descripcion_pdf_text(text)
+    elif "codigo" in normalized_text and "cantidad" in normalized_text and "importe" in normalized_text:
         items = _extract_items_from_pdf_text(text)
         if not items:
             items = _extract_items_from_pdf_block_regex(text)
