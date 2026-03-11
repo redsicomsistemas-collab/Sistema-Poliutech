@@ -865,32 +865,124 @@ def _extract_items_from_pdf_tables(tables: list[list[list[str]]]) -> list[dict]:
 
 
 def _extract_items_from_pdf_text(text: str) -> list[dict]:
-    compact = re.sub(r"\n{2,}", "\n", text or "")
-    pattern = re.compile(
-        r"(?P<cantidad>[\d,.]+)\s*m(?:2|?)?\s+"
-        r"(?P<sistema>[A-Z][A-Z\s]{4,80}?)\s+"
-        r"(?P<descripcion>Suministro.*?|Aplicaci(?:on|o)\s+.*?|Sistema.*?|Servicio.*?|Trabajo.*?)(?=\$\s*[\d,]+\.\d{2}\s+\$\s*[\d,]+\.\d{2})"
-        r"\$\s*(?P<precio>[\d,]+\.\d{2})\s+"
-        r"\$\s*(?P<subtotal>[\d,]+\.\d{2})",
-        re.IGNORECASE | re.DOTALL,
-    )
+    lines = [_clean_pdf_text(line) for line in (text or "").splitlines() if _clean_pdf_text(line)]
+    if not lines:
+        return []
+
+    def is_code_line(value: str) -> bool:
+        return bool(re.fullmatch(r"\d{2}", value.strip()))
+
+    def is_unit_line(value: str) -> bool:
+        return _normalize_text_for_match(value) in {"m2", "m 2", "m?"}
+
+    def is_money_line(value: str) -> bool:
+        return bool(re.fullmatch(r"\$\s*[\d,]+\.\d{2}", value.strip()))
+
+    def is_numeric_line(value: str) -> bool:
+        return bool(re.fullmatch(r"[\d,.]+", value.strip()))
+
+    def is_header_or_footer(value: str) -> bool:
+        norm = _normalize_text_for_match(value)
+        return any(
+            norm.startswith(prefix)
+            for prefix in (
+                "campos eliseos",
+                "telefonos",
+                "www.poliutech.com",
+                "empresa 100% mexicana",
+                "ciudad de mexico a",
+                "atte.",
+                "ing.",
+                "director general",
+                "codigo concepto unidad cantidad p.u. importe",
+            )
+        )
+
+    start_idx = 0
+    for idx, line in enumerate(lines):
+        if "codigo" in _normalize_text_for_match(line) and "importe" in _normalize_text_for_match(line):
+            start_idx = idx + 1
+            break
+
     items: list[dict] = []
-    for match in pattern.finditer(compact):
-        cantidad = parse_float(match.group("cantidad"), 0.0)
-        precio = parse_float(match.group("precio"), 0.0)
-        subtotal = parse_float(match.group("subtotal"), 0.0)
-        if cantidad <= 0 or precio <= 0 or subtotal <= 0:
+    i = start_idx
+    while i < len(lines):
+        line = lines[i]
+        norm = _normalize_text_for_match(line)
+        if norm.startswith("subtotal") or norm.startswith("iva") or norm.startswith("total"):
+            break
+        if is_header_or_footer(line):
+            i += 1
             continue
-        sistema = _clean_pdf_text(match.group("sistema")).replace("\n", " ")
-        descripcion = _clean_pdf_text(match.group("descripcion"))
+        if not is_code_line(line):
+            i += 1
+            continue
+
+        i += 1
+        desc_lines: list[str] = []
+        while i < len(lines):
+            current = lines[i]
+            if is_header_or_footer(current):
+                i += 1
+                continue
+            if is_unit_line(current):
+                i += 1
+                break
+            desc_lines.append(current)
+            i += 1
+
+        while i < len(lines) and (is_header_or_footer(lines[i]) or not is_numeric_line(lines[i])):
+            if is_code_line(lines[i]) or _normalize_text_for_match(lines[i]).startswith(("subtotal", "iva", "total")):
+                break
+            i += 1
+        if i >= len(lines) or not is_numeric_line(lines[i]):
+            break
+        quantity = parse_float(lines[i], 0.0)
+        i += 1
+
+        while i < len(lines) and not is_money_line(lines[i]):
+            if is_header_or_footer(lines[i]):
+                i += 1
+                continue
+            break
+        if i >= len(lines) or not is_money_line(lines[i]):
+            break
+        unit_price = _parse_pdf_currency(lines[i])
+        i += 1
+
+        while i < len(lines) and not is_money_line(lines[i]):
+            if is_header_or_footer(lines[i]):
+                i += 1
+                continue
+            break
+        if i >= len(lines) or not is_money_line(lines[i]):
+            break
+        line_subtotal = _parse_pdf_currency(lines[i])
+        i += 1
+
+        continuation: list[str] = []
+        while i < len(lines):
+            current = lines[i]
+            current_norm = _normalize_text_for_match(current)
+            if current_norm.startswith(("subtotal", "iva", "total")) or is_code_line(current):
+                break
+            if is_header_or_footer(current) or is_money_line(current) or is_numeric_line(current) or is_unit_line(current):
+                i += 1
+                continue
+            continuation.append(current)
+            i += 1
+
+        description = " ".join(desc_lines + continuation).strip()
         items.append({
-            "nombre_concepto": _build_concept_name(sistema, descripcion),
+            "nombre_concepto": _build_concept_name("", description),
             "unidad": "m2",
-            "cantidad": cantidad,
-            "precio_unitario": precio,
-            "sistema": sistema or None,
-            "descripcion": descripcion,
+            "cantidad": quantity,
+            "precio_unitario": unit_price,
+            "sistema": None,
+            "descripcion": description,
+            "subtotal_pdf": line_subtotal,
         })
+
     return items
 
 
