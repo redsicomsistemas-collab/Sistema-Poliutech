@@ -864,6 +864,19 @@ def _extract_items_from_pdf_tables(tables: list[list[list[str]]]) -> list[dict]:
     return items
 
 
+def _looks_like_partida_numbers_as_quantity(items: list[dict]) -> bool:
+    if not items or len(items) < 2:
+        return False
+    quantities = []
+    for item in items:
+        try:
+            quantities.append(float(item.get("cantidad") or 0))
+        except Exception:
+            return False
+    expected = [float(i) for i in range(1, len(quantities) + 1)]
+    return quantities == expected
+
+
 def _extract_items_from_pdf_text(text: str) -> list[dict]:
     lines = [_clean_pdf_text(line) for line in (text or "").splitlines() if _clean_pdf_text(line)]
     if not lines:
@@ -1004,12 +1017,16 @@ def build_import_payload_from_pdf(pdf_bytes: bytes, filename: str, responsable_h
 
     # Los PDFs tipo "CODIGO / CONCEPTO / UNIDAD / CANTIDAD / P.U. / IMPORTE"
     # salen mejor por lectura secuencial que por tabla extraida.
-    if "codigo" in normalized_text and "importe" in normalized_text and "p.u." in text:
+    if "codigo" in normalized_text and "cantidad" in normalized_text and "importe" in normalized_text:
         items = _extract_items_from_pdf_text(text)
     else:
         items = _extract_items_from_pdf_tables(tables)
         if not items:
             items = _extract_items_from_pdf_text(text)
+        elif _looks_like_partida_numbers_as_quantity(items):
+            text_items = _extract_items_from_pdf_text(text)
+            if text_items:
+                items = text_items
 
     if not items:
         raise ValueError("No pude identificar conceptos importables dentro del PDF.")
