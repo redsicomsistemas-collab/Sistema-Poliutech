@@ -2696,7 +2696,7 @@ def export_cotizacion_pdf(cot_id: int):
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
         leftMargin=20*mm, rightMargin=20*mm,
-        topMargin=58*mm, bottomMargin=38*mm
+        topMargin=46*mm, bottomMargin=38*mm
     )
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="Encabezado", fontSize=9, leading=12, spaceAfter=4))
@@ -2769,24 +2769,40 @@ def export_cotizacion_pdf(cot_id: int):
         canv.restoreState()
 
     # === DATOS PRINCIPALES ===
-    elems.append(Paragraph(f"<b>Folio:</b> {c.folio}", styles["Encabezado"]))
-    elems.append(Paragraph(f"<b>Fecha:</b> {c.fecha.strftime('%d/%m/%Y %H:%M')}", styles["Encabezado"]))
+    cli = c.cliente
+    cliente_nombre = cli.nombre_cliente if cli else ""
+    cliente_empresa = cli.empresa if cli else ""
+    cliente_correo = cli.correo if cli else ""
+    cliente_telefono = cli.telefono if cli else ""
 
-    # 👇 Aquí va el ajuste que pediste:
-    # Mantiene el label RESPONSABLE y pone el valor debajo para ocupar ese espacio.
-    elems.append(Paragraph(f"<b>RESPONSABLE:</b><br/>{c.responsable or ''}", styles["Encabezado"]))
-    elems.append(Spacer(1, 6))
-
-    if c.cliente:
-        cli = c.cliente
-        for txt in [
-            f"<b>Cliente:</b> {cli.nombre_cliente or ''}",
-            f"<b>Empresa:</b> {cli.empresa or ''}",
-            f"<b>Correo:</b> {cli.correo or ''}",
-            f"<b>Teléfono:</b> {cli.telefono or ''}",
-        ]:
-            elems.append(Paragraph(txt, styles["Encabezado"]))
-        elems.append(Spacer(1, 6))
+    meta_data = [
+        [
+            Paragraph(f"<b>Folio:</b> {c.folio}", styles["Encabezado"]),
+            Paragraph(f"<b>Fecha:</b> {c.fecha.strftime('%d/%m/%Y %H:%M')}", styles["Encabezado"]),
+        ],
+        [
+            Paragraph(f"<b>Responsable:</b> {c.responsable or ''}", styles["Encabezado"]),
+            Paragraph(f"<b>Cliente:</b> {cliente_nombre}", styles["Encabezado"]),
+        ],
+        [
+            Paragraph(f"<b>Empresa:</b> {cliente_empresa}", styles["Encabezado"]),
+            Paragraph(f"<b>Correo:</b> {cliente_correo}", styles["Encabezado"]),
+        ],
+        [
+            Paragraph(f"<b>Tel?fono:</b> {cliente_telefono}", styles["Encabezado"]),
+            Paragraph("", styles["Encabezado"]),
+        ],
+    ]
+    meta_tbl = Table(meta_data, colWidths=[85*mm, 85*mm], hAlign="LEFT")
+    meta_tbl.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+    ]))
+    elems.append(meta_tbl)
+    elems.append(Spacer(1, 4))
 
     # === TABLA DE CONCEPTOS ===
     data = [["Concepto", "Uni.", "Cant.", "Sistema", "Precio Unitario", "Subtotal"]]
