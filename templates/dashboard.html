@@ -149,8 +149,11 @@
           <label class="form-label small fw-bold text-secondary mb-1">Cliente / Empresa</label>
           <input type="text" id="filtro-cliente" class="form-control form-control-sm" placeholder="Buscar...">
         </div>
+        <div class="col-md-2 col-6">
+          <button id="btn-exportar-excel" type="button" class="btn btn-success btn-sm w-100">Exportar Excel</button>
+        </div>
         <div class="col-md-1 text-end">
-          <button id="btn-limpiar-filtros" class="btn btn-outline-secondary btn-sm w-100">🔄</button>
+          <button id="btn-limpiar-filtros" type="button" class="btn btn-outline-secondary btn-sm w-100">Limpiar</button>
         </div>
         {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
         <div class="col-12 mt-2 d-flex flex-wrap gap-2 justify-content-end align-items-center">
@@ -241,6 +244,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const estatus = document.getElementById("filtro-estatus");
   const cliente = document.getElementById("filtro-cliente");
   const limpiar = document.getElementById("btn-limpiar-filtros");
+  const exportarExcel = document.getElementById("btn-exportar-excel");
 
   // ✅ Selección masiva + borrado (solo admin)
   const chkAll = document.getElementById("chk-select-all");
@@ -478,6 +482,18 @@ document.addEventListener("DOMContentLoaded", () => {
     filas.forEach(tr => tr.style.display = "");
     updateBulkDeleteState();
   });
+
+  if (exportarExcel) {
+    exportarExcel.addEventListener("click", () => {
+      const params = new URLSearchParams();
+      if (desde?.value) params.set("desde", desde.value);
+      if (hasta?.value) params.set("hasta", hasta.value);
+      if (estatus?.value) params.set("estatus", estatus.value);
+      if (cliente?.value.trim()) params.set("cliente", cliente.value.trim());
+      const query = params.toString();
+      window.location.href = `{{ url_for('export_dashboard_cotizaciones_xlsx') }}${query ? `?${query}` : ""}`;
+    });
+  }
 
   // estado inicial
   updateBulkDeleteState();

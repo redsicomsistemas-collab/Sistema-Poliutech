@@ -13,24 +13,11 @@ from pathlib import Path
 
 
 # -------------------------------
-# Condiciones comerciales por defecto
+# Condiciones comerciales
 # -------------------------------
-DEFAULT_CONDICIONES = [
-"Precios en moneda nacional.",
-"El precio se respeta siempre que se haga el trabajo en una sola aplicación.",
-"La superficie debe de estar limpia, seca, firme y contar con las características que indican las cartas técnicas.",
-"Se requiere de áreas completamente libres de cualquier obstáculo que impida la instalación del sistema, areas iluminadas y lugar cercano seguro donde guardar equipos y herramientas.",
-"Se requiere corriente eléctrica 220 V y 127 V en sitio.",
-"No están consideradas fianzas, cuotas sindicales ni SIROC.",
-"No están consideradas certificaciones DC3.",
-"No está considerado personal de seguridad, brigadista ni rescatista.",
-"No están considerados exámenes médicos, clínicos ni toxicológicos.",
-"No están considerados equipos especiales.",
-"No están considerados acarreos fuera de la obra ni disposición de residuos.",
-"Todos los accesos y permisos corren por cuenta del cliente.",
-"Es importante que los sistemas sean aplicados por POLIUTECH (Aplicador certificado) para efectos de garantía.",
-"Garantía contra desprendimientos de 1 año en condiciones normales de uso."
-]
+# Ya no se agregan condiciones por defecto. Solo se exporta lo capturado
+# por el usuario y, cuando aplique, la trazabilidad de la zona.
+DEFAULT_CONDICIONES: list[str] = []
 
 
 
@@ -629,6 +616,46 @@ def require_cliente_owner_or_admin(cli: Cliente) -> None:
     if not ra or (cli.responsable or "") != ra:
         abort(403)
 
+
+
+def _build_dashboard_cotizaciones_query(
+    *,
+    desde: str = "",
+    hasta: str = "",
+    estatus: str = "",
+    cliente: str = "",
+):
+    q = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
+
+    if not is_admin():
+        q = q.filter(Cotizacion.responsable == responsable_actual())
+
+    if desde:
+        try:
+            d = datetime.strptime(desde, "%Y-%m-%d")
+        except ValueError as exc:
+            raise ValueError("Filtro 'Desde' invalido") from exc
+        q = q.filter(Cotizacion.fecha >= d)
+
+    if hasta:
+        try:
+            h = datetime.strptime(hasta, "%Y-%m-%d") + timedelta(days=1) - timedelta(seconds=1)
+        except ValueError as exc:
+            raise ValueError("Filtro 'Hasta' invalido") from exc
+        q = q.filter(Cotizacion.fecha <= h)
+
+    if estatus:
+        q = q.filter(Cotizacion.estatus == estatus)
+
+    cliente = (cliente or "").strip().lower()
+    if cliente:
+        pattern = f"%{cliente}%"
+        q = q.filter(or_(
+            db.func.lower(db.func.coalesce(Cliente.nombre_cliente, "")).like(pattern),
+            db.func.lower(db.func.coalesce(Cliente.empresa, "")).like(pattern),
+        ))
+
+    return q
 def generar_folio() -> str:
     prefix = "PTCH-"
     maxn = 0
@@ -1703,7 +1730,7 @@ def index():
 @app.route("/cotizador")
 @login_required
 def cotizador():
-    return render_template("cotizador.html", title="Nuevo - Sistema MAR", default_condiciones=DEFAULT_CONDICIONES)
+    return render_template("cotizador.html", title="Nuevo - Sistema MAR")
 
 
 @app.route("/admin/cotizaciones/importar", methods=["GET", "POST"])
@@ -2025,7 +2052,7 @@ def editar_cotizacion(cot_id: int):
     except Exception:
         zona_actual = ""
     notas_adicionales, _ = _split_notas_y_zona(c.notas or "")
-    return render_template("cotizacion_edit.html", c=c, zona_actual=zona_actual, notas_adicionales=notas_adicionales, default_condiciones=DEFAULT_CONDICIONES, title=f"Editar {c.folio}")
+    return render_template("cotizacion_edit.html", c=c, zona_actual=zona_actual, notas_adicionales=notas_adicionales, title=f"Editar {c.folio}")
 
 @app.route("/cotizaciones/<int:cot_id>/actualizar", methods=["POST"])
 @login_required
@@ -2277,33 +2304,15 @@ def bulk_eliminar_filtradas():
     estatus_s = (filters.get("estatus") or "").strip()
     cliente_s = (filters.get("cliente") or "").strip().lower()
 
-    q = Cotizacion.query
-
-    # fechas (inclusive)
     try:
-        if desde_s:
-            d = datetime.strptime(desde_s, "%Y-%m-%d")
-            q = q.filter(Cotizacion.fecha >= d)
-    except Exception:
-        return jsonify({"error": "Filtro 'Desde' inválido"}), 400
-
-    try:
-        if hasta_s:
-            h = datetime.strptime(hasta_s, "%Y-%m-%d") + timedelta(days=1) - timedelta(seconds=1)
-            q = q.filter(Cotizacion.fecha <= h)
-    except Exception:
-        return jsonify({"error": "Filtro 'Hasta' inválido"}), 400
-
-    if estatus_s:
-        q = q.filter(Cotizacion.estatus == estatus_s)
-
-    if cliente_s:
-        q = q.join(Cliente, Cotizacion.cliente_id == Cliente.id)
-        like = f"%{cliente_s}%"
-        q = q.filter(or_(
-            db.func.lower(Cliente.nombre_cliente).like(like),
-            db.func.lower(Cliente.empresa).like(like)
-        ))
+        q = _build_dashboard_cotizaciones_query(
+            desde=desde_s,
+            hasta=hasta_s,
+            estatus=estatus_s,
+            cliente=cliente_s,
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
 
     q = q.order_by(Cotizacion.fecha.desc())
 
@@ -2534,6 +2543,125 @@ def export_cotizacion_xlsx(cot_id: int):
     )
 
 # ---------------------------------------------------------
+
+@app.route("/cotizaciones/export/dashboard.xlsx")
+@login_required
+def export_dashboard_cotizaciones_xlsx():
+    if Workbook is None:
+        abort(501, description="openpyxl no instalado en el servidor.")
+
+    desde = (request.args.get("desde") or "").strip()
+    hasta = (request.args.get("hasta") or "").strip()
+    estatus = (request.args.get("estatus") or "").strip()
+    cliente = (request.args.get("cliente") or "").strip()
+
+    try:
+        cotizaciones = (_build_dashboard_cotizaciones_query(
+            desde=desde,
+            hasta=hasta,
+            estatus=estatus,
+            cliente=cliente,
+        ).order_by(Cotizacion.fecha.desc()).all())
+    except ValueError as exc:
+        abort(400, description=str(exc))
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Cotizaciones"
+
+    bold = Font(bold=True)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left = Alignment(horizontal="left", vertical="top", wrap_text=True)
+    header_fill = PatternFill("solid", fgColor="0D47A1")
+    white = Font(color="FFFFFF", bold=True)
+    thin = Side(style="thin", color="DDDDDD")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    ws.merge_cells("A1:J1")
+    ws["A1"] = "REPORTE DE COTIZACIONES"
+    ws["A1"].font = Font(bold=True, size=14)
+    ws["A1"].alignment = center
+
+    filtros_texto = []
+    if desde:
+        filtros_texto.append(f"Desde: {desde}")
+    if hasta:
+        filtros_texto.append(f"Hasta: {hasta}")
+    if estatus:
+        filtros_texto.append(f"Estatus: {estatus}")
+    if cliente:
+        filtros_texto.append(f"Cliente/Empresa: {cliente}")
+    if not filtros_texto:
+        filtros_texto.append("Sin filtros")
+
+    ws.merge_cells("A2:J2")
+    ws["A2"] = " | ".join(filtros_texto)
+    ws["A2"].alignment = left
+
+    headers = ["Folio", "Fecha", "Cliente", "Empresa", "Responsable", "Estatus", "Subtotal", "IVA %", "IVA $", "Total"]
+    ws.append([])
+    ws.append(headers)
+
+    header_row = ws.max_row
+    for col in range(1, len(headers) + 1):
+        cell = ws.cell(row=header_row, column=col)
+        cell.fill = header_fill
+        cell.font = white
+        cell.alignment = center
+        cell.border = border
+
+    for c in cotizaciones:
+        ws.append([
+            c.folio or "",
+            c.fecha.strftime("%Y-%m-%d %H:%M") if c.fecha else "",
+            c.cliente.nombre_cliente if c.cliente else "",
+            c.cliente.empresa if c.cliente else "",
+            c.responsable or "",
+            c.estatus or "",
+            float(c.subtotal or 0),
+            float(c.iva_porc or 0),
+            float(c.iva_monto or 0),
+            float(c.total or 0),
+        ])
+        row = ws.max_row
+        for col in range(1, len(headers) + 1):
+            ws.cell(row=row, column=col).border = border
+        for col in (7, 9, 10):
+            ws.cell(row=row, column=col).number_format = '"$"#,##0.00'
+        ws.cell(row=row, column=8).number_format = '0.00'
+        ws.cell(row=row, column=1).alignment = left
+        ws.cell(row=row, column=2).alignment = center
+        ws.cell(row=row, column=3).alignment = left
+        ws.cell(row=row, column=4).alignment = left
+
+    total_row = ws.max_row + 2
+    ws.cell(row=total_row, column=9, value="Total exportado:").font = bold
+    ws.cell(row=total_row, column=10, value=f"=SUM(J{header_row + 1}:J{ws.max_row})")
+    ws.cell(row=total_row, column=10).font = bold
+    ws.cell(row=total_row, column=10).number_format = '"$"#,##0.00'
+
+    ws.auto_filter.ref = f"A{header_row}:J{max(header_row, ws.max_row)}"
+    ws.freeze_panes = f"A{header_row + 1}"
+    ws.column_dimensions["A"].width = 18
+    ws.column_dimensions["B"].width = 18
+    ws.column_dimensions["C"].width = 28
+    ws.column_dimensions["D"].width = 28
+    ws.column_dimensions["E"].width = 18
+    ws.column_dimensions["F"].width = 14
+    ws.column_dimensions["G"].width = 14
+    ws.column_dimensions["H"].width = 10
+    ws.column_dimensions["I"].width = 14
+    ws.column_dimensions["J"].width = 14
+
+    bio = io.BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    stamp = now_cdmx_naive().strftime("%Y%m%d_%H%M%S")
+    return Response(
+        bio.getvalue(),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="cotizaciones_dashboard_{stamp}.xlsx"'}
+    )
 # PDF - Diseño corporativo
 # - Quitar RFC
 # - "Condiciones comerciales"

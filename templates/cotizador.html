@@ -149,16 +149,8 @@
   <!-- CONDICIONES COMERCIALES -->
   <section class="panel mb-4">
     <h5 class="mb-3 text-secondary">Condiciones comerciales</h5>
-    <div class="alert alert-light border">
-      <div class="fw-semibold mb-2">Condiciones por defecto incluidas automáticamente en el PDF:</div>
-      <ul class="mb-0">
-        {% for item in default_condiciones %}<li>{{ item }}</li>{% endfor %}
-      </ul>
-    </div>
-    <div class="mt-3">
-      <label for="notas" class="form-label fw-semibold">Condiciones adicionales (opcionales)</label>
-      <textarea id="notas" name="notas" class="form-control" rows="4" placeholder="Aquí solo agrega condiciones extras; las de cajón ya van incluidas."></textarea>
-    </div>
+    <label for="notas" class="form-label fw-semibold">Captura libre</label>
+    <textarea id="notas" name="notas" class="form-control" rows="4" placeholder="Escribe aqui las condiciones comerciales que correspondan para esta cotizacion."></textarea>
   </section>
 
   <div class="d-flex justify-content-between">
