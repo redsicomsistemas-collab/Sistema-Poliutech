@@ -11,6 +11,7 @@ from typing import Iterable, Optional, List
 from urllib.parse import urlparse
 from pathlib import Path
 from email.message import EmailMessage
+from email.utils import getaddresses
 
 
 # -------------------------------
@@ -105,8 +106,8 @@ ADMIN_LIST: List[str] = [x.strip() for x in ADMIN_WHATSAPP_RECIPIENTS.split(",")
 
 SMTP_HOST = os.getenv("SMTP_HOST", "servidor15.escala.net.mx").strip()
 SMTP_PORT = int(os.getenv("SMTP_PORT", "26"))
-SMTP_USERNAME = os.getenv("SMTP_USERNAME", "info@poliutech.com").strip()
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "Info@2025?").strip()
+SMTP_USERNAME = os.getenv("SMTP_USERNAME", "cotizaciones@poliutech.com").strip()
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "Cotizaciones2025@").strip()
 SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USERNAME).strip()
 
 # Usa SIEMPRE los modelos desde models.py para evitar duplicados
@@ -2564,7 +2565,30 @@ def _email_body_cotizacion(c: Cotizacion) -> str:
     )
 
 
-def _send_cotizacion_email(c: Cotizacion, recipient: str) -> None:
+def _parse_email_list(raw: str | list[str] | tuple[str, ...] | None) -> list[str]:
+    if isinstance(raw, (list, tuple)):
+        parts = [str(item or "").strip() for item in raw]
+        candidate = ",".join([part for part in parts if part])
+    else:
+        candidate = str(raw or "").strip()
+
+    if not candidate:
+        return []
+
+    emails: list[str] = []
+    for _, addr in getaddresses([candidate]):
+        addr = (addr or "").strip()
+        if not addr:
+            continue
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", addr):
+            raise ValueError(f"Correo inválido: {addr}")
+        emails.append(addr)
+    return emails
+
+
+def _send_cotizacion_email(c: Cotizacion, recipient: str, cc: list[str] | None = None, bcc: list[str] | None = None) -> None:
+    cc = cc or []
+    bcc = bcc or []
     pdf_response = export_cotizacion_pdf(c.id)
     pdf_response.direct_passthrough = False
     pdf_bytes = pdf_response.get_data()
@@ -2573,6 +2597,8 @@ def _send_cotizacion_email(c: Cotizacion, recipient: str) -> None:
     msg["Subject"] = f"Cotización {c.folio}"
     msg["From"] = SMTP_FROM
     msg["To"] = recipient
+    if cc:
+        msg["Cc"] = ", ".join(cc)
     msg.set_content(_email_body_cotizacion(c))
     msg.add_attachment(
         pdf_bytes,
@@ -2584,7 +2610,7 @@ def _send_cotizacion_email(c: Cotizacion, recipient: str) -> None:
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
         smtp.ehlo()
         smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-        smtp.send_message(msg)
+        smtp.send_message(msg, to_addrs=[recipient, *cc, *bcc])
 
 
 @app.route("/api/cotizaciones/<int:cot_id>/send-email", methods=["POST"])
@@ -2597,6 +2623,8 @@ def api_send_cotizacion_email(cot_id: int):
     recipient = (data.get("to") or "").strip()
     if not recipient and c.cliente:
         recipient = (c.cliente.correo or "").strip()
+    cc_raw = data.get("cc")
+    bcc_raw = data.get("bcc")
 
     if not recipient:
         return jsonify({"ok": False, "error": "La cotización no tiene un correo destino."}), 400
@@ -2605,13 +2633,19 @@ def api_send_cotizacion_email(cot_id: int):
         return jsonify({"ok": False, "error": "El correo destino no es válido."}), 400
 
     try:
-        _send_cotizacion_email(c, recipient)
+        cc = _parse_email_list(cc_raw)
+        bcc = _parse_email_list(bcc_raw)
+        _send_cotizacion_email(c, recipient, cc=cc, bcc=bcc)
         return jsonify({
             "ok": True,
             "folio": c.folio,
             "to": recipient,
+            "cc": cc,
+            "bcc_count": len(bcc),
             "message": f"Cotización {c.folio} enviada a {recipient}."
         })
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
     except Exception as e:
         print(f"[MAIL] Error enviando cotización {c.folio} a {recipient}: {e}", file=sys.stderr)
         return jsonify({"ok": False, "error": f"No se pudo enviar el correo: {e}"}), 500

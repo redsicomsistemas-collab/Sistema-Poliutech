@@ -200,6 +200,14 @@
               {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
               <td class="text-center">
                 <input type="checkbox" class="chk-cot" value="{{ c.id }}" aria-label="Seleccionar {{ c.folio }}">
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary btn-sm btn-send-email ms-1"
+                  title="Enviar por correo"
+                  data-id="{{ c.id }}"
+                  data-folio="{{ c.folio }}"
+                  data-email="{{ c.cliente.correo if c.cliente and c.cliente.correo else '' }}"
+                >📧</button>
               </td>
               {% endif %}
               <td>{{ c.folio }}</td>
@@ -219,14 +227,6 @@
                 <a href="{{ url_for('export_cotizacion_pdf', cot_id=c.id) }}" target="_blank" class="btn btn-outline-danger btn-sm" title="PDF">📄</a>
                 <a href="{{ url_for('export_cotizacion_xlsx', cot_id=c.id) }}" class="btn btn-outline-success btn-sm" title="Excel">📊</a>
                 <a href="{{ url_for('editar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-warning btn-sm" title="Editar">✏️</a>
-                <button
-                  type="button"
-                  class="btn btn-outline-secondary btn-sm btn-send-email"
-                  title="Enviar por correo"
-                  data-id="{{ c.id }}"
-                  data-folio="{{ c.folio }}"
-                  data-email="{{ c.cliente.correo if c.cliente and c.cliente.correo else '' }}"
-                >📧</button>
                 {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
                 <a href="{{ url_for('eliminar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-danger btn-sm" title="Eliminar">🗑️</a>
                 {% endif %}
@@ -614,20 +614,24 @@ document.addEventListener("DOMContentLoaded", () => {
     const modal = await Swal.fire({
       icon: "question",
       title: `Enviar cotización ${folio}`,
-      input: "email",
-      inputValue: defaultEmail,
-      inputLabel: "Correo destino",
-      inputPlaceholder: "cliente@empresa.com",
+      html: `
+        <input id="swal-email-to" type="email" class="swal2-input" placeholder="Destino" value="${defaultEmail}">
+        <input id="swal-email-cc" type="text" class="swal2-input" placeholder="CC (separa con comas)">
+        <input id="swal-email-bcc" type="text" class="swal2-input" placeholder="CCO (separa con comas)">
+      `,
       showCancelButton: true,
       confirmButtonText: "Enviar",
       cancelButtonText: "Cancelar",
-      preConfirm: (value) => {
-        const email = (value || "").trim();
+      focusConfirm: false,
+      preConfirm: () => {
+        const email = (document.getElementById("swal-email-to")?.value || "").trim();
+        const cc = (document.getElementById("swal-email-cc")?.value || "").trim();
+        const bcc = (document.getElementById("swal-email-bcc")?.value || "").trim();
         if (!email) {
           Swal.showValidationMessage("Captura un correo destino.");
           return false;
         }
-        return email;
+        return { to: email, cc, bcc };
       }
     });
 
@@ -638,14 +642,14 @@ document.addEventListener("DOMContentLoaded", () => {
       const response = await fetch(`/api/cotizaciones/${cotId}/send-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to: modal.value })
+        body: JSON.stringify(modal.value)
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
         throw new Error(data?.error || "No se pudo enviar el correo.");
       }
 
-      btn.dataset.email = modal.value;
+      btn.dataset.email = modal.value.to;
       await Swal.fire({
         icon: "success",
         title: "Correo enviado",
