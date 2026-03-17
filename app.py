@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import os, io, csv, sys, math, re, json, traceback, unicodedata, smtplib
+import mimetypes
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from typing import Iterable, Optional, List
@@ -12,6 +13,7 @@ from urllib.parse import urlparse
 from pathlib import Path
 from email.message import EmailMessage
 from email.utils import getaddresses
+from html import escape
 
 
 # -------------------------------
@@ -2565,6 +2567,47 @@ def _email_body_cotizacion(c: Cotizacion) -> str:
     )
 
 
+def _email_signature_text() -> str:
+    return (
+        "\n"
+        "POLIUTECH RECUBRIMIENTOS ESPECIALIZADOS\n"
+        "oficinas: 5559380536, 5559386530\n"
+        "Número celular: 5534662836\n"
+        "Correo electrónico: cotizaciones@poliutech.com\n"
+        "www.poliutech.com\n"
+    )
+
+
+def _email_body_cotizacion_html(c: Cotizacion) -> str:
+    cli = c.cliente
+    atencion = ""
+    if cli:
+        atencion = escape((cli.nombre_cliente or cli.empresa or "").strip())
+
+    return f"""
+    <html>
+      <body style="font-family: Arial, sans-serif; color: #222; line-height: 1.45;">
+        <p style="margin: 0 0 16px 0;">Con atención a: {atencion}</p>
+        <p style="margin: 0 0 16px 0;">Buenas tardes, por medio de la presente hacemos llegar la cotización requerida.</p>
+        <p style="margin: 0 0 22px 0;">Cualquier duda, estamos a sus órdenes.<br>Saludos cordiales.</p>
+
+        <div style="padding-top: 14px; border-top: 1px solid #cfcfcf; max-width: 620px;">
+          <div style="font-size: 14px; margin-bottom: 14px;">
+            <div style="font-weight: 700;">POLIUTECH RECUBRIMIENTOS ESPECIALIZADOS</div>
+            <div>oficinas:. 5559380536, 5559386530</div>
+            <div>Número celular. 5534662836</div>
+            <div>Correo electrónico : <a href="mailto:cotizaciones@poliutech.com">cotizaciones@poliutech.com</a></div>
+            <div><a href="https://www.poliutech.com" target="_blank">www.poliutech.com</a></div>
+          </div>
+          <div>
+            <img src="cid:poliutech-logo" alt="Poliutech" style="display:block; width:280px; height:auto; border:0;">
+          </div>
+        </div>
+      </body>
+    </html>
+    """.strip()
+
+
 def _parse_email_list(raw: str | list[str] | tuple[str, ...] | None) -> list[str]:
     if isinstance(raw, (list, tuple)):
         parts = [str(item or "").strip() for item in raw]
@@ -2599,7 +2642,25 @@ def _send_cotizacion_email(c: Cotizacion, recipient: str, cc: list[str] | None =
     msg["To"] = recipient
     if cc:
         msg["Cc"] = ", ".join(cc)
-    msg.set_content(_email_body_cotizacion(c))
+    msg.set_content(_email_body_cotizacion(c) + _email_signature_text())
+    msg.add_alternative(_email_body_cotizacion_html(c), subtype="html")
+
+    logo_path = Path(app.static_folder or "static") / "logo.png"
+    if logo_path.exists():
+        logo_bytes = logo_path.read_bytes()
+        mime_type, _ = mimetypes.guess_type(str(logo_path))
+        maintype, subtype = ("image", "jpeg")
+        if mime_type and "/" in mime_type:
+            maintype, subtype = mime_type.split("/", 1)
+        html_part = msg.get_body(preferencelist=("html",))
+        if html_part is not None:
+            html_part.add_related(
+                logo_bytes,
+                maintype=maintype,
+                subtype=subtype,
+                cid="<poliutech-logo>",
+            )
+
     msg.add_attachment(
         pdf_bytes,
         maintype="application",
@@ -2770,6 +2831,54 @@ def export_dashboard_cotizaciones_xlsx():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="cotizaciones_dashboard_{stamp}.xlsx"'}
     )
+
+
+@app.route("/api/dashboard/filter-summary")
+@login_required
+def api_dashboard_filter_summary():
+    desde = (request.args.get("desde") or "").strip()
+    hasta = (request.args.get("hasta") or "").strip()
+    estatus = (request.args.get("estatus") or "").strip()
+    cliente = (request.args.get("cliente") or "").strip()
+
+    try:
+        q = _build_dashboard_cotizaciones_query(
+            desde=desde,
+            hasta=hasta,
+            estatus=estatus,
+            cliente=cliente,
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    cot_subq = q.with_entities(Cotizacion.id).subquery()
+    cot_ids_select = db.select(cot_subq.c.id)
+
+    total_importe = (
+        db.session.query(db.func.coalesce(db.func.sum(Cotizacion.total), 0))
+        .filter(Cotizacion.id.in_(cot_ids_select))
+        .scalar()
+        or 0
+    )
+    total_cotizaciones = (
+        db.session.query(db.func.count())
+        .select_from(cot_subq)
+        .scalar()
+        or 0
+    )
+    total_conceptos = (
+        db.session.query(db.func.count(CotizacionDetalle.id))
+        .filter(CotizacionDetalle.cotizacion_id.in_(cot_ids_select))
+        .scalar()
+        or 0
+    )
+
+    return jsonify({
+        "total_importe": float(total_importe),
+        "total_cotizaciones": int(total_cotizaciones),
+        "total_conceptos": int(total_conceptos),
+    })
+
 # PDF - Diseño corporativo
 # - Quitar RFC
 # - "Condiciones comerciales"
@@ -2818,7 +2927,7 @@ def export_cotizacion_pdf(cot_id: int):
         canv.setFillColor(colors.HexColor("#0d47a1"))
         canv.rect(0, A4[1]-40, A4[0], 40, stroke=0, fill=1)
 
-        logo_path = os.path.join(app.static_folder or "static", "logo.jpg")
+        logo_path = os.path.join(app.static_folder or "static", "logo.png")
         if os.path.exists(logo_path):
             try:
                 img = ImageReader(logo_path)

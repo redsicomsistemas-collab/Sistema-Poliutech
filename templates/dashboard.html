@@ -6,7 +6,7 @@
     <div class="card border-success shadow-sm">
       <div class="card-body">
         <h6 class="text-success">Importe Total</h6>
-        <h3 class="fw-bold text-dark">${{ "{:,.2f}".format(total_importe) }}</h3>
+        <h3 class="fw-bold text-dark" data-summary="importe-total">${{ "{:,.2f}".format(total_importe) }}</h3>
       </div>
     </div>
   </div>
@@ -14,7 +14,7 @@
     <div class="card border-primary shadow-sm">
       <div class="card-body">
         <h6 class="text-primary">Cotizaciones Totales</h6>
-        <h3 class="fw-bold text-dark">{{ total_cotizaciones }}</h3>
+        <h3 class="fw-bold text-dark" data-summary="cotizaciones-total">{{ total_cotizaciones }}</h3>
       </div>
     </div>
   </div>
@@ -22,7 +22,7 @@
     <div class="card border-info shadow-sm">
       <div class="card-body">
         <h6 class="text-info">Conceptos Registrados</h6>
-        <h3 class="fw-bold text-dark">{{ total_catalogo }}</h3>
+        <h3 class="fw-bold text-dark" data-summary="conceptos-total">{{ total_catalogo }}</h3>
       </div>
     </div>
   </div>
@@ -61,7 +61,7 @@
     <div class="card border-success shadow-sm">
       <div class="card-body">
         <h6 class="text-success">Importe Total</h6>
-        <h3 class="fw-bold text-dark">${{ "{:,.2f}".format(total_importe) }}</h3>
+        <h3 class="fw-bold text-dark" data-summary="importe-total">${{ "{:,.2f}".format(total_importe) }}</h3>
       </div>
     </div>
   </div>
@@ -69,7 +69,7 @@
     <div class="card border-primary shadow-sm">
       <div class="card-body">
         <h6 class="text-primary">Cotizaciones Totales</h6>
-        <h3 class="fw-bold text-dark">{{ total_cotizaciones }}</h3>
+        <h3 class="fw-bold text-dark" data-summary="cotizaciones-total">{{ total_cotizaciones }}</h3>
       </div>
     </div>
   </div>
@@ -77,7 +77,7 @@
     <div class="card border-info shadow-sm">
       <div class="card-body">
         <h6 class="text-info">Conceptos Registrados</h6>
-        <h3 class="fw-bold text-dark">{{ total_catalogo }}</h3>
+        <h3 class="fw-bold text-dark" data-summary="conceptos-total">{{ total_catalogo }}</h3>
       </div>
     </div>
   </div>
@@ -254,6 +254,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const cliente = document.getElementById("filtro-cliente");
   const limpiar = document.getElementById("btn-limpiar-filtros");
   const exportarExcel = document.getElementById("btn-exportar-excel");
+  const importeSummaryEls = document.querySelectorAll('[data-summary="importe-total"]');
+  const cotizacionesSummaryEls = document.querySelectorAll('[data-summary="cotizaciones-total"]');
+  const conceptosSummaryEls = document.querySelectorAll('[data-summary="conceptos-total"]');
   const chartColors = ["#2196f3", "#ffeb3b", "#4caf50", "#f44336"];
   let chartImporteInstance = null;
   let chartCantidadInstance = null;
@@ -270,6 +273,40 @@ document.addEventListener("DOMContentLoaded", () => {
     return Array.from(document.querySelectorAll("#tablaCotizaciones tr"))
       .filter(tr => tr.style.display !== "none");
   }
+
+  function setSummaryText(elements, value) {
+    elements.forEach((el) => {
+      el.textContent = value;
+    });
+  }
+
+  async function refreshSummaryCards() {
+    const params = new URLSearchParams();
+    if (desde?.value) params.set("desde", desde.value);
+    if (hasta?.value) params.set("hasta", hasta.value);
+    if (estatus?.value) params.set("estatus", estatus.value);
+    if (cliente?.value.trim()) params.set("cliente", cliente.value.trim());
+
+    try {
+      const query = params.toString();
+      const response = await fetch(`/api/dashboard/filter-summary${query ? `?${query}` : ""}`);
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "No se pudo actualizar el resumen.");
+      }
+
+      const importe = new Intl.NumberFormat("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(Number(data.total_importe || 0));
+      setSummaryText(importeSummaryEls, `$${importe}`);
+      setSummaryText(cotizacionesSummaryEls, String(data.total_cotizaciones || 0));
+      setSummaryText(conceptosSummaryEls, String(data.total_conceptos || 0));
+    } catch (err) {
+      console.error("Error actualizando resumen del dashboard", err);
+    }
+  }
+  window.refreshDashboardSummary = refreshSummaryCards;
 
   function renderFilteredCharts() {
     const visibleRows = getVisibleRows();
@@ -475,6 +512,7 @@ document.addEventListener("DOMContentLoaded", () => {
       chkAll.indeterminate = false;
       updateBulkDeleteState();
       renderFilteredCharts();
+      refreshSummaryCards();
 
       await Swal.fire({
         icon: "success",
@@ -538,6 +576,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       updateBulkDeleteState();
       renderFilteredCharts();
+      refreshSummaryCards();
 
       await Swal.fire({
         icon: "success",
@@ -578,6 +617,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // recalcular estado del checkbox "seleccionar todo" y botón
     updateBulkDeleteState();
     renderFilteredCharts();
+    refreshSummaryCards();
   }
 
   ["input", "change", "keyup"].forEach(evt => {
@@ -589,6 +629,7 @@ document.addEventListener("DOMContentLoaded", () => {
     filas.forEach(tr => tr.style.display = "");
     updateBulkDeleteState();
     renderFilteredCharts();
+    refreshSummaryCards();
   });
 
   if (exportarExcel) {
@@ -669,6 +710,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // estado inicial
   updateBulkDeleteState();
   renderFilteredCharts();
+  refreshSummaryCards();
 });
 </script>
 
@@ -699,6 +741,9 @@ function cambiarEstatus(id, selectElem) {
             if (fila) fila.dataset.estatus = nuevo;
             if (typeof window.refreshDashboardCharts === "function") {
                 window.refreshDashboardCharts();
+            }
+            if (typeof window.refreshDashboardSummary === "function") {
+                window.refreshDashboardSummary();
             }
         } else {
             Swal.fire("Error", data.error, "error");
