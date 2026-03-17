@@ -4,12 +4,13 @@
 # =========================================================
 from __future__ import annotations
 
-import os, io, csv, sys, math, re, json, traceback, unicodedata
+import os, io, csv, sys, math, re, json, traceback, unicodedata, smtplib
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from typing import Iterable, Optional, List
 from urllib.parse import urlparse
 from pathlib import Path
+from email.message import EmailMessage
 
 
 # -------------------------------
@@ -101,6 +102,12 @@ ADMIN_WHATSAPP_RECIPIENTS = os.getenv(
     DEFAULT_ADMIN_WHATSAPP_RECIPIENTS
 ).strip()
 ADMIN_LIST: List[str] = [x.strip() for x in ADMIN_WHATSAPP_RECIPIENTS.split(",") if x.strip()]
+
+SMTP_HOST = os.getenv("SMTP_HOST", "servidor15.escala.net.mx").strip()
+SMTP_PORT = int(os.getenv("SMTP_PORT", "26"))
+SMTP_USERNAME = os.getenv("SMTP_USERNAME", "info@poliutech.com").strip()
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "Info@2025?").strip()
+SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USERNAME).strip()
 
 # Usa SIEMPRE los modelos desde models.py para evitar duplicados
 from models import db, Cliente, Concepto, Cotizacion, CotizacionDetalle, Usuario, ActivityLog
@@ -2541,6 +2548,73 @@ def export_cotizacion_xlsx(cot_id: int):
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{c.folio}.xlsx"'}
     )
+
+
+def _email_body_cotizacion(c: Cotizacion) -> str:
+    cli = c.cliente
+    atencion = ""
+    if cli:
+        atencion = (cli.nombre_cliente or cli.empresa or "").strip()
+
+    return (
+        f"Con atención a: {atencion}\n\n"
+        "Buenas tardes, por medio de la presente hacemos llegar la cotización requerida.\n\n"
+        "Cualquier duda, estamos a sus órdenes.\n"
+        "Saludos cordiales.\n"
+    )
+
+
+def _send_cotizacion_email(c: Cotizacion, recipient: str) -> None:
+    pdf_response = export_cotizacion_pdf(c.id)
+    pdf_response.direct_passthrough = False
+    pdf_bytes = pdf_response.get_data()
+
+    msg = EmailMessage()
+    msg["Subject"] = f"Cotización {c.folio}"
+    msg["From"] = SMTP_FROM
+    msg["To"] = recipient
+    msg.set_content(_email_body_cotizacion(c))
+    msg.add_attachment(
+        pdf_bytes,
+        maintype="application",
+        subtype="pdf",
+        filename=f"{c.folio}.pdf",
+    )
+
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
+        smtp.ehlo()
+        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+        smtp.send_message(msg)
+
+
+@app.route("/api/cotizaciones/<int:cot_id>/send-email", methods=["POST"])
+@login_required
+def api_send_cotizacion_email(cot_id: int):
+    c = Cotizacion.query.get_or_404(cot_id)
+    require_owner_or_admin(c)
+
+    data = request.get_json(silent=True) or {}
+    recipient = (data.get("to") or "").strip()
+    if not recipient and c.cliente:
+        recipient = (c.cliente.correo or "").strip()
+
+    if not recipient:
+        return jsonify({"ok": False, "error": "La cotización no tiene un correo destino."}), 400
+
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", recipient):
+        return jsonify({"ok": False, "error": "El correo destino no es válido."}), 400
+
+    try:
+        _send_cotizacion_email(c, recipient)
+        return jsonify({
+            "ok": True,
+            "folio": c.folio,
+            "to": recipient,
+            "message": f"Cotización {c.folio} enviada a {recipient}."
+        })
+    except Exception as e:
+        print(f"[MAIL] Error enviando cotización {c.folio} a {recipient}: {e}", file=sys.stderr)
+        return jsonify({"ok": False, "error": f"No se pudo enviar el correo: {e}"}), 500
 
 # ---------------------------------------------------------
 
