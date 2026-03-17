@@ -227,6 +227,16 @@
                 <a href="{{ url_for('export_cotizacion_pdf', cot_id=c.id) }}" target="_blank" class="btn btn-outline-danger btn-sm" title="PDF">📄</a>
                 <a href="{{ url_for('export_cotizacion_xlsx', cot_id=c.id) }}" class="btn btn-outline-success btn-sm" title="Excel">📊</a>
                 <a href="{{ url_for('editar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-warning btn-sm" title="Editar">✏️</a>
+                {% if not (current_user.is_authenticated and current_user.rol == 'ADMIN') %}
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary btn-sm btn-send-email"
+                  title="Enviar por correo"
+                  data-id="{{ c.id }}"
+                  data-folio="{{ c.folio }}"
+                  data-email="{{ c.cliente.correo if c.cliente and c.cliente.correo else '' }}"
+                >📧</button>
+                {% endif %}
                 {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
                 <a href="{{ url_for('eliminar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-danger btn-sm" title="Eliminar">🗑️</a>
                 {% endif %}

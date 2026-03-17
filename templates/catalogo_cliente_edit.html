@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0">Editar cliente</h2>
+    <a href="{{ url_for('catalogos.catalogos_index') }}" class="btn btn-outline-secondary btn-sm">⬅ Volver a catálogos</a>
+  </div>
+
+  <div class="card shadow-sm border-0">
+    <div class="card-body">
+      <form method="POST">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label for="nombre_cliente" class="form-label">Nombre del cliente</label>
+            <input type="text" id="nombre_cliente" name="nombre_cliente" class="form-control" value="{{ cliente.nombre_cliente or '' }}" required>
+          </div>
+          <div class="col-md-6">
+            <label for="empresa" class="form-label">Empresa</label>
+            <input type="text" id="empresa" name="empresa" class="form-control" value="{{ cliente.empresa or '' }}">
+          </div>
+          <div class="col-md-4">
+            <label for="responsable" class="form-label">Responsable</label>
+            <input type="text" id="responsable" name="responsable" class="form-control" value="{{ cliente.responsable or '' }}">
+          </div>
+          <div class="col-md-4">
+            <label for="correo" class="form-label">Correo</label>
+            <input type="email" id="correo" name="correo" class="form-control" value="{{ cliente.correo or '' }}">
+          </div>
+          <div class="col-md-4">
+            <label for="telefono" class="form-label">Teléfono</label>
+            <input type="text" id="telefono" name="telefono" class="form-control" value="{{ cliente.telefono or '' }}">
+          </div>
+          <div class="col-md-8">
+            <label for="direccion" class="form-label">Dirección</label>
+            <input type="text" id="direccion" name="direccion" class="form-control" value="{{ cliente.direccion or '' }}">
+          </div>
+          <div class="col-md-4">
+            <label for="rfc" class="form-label">RFC</label>
+            <input type="text" id="rfc" name="rfc" class="form-control" value="{{ cliente.rfc or '' }}">
+          </div>
+        </div>
+
+        <div class="d-flex justify-content-end gap-2 mt-4">
+          <a href="{{ url_for('catalogos.catalogos_index') }}" class="btn btn-outline-secondary">Cancelar</a>
+          <button type="submit" class="btn btn-primary">Guardar cambios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

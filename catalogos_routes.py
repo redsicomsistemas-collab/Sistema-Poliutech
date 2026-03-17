@@ -15,6 +15,14 @@ from models import db, Cliente, Concepto
 
 bp = Blueprint("catalogos", __name__)
 
+
+def _parse_price(value) -> float:
+    try:
+        raw = str(value or "").replace("$", "").replace(",", "").strip()
+        return float(raw or "0")
+    except Exception:
+        return 0.0
+
 # ---------------------------------------------------------
 # Vista principal del módulo de catálogos (con paginación)
 # ---------------------------------------------------------
@@ -222,3 +230,57 @@ def eliminar_catalogo(tipo, item_id):
         flash(f"Error al eliminar: {e}", "danger")
 
     return redirect(url_for("catalogos.catalogos_index"))
+
+
+@bp.route("/clientes/<int:item_id>/editar", methods=["GET", "POST"])
+def editar_cliente(item_id):
+    cliente = Cliente.query.get_or_404(item_id)
+
+    if request.method == "POST":
+        cliente.nombre_cliente = (request.form.get("nombre_cliente") or "").strip()
+        cliente.empresa = (request.form.get("empresa") or "").strip() or None
+        cliente.responsable = (request.form.get("responsable") or "").strip() or None
+        cliente.correo = (request.form.get("correo") or "").strip() or None
+        cliente.telefono = (request.form.get("telefono") or "").strip() or None
+        cliente.direccion = (request.form.get("direccion") or "").strip() or None
+        cliente.rfc = (request.form.get("rfc") or "").strip() or None
+
+        if not cliente.nombre_cliente:
+            flash("El nombre del cliente es obligatorio.", "warning")
+            return render_template("catalogo_cliente_edit.html", title="Editar cliente", cliente=cliente)
+
+        try:
+            db.session.commit()
+            flash("Cliente actualizado correctamente.", "success")
+            return redirect(url_for("catalogos.catalogos_index"))
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error al actualizar cliente: {e}", "danger")
+
+    return render_template("catalogo_cliente_edit.html", title="Editar cliente", cliente=cliente)
+
+
+@bp.route("/conceptos/<int:item_id>/editar", methods=["GET", "POST"])
+def editar_concepto(item_id):
+    concepto = Concepto.query.get_or_404(item_id)
+
+    if request.method == "POST":
+        concepto.nombre_concepto = (request.form.get("nombre_concepto") or "").strip()
+        concepto.unidad = (request.form.get("unidad") or "").strip() or None
+        concepto.precio_unitario = _parse_price(request.form.get("precio_unitario"))
+        concepto.sistema = (request.form.get("sistema") or "").strip() or None
+        concepto.descripcion = (request.form.get("descripcion") or "").strip() or None
+
+        if not concepto.nombre_concepto:
+            flash("El nombre del concepto es obligatorio.", "warning")
+            return render_template("catalogo_concepto_edit.html", title="Editar concepto", concepto=concepto)
+
+        try:
+            db.session.commit()
+            flash("Concepto actualizado correctamente.", "success")
+            return redirect(url_for("catalogos.catalogos_index"))
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error al actualizar concepto: {e}", "danger")
+
+    return render_template("catalogo_concepto_edit.html", title="Editar concepto", concepto=concepto)

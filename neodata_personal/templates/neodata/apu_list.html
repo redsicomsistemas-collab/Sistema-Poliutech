@@ -19,6 +19,7 @@
       <td>${{ '%.2f'|format(item.precio_unitario or 0) }}</td>
       <td>
         <a href="{{ url_for('apu.apu_edit', apu_id=item.id) }}">Editar</a>
+        <a href="{{ url_for('cotizador') }}?apu_id={{ item.id }}&cantidad=1&auto_add=1">Enviar a cotización</a>
         <form method="post" action="{{ url_for('apu.apu_duplica', apu_id=item.id) }}" style="display:inline;">
           <button type="submit">Duplicar</button>
         </form>

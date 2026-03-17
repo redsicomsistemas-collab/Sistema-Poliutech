@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0">Editar concepto</h2>
+    <a href="{{ url_for('catalogos.catalogos_index') }}" class="btn btn-outline-secondary btn-sm">⬅ Volver a catálogos</a>
+  </div>
+
+  <div class="card shadow-sm border-0">
+    <div class="card-body">
+      <form method="POST">
+        <div class="row g-3">
+          <div class="col-md-8">
+            <label for="nombre_concepto" class="form-label">Concepto</label>
+            <input type="text" id="nombre_concepto" name="nombre_concepto" class="form-control" value="{{ concepto.nombre_concepto or '' }}" required>
+          </div>
+          <div class="col-md-4">
+            <label for="unidad" class="form-label">Unidad</label>
+            <input type="text" id="unidad" name="unidad" class="form-control" value="{{ concepto.unidad or '' }}">
+          </div>
+          <div class="col-md-4">
+            <label for="precio_unitario" class="form-label">Precio unitario</label>
+            <input type="number" id="precio_unitario" name="precio_unitario" class="form-control" step="0.01" value="{{ '%.2f'|format(concepto.precio_unitario or 0) }}">
+          </div>
+          <div class="col-md-4">
+            <label for="sistema" class="form-label">Sistema</label>
+            <input type="text" id="sistema" name="sistema" class="form-control" value="{{ concepto.sistema or '' }}">
+          </div>
+          <div class="col-md-12">
+            <label for="descripcion" class="form-label">Descripción</label>
+            <textarea id="descripcion" name="descripcion" class="form-control" rows="4">{{ concepto.descripcion or '' }}</textarea>
+          </div>
+        </div>
+
+        <div class="d-flex justify-content-end gap-2 mt-4">
+          <a href="{{ url_for('catalogos.catalogos_index') }}" class="btn btn-outline-secondary">Cancelar</a>
+          <button type="submit" class="btn btn-primary">Guardar cambios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

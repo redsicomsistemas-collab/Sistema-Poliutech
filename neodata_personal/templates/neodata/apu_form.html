@@ -49,6 +49,9 @@
     <form method="post" action="{{ url_for('apu.apu_to_catalogo', apu_id=apu.id) }}" style="display:inline;">
       <button type="submit">Mandar a catálogo de conceptos</button>
     </form>
+    <a href="{{ url_for('cotizador') }}?apu_id={{ apu.id }}&cantidad=1&auto_add=1" style="display:inline-block;padding:6px 10px;border:1px solid #0d6efd;border-radius:8px;text-decoration:none;">
+      Enviar a cotización
+    </a>
   </div>
 
   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px;">

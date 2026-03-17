@@ -39,7 +39,10 @@
       <td>{{ apu.concepto }}</td>
       <td>{{ apu.unidad }}</td>
       <td>${{ '%.2f'|format(apu.precio_unitario or 0) }}</td>
-      <td><a href="{{ url_for('apu.apu_edit', apu_id=apu.id) }}">Abrir</a></td>
+      <td>
+        <a href="{{ url_for('apu.apu_edit', apu_id=apu.id) }}">Abrir</a>
+        <a href="{{ url_for('cotizador') }}?apu_id={{ apu.id }}&cantidad=1&auto_add=1">Enviar a cotización</a>
+      </td>
     </tr>
     {% endfor %}
   </table>

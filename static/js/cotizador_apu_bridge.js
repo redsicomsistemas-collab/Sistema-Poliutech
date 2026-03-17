@@ -63,7 +63,31 @@
     document.getElementById("iva_porc")?.dispatchEvent(new Event("input", { bubbles: true }));
     Swal.fire({ icon: "success", title: "APU agregado", text: "El concepto del APU se agregó al cotizador.", timer: 1200, showConfirmButton: false });
   }
+
+  async function preloadAPUFromQuery(){
+    const params = new URLSearchParams(window.location.search);
+    const apuId = params.get("apu_id");
+    if (!apuId) return;
+
+    try {
+      selectedAPU = await fetchJSON(`/apu/api/${encodeURIComponent(apuId)}/resumen`);
+      searchInput.value = selectedAPU.concepto || "";
+      if (params.get("cantidad")) {
+        qtyInput.value = params.get("cantidad");
+      }
+      setResumen(selectedAPU);
+
+      if (params.get("auto_add") === "1") {
+        await addAPUToQuote();
+      }
+    } catch (err) {
+      console.error("No se pudo precargar el APU en cotización", err);
+      Swal.fire("Error", "No se pudo cargar el APU seleccionado desde MAR DATA.", "error");
+    }
+  }
+
   searchInput.addEventListener("input", () => buscarAPU(searchInput.value));
   addBtn.addEventListener("click", addAPUToQuote);
   document.addEventListener("click", (e) => { if (!suggestions.contains(e.target) && e.target !== searchInput) clearSuggestions(); });
+  preloadAPUFromQuery();
 })();

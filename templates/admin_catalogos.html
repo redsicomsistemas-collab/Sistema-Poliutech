@@ -70,6 +70,7 @@
         <td>{{ c.telefono or '' }}</td>
         <td>{{ c.rfc or '' }}</td>
         <td>
+          <a href="{{ url_for('catalogos.editar_cliente', item_id=c.id) }}" class="btn btn-outline-primary btn-sm">✏ Editar</a>
           <a href="{{ url_for('catalogos.eliminar_catalogo', tipo='clientes', item_id=c.id) }}" class="btn btn-outline-danger btn-sm">🗑 Eliminar</a>
         </td>
       </tr>
@@ -126,6 +127,7 @@
         <td>${{ '%.2f'|format(c.precio_unitario or 0) }}</td>
         <td>{{ c.descripcion or '' }}</td>
         <td>
+          <a href="{{ url_for('catalogos.editar_concepto', item_id=c.id) }}" class="btn btn-outline-primary btn-sm">✏ Editar</a>
           <a href="{{ url_for('catalogos.eliminar_catalogo', tipo='conceptos', item_id=c.id) }}" class="btn btn-outline-danger btn-sm">🗑 Eliminar</a>
         </td>
       </tr>
