@@ -529,12 +529,11 @@ def api_apu_suggest():
     q = (request.args.get("q") or "").strip()
     if len(q) < 1:
         return jsonify([])
-    rows = (
-        APU.query.filter(or_(APU.concepto.ilike(f"%{q}%"), APU.clave.ilike(f"%{q}%")))
-        .order_by(APU.concepto.asc())
-        .limit(15)
-        .all()
-    )
+    filtros = [APU.concepto.ilike(f"%{q}%"), APU.clave.ilike(f"%{q}%")]
+    if q.isdigit():
+        filtros.append(APU.id == int(q))
+
+    rows = APU.query.filter(or_(*filtros)).order_by(APU.concepto.asc()).limit(15).all()
     return jsonify(
         [
             {

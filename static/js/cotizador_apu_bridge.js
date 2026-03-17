@@ -1,5 +1,4 @@
-\
-(function () {
+document.addEventListener("DOMContentLoaded", () => {
   function fmtMoney(n){ return (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}); }
   const searchInput = document.getElementById("apu_search");
   const suggestions = document.getElementById("apu_suggestions");
@@ -9,6 +8,7 @@
   const addRowBtn = document.getElementById("btn-add-row");
   const itemsBody = document.getElementById("items-body");
   if (!searchInput || !suggestions || !resumen || !addBtn || !addRowBtn || !itemsBody) return;
+  const localCatalog = Array.isArray(window.APU_CATALOG) ? window.APU_CATALOG : [];
   let selectedAPU = null;
   async function fetchJSON(url){ const r = await fetch(url); if(!r.ok) throw new Error("No se pudo cargar " + url); return await r.json(); }
   function clearSuggestions(){ suggestions.innerHTML = ""; }
@@ -16,18 +16,52 @@
     if (!item) { resumen.innerHTML = "Busca un APU y selecciónalo para cargarlo al cotizador."; return; }
     resumen.innerHTML = `<div><b>Concepto:</b> ${item.concepto || ""}</div><div><b>Unidad:</b> ${item.unidad || ""}</div><div><b>Precio unitario:</b> $${fmtMoney(item.precio_unitario)}</div><div><b>Costo directo:</b> $${fmtMoney(item.costo_directo || 0)}</div><div><b>Clave:</b> ${item.clave || ""}</div>`;
   }
+  function renderNoResults(text){
+    clearSuggestions();
+    const div = document.createElement("div");
+    div.className = "list-group-item text-muted";
+    div.textContent = text;
+    suggestions.appendChild(div);
+  }
+  function normalizeText(value){
+    return String(value || "").trim().toLowerCase();
+  }
+  function findLocalAPUs(q){
+    const term = normalizeText(q);
+    if (!term) return [];
+    return localCatalog.filter((item) => {
+      const id = String(item.id || "");
+      const clave = normalizeText(item.clave);
+      const concepto = normalizeText(item.concepto);
+      return id.includes(term) || clave.includes(term) || concepto.includes(term);
+    }).slice(0, 15);
+  }
   async function buscarAPU(q){
     if (!q || q.trim().length < 1) { clearSuggestions(); return; }
-    const data = await fetchJSON(`/apu/api/suggest?q=${encodeURIComponent(q.trim())}`);
+    let data = findLocalAPUs(q);
+    if (!data.length) {
+      try {
+        data = await fetchJSON(`/apu/api/suggest?q=${encodeURIComponent(q.trim())}`);
+      } catch (err) {
+        console.error("Error buscando APU", err);
+      }
+    }
     clearSuggestions();
+    if (!Array.isArray(data) || data.length === 0) {
+      renderNoResults("No se encontraron APU.");
+      return;
+    }
     data.forEach(item => {
       const div = document.createElement("div");
       div.className = "list-group-item list-group-item-action";
-      div.textContent = `${item.clave ? item.clave + " — " : ""}${item.concepto} — ${item.unidad} — $${fmtMoney(item.precio_unitario)}`;
+      div.textContent = `${item.id} · ${item.clave ? item.clave + " — " : ""}${item.concepto} — ${item.unidad} — $${fmtMoney(item.precio_unitario)}`;
       div.onclick = async () => {
         searchInput.value = item.concepto;
         clearSuggestions();
-        selectedAPU = await fetchJSON(`/apu/api/${item.id}/resumen`);
+        selectedAPU = localCatalog.find((apu) => Number(apu.id) === Number(item.id)) || null;
+        if (!selectedAPU) {
+          selectedAPU = await fetchJSON(`/apu/api/${item.id}/resumen`);
+        }
         setResumen(selectedAPU);
       };
       suggestions.appendChild(div);
@@ -70,7 +104,10 @@
     if (!apuId) return;
 
     try {
-      selectedAPU = await fetchJSON(`/apu/api/${encodeURIComponent(apuId)}/resumen`);
+      selectedAPU = localCatalog.find((apu) => Number(apu.id) === Number(apuId)) || null;
+      if (!selectedAPU) {
+        selectedAPU = await fetchJSON(`/apu/api/${encodeURIComponent(apuId)}/resumen`);
+      }
       searchInput.value = selectedAPU.concepto || "";
       if (params.get("cantidad")) {
         qtyInput.value = params.get("cantidad");
@@ -78,6 +115,7 @@
       setResumen(selectedAPU);
 
       if (params.get("auto_add") === "1") {
+        await new Promise((resolve) => setTimeout(resolve, 80));
         await addAPUToQuote();
       }
     } catch (err) {
@@ -90,4 +128,4 @@
   addBtn.addEventListener("click", addAPUToQuote);
   document.addEventListener("click", (e) => { if (!suggestions.contains(e.target) && e.target !== searchInput) clearSuggestions(); });
   preloadAPUFromQuery();
-})();
+});

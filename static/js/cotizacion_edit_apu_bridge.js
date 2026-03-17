@@ -1,5 +1,4 @@
-\
-(function () {
+document.addEventListener("DOMContentLoaded", () => {
   const searchInput = document.getElementById("apu_search_edit");
   const suggestions = document.getElementById("apu_suggestions_edit");
   const resumen = document.getElementById("apu_resumen_edit");
@@ -19,10 +18,17 @@
     if (!q || q.trim().length < 1) { clearSuggestions(); return; }
     const data = await fetchJSON(`/apu/api/suggest?q=${encodeURIComponent(q.trim())}`);
     clearSuggestions();
+    if (!Array.isArray(data) || data.length === 0) {
+      const div = document.createElement("div");
+      div.className = "list-group-item text-muted";
+      div.textContent = "No se encontraron APU.";
+      suggestions.appendChild(div);
+      return;
+    }
     data.forEach(item => {
       const div = document.createElement("div");
       div.className = "list-group-item list-group-item-action";
-      div.textContent = `${item.clave ? item.clave + " — " : ""}${item.concepto} — ${item.unidad} — $${fmtMoney(item.precio_unitario)}`;
+      div.textContent = `${item.id} · ${item.clave ? item.clave + " — " : ""}${item.concepto} — ${item.unidad} — $${fmtMoney(item.precio_unitario)}`;
       div.onclick = async () => {
         searchInput.value = item.concepto;
         clearSuggestions();
@@ -51,4 +57,4 @@
   searchInput.addEventListener("input", () => buscarAPU(searchInput.value));
   addBtn.addEventListener("click", addAPURow);
   document.addEventListener("click", (e) => { if (!suggestions.contains(e.target) && e.target !== searchInput) clearSuggestions(); });
-})();
+});

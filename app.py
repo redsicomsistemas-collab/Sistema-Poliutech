@@ -115,6 +115,7 @@ SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USERNAME).strip()
 # Usa SIEMPRE los modelos desde models.py para evitar duplicados
 from models import db, Cliente, Concepto, Cotizacion, CotizacionDetalle, Usuario, ActivityLog
 from neodata_personal.routes import apu_bp  # módulo MAR DATA
+from neodata_personal.models import APU
 
 # ---------------------------------------------------------
 # Flask + DB + Login
@@ -1740,7 +1741,18 @@ def index():
 @app.route("/cotizador")
 @login_required
 def cotizador():
-    return render_template("cotizador.html", title="Nuevo - Sistema MAR")
+    apu_catalog = [
+        {
+            "id": a.id,
+            "clave": a.clave or "",
+            "concepto": a.concepto or "",
+            "unidad": a.unidad or "",
+            "precio_unitario": float(a.precio_unitario or 0),
+            "costo_directo": float(a.costo_directo or 0),
+        }
+        for a in APU.query.order_by(APU.concepto.asc()).all()
+    ]
+    return render_template("cotizador.html", title="Nuevo - Sistema MAR", apu_catalog=apu_catalog)
 
 
 @app.route("/admin/cotizaciones/importar", methods=["GET", "POST"])
