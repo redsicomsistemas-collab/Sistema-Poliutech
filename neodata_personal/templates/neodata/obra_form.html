@@ -172,11 +172,6 @@
   <div class="obra-card mt-4">
     <div class="hd">Cargos globales de obra</div>
     <div class="bd">
-      <div class="d-flex gap-2 flex-wrap mb-3">
-        <form method="post" action="{{ url_for('apu.obra_cargos_seed', obra_id=obra.id) }}">
-          <button class="btn btn-outline-secondary btn-sm" type="submit">Cargar sugeridos</button>
-        </form>
-      </div>
       <form method="post" action="{{ url_for('apu.obra_cargo_add', obra_id=obra.id) }}" class="row g-3" id="cargo-add-form">
         <div class="col-md-3">
           <label class="form-label">Catálogo</label>
@@ -209,8 +204,9 @@
           </select>
         </div>
         <div class="col-md-1"><label class="form-label">Unidad</label><input class="form-control" name="unidad" id="cargo-unidad" value="mes"></div>
-        <div class="col-md-1"><label class="form-label">Cant.</label><input class="form-control" name="cantidad" type="number" step="0.0001" value="1"></div>
-        <div class="col-md-1"><label class="form-label">P.U.</label><input class="form-control" name="precio_unitario" type="number" step="0.0001" value="0"></div>
+        <div class="col-md-1"><label class="form-label">Cant.</label><input class="form-control" name="cantidad" id="cargo-cantidad" type="number" step="0.0001" value="1"></div>
+        <div class="col-md-1"><label class="form-label">P.U.</label><input class="form-control" name="precio_unitario" id="cargo-precio" type="number" step="0.0001" value="0"></div>
+        <div class="col-md-1"><label class="form-label">Importe</label><input class="form-control" id="cargo-importe" value="$0.00" readonly></div>
         <div class="col-md-3"><label class="form-label">Comentario</label><input class="form-control" name="comentario"></div>
         <div class="col-md-1 d-flex align-items-end"><button class="btn btn-primary w-100" type="submit">Agregar</button></div>
       </form>
@@ -245,9 +241,9 @@
                   </select>
                 </td>
                 <td><input class="form-control" form="cargo-row-{{ cargo.id }}" name="unidad" value="{{ cargo.unidad }}"></td>
-                <td><input class="form-control" form="cargo-row-{{ cargo.id }}" name="cantidad" type="number" step="0.0001" value="{{ cargo.cantidad or 0 }}"></td>
-                <td><input class="form-control" form="cargo-row-{{ cargo.id }}" name="precio_unitario" type="number" step="0.0001" value="{{ cargo.precio_unitario or 0 }}"></td>
-                <td>${{ "{:,.2f}".format(cargo.importe or 0) }}</td>
+                <td><input class="form-control js-cargo-cantidad" form="cargo-row-{{ cargo.id }}" name="cantidad" type="number" step="0.0001" value="{{ cargo.cantidad or 0 }}"></td>
+                <td><input class="form-control js-cargo-precio" form="cargo-row-{{ cargo.id }}" name="precio_unitario" type="number" step="0.0001" value="{{ cargo.precio_unitario or 0 }}"></td>
+                <td><input class="form-control js-cargo-importe" value="${{ "{:,.2f}".format(cargo.importe or 0) }}" readonly></td>
                 <td><input class="form-control" form="cargo-row-{{ cargo.id }}" name="comentario" value="{{ cargo.comentario or '' }}"></td>
                 <td class="d-flex gap-2">
                   <button class="btn btn-sm btn-outline-primary" form="cargo-row-{{ cargo.id }}" type="submit">Editar</button>
@@ -272,6 +268,13 @@
       const categoria = document.getElementById('cargo-categoria');
       const incidencia = document.getElementById('cargo-incidencia');
       const unidad = document.getElementById('cargo-unidad');
+      const cantidad = document.getElementById('cargo-cantidad');
+      const precio = document.getElementById('cargo-precio');
+      const importe = document.getElementById('cargo-importe');
+      const fmtMoney = (value) => `$${(Number(value || 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      const recalcAdd = function () {
+        importe.value = fmtMoney((Number(cantidad.value || 0) * Number(precio.value || 0)));
+      };
       select.addEventListener('change', function () {
         const option = this.options[this.selectedIndex];
         if (!option || !option.value) return;
@@ -279,6 +282,23 @@
         categoria.value = option.dataset.categoria || '';
         incidencia.value = option.dataset.incidencia || 'indirecto';
         unidad.value = option.dataset.unidad || 'mes';
+        recalcAdd();
+      });
+      cantidad.addEventListener('input', recalcAdd);
+      precio.addEventListener('input', recalcAdd);
+      recalcAdd();
+
+      document.querySelectorAll('tr').forEach((row) => {
+        const qty = row.querySelector('.js-cargo-cantidad');
+        const pu = row.querySelector('.js-cargo-precio');
+        const imp = row.querySelector('.js-cargo-importe');
+        if (!qty || !pu || !imp) return;
+        const recalcRow = function () {
+          imp.value = fmtMoney((Number(qty.value || 0) * Number(pu.value || 0)));
+        };
+        qty.addEventListener('input', recalcRow);
+        pu.addEventListener('input', recalcRow);
+        recalcRow();
       });
     })();
   </script>
