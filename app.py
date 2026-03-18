@@ -764,6 +764,13 @@ def _safe_detalle_kwargs(**kwargs):
     return {k: v for k, v in kwargs.items() if k in valid}
 
 
+def _truncate_pdf_text(value, limit=90):
+    text = str(value or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 3)].rstrip() + "..."
+
+
 def parse_datetime_flexible(v) -> Optional[datetime]:
     if v in (None, ""):
         return None
@@ -3142,18 +3149,18 @@ def export_cotizacion_pdf(cot_id: int):
     data = [["Capítulo", "Concepto", "Uni.", "Cant.", "Sistema", "Precio Unitario", "Subtotal"]]
     for d in c.detalles:
         data.append([
-            Paragraph(getattr(d, "capitulo", "") or "-", styles["NormalCenter"]),
-            Paragraph(d.nombre_concepto or "-", styles["Normal"]),
+            Paragraph(_truncate_pdf_text(getattr(d, "capitulo", "") or "-", 28), styles["NormalCenter"]),
+            Paragraph(_truncate_pdf_text(d.nombre_concepto or "-", 120), styles["Normal"]),
             Paragraph(d.unidad or "-", styles["NormalCenter"]),
             Paragraph(f"{(d.cantidad or 0):.2f}", styles["NormalCenter"]),
-            Paragraph(d.sistema or "-", styles["NormalCenter"]),
+            Paragraph(_truncate_pdf_text(d.sistema or "-", 40), styles["NormalCenter"]),
             Paragraph(money(d.precio_unitario), styles["NormalRight"]),
             Paragraph(money(d.subtotal), styles["NormalRight"]),
         ])
 
     tbl = Table(
         data,
-        colWidths=[70*mm, 18*mm, 20*mm, 30*mm, 30*mm, 30*mm],
+        colWidths=[22*mm, 55*mm, 12*mm, 16*mm, 22*mm, 19*mm, 19*mm],
         repeatRows=1,
         hAlign="CENTER"
     )
@@ -3164,7 +3171,7 @@ def export_cotizacion_pdf(cot_id: int):
         ("ALIGN", (0, 1), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
         ("WORDWRAP", (0, 0), (-1, -1), True),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
