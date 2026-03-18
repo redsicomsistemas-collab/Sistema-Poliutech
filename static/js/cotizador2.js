@@ -11,6 +11,12 @@ function rowTemplate(){
     <tr>
       <td class="position-relative">
         <input type="text" class="form-control form-control-sm item-nombre" name="item_nombre_concepto[]" placeholder="Escribe para buscar..." autocomplete="off">
+        <input type="hidden" name="item_origen[]" value="">
+        <input type="hidden" name="item_apu_id[]" value="">
+        <input type="hidden" name="item_apu_clave[]" value="">
+        <input type="hidden" name="item_apu_directo[]" value="0">
+        <input type="hidden" name="item_apu_resumen[]" value="">
+        <div class="small text-muted mt-1 item-origin-badge"></div>
         <div class="list-group position-absolute w-100 item-suggest" style="z-index:1000; max-height:180px; overflow:auto;"></div>
       </td>
       <td><input type="text" class="form-control form-control-sm item-unidad" name="item_unidad[]"></td>
@@ -31,6 +37,12 @@ function bindRowEvents(tr){
   const precio = tr.querySelector(".item-precio");
   const sistema = tr.querySelector(".item-sistema");
   const desc = tr.querySelector('input[name="item_descripcion[]"]');
+  const origen = tr.querySelector('input[name="item_origen[]"]');
+  const apuId = tr.querySelector('input[name="item_apu_id[]"]');
+  const apuClave = tr.querySelector('input[name="item_apu_clave[]"]');
+  const apuDirecto = tr.querySelector('input[name="item_apu_directo[]"]');
+  const apuResumen = tr.querySelector('input[name="item_apu_resumen[]"]');
+  const originBadge = tr.querySelector(".item-origin-badge");
   const subtotalEl = tr.querySelector(".item-subtotal");
   const sug = tr.querySelector(".item-suggest");
 
@@ -51,6 +63,12 @@ function bindRowEvents(tr){
         precio.value = it.precio_unitario ?? 0;
         sistema.value = it.sistema || "";     // 👈 ahora “jala” sistema del catálogo
         desc.value = it.descripcion || "";
+        if (origen) origen.value = "";
+        if (apuId) apuId.value = "";
+        if (apuClave) apuClave.value = "";
+        if (apuDirecto) apuDirecto.value = "0";
+        if (apuResumen) apuResumen.value = "";
+        if (originBadge) originBadge.textContent = "";
         sug.innerHTML="";
         recalcRow(); recalcTotals();
       };

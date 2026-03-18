@@ -24,7 +24,7 @@
       <div class="alert alert-light border mb-4">
         <div class="fw-semibold mb-1">Origen de conceptos</div>
         <div>
-          {% set mar_count = c.detalles|selectattr('sistema', 'equalto', 'MAR DATA')|list|length %}
+          {% set mar_count = c.detalles|selectattr('origen', 'equalto', 'APU')|list|length %}
           Esta cotización contiene <b>{{ mar_count }}</b> concepto(s) provenientes de <b>MAR DATA</b>.
         </div>
       </div>
@@ -48,8 +48,15 @@
               <tr>
                 <td>{{ d.cantidad }}</td>
                 <td>{{ d.unidad }}</td>
-                <td>{{ d.nombre_concepto }}</td>
-                <td class="text-center">{% if d.sistema == 'MAR DATA' %}<span class="badge bg-dark">MAR DATA</span>{% else %}{{ d.sistema or '-' }}{% endif %}</td>
+                <td>
+                  <div>{{ d.nombre_concepto }}</div>
+                  {% if d.origen == 'APU' %}
+                  <div class="small text-muted">APU {{ d.apu_clave or d.apu_id or 'MAR DATA' }} · Directo base ${{ "%.2f"|format(d.apu_directo or 0) }}</div>
+                  {% elif d.descripcion %}
+                  <div class="small text-muted">{{ d.descripcion }}</div>
+                  {% endif %}
+                </td>
+                <td class="text-center">{% if d.origen == 'APU' %}<span class="badge bg-dark">MAR DATA</span>{% else %}{{ d.sistema or '-' }}{% endif %}</td>
                 <td class="text-end">${{ "%.2f"|format(d.precio_unitario) }}</td>
                 <td class="text-end">${{ "%.2f"|format(d.subtotal) }}</td>
               </tr>

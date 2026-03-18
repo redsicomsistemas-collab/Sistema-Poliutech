@@ -1,14 +1,46 @@
-
 {% extends "base.html" %}
 {% block content %}
 <div class="container py-4">
-  <h1>{{ title }}</h1>
-  <form method="post">
-    <p>Nombre<br><input name="nombre" value="{{ item.nombre if item else '' }}" required style="width:420px;"></p>
-    <p>Unidad<br><input name="unidad" value="{{ item.unidad if item else '' }}" style="width:160px;"></p>
-    <p>Precio unitario<br><input name="precio_unitario" type="number" step="0.0001" value="{{ item.precio_unitario if item else 0 }}" style="width:200px;"></p>
-    <button type="submit">Guardar</button>
-    <a href="{{ back }}">Cancelar</a>
-  </form>
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+      <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-body p-4">
+          <h1 class="h3 mb-3">{{ title }}</h1>
+          <form method="post" class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Clave</label>
+              <input class="form-control" name="clave" value="{{ item.clave if item else '' }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Categoria</label>
+              <input class="form-control" name="categoria" value="{{ item.categoria if item else '' }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Unidad</label>
+              <input class="form-control" name="unidad" value="{{ item.unidad if item else '' }}">
+            </div>
+            <div class="col-12">
+              <label class="form-label">Nombre</label>
+              <input class="form-control" name="nombre" value="{{ item.nombre if item else '' }}" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Precio unitario</label>
+              <input class="form-control" name="precio_unitario" type="number" step="0.0001" value="{{ item.precio_unitario if item else 0 }}">
+            </div>
+            {% if include_provider %}
+            <div class="col-md-8">
+              <label class="form-label">Proveedor</label>
+              <input class="form-control" name="proveedor" value="{{ item.proveedor if item else '' }}">
+            </div>
+            {% endif %}
+            <div class="col-12 d-flex gap-2">
+              <button class="btn btn-primary" type="submit">Guardar</button>
+              <a class="btn btn-outline-secondary" href="{{ back }}">Cancelar</a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}

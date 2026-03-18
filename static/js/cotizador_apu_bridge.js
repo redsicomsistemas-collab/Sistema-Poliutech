@@ -14,7 +14,15 @@ document.addEventListener("DOMContentLoaded", () => {
   function clearSuggestions(){ suggestions.innerHTML = ""; }
   function setResumen(item){
     if (!item) { resumen.innerHTML = "Busca un APU y selecciónalo para cargarlo al cotizador."; return; }
-    resumen.innerHTML = `<div><b>Concepto:</b> ${item.concepto || ""}</div><div><b>Unidad:</b> ${item.unidad || ""}</div><div><b>Precio unitario:</b> $${fmtMoney(item.precio_unitario)}</div><div><b>Costo directo:</b> $${fmtMoney(item.costo_directo || 0)}</div><div><b>Clave:</b> ${item.clave || ""}</div>`;
+    resumen.innerHTML = `
+      <div><b>Concepto:</b> ${item.concepto || ""}</div>
+      <div><b>Clave:</b> ${item.clave || ""} ${item.categoria ? "· <b>Categoria:</b> " + item.categoria : ""}</div>
+      <div><b>Unidad:</b> ${item.unidad || ""}</div>
+      <div><b>P.U. venta:</b> $${fmtMoney(item.precio_unitario)}</div>
+      <div><b>Costo directo:</b> $${fmtMoney(item.costo_directo || 0)}</div>
+      <div><b>Indirectos + sobrecostos:</b> $${fmtMoney((item.precio_unitario || 0) - (item.costo_directo || 0))}</div>
+      <div class="mt-2 small text-muted">${item.descripcion || "Sin descripcion tecnica."}</div>
+    `;
   }
   function renderNoResults(text){
     clearSuggestions();
@@ -83,14 +91,39 @@ document.addEventListener("DOMContentLoaded", () => {
     const precio = row.querySelector(".item-precio");
     const sistema = row.querySelector(".item-sistema");
     const desc = row.querySelector('input[name="item_descripcion[]"]');
+    const origen = row.querySelector('input[name="item_origen[]"]');
+    const apuId = row.querySelector('input[name="item_apu_id[]"]');
+    const apuClave = row.querySelector('input[name="item_apu_clave[]"]');
+    const apuDirecto = row.querySelector('input[name="item_apu_directo[]"]');
+    const apuResumen = row.querySelector('input[name="item_apu_resumen[]"]');
+    const originBadge = row.querySelector(".item-origin-badge");
     const subtotalEl = row.querySelector(".item-subtotal");
     if (!nombre || !unidad || !cantidadEl || !precio) { Swal.fire("Error", "La fila del cotizador no coincide con la estructura esperada.", "error"); return; }
     nombre.value = selectedAPU.concepto || "";
     unidad.value = selectedAPU.unidad || "";
     cantidadEl.value = String(cantidad);
     precio.value = String(Number(selectedAPU.precio_unitario || 0));
-    if (sistema) sistema.value = "MAR DATA";
-    if (desc) desc.value = `Generado desde APU ${selectedAPU.clave || selectedAPU.id || ""}`.trim();
+    if (sistema) sistema.value = selectedAPU.categoria ? `MAR DATA · ${selectedAPU.categoria}` : "MAR DATA";
+    if (desc) desc.value = (selectedAPU.descripcion || `Generado desde APU ${selectedAPU.clave || selectedAPU.id || ""}`).trim();
+    if (origen) origen.value = "APU";
+    if (apuId) apuId.value = String(selectedAPU.id || "");
+    if (apuClave) apuClave.value = String(selectedAPU.clave || "");
+    if (apuDirecto) apuDirecto.value = String(Number(selectedAPU.costo_directo || 0));
+    if (apuResumen) {
+      apuResumen.value = JSON.stringify({
+        id: selectedAPU.id || null,
+        clave: selectedAPU.clave || "",
+        categoria: selectedAPU.categoria || "",
+        concepto: selectedAPU.concepto || "",
+        unidad: selectedAPU.unidad || "",
+        directo: Number(selectedAPU.costo_directo || 0),
+        venta: Number(selectedAPU.precio_unitario || 0),
+        descripcion: selectedAPU.descripcion || "",
+      });
+    }
+    if (originBadge) {
+      originBadge.textContent = `Origen: APU ${selectedAPU.clave || selectedAPU.id || ""} · Directo $${fmtMoney(selectedAPU.costo_directo || 0)}`;
+    }
     const line = (Number(cantidadEl.value)||0) * (Number(precio.value)||0);
     if (subtotalEl) subtotalEl.textContent = "$" + fmtMoney(line);
     [nombre, unidad, cantidadEl, precio, sistema, desc].forEach(triggerInput);

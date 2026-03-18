@@ -90,6 +90,11 @@ class CotizacionDetalle(db.Model):
     sistema = db.Column(db.String(200))
     descripcion = db.Column(db.String(1000))
     subtotal = db.Column(db.Float, default=0)
+    origen = db.Column(db.String(50))
+    apu_id = db.Column(db.Integer)
+    apu_clave = db.Column(db.String(80))
+    apu_directo = db.Column(db.Float, default=0.0)
+    apu_resumen_json = db.Column(db.Text)
 
     # ✅ ESTA RELACIÓN SÍ ES VÁLIDA porque existe concepto_id con FK
     concepto = db.relationship("Concepto")

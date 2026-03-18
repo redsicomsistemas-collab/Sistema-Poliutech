@@ -12,7 +12,14 @@ document.addEventListener("DOMContentLoaded", () => {
   function clearSuggestions(){ suggestions.innerHTML = ""; }
   function setResumen(item){
     if (!item) { resumen.innerHTML = "Busca un APU y selecciónalo para agregarlo como renglón."; return; }
-    resumen.innerHTML = `<div><b>Concepto:</b> ${item.concepto || ""}</div><div><b>Unidad:</b> ${item.unidad || ""}</div><div><b>Precio unitario:</b> $${fmtMoney(item.precio_unitario)}</div><div><b>Costo directo:</b> $${fmtMoney(item.costo_directo || 0)}</div><div><b>Clave:</b> ${item.clave || ""}</div>`;
+    resumen.innerHTML = `
+      <div><b>Concepto:</b> ${item.concepto || ""}</div>
+      <div><b>Clave:</b> ${item.clave || ""} ${item.categoria ? "· <b>Categoria:</b> " + item.categoria : ""}</div>
+      <div><b>Unidad:</b> ${item.unidad || ""}</div>
+      <div><b>P.U. venta:</b> $${fmtMoney(item.precio_unitario)}</div>
+      <div><b>Costo directo:</b> $${fmtMoney(item.costo_directo || 0)}</div>
+      <div class="mt-2 small text-muted">${item.descripcion || "Sin descripcion tecnica."}</div>
+    `;
   }
   async function buscarAPU(q){
     if (!q || q.trim().length < 1) { clearSuggestions(); return; }
@@ -44,12 +51,29 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!cantidad || cantidad <= 0) { alert("La cantidad debe ser mayor a cero."); return; }
     const html = `
       <div class="row g-2 align-items-end mb-2 border-bottom pb-2 item-edit-row">
-        <div class="col-md-3"><input type="text" name="item_nombre_concepto[]" class="form-control item-edit-nombre" value="${selectedAPU.concepto || ''}"></div>
+        <div class="col-md-3">
+          <input type="text" name="item_nombre_concepto[]" class="form-control item-edit-nombre" value="${selectedAPU.concepto || ''}">
+          <input type="hidden" name="item_origen[]" value="APU">
+          <input type="hidden" name="item_apu_id[]" value="${selectedAPU.id || ''}">
+          <input type="hidden" name="item_apu_clave[]" value="${selectedAPU.clave || ''}">
+          <input type="hidden" name="item_apu_directo[]" value="${Number(selectedAPU.costo_directo || 0)}">
+          <input type="hidden" name="item_apu_resumen[]" value='${JSON.stringify({
+            id: selectedAPU.id || null,
+            clave: selectedAPU.clave || "",
+            categoria: selectedAPU.categoria || "",
+            concepto: selectedAPU.concepto || "",
+            unidad: selectedAPU.unidad || "",
+            directo: Number(selectedAPU.costo_directo || 0),
+            venta: Number(selectedAPU.precio_unitario || 0),
+            descripcion: selectedAPU.descripcion || "",
+          }).replace(/'/g, "&apos;")}'>
+          <div class="small text-muted mt-1">Origen: APU ${selectedAPU.clave || selectedAPU.id || ""} · Directo $${fmtMoney(selectedAPU.costo_directo || 0)}</div>
+        </div>
         <div class="col-md-1"><input type="text" name="item_unidad[]" class="form-control item-edit-unidad" value="${selectedAPU.unidad || ''}"></div>
         <div class="col-md-1"><input type="number" step="any" name="item_cantidad[]" class="form-control item-edit-cantidad" value="${cantidad}"></div>
         <div class="col-md-2"><input type="number" step="any" name="item_precio[]" class="form-control item-edit-precio" value="${Number(selectedAPU.precio_unitario || 0)}"></div>
-        <div class="col-md-2"><input type="text" name="item_sistema[]" class="form-control item-edit-sistema" value="MAR DATA"></div>
-        <div class="col-md-2"><input type="text" name="item_descripcion[]" class="form-control item-edit-descripcion" value="Generado desde APU ${selectedAPU.clave || selectedAPU.id || ''}"></div>
+        <div class="col-md-2"><input type="text" name="item_sistema[]" class="form-control item-edit-sistema" value="${selectedAPU.categoria ? "MAR DATA · " + selectedAPU.categoria : "MAR DATA"}"></div>
+        <div class="col-md-2"><input type="text" name="item_descripcion[]" class="form-control item-edit-descripcion" value="${selectedAPU.descripcion || `Generado desde APU ${selectedAPU.clave || selectedAPU.id || ''}`}"></div>
         <div class="col-md-1 text-end"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.item-edit-row').remove()">🗑</button></div>
       </div>`;
     items.insertAdjacentHTML('beforeend', html);
