@@ -58,6 +58,22 @@
 
   <div class="card border-0 shadow-sm rounded-4 mt-4">
     <div class="card-body">
+      <h2 class="h5 mb-3">Cargos y retenciones relevantes</h2>
+      <div class="d-grid gap-2">
+        {% for cargo in obra.cargos %}
+        <div class="d-flex justify-content-between">
+          <span>{{ cargo.nombre }} <small class="text-muted">({{ cargo.incidencia }})</small></span>
+          <strong>${{ "{:,.2f}".format(cargo.importe or 0) }}</strong>
+        </div>
+        {% else %}
+        <div class="text-muted">No hay cargos globales registrados.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm rounded-4 mt-4">
+    <div class="card-body">
       <h2 class="h5 mb-3">Recursos críticos</h2>
       <div class="table-responsive">
         <table class="table align-middle">

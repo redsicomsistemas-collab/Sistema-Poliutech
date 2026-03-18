@@ -195,40 +195,55 @@
         <div class="col-md-1 d-flex align-items-end"><button class="btn btn-primary w-100" type="submit">Agregar</button></div>
       </form>
       {% if obra.cargos %}
-      <div class="table-responsive mt-3">
-        <table class="table align-middle">
-          <thead>
-            <tr>
-              <th>Nombre</th>
-              <th>Categoria</th>
-              <th>Incidencia</th>
-              <th>Unidad</th>
-              <th>Cantidad</th>
-              <th>P.U.</th>
-              <th>Importe</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for cargo in obra.cargos %}
-            <tr>
-              <td>{{ cargo.nombre }}</td>
-              <td>{{ cargo.categoria or '-' }}</td>
-              <td>{{ cargo.incidencia }}</td>
-              <td>{{ cargo.unidad }}</td>
-              <td>{{ "{:,.4f}".format(cargo.cantidad or 0) }}</td>
-              <td>${{ "{:,.2f}".format(cargo.precio_unitario or 0) }}</td>
-              <td>${{ "{:,.2f}".format(cargo.importe or 0) }}</td>
-              <td>
-                <form method="post" action="{{ url_for('apu.obra_cargo_delete', cargo_id=cargo.id) }}" onsubmit="return confirm('¿Eliminar cargo global?');">
-                  <button class="btn btn-sm btn-outline-danger" type="submit">Eliminar</button>
-                </form>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+      <form method="post" action="{{ url_for('apu.obra_cargos_update', obra_id=obra.id) }}" class="mt-3">
+        <div class="table-responsive">
+          <table class="table align-middle">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Categoria</th>
+                <th>Incidencia</th>
+                <th>Unidad</th>
+                <th>Cantidad</th>
+                <th>P.U.</th>
+                <th>Importe</th>
+                <th>Comentario</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for cargo in obra.cargos %}
+              <tr>
+                <td>
+                  <input type="hidden" name="cargo_id[]" value="{{ cargo.id }}">
+                  <input class="form-control" name="cargo_nombre[]" value="{{ cargo.nombre }}">
+                </td>
+                <td><input class="form-control" name="cargo_categoria[]" value="{{ cargo.categoria or '' }}"></td>
+                <td>
+                  <select class="form-select" name="cargo_incidencia[]">
+                    <option value="indirecto" {% if cargo.incidencia == 'indirecto' %}selected{% endif %}>Indirecto</option>
+                    <option value="directo_global" {% if cargo.incidencia == 'directo_global' %}selected{% endif %}>Directo global</option>
+                    <option value="cargo_adicional" {% if cargo.incidencia == 'cargo_adicional' %}selected{% endif %}>Cargo adicional</option>
+                    <option value="retencion" {% if cargo.incidencia == 'retencion' %}selected{% endif %}>Retención</option>
+                  </select>
+                </td>
+                <td><input class="form-control" name="cargo_unidad[]" value="{{ cargo.unidad }}"></td>
+                <td><input class="form-control" name="cargo_cantidad[]" type="number" step="0.0001" value="{{ cargo.cantidad or 0 }}"></td>
+                <td><input class="form-control" name="cargo_precio[]" type="number" step="0.0001" value="{{ cargo.precio_unitario or 0 }}"></td>
+                <td>${{ "{:,.2f}".format(cargo.importe or 0) }}</td>
+                <td><input class="form-control" name="cargo_comentario[]" value="{{ cargo.comentario or '' }}"></td>
+                <td>
+                  <button class="btn btn-sm btn-outline-danger" type="submit" formaction="{{ url_for('apu.obra_cargo_delete', cargo_id=cargo.id) }}" formmethod="post" onclick="return confirm('¿Eliminar cargo global?');">Eliminar</button>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="mt-3">
+          <button class="btn btn-primary" type="submit">Guardar cargos globales</button>
+        </div>
+      </form>
       {% else %}
       <div class="text-muted mt-3">No hay cargos globales de obra registrados.</div>
       {% endif %}

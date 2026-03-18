@@ -1129,6 +1129,37 @@ def obra_cargo_delete(cargo_id):
     return redirect(url_for("apu.obra_edit", obra_id=obra_id))
 
 
+@apu_bp.route("/obras/<int:obra_id>/cargos/actualizar", methods=["POST"])
+@login_required
+def obra_cargos_update(obra_id):
+    obra = Obra.query.get_or_404(obra_id)
+    ids = request.form.getlist("cargo_id[]")
+    nombres = request.form.getlist("cargo_nombre[]")
+    categorias = request.form.getlist("cargo_categoria[]")
+    incidencias = request.form.getlist("cargo_incidencia[]")
+    unidades = request.form.getlist("cargo_unidad[]")
+    cantidades = request.form.getlist("cargo_cantidad[]")
+    precios = request.form.getlist("cargo_precio[]")
+    comentarios = request.form.getlist("cargo_comentario[]")
+
+    for i, cargo_id in enumerate(ids):
+        cargo = ObraCargo.query.get(int(cargo_id))
+        if not cargo or cargo.obra_id != obra.id:
+            continue
+        cargo.nombre = (nombres[i] if i < len(nombres) else cargo.nombre).strip() or cargo.nombre
+        cargo.categoria = (categorias[i] if i < len(categorias) else cargo.categoria) or None
+        cargo.incidencia = (incidencias[i] if i < len(incidencias) else cargo.incidencia) or cargo.incidencia
+        cargo.unidad = (unidades[i] if i < len(unidades) else cargo.unidad) or cargo.unidad
+        cargo.cantidad = _f(cantidades[i], cargo.cantidad) if i < len(cantidades) else cargo.cantidad
+        cargo.precio_unitario = _f(precios[i], cargo.precio_unitario) if i < len(precios) else cargo.precio_unitario
+        cargo.comentario = (comentarios[i] if i < len(comentarios) else cargo.comentario) or None
+
+    recalcular_obra(obra)
+    db.session.commit()
+    flash("Cargos globales actualizados.", "success")
+    return redirect(url_for("apu.obra_edit", obra_id=obra.id))
+
+
 @apu_bp.route("/obras/<int:obra_id>/reporte")
 @login_required
 def obra_report(obra_id):
@@ -1299,12 +1330,34 @@ def obra_export_xlsx(obra_id):
         ws3.cell(row=row3, column=7, value=periodos)
         row3 += 1
 
+    ws4 = wb.create_sheet("Cargos")
+    ws4["A1"] = "CARGOS GLOBALES DE OBRA"
+    headers_cargos = ["Nombre", "Categoría", "Incidencia", "Unidad", "Cantidad", "P.U.", "Importe", "Comentario"]
+    for col, header in enumerate(headers_cargos, start=1):
+        cell = ws4.cell(row=3, column=col, value=header)
+        cell.fill = fill
+        cell.font = Font(color="FFFFFF", bold=True)
+        cell.alignment = Alignment(horizontal="center")
+    row4 = 4
+    for cargo in obra.cargos:
+        ws4.cell(row=row4, column=1, value=cargo.nombre or "")
+        ws4.cell(row=row4, column=2, value=cargo.categoria or "")
+        ws4.cell(row=row4, column=3, value=cargo.incidencia or "")
+        ws4.cell(row=row4, column=4, value=cargo.unidad or "")
+        ws4.cell(row=row4, column=5, value=float(cargo.cantidad or 0))
+        ws4.cell(row=row4, column=6, value=float(cargo.precio_unitario or 0))
+        ws4.cell(row=row4, column=7, value=float(cargo.importe or 0))
+        ws4.cell(row=row4, column=8, value=cargo.comentario or "")
+        row4 += 1
+
     auto_widths = {"A": 10, "B": 18, "C": 18, "D": 14, "E": 48, "F": 10, "G": 14, "H": 14, "I": 14}
     for col, width in auto_widths.items():
         ws.column_dimensions[col].width = width
     for sheet in (ws2, ws3):
         for col, width in {"A": 14, "B": 10, "C": 18, "D": 42, "E": 14, "F": 14, "G": 18}.items():
             sheet.column_dimensions[col].width = width
+    for col, width in {"A": 24, "B": 18, "C": 18, "D": 12, "E": 12, "F": 12, "G": 14, "H": 30}.items():
+        ws4.column_dimensions[col].width = width
 
     out = io.BytesIO()
     wb.save(out)
@@ -1444,6 +1497,34 @@ def obra_export_pdf(obra_id):
             )
         )
         story.append(indirect_table)
+        story.append(Spacer(1, 5 * mm))
+
+    if getattr(obra, "cargos", None):
+        story.append(Paragraph("<b>Cargos globales de obra</b>", styles["Heading3"]))
+        cargos_rows = [["Nombre", "Incidencia", "Unidad", "Cantidad", "Importe"]]
+        for cargo in obra.cargos[:28]:
+            cargos_rows.append(
+                [
+                    Paragraph(_truncate_text(cargo.nombre or "", 34), styles["MarCell"]),
+                    Paragraph(_truncate_text(cargo.incidencia or "", 18), styles["MarCellCenter"]),
+                    Paragraph(_truncate_text(cargo.unidad or "", 12), styles["MarCellCenter"]),
+                    Paragraph("{:,.4f}".format(float(cargo.cantidad or 0)), styles["MarCellRight"]),
+                    Paragraph(_fmt_money(cargo.importe or 0), styles["MarCellRight"]),
+                ]
+            )
+        cargos_table = Table(cargos_rows, colWidths=[80 * mm, 30 * mm, 20 * mm, 24 * mm, 32 * mm], repeatRows=1)
+        cargos_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#102542")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#D0D9E3")),
+                    ("PADDING", (0, 0), (-1, -1), 4),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ]
+            )
+        )
+        story.append(cargos_table)
         story.append(Spacer(1, 5 * mm))
 
     story.append(Paragraph("<b>Presupuesto por partidas</b>", styles["Heading3"]))

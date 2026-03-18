@@ -65,6 +65,42 @@
 
   <div class="card border-0 shadow-sm rounded-4 mb-4">
     <div class="card-body">
+      <h2 class="h5 mb-3">Cargos globales de obra</h2>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Categoría</th>
+              <th>Incidencia</th>
+              <th>Unidad</th>
+              <th>Cantidad</th>
+              <th>P.U.</th>
+              <th>Importe</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for cargo in obra.cargos %}
+            <tr>
+              <td>{{ cargo.nombre }}</td>
+              <td>{{ cargo.categoria or "-" }}</td>
+              <td>{{ cargo.incidencia }}</td>
+              <td>{{ cargo.unidad }}</td>
+              <td>{{ "{:,.4f}".format(cargo.cantidad or 0) }}</td>
+              <td>${{ "{:,.2f}".format(cargo.precio_unitario or 0) }}</td>
+              <td>${{ "{:,.2f}".format(cargo.importe or 0) }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center text-muted py-4">No hay cargos globales registrados.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm rounded-4 mb-4">
+    <div class="card-body">
       <h2 class="h5 mb-3">Presupuesto por partidas</h2>
       <div class="table-responsive">
         <table class="table align-middle">
