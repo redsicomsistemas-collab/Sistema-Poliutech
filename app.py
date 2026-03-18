@@ -2213,6 +2213,13 @@ def actualizar_cotizacion(cot_id: int):
             db.session.add(cliente)
             db.session.flush()
             print(f"[INFO] Nuevo cliente agregado (en actualización): {cliente_nombre}")
+        else:
+            cliente.empresa = empresa or None
+            cliente.responsable = responsable_final or None
+            cliente.correo = correo or None
+            cliente.telefono = telefono or None
+            cliente.direccion = direccion or None
+            cliente.rfc = rfc or None
         c.cliente_id = cliente.id
 
     # === ENCABEZADO ===
@@ -3037,7 +3044,7 @@ def export_cotizacion_pdf(cot_id: int):
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
         leftMargin=10*mm, rightMargin=10*mm,
-        topMargin=34*mm, bottomMargin=38*mm
+        topMargin=24*mm, bottomMargin=38*mm
     )
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="Encabezado", fontName="Helvetica", fontSize=9, leading=12, spaceAfter=4, splitLongWords=False))
@@ -3057,7 +3064,7 @@ def export_cotizacion_pdf(cot_id: int):
             try:
                 img = ImageReader(logo_path)
                 iw, ih = img.getSize()
-                max_w = 25 * mm
+                max_w = 22.5 * mm
                 scale = max_w / iw
                 w = max_w
                 h = ih * scale
