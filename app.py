@@ -2020,6 +2020,11 @@ def crear_cotizacion():
     apu_claves = f.getlist("item_apu_clave[]")
     apu_directos = f.getlist("item_apu_directo[]")
     apu_resumenes = f.getlist("item_apu_resumen[]")
+    origenes = f.getlist("item_origen[]")
+    apu_ids = f.getlist("item_apu_id[]")
+    apu_claves = f.getlist("item_apu_clave[]")
+    apu_directos = f.getlist("item_apu_directo[]")
+    apu_resumenes = f.getlist("item_apu_resumen[]")
 
     subtotal = 0.0
     n = max(len(nombres), len(unidades), len(cantidades), len(precios))
