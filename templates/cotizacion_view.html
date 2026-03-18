@@ -29,6 +29,24 @@
         </div>
       </div>
 
+      {% if mar_count %}
+      {% set ns = namespace(directo=0.0, venta=0.0) %}
+      {% for d in c.detalles %}
+        {% if d.origen == 'APU' %}
+          {% set ns.directo = ns.directo + ((d.apu_directo or 0) * (d.cantidad or 0)) %}
+          {% set ns.venta = ns.venta + (d.subtotal or 0) %}
+        {% endif %}
+      {% endfor %}
+      <div class="border rounded p-3 mb-4 bg-light">
+        <h6 class="fw-bold text-primary mb-3">Presupuesto consolidado MAR DATA</h6>
+        <div class="row g-3">
+          <div class="col-md-4"><div class="border rounded bg-white p-3"><small class="text-muted d-block">Partidas MAR DATA</small><strong>{{ mar_count }}</strong></div></div>
+          <div class="col-md-4"><div class="border rounded bg-white p-3"><small class="text-muted d-block">Costo directo acumulado</small><strong>${{ "%.2f"|format(ns.directo) }}</strong></div></div>
+          <div class="col-md-4"><div class="border rounded bg-white p-3"><small class="text-muted d-block">Venta acumulada</small><strong>${{ "%.2f"|format(ns.venta) }}</strong></div></div>
+        </div>
+      </div>
+      {% endif %}
+
       <div class="border rounded p-3 mb-4">
         <h6 class="fw-bold text-primary mb-3">Conceptos</h6>
         <div class="table-responsive">

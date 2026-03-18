@@ -5,6 +5,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const qtyInput = document.getElementById("apu_cantidad_edit");
   const addBtn = document.getElementById("btn-add-apu-edit");
   const items = document.getElementById("items");
+  const budgetBox = document.getElementById("mardata-budget-summary-edit");
   if (!searchInput || !suggestions || !resumen || !qtyInput || !addBtn || !items) return;
   let selectedAPU = null;
   function fmtMoney(n){ return (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}); }
@@ -45,6 +46,63 @@ document.addEventListener("DOMContentLoaded", () => {
       suggestions.appendChild(div);
     });
   }
+  function renderBudgetSummary(){
+    if (!budgetBox) return;
+    const rows = items.querySelectorAll(".item-edit-row");
+    const groups = new Map();
+    let directoTotal = 0;
+    let ventaTotal = 0;
+
+    rows.forEach((row) => {
+      const origen = row.querySelector('input[name="item_origen[]"]')?.value || "";
+      if (origen !== "APU") return;
+      const apuId = row.querySelector('input[name="item_apu_id[]"]')?.value || "";
+      const apuClave = row.querySelector('input[name="item_apu_clave[]"]')?.value || "";
+      const apuDirecto = Number(row.querySelector('input[name="item_apu_directo[]"]')?.value || 0);
+      const nombre = row.querySelector('.item-edit-nombre')?.value || "Partida MAR DATA";
+      const cantidad = Number(row.querySelector('.item-edit-cantidad')?.value || 0);
+      const precio = Number(row.querySelector('.item-edit-precio')?.value || 0);
+      const key = apuId || apuClave || nombre;
+      const item = groups.get(key) || { clave: apuClave || apuId || "-", nombre, cantidad: 0, directo: 0, venta: 0 };
+      item.cantidad += cantidad;
+      item.directo += apuDirecto * cantidad;
+      item.venta += precio * cantidad;
+      groups.set(key, item);
+      directoTotal += apuDirecto * cantidad;
+      ventaTotal += precio * cantidad;
+    });
+
+    if (!groups.size) {
+      budgetBox.className = "border rounded bg-light p-3 text-muted";
+      budgetBox.textContent = "Esta cotización no tiene partidas MAR DATA registradas.";
+      return;
+    }
+
+    const html = Array.from(groups.values()).map((item) => `
+      <tr>
+        <td>${item.clave}</td>
+        <td>${item.nombre}</td>
+        <td class="text-end">${fmtMoney(item.cantidad)}</td>
+        <td class="text-end">$${fmtMoney(item.directo)}</td>
+        <td class="text-end">$${fmtMoney(item.venta)}</td>
+      </tr>
+    `).join("");
+
+    budgetBox.className = "border rounded bg-white p-3";
+    budgetBox.innerHTML = `
+      <div class="row g-3 mb-3">
+        <div class="col-md-4"><div class="rounded bg-light p-3"><small class="text-muted d-block">Partidas APU</small><strong>${groups.size}</strong></div></div>
+        <div class="col-md-4"><div class="rounded bg-light p-3"><small class="text-muted d-block">Directo acumulado</small><strong>$${fmtMoney(directoTotal)}</strong></div></div>
+        <div class="col-md-4"><div class="rounded bg-light p-3"><small class="text-muted d-block">Venta acumulada</small><strong>$${fmtMoney(ventaTotal)}</strong></div></div>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light"><tr><th>APU</th><th>Partida</th><th class="text-end">Cantidad</th><th class="text-end">Directo</th><th class="text-end">Venta</th></tr></thead>
+          <tbody>${html}</tbody>
+        </table>
+      </div>
+    `;
+  }
   function addAPURow(){
     if (!selectedAPU) { alert("Primero selecciona un APU."); return; }
     const cantidad = Number(qtyInput.value || 0);
@@ -77,8 +135,13 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="col-md-1 text-end"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.item-edit-row').remove()">🗑</button></div>
       </div>`;
     items.insertAdjacentHTML('beforeend', html);
+    renderBudgetSummary();
   }
   searchInput.addEventListener("input", () => buscarAPU(searchInput.value));
   addBtn.addEventListener("click", addAPURow);
   document.addEventListener("click", (e) => { if (!suggestions.contains(e.target) && e.target !== searchInput) clearSuggestions(); });
+  items.addEventListener("input", renderBudgetSummary);
+  const observer = new MutationObserver(renderBudgetSummary);
+  observer.observe(items, { childList: true, subtree: true });
+  renderBudgetSummary();
 });

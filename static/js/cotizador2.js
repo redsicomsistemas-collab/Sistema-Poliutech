@@ -123,6 +123,71 @@ function recalcTotals(){
   if (uiSubDesc) uiSubDesc.textContent = "$"+fmt(subtotalDesc);
   document.getElementById("ui-iva").textContent = "$"+fmt(iva);
   document.getElementById("ui-total").textContent = "$"+fmt(total);
+  renderMarDataBudget(rows);
+}
+
+function renderMarDataBudget(rows){
+  const box = document.getElementById("mardata-budget-summary");
+  if (!box) return;
+  const groups = new Map();
+  let directoTotal = 0;
+  let ventaTotal = 0;
+
+  rows.forEach((tr) => {
+    const origen = tr.querySelector('input[name="item_origen[]"]')?.value || "";
+    if (origen !== "APU") return;
+
+    const apuId = tr.querySelector('input[name="item_apu_id[]"]')?.value || "";
+    const apuClave = tr.querySelector('input[name="item_apu_clave[]"]')?.value || "";
+    const apuDirecto = Number(tr.querySelector('input[name="item_apu_directo[]"]')?.value || 0);
+    const nombre = tr.querySelector(".item-nombre")?.value || "Partida MAR DATA";
+    const cantidad = Number(tr.querySelector(".item-cantidad")?.value || 0);
+    const precio = Number(tr.querySelector(".item-precio")?.value || 0);
+    const key = apuId || apuClave || nombre;
+    const data = groups.get(key) || { clave: apuClave || apuId || "-", nombre, cantidad: 0, directo: 0, venta: 0 };
+
+    data.cantidad += cantidad;
+    data.directo += apuDirecto * cantidad;
+    data.venta += precio * cantidad;
+    groups.set(key, data);
+    directoTotal += apuDirecto * cantidad;
+    ventaTotal += precio * cantidad;
+  });
+
+  if (!groups.size) {
+    box.className = "border rounded p-3 bg-light text-muted";
+    box.textContent = "Aún no hay partidas MAR DATA agregadas.";
+    return;
+  }
+
+  const rowsHtml = Array.from(groups.values()).map((item) => `
+    <tr>
+      <td>${item.clave}</td>
+      <td>${item.nombre}</td>
+      <td class="text-end">${fmt(item.cantidad)}</td>
+      <td class="text-end">$${fmt(item.directo)}</td>
+      <td class="text-end">$${fmt(item.venta)}</td>
+      <td class="text-end">${item.directo ? fmt((item.venta / item.directo)) : "0.00"}</td>
+    </tr>
+  `).join("");
+
+  box.className = "border rounded p-3 bg-white";
+  box.innerHTML = `
+    <div class="row g-3 mb-3">
+      <div class="col-md-3"><div class="rounded bg-light p-3"><small class="text-muted d-block">Partidas APU</small><strong>${groups.size}</strong></div></div>
+      <div class="col-md-3"><div class="rounded bg-light p-3"><small class="text-muted d-block">Costo directo total</small><strong>$${fmt(directoTotal)}</strong></div></div>
+      <div class="col-md-3"><div class="rounded bg-light p-3"><small class="text-muted d-block">Venta total</small><strong>$${fmt(ventaTotal)}</strong></div></div>
+      <div class="col-md-3"><div class="rounded bg-light p-3"><small class="text-muted d-block">Factor venta/directo</small><strong>${directoTotal ? fmt(ventaTotal / directoTotal) : "0.00"}</strong></div></div>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light">
+          <tr><th>APU</th><th>Partida</th><th class="text-end">Cantidad</th><th class="text-end">Directo</th><th class="text-end">Venta</th><th class="text-end">Factor</th></tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+  `;
 }
 
 document.addEventListener("DOMContentLoaded", ()=>{
