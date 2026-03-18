@@ -51,6 +51,7 @@ SUGERENCIAS_CARGOS = [
     ("Certificados DC3", "legal", "indirecto", "tramite"),
     ("Certificados DC5", "legal", "indirecto", "tramite"),
 ]
+SUGERENCIAS_CARGOS_NOMBRES = {item[0].lower() for item in SUGERENCIAS_CARGOS}
 
 
 def _f(value, default=0.0):
@@ -363,6 +364,25 @@ def _decorate_obra(obra):
         "retencion": sum(float(c.importe or 0) for c in obra.cargos if c.incidencia == "retencion"),
     }
     return obra
+
+
+def _cleanup_placeholder_cargos(obra):
+    removed = 0
+    for cargo in list(getattr(obra, "cargos", []) or []):
+        nombre = (cargo.nombre or "").strip().lower()
+        comentario = (cargo.comentario or "").strip()
+        if (
+            nombre in SUGERENCIAS_CARGOS_NOMBRES
+            and not comentario
+            and float(cargo.precio_unitario or 0) == 0.0
+            and float(cargo.importe or 0) == 0.0
+        ):
+            db.session.delete(cargo)
+            removed += 1
+    if removed:
+        db.session.flush()
+        recalcular_obra(obra)
+    return removed
 
 
 def _save_resource(item, include_provider=False):
@@ -914,6 +934,9 @@ def obra_edit(obra_id):
         db.session.commit()
         flash("Encabezado de obra actualizado.", "success")
         return redirect(url_for("apu.obra_edit", obra_id=obra.id))
+    removed = _cleanup_placeholder_cargos(obra)
+    if removed:
+        db.session.commit()
     _decorate_obra(obra)
     apus = APU.query.order_by(APU.categoria.asc(), APU.concepto.asc()).all()
     return render_template("neodata/obra_form.html", obra=obra, apus=apus, title="Editar obra")
