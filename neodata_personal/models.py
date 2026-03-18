@@ -79,6 +79,7 @@ class APU(db.Model):
     detalles = db.relationship(
         "APUDetalle",
         backref="apu",
+        foreign_keys="APUDetalle.apu_id",
         cascade="all, delete-orphan",
         order_by="APUDetalle.id.asc()"
     )
