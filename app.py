@@ -479,6 +479,7 @@ def ensure_schema():
         if "descripcion" not in dcols:
             db.session.execute(text("ALTER TABLE cotizacion_detalle ADD COLUMN descripcion VARCHAR(1000)"))
         for col, stmt in [
+            ("capitulo", "ALTER TABLE cotizacion_detalle ADD COLUMN capitulo VARCHAR(120)"),
             ("origen", "ALTER TABLE cotizacion_detalle ADD COLUMN origen VARCHAR(50)"),
             ("apu_id", "ALTER TABLE cotizacion_detalle ADD COLUMN apu_id INTEGER"),
             ("apu_clave", "ALTER TABLE cotizacion_detalle ADD COLUMN apu_clave VARCHAR(80)"),
@@ -2009,6 +2010,7 @@ def crear_cotizacion():
 
     nombres = f.getlist("item_nombre_concepto[]")
     unidades = f.getlist("item_unidad[]")
+    capitulos = f.getlist("item_capitulo[]")
     cantidades = f.getlist("item_cantidad[]")
     precios = f.getlist("item_precio[]")
     sistemas = f.getlist("item_sistema[]")
@@ -2026,6 +2028,7 @@ def crear_cotizacion():
         if not nom:
             continue
         uni = (unidades[i] if i < len(unidades) else "").strip()
+        cap = (capitulos[i] if i < len(capitulos) else "").strip() or None
         cant = parse_float(cantidades[i] if i < len(cantidades) else 0, 0.0)
         pu   = parse_float(precios[i] if i < len(precios) else 0, 0.0)
         sis  = (sistemas[i] if i < len(sistemas) else "").strip()
@@ -2055,6 +2058,7 @@ def crear_cotizacion():
             concepto_id=concepto.id if concepto else None,
             nombre_concepto=nom,
             unidad=uni,
+            capitulo=cap,
             cantidad=cant,
             precio_unitario=pu,
             sistema=sis or None,
@@ -2223,6 +2227,7 @@ def actualizar_cotizacion(cot_id: int):
     # === DETALLES NUEVOS ===
     nombres = f.getlist("item_nombre_concepto[]")
     unidades = f.getlist("item_unidad[]")
+    capitulos = f.getlist("item_capitulo[]")
     cantidades = f.getlist("item_cantidad[]")
     precios = f.getlist("item_precio[]")
     sistemas = f.getlist("item_sistema[]")
@@ -2235,6 +2240,7 @@ def actualizar_cotizacion(cot_id: int):
         if not nombre:
             continue
         unidad = (unidades[i] if i < len(unidades) else "").strip()
+        capitulo = (capitulos[i] if i < len(capitulos) else "").strip() or None
         cantidad = parse_float(cantidades[i] if i < len(cantidades) else 0, 0.0)
         precio = parse_float(precios[i] if i < len(precios) else 0, 0.0)
         sistema = (sistemas[i] if i < len(sistemas) else "").strip()
@@ -2265,6 +2271,7 @@ def actualizar_cotizacion(cot_id: int):
             concepto_id=concepto.id,
             nombre_concepto=nombre,
             unidad=unidad,
+            capitulo=capitulo,
             cantidad=cantidad,
             precio_unitario=precio,
             sistema=sistema or None,
@@ -2569,10 +2576,10 @@ def export_cotizacion_csv(cot_id: int):
         f"{c.total:.2f}", (c.notas or "")
     ])
     w.writerow([])
-    w.writerow(["Cant","Unidad","Concepto","Sistema","PU","Subtotal","Descripción"])
+    w.writerow(["Capitulo","Cant","Unidad","Concepto","Sistema","PU","Subtotal","Descripción"])
     for d in c.detalles:
         w.writerow([
-            d.cantidad, d.unidad or "", d.nombre_concepto, d.sistema or "",
+            d.capitulo or "", d.cantidad, d.unidad or "", d.nombre_concepto, d.sistema or "",
             f"{d.precio_unitario:.2f}", f"{d.subtotal:.2f}", (d.descripcion or "")
         ])
     return Response(
@@ -2602,7 +2609,7 @@ def export_cotizacion_xlsx(cot_id: int):
     thin = Side(style="thin", color="DDDDDD")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-    ws.merge_cells("A1:F1"); ws["A1"] = f"COTIZACIÓN {c.folio}"
+    ws.merge_cells("A1:G1"); ws["A1"] = f"COTIZACIÓN {c.folio}"
     ws["A1"].font = Font(bold=True, size=14); ws["A1"].alignment = center
 
     ws.append(["Folio", c.folio, "", "Fecha", c.fecha.strftime("%d/%m/%Y %H:%M"), ""])
@@ -2610,22 +2617,22 @@ def export_cotizacion_xlsx(cot_id: int):
     ws.append(["Representante", c.responsable or "", "", "Estatus", c.estatus, ""])
     ws.append([])
 
-    headers = ["Cant", "Unidad", "Concepto", "Sistema", "Precio Unit.", "Subtotal"]
+    headers = ["Capitulo", "Cant", "Unidad", "Concepto", "Sistema", "Precio Unit.", "Subtotal"]
     ws.append(headers)
-    for col in range(1, 7):
+    for col in range(1, 8):
         cell = ws.cell(row=ws.max_row, column=col)
         cell.fill = header_fill; cell.font = white; cell.alignment = center; cell.border = border
 
     for d in c.detalles:
-        ws.append([d.cantidad, d.unidad or "", d.nombre_concepto, d.sistema or "",
+        ws.append([d.capitulo or "", d.cantidad, d.unidad or "", d.nombre_concepto, d.sistema or "",
                    float(d.precio_unitario or 0), float(d.subtotal or 0)])
         r = ws.max_row
-        for col in range(1, 7):
+        for col in range(1, 8):
             ws.cell(row=r, column=col).border = border
-        ws.cell(row=r, column=1).number_format = '0.00'
-        ws.cell(row=r, column=5).number_format = '"$"#,##0.00'
+        ws.cell(row=r, column=2).number_format = '0.00'
         ws.cell(row=r, column=6).number_format = '"$"#,##0.00'
-        ws.cell(row=r, column=3).alignment = left
+        ws.cell(row=r, column=7).number_format = '"$"#,##0.00'
+        ws.cell(row=r, column=4).alignment = left
 
     ws.append([])
     ws.append(["", "", cantidad_en_letra_mn(c.total)])
@@ -3122,9 +3129,10 @@ def export_cotizacion_pdf(cot_id: int):
     elems.append(Spacer(1, 4))
 
     # === TABLA DE CONCEPTOS ===
-    data = [["Concepto", "Uni.", "Cant.", "Sistema", "Precio Unitario", "Subtotal"]]
+    data = [["Capítulo", "Concepto", "Uni.", "Cant.", "Sistema", "Precio Unitario", "Subtotal"]]
     for d in c.detalles:
         data.append([
+            Paragraph(d.capitulo or "-", styles["NormalCenter"]),
             Paragraph(d.nombre_concepto or "-", styles["Normal"]),
             Paragraph(d.unidad or "-", styles["NormalCenter"]),
             Paragraph(f"{(d.cantidad or 0):.2f}", styles["NormalCenter"]),

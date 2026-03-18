@@ -86,6 +86,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const row = getLastRow();
     if (!row) { Swal.fire("Error", "No se pudo agregar una fila al cotizador.", "error"); return; }
     const nombre = row.querySelector(".item-nombre");
+    const capitulo = row.querySelector(".item-capitulo");
     const unidad = row.querySelector(".item-unidad");
     const cantidadEl = row.querySelector(".item-cantidad");
     const precio = row.querySelector(".item-precio");
@@ -100,6 +101,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const subtotalEl = row.querySelector(".item-subtotal");
     if (!nombre || !unidad || !cantidadEl || !precio) { Swal.fire("Error", "La fila del cotizador no coincide con la estructura esperada.", "error"); return; }
     nombre.value = selectedAPU.concepto || "";
+    if (capitulo) capitulo.value = selectedAPU.categoria || "MAR DATA";
     unidad.value = selectedAPU.unidad || "";
     cantidadEl.value = String(cantidad);
     precio.value = String(Number(selectedAPU.precio_unitario || 0));

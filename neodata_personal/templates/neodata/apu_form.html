@@ -169,7 +169,7 @@
     <div class="mar-card">
       <div class="hd">Resumen ejecutivo</div>
       <div class="bd">
-        {% if apu %}
+        {% if apu and apu.id %}
         <div class="mar-breakdown">
           {% for item in apu.tipo_totales %}
           <div class="rowx">
@@ -212,7 +212,7 @@
     </div>
   </div>
 
-  {% if apu %}
+  {% if apu and apu.id %}
   <div class="mar-detail-grid">
     <div class="mar-card">
       <div class="hd">Agregar desde catalogo</div>

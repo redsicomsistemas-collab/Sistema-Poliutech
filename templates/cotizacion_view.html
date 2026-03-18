@@ -53,6 +53,7 @@
           <table class="table table-sm align-middle">
             <thead class="table-light">
               <tr>
+                <th>Capítulo</th>
                 <th>Cantidad</th>
                 <th>Unidad</th>
                 <th>Concepto</th>
@@ -62,8 +63,17 @@
               </tr>
             </thead>
             <tbody>
-              {% for d in c.detalles %}
+              {% set grp = namespace(actual='') %}
+              {% for d in c.detalles|sort(attribute='capitulo') %}
+              {% set capitulo_label = d.capitulo or 'General' %}
+              {% if capitulo_label != grp.actual %}
+              {% set grp.actual = capitulo_label %}
+              <tr class="table-primary">
+                <td colspan="7"><strong>{{ capitulo_label }}</strong></td>
+              </tr>
+              {% endif %}
               <tr>
+                <td>{{ d.capitulo or 'General' }}</td>
                 <td>{{ d.cantidad }}</td>
                 <td>{{ d.unidad }}</td>
                 <td>
@@ -79,7 +89,7 @@
                 <td class="text-end">${{ "%.2f"|format(d.subtotal) }}</td>
               </tr>
               {% else %}
-              <tr><td colspan="6" class="text-center text-muted">No hay conceptos registrados.</td></tr>
+              <tr><td colspan="7" class="text-center text-muted">No hay conceptos registrados.</td></tr>
               {% endfor %}
             </tbody>
           </table>
