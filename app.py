@@ -2589,7 +2589,7 @@ def export_cotizacion_csv(cot_id: int):
     w.writerow(["Capitulo","Cant","Unidad","Concepto","Sistema","PU","Subtotal","Descripción"])
     for d in c.detalles:
         w.writerow([
-            d.capitulo or "", d.cantidad, d.unidad or "", d.nombre_concepto, d.sistema or "",
+            getattr(d, "capitulo", "") or "", d.cantidad, d.unidad or "", d.nombre_concepto, d.sistema or "",
             f"{d.precio_unitario:.2f}", f"{d.subtotal:.2f}", (d.descripcion or "")
         ])
     return Response(
@@ -2634,7 +2634,7 @@ def export_cotizacion_xlsx(cot_id: int):
         cell.fill = header_fill; cell.font = white; cell.alignment = center; cell.border = border
 
     for d in c.detalles:
-        ws.append([d.capitulo or "", d.cantidad, d.unidad or "", d.nombre_concepto, d.sistema or "",
+        ws.append([getattr(d, "capitulo", "") or "", d.cantidad, d.unidad or "", d.nombre_concepto, d.sistema or "",
                    float(d.precio_unitario or 0), float(d.subtotal or 0)])
         r = ws.max_row
         for col in range(1, 8):
@@ -3142,7 +3142,7 @@ def export_cotizacion_pdf(cot_id: int):
     data = [["Capítulo", "Concepto", "Uni.", "Cant.", "Sistema", "Precio Unitario", "Subtotal"]]
     for d in c.detalles:
         data.append([
-            Paragraph(d.capitulo or "-", styles["NormalCenter"]),
+            Paragraph(getattr(d, "capitulo", "") or "-", styles["NormalCenter"]),
             Paragraph(d.nombre_concepto or "-", styles["Normal"]),
             Paragraph(d.unidad or "-", styles["NormalCenter"]),
             Paragraph(f"{(d.cantidad or 0):.2f}", styles["NormalCenter"]),
