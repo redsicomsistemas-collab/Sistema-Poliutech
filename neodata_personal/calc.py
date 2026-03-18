@@ -1,3 +1,6 @@
+from datetime import datetime, timedelta
+import math
+
 def _num(value, default=0.0):
     try:
         if value in (None, ""):
@@ -45,7 +48,21 @@ def recalcular_apu(apu):
             detalle.unidad = getattr(detalle.auxiliar, "unidad", detalle.unidad)
             detalle.precio_unitario = _num(getattr(detalle.auxiliar, "precio_unitario", 0.0))
 
-        detalle.subtotal = round4(detalle.cantidad_calculada * _num(detalle.precio_unitario))
+        if detalle.tipo_insumo == "material" and _num(getattr(detalle, "cantidad_presentacion", 0.0)) > 0:
+            piezas = max(
+                _num(getattr(detalle, "compra_minima", 0.0), 0.0),
+                math.ceil(detalle.cantidad_calculada / _num(getattr(detalle, "cantidad_presentacion", 1.0), 1.0)),
+            )
+            detalle.piezas_compra = piezas
+            detalle.cantidad_comprada = round4(piezas * _num(getattr(detalle, "cantidad_presentacion", 0.0)))
+            if _num(getattr(detalle, "precio_presentacion", 0.0)) > 0:
+                detalle.subtotal = round4(piezas * _num(getattr(detalle, "precio_presentacion", 0.0)))
+            else:
+                detalle.subtotal = round4(detalle.cantidad_calculada * _num(detalle.precio_unitario))
+        else:
+            detalle.piezas_compra = 0
+            detalle.cantidad_comprada = detalle.cantidad_calculada
+            detalle.subtotal = round4(detalle.cantidad_calculada * _num(detalle.precio_unitario))
 
         if detalle.tipo_insumo == "material":
             costo_materiales += detalle.subtotal
@@ -119,6 +136,10 @@ def recalcular_partida_obra(partida):
 
 def recalcular_obra(obra):
     subtotal_directo = 0.0
+    extra_directos = 0.0
+    extra_indirectos = 0.0
+    extra_cargos = 0.0
+    retenciones = 0.0
 
     for idx, partida in enumerate(getattr(obra, "partidas", []) or [], start=1):
         if not _num(getattr(partida, "orden", 0)):
@@ -126,6 +147,19 @@ def recalcular_obra(obra):
         recalcular_partida_obra(partida)
         subtotal_directo += _num(getattr(partida, "importe_directo", 0.0))
 
+    for cargo in getattr(obra, "cargos", []) or []:
+        cargo.importe = round4(_num(getattr(cargo, "cantidad", 0.0)) * _num(getattr(cargo, "precio_unitario", 0.0)))
+        incidencia = getattr(cargo, "incidencia", "indirecto")
+        if incidencia == "directo_global":
+            extra_directos += cargo.importe
+        elif incidencia == "cargo_adicional":
+            extra_cargos += cargo.importe
+        elif incidencia == "retencion":
+            retenciones += cargo.importe
+        else:
+            extra_indirectos += cargo.importe
+
+    subtotal_directo += extra_directos
     obra.subtotal_directo = round4(subtotal_directo)
     indirecto_pct = _num(getattr(obra, "indirecto_pct", 0.0))
     indirecto_desglosado = _num(getattr(obra, "indirecto_campo_pct", 0.0)) + _num(getattr(obra, "indirecto_oficina_pct", 0.0))
@@ -133,7 +167,7 @@ def recalcular_obra(obra):
         indirecto_pct = indirecto_desglosado
         obra.indirecto_pct = round4(indirecto_desglosado)
 
-    indirecto_monto = subtotal_directo * (indirecto_pct / 100.0)
+    indirecto_monto = (subtotal_directo * (indirecto_pct / 100.0)) + extra_indirectos
     base_fin = subtotal_directo + indirecto_monto
 
     financiamiento_monto = base_fin * (_num(getattr(obra, "financiamiento_pct", 0.0)) / 100.0)
@@ -142,12 +176,14 @@ def recalcular_obra(obra):
     utilidad_monto = base_utilidad * (_num(getattr(obra, "utilidad_pct", 0.0)) / 100.0)
     base_cargos = base_utilidad + utilidad_monto
 
-    cargos_monto = base_cargos * (_num(getattr(obra, "cargos_adicionales_pct", 0.0)) / 100.0)
+    cargos_monto = (base_cargos * (_num(getattr(obra, "cargos_adicionales_pct", 0.0)) / 100.0)) + extra_cargos
     obra.indirecto_monto = round4(indirecto_monto)
     obra.financiamiento_monto = round4(financiamiento_monto)
     obra.utilidad_monto = round4(utilidad_monto)
     obra.cargos_adicionales_monto = round4(cargos_monto)
+    obra.retenciones_monto = round4(retenciones)
     obra.total_venta = round4(base_cargos + cargos_monto)
+    obra.total_neto = round4(obra.total_venta - obra.retenciones_monto)
     return obra
 
 
@@ -330,4 +366,3 @@ def programa_recursos_obra(obra):
         rows.append(item)
     rows.sort(key=lambda item: (item["tipo"], item["descripcion"]))
     return rows
-from datetime import datetime, timedelta

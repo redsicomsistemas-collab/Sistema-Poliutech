@@ -541,6 +541,8 @@ def ensure_schema():
             ("frentes", "ALTER TABLE apu_obra ADD COLUMN frentes FLOAT DEFAULT 1.0"),
             ("indirecto_campo_pct", "ALTER TABLE apu_obra ADD COLUMN indirecto_campo_pct FLOAT DEFAULT 0.0"),
             ("indirecto_oficina_pct", "ALTER TABLE apu_obra ADD COLUMN indirecto_oficina_pct FLOAT DEFAULT 0.0"),
+            ("retenciones_monto", "ALTER TABLE apu_obra ADD COLUMN retenciones_monto FLOAT DEFAULT 0.0"),
+            ("total_neto", "ALTER TABLE apu_obra ADD COLUMN total_neto FLOAT DEFAULT 0.0"),
         ]:
             if col not in obra_cols:
                 db.session.execute(text(stmt))
@@ -564,6 +566,10 @@ def ensure_schema():
             ("desperdicio_pct", "ALTER TABLE apu_detalle ADD COLUMN desperdicio_pct FLOAT DEFAULT 0.0"),
             ("comentario", "ALTER TABLE apu_detalle ADD COLUMN comentario VARCHAR(500)"),
             ("precio_unitario", "ALTER TABLE apu_detalle ADD COLUMN precio_unitario FLOAT DEFAULT 0.0"),
+            ("unidad_compra", "ALTER TABLE apu_detalle ADD COLUMN unidad_compra VARCHAR(50)"),
+            ("cantidad_presentacion", "ALTER TABLE apu_detalle ADD COLUMN cantidad_presentacion FLOAT DEFAULT 0.0"),
+            ("precio_presentacion", "ALTER TABLE apu_detalle ADD COLUMN precio_presentacion FLOAT DEFAULT 0.0"),
+            ("compra_minima", "ALTER TABLE apu_detalle ADD COLUMN compra_minima FLOAT DEFAULT 0.0"),
             ("subtotal", "ALTER TABLE apu_detalle ADD COLUMN subtotal FLOAT DEFAULT 0.0"),
             ("auxiliar_apu_id", "ALTER TABLE apu_detalle ADD COLUMN auxiliar_apu_id INTEGER"),
         ]:
@@ -582,6 +588,15 @@ def ensure_schema():
             ]:
                 if col not in cols:
                     db.session.execute(text(stmt))
+            if table_name == "apu_material":
+                for col, stmt in [
+                    ("unidad_compra", "ALTER TABLE apu_material ADD COLUMN unidad_compra VARCHAR(50)"),
+                    ("cantidad_presentacion", "ALTER TABLE apu_material ADD COLUMN cantidad_presentacion FLOAT DEFAULT 0.0"),
+                    ("precio_presentacion", "ALTER TABLE apu_material ADD COLUMN precio_presentacion FLOAT DEFAULT 0.0"),
+                    ("compra_minima", "ALTER TABLE apu_material ADD COLUMN compra_minima FLOAT DEFAULT 0.0"),
+                ]:
+                    if col not in cols:
+                        db.session.execute(text(stmt))
             db.session.commit()
         except Exception as e:
             print(f"[WARN] ensure_schema({table_name}):", e)

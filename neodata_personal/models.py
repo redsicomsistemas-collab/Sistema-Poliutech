@@ -11,6 +11,10 @@ class Material(db.Model):
     categoria = db.Column(db.String(120))
     unidad = db.Column(db.String(50), nullable=False, default="kg")
     precio_unitario = db.Column(db.Float, nullable=False, default=0.0)
+    unidad_compra = db.Column(db.String(50))
+    cantidad_presentacion = db.Column(db.Float, nullable=False, default=0.0)
+    precio_presentacion = db.Column(db.Float, nullable=False, default=0.0)
+    compra_minima = db.Column(db.Float, nullable=False, default=0.0)
     proveedor = db.Column(db.String(200))
     fecha_actualizacion = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -104,6 +108,10 @@ class APUDetalle(db.Model):
     desperdicio_pct = db.Column(db.Float, nullable=False, default=0.0)
     comentario = db.Column(db.String(500))
     precio_unitario = db.Column(db.Float, nullable=False, default=0.0)
+    unidad_compra = db.Column(db.String(50))
+    cantidad_presentacion = db.Column(db.Float, nullable=False, default=0.0)
+    precio_presentacion = db.Column(db.Float, nullable=False, default=0.0)
+    compra_minima = db.Column(db.Float, nullable=False, default=0.0)
     subtotal = db.Column(db.Float, nullable=False, default=0.0)
     auxiliar_apu_id = db.Column(db.Integer, db.ForeignKey("apu.id"))
 
@@ -136,6 +144,8 @@ class Obra(db.Model):
     financiamiento_monto = db.Column(db.Float, nullable=False, default=0.0)
     utilidad_monto = db.Column(db.Float, nullable=False, default=0.0)
     cargos_adicionales_monto = db.Column(db.Float, nullable=False, default=0.0)
+    retenciones_monto = db.Column(db.Float, nullable=False, default=0.0)
+    total_neto = db.Column(db.Float, nullable=False, default=0.0)
     total_venta = db.Column(db.Float, nullable=False, default=0.0)
     creado_en = db.Column(db.DateTime, default=datetime.utcnow)
     actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -145,6 +155,12 @@ class Obra(db.Model):
         backref="obra",
         cascade="all, delete-orphan",
         order_by="ObraPartida.orden.asc(), ObraPartida.id.asc()",
+    )
+    cargos = db.relationship(
+        "ObraCargo",
+        backref="obra",
+        cascade="all, delete-orphan",
+        order_by="ObraCargo.id.asc()",
     )
 
 
@@ -168,3 +184,18 @@ class ObraPartida(db.Model):
     comentario = db.Column(db.String(500))
 
     apu = db.relationship("APU", foreign_keys=[apu_id])
+
+
+class ObraCargo(db.Model):
+    __tablename__ = "apu_obra_cargo"
+
+    id = db.Column(db.Integer, primary_key=True)
+    obra_id = db.Column(db.Integer, db.ForeignKey("apu_obra.id"), nullable=False)
+    nombre = db.Column(db.String(200), nullable=False)
+    categoria = db.Column(db.String(120))
+    incidencia = db.Column(db.String(30), nullable=False, default="indirecto")
+    unidad = db.Column(db.String(50), default="mes")
+    cantidad = db.Column(db.Float, nullable=False, default=1.0)
+    precio_unitario = db.Column(db.Float, nullable=False, default=0.0)
+    importe = db.Column(db.Float, nullable=False, default=0.0)
+    comentario = db.Column(db.String(500))

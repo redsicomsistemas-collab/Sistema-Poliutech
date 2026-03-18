@@ -22,7 +22,7 @@ except Exception:
 
 from models import Cliente, Concepto, Cotizacion, CotizacionDetalle, db
 from .calc import explosion_insumos_obra, programa_obra, programa_recursos_obra, recalcular_apu, recalcular_obra
-from .models import APU, APUDetalle, ManoObra, Maquinaria, Material, Obra, ObraPartida
+from .models import APU, APUDetalle, ManoObra, Maquinaria, Material, Obra, ObraCargo, ObraPartida
 
 apu_bp = Blueprint("apu", __name__, url_prefix="/apu", template_folder="templates")
 
@@ -36,6 +36,21 @@ TIPOS_INSUMO = [
     ("auxiliar", "Auxiliar"),
 ]
 TYPE_LABELS = {key: label for key, label in TIPOS_INSUMO}
+SUGERENCIAS_CARGOS = [
+    ("Agua", "servicios", "indirecto", "mes"),
+    ("Baños", "servicios", "indirecto", "mes"),
+    ("Energía eléctrica", "servicios", "indirecto", "mes"),
+    ("Seguristas", "seguridad", "indirecto", "jor"),
+    ("Rescatistas", "seguridad", "indirecto", "jor"),
+    ("Inspectores", "supervision", "indirecto", "jor"),
+    ("Fianzas", "legal", "cargo_adicional", "lote"),
+    ("SIROC", "legal", "indirecto", "tramite"),
+    ("Cuotas sindicales", "legal", "retencion", "lote"),
+    ("Equipo de seguridad", "seguridad", "directo_global", "lote"),
+    ("Equipo especializado", "equipo", "directo_global", "lote"),
+    ("Certificados DC3", "legal", "indirecto", "tramite"),
+    ("Certificados DC5", "legal", "indirecto", "tramite"),
+]
 
 
 def _f(value, default=0.0):
@@ -341,6 +356,12 @@ def _decorate_obra(obra):
         {"label": "Indirecto campo", "pct": getattr(obra, "indirecto_campo_pct", 0.0) or 0.0},
         {"label": "Indirecto oficina", "pct": getattr(obra, "indirecto_oficina_pct", 0.0) or 0.0},
     ]
+    obra.cargos_resumen = {
+        "directo_global": sum(float(c.importe or 0) for c in obra.cargos if c.incidencia == "directo_global"),
+        "indirecto": sum(float(c.importe or 0) for c in obra.cargos if c.incidencia == "indirecto"),
+        "cargo_adicional": sum(float(c.importe or 0) for c in obra.cargos if c.incidencia == "cargo_adicional"),
+        "retencion": sum(float(c.importe or 0) for c in obra.cargos if c.incidencia == "retencion"),
+    }
     return obra
 
 
@@ -350,6 +371,11 @@ def _save_resource(item, include_provider=False):
     item.categoria = _s(request.form.get("categoria"))
     item.unidad = (request.form.get("unidad") or item.unidad or "pza").strip() or "pza"
     item.precio_unitario = _f(request.form.get("precio_unitario"))
+    if isinstance(item, Material):
+        item.unidad_compra = _s(request.form.get("unidad_compra"))
+        item.cantidad_presentacion = _f(request.form.get("cantidad_presentacion"))
+        item.precio_presentacion = _f(request.form.get("precio_presentacion"))
+        item.compra_minima = _f(request.form.get("compra_minima"))
     if include_provider:
         item.proveedor = _s(request.form.get("proveedor"))
 
@@ -565,6 +591,10 @@ def apu_detalle_add(apu_id):
         desperdicio_pct=_f(request.form.get("desperdicio_pct"), apu.desperdicio_general_pct or 0.0),
         comentario=_s(request.form.get("comentario")),
         precio_unitario=getattr(recurso, "precio_unitario", 0.0),
+        unidad_compra=getattr(recurso, "unidad_compra", None),
+        cantidad_presentacion=getattr(recurso, "cantidad_presentacion", 0.0),
+        precio_presentacion=getattr(recurso, "precio_presentacion", 0.0),
+        compra_minima=getattr(recurso, "compra_minima", 0.0),
         auxiliar_apu_id=recurso.id if tipo_insumo == "auxiliar" else None,
     )
     db.session.add(detalle)
@@ -656,7 +686,7 @@ def materiales_new():
         db.session.commit()
         flash("Material creado.", "success")
         return redirect(url_for("apu.materiales_list"))
-    return render_template("neodata/recurso_form.html", title="Nuevo material", item=item, back=url_for("apu.materiales_list"), include_provider=True)
+    return render_template("neodata/recurso_form.html", title="Nuevo material", item=item, back=url_for("apu.materiales_list"), include_provider=True, include_packaging=True)
 
 
 @apu_bp.route("/materiales/<int:item_id>/editar", methods=["GET", "POST"])
@@ -668,7 +698,7 @@ def materiales_edit(item_id):
         db.session.commit()
         flash("Material actualizado.", "success")
         return redirect(url_for("apu.materiales_list"))
-    return render_template("neodata/recurso_form.html", title="Editar material", item=item, back=url_for("apu.materiales_list"), include_provider=True)
+    return render_template("neodata/recurso_form.html", title="Editar material", item=item, back=url_for("apu.materiales_list"), include_provider=True, include_packaging=True)
 
 
 @apu_bp.route("/materiales/<int:item_id>/eliminar", methods=["POST"])
@@ -697,7 +727,7 @@ def mano_obra_new():
         db.session.commit()
         flash("Recurso de mano de obra creado.", "success")
         return redirect(url_for("apu.mano_obra_list"))
-    return render_template("neodata/recurso_form.html", title="Nueva mano de obra", item=item, back=url_for("apu.mano_obra_list"), include_provider=False)
+    return render_template("neodata/recurso_form.html", title="Nueva mano de obra", item=item, back=url_for("apu.mano_obra_list"), include_provider=False, include_packaging=False)
 
 
 @apu_bp.route("/mano-obra/<int:item_id>/editar", methods=["GET", "POST"])
@@ -709,7 +739,7 @@ def mano_obra_edit(item_id):
         db.session.commit()
         flash("Recurso actualizado.", "success")
         return redirect(url_for("apu.mano_obra_list"))
-    return render_template("neodata/recurso_form.html", title="Editar mano de obra", item=item, back=url_for("apu.mano_obra_list"), include_provider=False)
+    return render_template("neodata/recurso_form.html", title="Editar mano de obra", item=item, back=url_for("apu.mano_obra_list"), include_provider=False, include_packaging=False)
 
 
 @apu_bp.route("/mano-obra/<int:item_id>/eliminar", methods=["POST"])
@@ -738,7 +768,7 @@ def maquinaria_new():
         db.session.commit()
         flash("Maquinaria creada.", "success")
         return redirect(url_for("apu.maquinaria_list"))
-    return render_template("neodata/recurso_form.html", title="Nueva maquinaria", item=item, back=url_for("apu.maquinaria_list"), include_provider=False)
+    return render_template("neodata/recurso_form.html", title="Nueva maquinaria", item=item, back=url_for("apu.maquinaria_list"), include_provider=False, include_packaging=False)
 
 
 @apu_bp.route("/maquinaria/<int:item_id>/editar", methods=["GET", "POST"])
@@ -750,7 +780,7 @@ def maquinaria_edit(item_id):
         db.session.commit()
         flash("Maquinaria actualizada.", "success")
         return redirect(url_for("apu.maquinaria_list"))
-    return render_template("neodata/recurso_form.html", title="Editar maquinaria", item=item, back=url_for("apu.maquinaria_list"), include_provider=False)
+    return render_template("neodata/recurso_form.html", title="Editar maquinaria", item=item, back=url_for("apu.maquinaria_list"), include_provider=False, include_packaging=False)
 
 
 @apu_bp.route("/maquinaria/<int:item_id>/eliminar", methods=["POST"])
@@ -1031,6 +1061,71 @@ def obra_partida_delete(partida_id):
     recalcular_obra(obra)
     db.session.commit()
     flash("Partida eliminada.", "success")
+    return redirect(url_for("apu.obra_edit", obra_id=obra_id))
+
+
+@apu_bp.route("/obras/<int:obra_id>/cargos/agregar", methods=["POST"])
+@login_required
+def obra_cargo_add(obra_id):
+    obra = Obra.query.get_or_404(obra_id)
+    nombre = (request.form.get("nombre") or "").strip()
+    if not nombre:
+        flash("El nombre del cargo global es obligatorio.", "danger")
+        return redirect(url_for("apu.obra_edit", obra_id=obra.id))
+    cargo = ObraCargo(
+        obra_id=obra.id,
+        nombre=nombre,
+        categoria=_s(request.form.get("categoria")),
+        incidencia=(request.form.get("incidencia") or "indirecto").strip(),
+        unidad=(request.form.get("unidad") or "mes").strip() or "mes",
+        cantidad=_f(request.form.get("cantidad"), 1.0),
+        precio_unitario=_f(request.form.get("precio_unitario")),
+        comentario=_s(request.form.get("comentario")),
+    )
+    db.session.add(cargo)
+    recalcular_obra(obra)
+    db.session.commit()
+    flash("Cargo global agregado.", "success")
+    return redirect(url_for("apu.obra_edit", obra_id=obra.id))
+
+
+@apu_bp.route("/obras/<int:obra_id>/cargos/sugeridos", methods=["POST"])
+@login_required
+def obra_cargos_seed(obra_id):
+    obra = Obra.query.get_or_404(obra_id)
+    existentes = {c.nombre.lower() for c in obra.cargos}
+    creados = 0
+    for nombre, categoria, incidencia, unidad in SUGERENCIAS_CARGOS:
+        if nombre.lower() in existentes:
+            continue
+        db.session.add(
+            ObraCargo(
+                obra_id=obra.id,
+                nombre=nombre,
+                categoria=categoria,
+                incidencia=incidencia,
+                unidad=unidad,
+                cantidad=1.0,
+                precio_unitario=0.0,
+            )
+        )
+        creados += 1
+    recalcular_obra(obra)
+    db.session.commit()
+    flash(f"Se cargaron {creados} cargos sugeridos.", "success")
+    return redirect(url_for("apu.obra_edit", obra_id=obra.id))
+
+
+@apu_bp.route("/obras/cargos/<int:cargo_id>/eliminar", methods=["POST"])
+@login_required
+def obra_cargo_delete(cargo_id):
+    cargo = ObraCargo.query.get_or_404(cargo_id)
+    obra_id = cargo.obra_id
+    db.session.delete(cargo)
+    obra = Obra.query.get_or_404(obra_id)
+    recalcular_obra(obra)
+    db.session.commit()
+    flash("Cargo global eliminado.", "success")
     return redirect(url_for("apu.obra_edit", obra_id=obra_id))
 
 

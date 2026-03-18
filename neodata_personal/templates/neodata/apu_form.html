@@ -319,6 +319,9 @@
               <td style="min-width:260px;">
                   <input form="detalle-{{ d.id }}" name="descripcion" value="{{ d.descripcion }}">
                   <input form="detalle-{{ d.id }}" name="comentario" value="{{ d.comentario or '' }}" placeholder="Comentario">
+                  {% if d.tipo_insumo == 'material' and d.cantidad_presentacion %}
+                  <div class="mar-mini mt-1">Compra: {{ "{:,.4f}".format(d.cantidad_comprada or 0) }} {{ d.unidad_compra or d.unidad }} · {{ d.piezas_compra or 0 }} presentaciones</div>
+                  {% endif %}
               </td>
               <td>
                   <input form="detalle-{{ d.id }}" name="unidad" value="{{ d.unidad }}" style="min-width:70px;">

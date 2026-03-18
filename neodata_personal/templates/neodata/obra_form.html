@@ -105,10 +105,12 @@
         <div class="d-grid gap-2">
           <div class="d-flex justify-content-between"><span>Subtotal directo</span><strong>${{ "{:,.2f}".format(obra.subtotal_directo or 0) }}</strong></div>
           <div class="d-flex justify-content-between"><span>Indirectos</span><strong>${{ "{:,.2f}".format(obra.indirecto_monto or 0) }}</strong></div>
-          <div class="d-flex justify-content-between"><span>Financiamiento</span><strong>${{ "{:,.2f}".format(obra.financiamiento_monto or 0) }}</strong></div>
-          <div class="d-flex justify-content-between"><span>Utilidad</span><strong>${{ "{:,.2f}".format(obra.utilidad_monto or 0) }}</strong></div>
-          <div class="d-flex justify-content-between"><span>Cargos adicionales</span><strong>${{ "{:,.2f}".format(obra.cargos_adicionales_monto or 0) }}</strong></div>
+        <div class="d-flex justify-content-between"><span>Financiamiento</span><strong>${{ "{:,.2f}".format(obra.financiamiento_monto or 0) }}</strong></div>
+        <div class="d-flex justify-content-between"><span>Utilidad</span><strong>${{ "{:,.2f}".format(obra.utilidad_monto or 0) }}</strong></div>
+        <div class="d-flex justify-content-between"><span>Cargos adicionales</span><strong>${{ "{:,.2f}".format(obra.cargos_adicionales_monto or 0) }}</strong></div>
+          <div class="d-flex justify-content-between"><span>Retenciones</span><strong>${{ "{:,.2f}".format(obra.retenciones_monto or 0) }}</strong></div>
           <div class="d-flex justify-content-between border-top pt-2"><span>Total venta</span><strong>${{ "{:,.2f}".format(obra.total_venta or 0) }}</strong></div>
+          <div class="d-flex justify-content-between"><span>Total neto</span><strong>${{ "{:,.2f}".format(obra.total_neto or 0) }}</strong></div>
         </div>
         {% if obra.resumen_capitulos %}
         <hr>
@@ -164,6 +166,72 @@
           <a class="btn btn-outline-dark btn-sm" href="{{ url_for('apu.obra_export_csv', obra_id=obra.id) }}">Descargar presupuesto + explosion</a>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div class="obra-card mt-4">
+    <div class="hd">Cargos globales de obra</div>
+    <div class="bd">
+      <div class="d-flex gap-2 flex-wrap mb-3">
+        <form method="post" action="{{ url_for('apu.obra_cargos_seed', obra_id=obra.id) }}">
+          <button class="btn btn-outline-secondary btn-sm" type="submit">Cargar sugeridos</button>
+        </form>
+      </div>
+      <form method="post" action="{{ url_for('apu.obra_cargo_add', obra_id=obra.id) }}" class="row g-3">
+        <div class="col-md-3"><label class="form-label">Nombre</label><input class="form-control" name="nombre"></div>
+        <div class="col-md-2"><label class="form-label">Categoria</label><input class="form-control" name="categoria"></div>
+        <div class="col-md-2">
+          <label class="form-label">Incidencia</label>
+          <select class="form-select" name="incidencia">
+            <option value="indirecto">Indirecto</option>
+            <option value="directo_global">Directo global</option>
+            <option value="cargo_adicional">Cargo adicional</option>
+            <option value="retencion">Retención</option>
+          </select>
+        </div>
+        <div class="col-md-1"><label class="form-label">Unidad</label><input class="form-control" name="unidad" value="mes"></div>
+        <div class="col-md-1"><label class="form-label">Cant.</label><input class="form-control" name="cantidad" type="number" step="0.0001" value="1"></div>
+        <div class="col-md-2"><label class="form-label">P.U.</label><input class="form-control" name="precio_unitario" type="number" step="0.0001" value="0"></div>
+        <div class="col-md-1 d-flex align-items-end"><button class="btn btn-primary w-100" type="submit">Agregar</button></div>
+      </form>
+      {% if obra.cargos %}
+      <div class="table-responsive mt-3">
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Categoria</th>
+              <th>Incidencia</th>
+              <th>Unidad</th>
+              <th>Cantidad</th>
+              <th>P.U.</th>
+              <th>Importe</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for cargo in obra.cargos %}
+            <tr>
+              <td>{{ cargo.nombre }}</td>
+              <td>{{ cargo.categoria or '-' }}</td>
+              <td>{{ cargo.incidencia }}</td>
+              <td>{{ cargo.unidad }}</td>
+              <td>{{ "{:,.4f}".format(cargo.cantidad or 0) }}</td>
+              <td>${{ "{:,.2f}".format(cargo.precio_unitario or 0) }}</td>
+              <td>${{ "{:,.2f}".format(cargo.importe or 0) }}</td>
+              <td>
+                <form method="post" action="{{ url_for('apu.obra_cargo_delete', cargo_id=cargo.id) }}" onsubmit="return confirm('¿Eliminar cargo global?');">
+                  <button class="btn btn-sm btn-outline-danger" type="submit">Eliminar</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-muted mt-3">No hay cargos globales de obra registrados.</div>
+      {% endif %}
     </div>
   </div>
 
