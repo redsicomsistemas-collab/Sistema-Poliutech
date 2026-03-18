@@ -2020,11 +2020,6 @@ def crear_cotizacion():
     apu_claves = f.getlist("item_apu_clave[]")
     apu_directos = f.getlist("item_apu_directo[]")
     apu_resumenes = f.getlist("item_apu_resumen[]")
-    origenes = f.getlist("item_origen[]")
-    apu_ids = f.getlist("item_apu_id[]")
-    apu_claves = f.getlist("item_apu_clave[]")
-    apu_directos = f.getlist("item_apu_directo[]")
-    apu_resumenes = f.getlist("item_apu_resumen[]")
 
     subtotal = 0.0
     n = max(len(nombres), len(unidades), len(cantidades), len(precios))
@@ -2237,6 +2232,11 @@ def actualizar_cotizacion(cot_id: int):
     precios = f.getlist("item_precio[]")
     sistemas = f.getlist("item_sistema[]")
     descripciones = f.getlist("item_descripcion[]")
+    origenes = f.getlist("item_origen[]")
+    apu_ids = f.getlist("item_apu_id[]")
+    apu_claves = f.getlist("item_apu_clave[]")
+    apu_directos = f.getlist("item_apu_directo[]")
+    apu_resumenes = f.getlist("item_apu_resumen[]")
 
     subtotal = 0.0
     n = max(len(nombres), len(unidades), len(cantidades), len(precios))
