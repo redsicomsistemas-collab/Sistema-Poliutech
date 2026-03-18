@@ -759,6 +759,11 @@ def parse_int(v, default=0):
         return default
 
 
+def _safe_detalle_kwargs(**kwargs):
+    valid = set(getattr(CotizacionDetalle, "__table__").columns.keys())
+    return {k: v for k, v in kwargs.items() if k in valid}
+
+
 def parse_datetime_flexible(v) -> Optional[datetime]:
     if v in (None, ""):
         return None
@@ -2053,7 +2058,7 @@ def crear_cotizacion():
             db.session.add(concepto)
             db.session.flush()
 
-        det = CotizacionDetalle(
+        det = CotizacionDetalle(**_safe_detalle_kwargs(
             cotizacion_id=cot.id,
             concepto_id=concepto.id if concepto else None,
             nombre_concepto=nom,
@@ -2069,7 +2074,7 @@ def crear_cotizacion():
             apu_clave=apu_clave_val,
             apu_directo=apu_directo_val,
             apu_resumen_json=apu_resumen_val,
-        )
+        ))
         db.session.add(det)
 
     # --- aplicar descuento por zona sobre subtotal ---
@@ -2271,7 +2276,7 @@ def actualizar_cotizacion(cot_id: int):
             db.session.flush()
             print(f"[INFO] Nuevo concepto agregado (en actualización): {nombre}")
 
-        det = CotizacionDetalle(
+        det = CotizacionDetalle(**_safe_detalle_kwargs(
             cotizacion_id=c.id,
             concepto_id=concepto.id,
             nombre_concepto=nombre,
@@ -2287,7 +2292,7 @@ def actualizar_cotizacion(cot_id: int):
             apu_clave=apu_clave_val,
             apu_directo=apu_directo_val,
             apu_resumen_json=apu_resumen_val,
-        )
+        ))
         db.session.add(det)
 
     # === TOTALES ===
