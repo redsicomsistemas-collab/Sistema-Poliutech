@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div>
+      <h1 class="h3 mb-1">Obras y Presupuestos MAR Data</h1>
+      <div class="text-muted">Presupuesto por obra, capitulos, sobrecosto global y explosion consolidada.</div>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      <a class="btn btn-warning" href="{{ url_for('apu.obra_new') }}">Nueva obra</a>
+      <a class="btn btn-outline-primary" href="{{ url_for('apu.apu_new') }}">Nuevo APU</a>
+      <a class="btn btn-outline-secondary" href="{{ url_for('apu.index') }}">Panel</a>
+    </div>
+  </div>
+
+  <form class="row g-2 mb-3" method="get">
+    <div class="col-md-6">
+      <input class="form-control" name="q" value="{{ q or '' }}" placeholder="Buscar por clave, obra o cliente">
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-outline-primary" type="submit">Buscar</button>
+    </div>
+  </form>
+
+  <div class="card shadow-sm border-0 rounded-4">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              <th>Clave</th>
+              <th>Obra</th>
+              <th>Cliente</th>
+              <th>Partidas</th>
+              <th>Directo</th>
+              <th>Venta</th>
+              <th>Plazo</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in items %}
+            <tr>
+              <td>{{ item.clave or "-" }}</td>
+              <td>{{ item.nombre }}</td>
+              <td>{{ item.cliente or "-" }}</td>
+              <td>{{ item.partidas|length }}</td>
+              <td>${{ "{:,.2f}".format(item.subtotal_directo or 0) }}</td>
+              <td>${{ "{:,.2f}".format(item.total_venta or 0) }}</td>
+              <td>{{ item.plazo_dias or 0 }} dias</td>
+              <td class="text-end">
+                <div class="d-flex gap-2 justify-content-end">
+                  <a class="btn btn-sm btn-outline-primary" href="{{ url_for('apu.obra_edit', obra_id=item.id) }}">Abrir</a>
+                  <a class="btn btn-sm btn-outline-dark" href="{{ url_for('apu.obra_report', obra_id=item.id) }}">Reporte</a>
+                  <a class="btn btn-sm btn-outline-dark" href="{{ url_for('apu.obra_report_ejecutivo', obra_id=item.id) }}">Ejecutivo</a>
+                  <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('apu.obra_export_pdf', obra_id=item.id) }}">PDF</a>
+                  <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('apu.obra_export_xlsx', obra_id=item.id) }}">Excel</a>
+                  <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('apu.obra_export_csv', obra_id=item.id) }}">CSV</a>
+                  <form method="post" action="{{ url_for('apu.obra_to_cotizacion', obra_id=item.id) }}">
+                    <button class="btn btn-sm btn-outline-success" type="submit">Cotizar</button>
+                  </form>
+                  <form method="post" action="{{ url_for('apu.obra_delete', obra_id=item.id) }}" onsubmit="return confirm('¿Eliminar obra?');">
+                    <button class="btn btn-sm btn-outline-danger" type="submit">Eliminar</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" class="text-center py-4 text-muted">No hay obras registradas.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

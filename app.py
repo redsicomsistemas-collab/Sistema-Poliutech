@@ -499,6 +499,10 @@ def ensure_schema():
             ("concepto", "ALTER TABLE apu ADD COLUMN concepto VARCHAR(300)"),
             ("descripcion", "ALTER TABLE apu ADD COLUMN descripcion TEXT"),
             ("categoria", "ALTER TABLE apu ADD COLUMN categoria VARCHAR(120)"),
+            ("capitulo", "ALTER TABLE apu ADD COLUMN capitulo VARCHAR(120)"),
+            ("subcapitulo", "ALTER TABLE apu ADD COLUMN subcapitulo VARCHAR(120)"),
+            ("alcance", "ALTER TABLE apu ADD COLUMN alcance VARCHAR(300)"),
+            ("es_auxiliar", "ALTER TABLE apu ADD COLUMN es_auxiliar BOOLEAN DEFAULT 0"),
             ("unidad", "ALTER TABLE apu ADD COLUMN unidad VARCHAR(50) DEFAULT 'm2'"),
             ("cantidad_objetivo", "ALTER TABLE apu ADD COLUMN cantidad_objetivo FLOAT DEFAULT 1.0"),
             ("rendimiento_base", "ALTER TABLE apu ADD COLUMN rendimiento_base FLOAT DEFAULT 1.0"),
@@ -531,6 +535,20 @@ def ensure_schema():
         print("[WARN] ensure_schema(apu):", e)
 
     try:
+        obra_cols = _table_columns("apu_obra")
+        for col, stmt in [
+            ("programa_intervalo_dias", "ALTER TABLE apu_obra ADD COLUMN programa_intervalo_dias INTEGER DEFAULT 7"),
+            ("frentes", "ALTER TABLE apu_obra ADD COLUMN frentes FLOAT DEFAULT 1.0"),
+            ("indirecto_campo_pct", "ALTER TABLE apu_obra ADD COLUMN indirecto_campo_pct FLOAT DEFAULT 0.0"),
+            ("indirecto_oficina_pct", "ALTER TABLE apu_obra ADD COLUMN indirecto_oficina_pct FLOAT DEFAULT 0.0"),
+        ]:
+            if col not in obra_cols:
+                db.session.execute(text(stmt))
+        db.session.commit()
+    except Exception as e:
+        print("[WARN] ensure_schema(apu_obra):", e)
+
+    try:
         apu_det_cols = _table_columns("apu_detalle")
         for col, stmt in [
             ("tipo_insumo", "ALTER TABLE apu_detalle ADD COLUMN tipo_insumo VARCHAR(20) DEFAULT 'material'"),
@@ -547,6 +565,7 @@ def ensure_schema():
             ("comentario", "ALTER TABLE apu_detalle ADD COLUMN comentario VARCHAR(500)"),
             ("precio_unitario", "ALTER TABLE apu_detalle ADD COLUMN precio_unitario FLOAT DEFAULT 0.0"),
             ("subtotal", "ALTER TABLE apu_detalle ADD COLUMN subtotal FLOAT DEFAULT 0.0"),
+            ("auxiliar_apu_id", "ALTER TABLE apu_detalle ADD COLUMN auxiliar_apu_id INTEGER"),
         ]:
             if col not in apu_det_cols:
                 db.session.execute(text(stmt))
@@ -2196,7 +2215,11 @@ def actualizar_cotizacion(cot_id: int):
 
     cliente = None
     if cliente_nombre:
-        cliente = Cliente.query.filter_by(nombre_cliente=cliente_nombre).first()
+        cliente = None
+        if c.cliente and (c.cliente.nombre_cliente or "").strip().lower() == cliente_nombre.lower():
+            cliente = c.cliente
+        else:
+            cliente = Cliente.query.filter_by(nombre_cliente=cliente_nombre).first()
         if cliente and not is_admin():
             require_cliente_owner_or_admin(cliente)
 

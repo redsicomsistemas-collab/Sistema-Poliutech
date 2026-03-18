@@ -87,6 +87,7 @@ class CotizacionDetalle(db.Model):
     unidad = db.Column(db.String(50))
     cantidad = db.Column(db.Float, default=1)
     precio_unitario = db.Column(db.Float, default=0)
+    capitulo = db.Column(db.String(120))
     sistema = db.Column(db.String(200))
     descripcion = db.Column(db.String(1000))
     subtotal = db.Column(db.Float, default=0)

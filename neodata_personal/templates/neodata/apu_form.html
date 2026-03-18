@@ -85,7 +85,7 @@
         <h1 class="h3 mb-2">{{ apu.concepto if apu and apu.concepto else title }}</h1>
         <div class="opacity-75">
           {% if apu and apu.clave %}{{ apu.clave }} · {% endif %}
-          {{ apu.categoria or "Sin categoria" if apu else "Nueva partida" }} · {{ apu.unidad if apu else "m2" }}
+          {% if apu %}{{ apu.capitulo or apu.categoria or "Sin categoria" }} · {{ apu.unidad }}{% else %}Nueva partida · m2{% endif %}
         </div>
       </div>
       <div class="mar-actions">
@@ -122,10 +122,20 @@
         <form method="post">
           <div class="mar-field-grid">
             <div><label>Clave</label><input name="clave" value="{{ apu.clave if apu else '' }}"></div>
+            <div><label>Capitulo</label><input name="capitulo" value="{{ apu.capitulo if apu else '' }}"></div>
+            <div><label>Subcapitulo</label><input name="subcapitulo" value="{{ apu.subcapitulo if apu else '' }}"></div>
             <div><label>Categoria</label><input name="categoria" value="{{ apu.categoria if apu else '' }}"></div>
             <div><label>Unidad</label><input name="unidad" value="{{ apu.unidad if apu else 'm2' }}"></div>
             <div><label>Cantidad objetivo</label><input name="cantidad_objetivo" type="number" step="0.0001" value="{{ apu.cantidad_objetivo if apu else 1 }}"></div>
-            <div style="grid-column: span 4;"><label>Concepto</label><input name="concepto" required value="{{ apu.concepto if apu else '' }}"></div>
+            <div style="grid-column: span 3;"><label>Concepto</label><input name="concepto" required value="{{ apu.concepto if apu else '' }}"></div>
+            <div>
+              <label>Tipo de matriz</label>
+              <select name="es_auxiliar">
+                <option value="0" {% if not apu or not apu.es_auxiliar %}selected{% endif %}>Partida</option>
+                <option value="1" {% if apu and apu.es_auxiliar %}selected{% endif %}>Auxiliar reusable</option>
+              </select>
+            </div>
+            <div style="grid-column: span 4;"><label>Alcance</label><input name="alcance" value="{{ apu.alcance if apu else '' }}"></div>
             <div style="grid-column: span 4;"><label>Descripcion tecnica</label><textarea name="descripcion">{{ apu.descripcion if apu else '' }}</textarea></div>
           </div>
 

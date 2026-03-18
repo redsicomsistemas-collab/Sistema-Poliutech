@@ -51,6 +51,10 @@ class APU(db.Model):
     desperdicio_general_pct = db.Column(db.Float, nullable=False, default=0.0)
     herramienta_menor_pct = db.Column(db.Float, nullable=False, default=0.0)
     notas = db.Column(db.Text)
+    es_auxiliar = db.Column(db.Boolean, nullable=False, default=False)
+    capitulo = db.Column(db.String(120))
+    subcapitulo = db.Column(db.String(120))
+    alcance = db.Column(db.String(300))
 
     indirecto_pct = db.Column(db.Float, nullable=False, default=0.0)
     utilidad_pct = db.Column(db.Float, nullable=False, default=0.0)
@@ -100,3 +104,66 @@ class APUDetalle(db.Model):
     comentario = db.Column(db.String(500))
     precio_unitario = db.Column(db.Float, nullable=False, default=0.0)
     subtotal = db.Column(db.Float, nullable=False, default=0.0)
+    auxiliar_apu_id = db.Column(db.Integer, db.ForeignKey("apu.id"))
+
+    auxiliar = db.relationship("APU", foreign_keys=[auxiliar_apu_id])
+
+
+class Obra(db.Model):
+    __tablename__ = "apu_obra"
+
+    id = db.Column(db.Integer, primary_key=True)
+    clave = db.Column(db.String(60), unique=True)
+    nombre = db.Column(db.String(220), nullable=False)
+    cliente = db.Column(db.String(160))
+    descripcion = db.Column(db.Text)
+    ubicacion = db.Column(db.String(220))
+    unidad_venta = db.Column(db.String(50), nullable=False, default="obra")
+    fecha_inicio = db.Column(db.DateTime)
+    fecha_fin = db.Column(db.DateTime)
+    plazo_dias = db.Column(db.Integer, default=0)
+    programa_intervalo_dias = db.Column(db.Integer, default=7)
+    frentes = db.Column(db.Float, nullable=False, default=1.0)
+    indirecto_pct = db.Column(db.Float, nullable=False, default=0.0)
+    indirecto_campo_pct = db.Column(db.Float, nullable=False, default=0.0)
+    indirecto_oficina_pct = db.Column(db.Float, nullable=False, default=0.0)
+    financiamiento_pct = db.Column(db.Float, nullable=False, default=0.0)
+    utilidad_pct = db.Column(db.Float, nullable=False, default=0.0)
+    cargos_adicionales_pct = db.Column(db.Float, nullable=False, default=0.0)
+    subtotal_directo = db.Column(db.Float, nullable=False, default=0.0)
+    indirecto_monto = db.Column(db.Float, nullable=False, default=0.0)
+    financiamiento_monto = db.Column(db.Float, nullable=False, default=0.0)
+    utilidad_monto = db.Column(db.Float, nullable=False, default=0.0)
+    cargos_adicionales_monto = db.Column(db.Float, nullable=False, default=0.0)
+    total_venta = db.Column(db.Float, nullable=False, default=0.0)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    partidas = db.relationship(
+        "ObraPartida",
+        backref="obra",
+        cascade="all, delete-orphan",
+        order_by="ObraPartida.orden.asc(), ObraPartida.id.asc()",
+    )
+
+
+class ObraPartida(db.Model):
+    __tablename__ = "apu_obra_partida"
+
+    id = db.Column(db.Integer, primary_key=True)
+    obra_id = db.Column(db.Integer, db.ForeignKey("apu_obra.id"), nullable=False)
+    apu_id = db.Column(db.Integer, db.ForeignKey("apu.id"), nullable=False)
+    orden = db.Column(db.Integer, nullable=False, default=0)
+    capitulo = db.Column(db.String(120))
+    subcapitulo = db.Column(db.String(120))
+    clave = db.Column(db.String(60))
+    concepto = db.Column(db.String(300))
+    unidad = db.Column(db.String(50), nullable=False, default="m2")
+    cantidad = db.Column(db.Float, nullable=False, default=1.0)
+    rendimiento = db.Column(db.Float, nullable=False, default=0.0)
+    precio_unitario = db.Column(db.Float, nullable=False, default=0.0)
+    importe_directo = db.Column(db.Float, nullable=False, default=0.0)
+    importe_venta = db.Column(db.Float, nullable=False, default=0.0)
+    comentario = db.Column(db.String(500))
+
+    apu = db.relationship("APU", foreign_keys=[apu_id])

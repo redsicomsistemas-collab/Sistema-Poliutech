@@ -8,6 +8,7 @@
     </div>
     <div class="d-flex gap-2 flex-wrap">
       <a class="btn btn-primary" href="{{ url_for('apu.apu_new') }}">Nuevo APU</a>
+      <a class="btn btn-warning" href="{{ url_for('apu.obra_new') }}">Nueva obra</a>
       <a class="btn btn-outline-secondary" href="{{ url_for('apu.index') }}">Panel</a>
     </div>
   </div>
@@ -29,7 +30,9 @@
             <tr>
               <th>ID</th>
               <th>Clave</th>
+              <th>Tipo</th>
               <th>Concepto</th>
+              <th>Capitulo</th>
               <th>Categoria</th>
               <th>Unidad</th>
               <th>Directo</th>
@@ -43,7 +46,9 @@
             <tr>
               <td>{{ item.id }}</td>
               <td>{{ item.clave or '-' }}</td>
+              <td>{% if item.es_auxiliar %}<span class="badge text-bg-warning">Auxiliar</span>{% else %}<span class="badge text-bg-primary">Partida</span>{% endif %}</td>
               <td>{{ item.concepto }}</td>
+              <td>{{ item.capitulo or '-' }}</td>
               <td>{{ item.categoria or '-' }}</td>
               <td>{{ item.unidad }}</td>
               <td>${{ "{:,.2f}".format(item.costo_directo or 0) }}</td>
@@ -64,7 +69,7 @@
             </tr>
             {% else %}
             <tr>
-              <td colspan="9" class="text-center py-4 text-muted">No hay resultados.</td>
+              <td colspan="11" class="text-center py-4 text-muted">No hay resultados.</td>
             </tr>
             {% endfor %}
           </tbody>
