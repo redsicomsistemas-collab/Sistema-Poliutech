@@ -1129,6 +1129,24 @@ def obra_cargo_delete(cargo_id):
     return redirect(url_for("apu.obra_edit", obra_id=obra_id))
 
 
+@apu_bp.route("/obras/cargos/<int:cargo_id>/actualizar", methods=["POST"])
+@login_required
+def obra_cargo_update(cargo_id):
+    cargo = ObraCargo.query.get_or_404(cargo_id)
+    obra = Obra.query.get_or_404(cargo.obra_id)
+    cargo.nombre = (request.form.get("nombre") or cargo.nombre).strip() or cargo.nombre
+    cargo.categoria = _s(request.form.get("categoria"))
+    cargo.incidencia = (request.form.get("incidencia") or cargo.incidencia).strip() or cargo.incidencia
+    cargo.unidad = (request.form.get("unidad") or cargo.unidad).strip() or cargo.unidad
+    cargo.cantidad = _f(request.form.get("cantidad"), cargo.cantidad)
+    cargo.precio_unitario = _f(request.form.get("precio_unitario"), cargo.precio_unitario)
+    cargo.comentario = _s(request.form.get("comentario"))
+    recalcular_obra(obra)
+    db.session.commit()
+    flash("Cargo global actualizado.", "success")
+    return redirect(url_for("apu.obra_edit", obra_id=obra.id))
+
+
 @apu_bp.route("/obras/<int:obra_id>/cargos/actualizar", methods=["POST"])
 @login_required
 def obra_cargos_update(obra_id):
