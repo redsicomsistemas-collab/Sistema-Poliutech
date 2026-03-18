@@ -3036,13 +3036,14 @@ def export_cotizacion_pdf(cot_id: int):
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
-        leftMargin=20*mm, rightMargin=20*mm,
-        topMargin=46*mm, bottomMargin=38*mm
+        leftMargin=10*mm, rightMargin=10*mm,
+        topMargin=34*mm, bottomMargin=38*mm
     )
     styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name="Encabezado", fontSize=9, leading=12, spaceAfter=4))
-    styles.add(ParagraphStyle(name="NormalRight", fontSize=9, alignment=2))
-    styles.add(ParagraphStyle(name="NormalCenter", fontSize=9, alignment=1))
+    styles.add(ParagraphStyle(name="Encabezado", fontName="Helvetica", fontSize=9, leading=12, spaceAfter=4, splitLongWords=False))
+    styles.add(ParagraphStyle(name="NormalCell", fontName="Helvetica", fontSize=8, leading=10, splitLongWords=False))
+    styles.add(ParagraphStyle(name="NormalRight", fontName="Helvetica", fontSize=8, leading=10, alignment=2, splitLongWords=False))
+    styles.add(ParagraphStyle(name="NormalCenter", fontName="Helvetica", fontSize=8, leading=10, alignment=1, splitLongWords=False))
 
     elems = []
 
@@ -3056,21 +3057,21 @@ def export_cotizacion_pdf(cot_id: int):
             try:
                 img = ImageReader(logo_path)
                 iw, ih = img.getSize()
-                max_w = 50 * mm
+                max_w = 25 * mm
                 scale = max_w / iw
                 w = max_w
                 h = ih * scale
-                x_logo = 25
-                y_logo = A4[1] - h - 15
+                x_logo = 12
+                y_logo = A4[1] - h - 8
                 canv.drawImage(img, x_logo, y_logo, width=w, height=h, mask="auto")
             except Exception:
                 pass
 
         canv.setFont("Helvetica-Bold", 14)
         canv.setFillColor(colors.white)
-        canv.drawRightString(A4[0]-25, A4[1]-20, "COTIZACIÓN POLIUTECH")
+        canv.drawRightString(A4[0]-12, A4[1]-18, "COTIZACIÓN POLIUTECH")
         canv.setFont("Helvetica", 10)
-        canv.drawRightString(A4[0]-25, A4[1]-33, "Recubrimientos Especializados")
+        canv.drawRightString(A4[0]-12, A4[1]-31, "Recubrimientos Especializados")
         canv.restoreState()
 
     def footer(canv, doc_):
@@ -3130,11 +3131,11 @@ def export_cotizacion_pdf(cot_id: int):
             Paragraph(f"<b>Correo:</b> {cliente_correo}", styles["Encabezado"]),
         ],
         [
-            Paragraph(f"<b>Tel?fono:</b> {cliente_telefono}", styles["Encabezado"]),
+            Paragraph(f"<b>Teléfono:</b> {cliente_telefono}", styles["Encabezado"]),
             Paragraph("", styles["Encabezado"]),
         ],
     ]
-    meta_tbl = Table(meta_data, colWidths=[85*mm, 85*mm], hAlign="LEFT")
+    meta_tbl = Table(meta_data, colWidths=[95*mm, 95*mm], hAlign="LEFT")
     meta_tbl.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
@@ -3150,7 +3151,7 @@ def export_cotizacion_pdf(cot_id: int):
     for d in c.detalles:
         data.append([
             Paragraph(_truncate_pdf_text(getattr(d, "capitulo", "") or "-", 28), styles["NormalCenter"]),
-            Paragraph(_truncate_pdf_text(d.nombre_concepto or "-", 120), styles["Normal"]),
+            Paragraph(_truncate_pdf_text(d.nombre_concepto or "-", 120), styles["NormalCell"]),
             Paragraph(d.unidad or "-", styles["NormalCenter"]),
             Paragraph(f"{(d.cantidad or 0):.2f}", styles["NormalCenter"]),
             Paragraph(_truncate_pdf_text(d.sistema or "-", 40), styles["NormalCenter"]),
@@ -3160,7 +3161,7 @@ def export_cotizacion_pdf(cot_id: int):
 
     tbl = Table(
         data,
-        colWidths=[22*mm, 55*mm, 12*mm, 16*mm, 22*mm, 19*mm, 19*mm],
+        colWidths=[20*mm, 72*mm, 12*mm, 16*mm, 26*mm, 22*mm, 22*mm],
         repeatRows=1,
         hAlign="CENTER"
     )
@@ -3171,9 +3172,12 @@ def export_cotizacion_pdf(cot_id: int):
         ("ALIGN", (0, 1), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("FONTSIZE", (0, 0), (-1, -1), 7.5),
         ("WORDWRAP", (0, 0), (-1, -1), True),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]))
 
     elems.append(tbl)
