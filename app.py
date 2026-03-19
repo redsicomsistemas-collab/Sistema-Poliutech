@@ -3206,7 +3206,7 @@ def export_cotizacion_pdf(cot_id: int):
     for d in c.detalles:
         data.append([
             Paragraph(_truncate_pdf_text(getattr(d, "capitulo", "") or "-", 28), styles["NormalCenter"]),
-            Paragraph(_truncate_pdf_text(d.nombre_concepto or "-", 120), styles["NormalCell"]),
+            Paragraph((d.nombre_concepto or "-").strip(), styles["NormalCell"]),
             Paragraph(d.unidad or "-", styles["NormalCenter"]),
             Paragraph(f"{(d.cantidad or 0):.2f}", styles["NormalCenter"]),
             Paragraph(_truncate_pdf_text(d.sistema or "-", 40), styles["NormalCenter"]),
@@ -3216,7 +3216,7 @@ def export_cotizacion_pdf(cot_id: int):
 
     tbl = Table(
         data,
-        colWidths=[20*mm, 72*mm, 12*mm, 16*mm, 26*mm, 22*mm, 22*mm],
+        colWidths=[18*mm, 78*mm, 10*mm, 16*mm, 24*mm, 22*mm, 22*mm],
         repeatRows=1,
         hAlign="CENTER"
     )
@@ -3225,7 +3225,8 @@ def export_cotizacion_pdf(cot_id: int):
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("ALIGN", (0, 1), (-1, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (1, 1), (1, -1), "LEFT"),
         ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
         ("FONTSIZE", (0, 0), (-1, -1), 7.5),
         ("WORDWRAP", (0, 0), (-1, -1), True),
