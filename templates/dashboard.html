@@ -139,10 +139,9 @@
           <label class="form-label small fw-bold text-secondary mb-1">Estatus</label>
           <select id="filtro-estatus" class="form-select form-select-sm">
             <option value="">Todos</option>
-            <option value="PENDIENTE">PENDIENTE</option>
-            <option value="ENVIADA">ENVIADA</option>
-            <option value="GANADA">GANADA</option>
-            <option value="PERDIDA">PERDIDA</option>
+            {% for estado in valid_estatus %}
+            <option value="{{ estado }}">{{ estado }}</option>
+            {% endfor %}
           </select>
         </div>
         <div class="col-md-2 col-6">
@@ -217,7 +216,7 @@
               <td>${{ "{:,.2f}".format(c.total) }}</td>
               <td>
                 <select class="status-select" onchange="cambiarEstatus({{ c.id }}, this)">
-                  {% for estado in ['PENDIENTE','ENVIADA','GANADA','PERDIDA'] %}
+                  {% for estado in valid_estatus %}
                     <option value="{{ estado }}" {% if c.estatus == estado %}selected{% endif %}>{{ estado }}</option>
                   {% endfor %}
                 </select>
@@ -267,7 +266,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const importeSummaryEls = document.querySelectorAll('[data-summary="importe-total"]');
   const cotizacionesSummaryEls = document.querySelectorAll('[data-summary="cotizaciones-total"]');
   const conceptosSummaryEls = document.querySelectorAll('[data-summary="conceptos-total"]');
-  const chartColors = ["#2196f3", "#ffeb3b", "#4caf50", "#f44336"];
+  const statuses = {{ valid_estatus|tojson }};
+  const chartColors = ["#1565c0", "#f9a825", "#00897b", "#6d4c41", "#546e7a", "#2e7d32", "#c62828"];
   let chartImporteInstance = null;
   let chartCantidadInstance = null;
   let chartEstatusInstance = null;
@@ -321,7 +321,6 @@ document.addEventListener("DOMContentLoaded", () => {
   function renderFilteredCharts() {
     const visibleRows = getVisibleRows();
     const monthly = new Map();
-    const statuses = ["ENVIADA", "PENDIENTE", "GANADA", "PERDIDA"];
     const statusCounts = Object.fromEntries(statuses.map((status) => [status, 0]));
 
     visibleRows.forEach((tr) => {

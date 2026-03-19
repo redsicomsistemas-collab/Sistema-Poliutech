@@ -105,10 +105,9 @@
           <div class="col-md-6">
             <label class="form-label fw-bold">Estatus actual</label>
             <select class="form-select" name="estatus">
-              <option value="PENDIENTE" {% if c.estatus == 'PENDIENTE' %}selected{% endif %}>PENDIENTE</option>
-              <option value="ENVIADA" {% if c.estatus == 'ENVIADA' %}selected{% endif %}>ENVIADA</option>
-              <option value="GANADA" {% if c.estatus == 'GANADA' %}selected{% endif %}>GANADA</option>
-              <option value="PERDIDA" {% if c.estatus == 'PERDIDA' %}selected{% endif %}>PERDIDA</option>
+              {% for estado in ['ENVIADA', 'PENDIENTE', 'EN CURSO', 'O. TERMINADA', 'FINALIZADA', 'GANADA', 'PERDIDA'] %}
+              <option value="{{ estado }}" {% if c.estatus == estado %}selected{% endif %}>{{ estado }}</option>
+              {% endfor %}
             </select>
           </div>
           <div class="col-md-12 mt-3">
