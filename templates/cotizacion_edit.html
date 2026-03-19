@@ -51,11 +51,11 @@
         <h5 class="fw-bold text-primary mt-4 mb-3">Renglones de cotización</h5>
         <div id="items">
           {% for d in c.detalles %}
-          <div class="row g-2 align-items-end mb-2 border-bottom pb-2 item-edit-row">
+          <div class="row g-2 align-items-start mb-2 border-bottom pb-2 item-edit-row">
             <div class="col-md-2"><label class="form-label">Capítulo</label><input type="text" name="item_capitulo[]" class="form-control item-edit-capitulo" value="{{ d.capitulo or '' }}"></div>
             <div class="col-md-2">
               <label class="form-label">Concepto</label>
-              <input type="text" name="item_nombre_concepto[]" class="form-control item-edit-nombre" value="{{ d.nombre_concepto }}">
+              <textarea name="item_nombre_concepto[]" class="form-control item-edit-nombre quote-textarea" rows="3">{{ d.nombre_concepto }}</textarea>
               <input type="hidden" name="item_origen[]" value="{{ d.origen or '' }}">
               <input type="hidden" name="item_apu_id[]" value="{{ d.apu_id or '' }}">
               <input type="hidden" name="item_apu_clave[]" value="{{ d.apu_clave or '' }}">
@@ -67,7 +67,7 @@
             <div class="col-md-1"><label class="form-label">Cantidad</label><input type="number" step="any" name="item_cantidad[]" class="form-control item-edit-cantidad" value="{{ d.cantidad }}"></div>
             <div class="col-md-2"><label class="form-label">Precio unitario</label><input type="number" step="any" name="item_precio[]" class="form-control item-edit-precio" value="{{ d.precio_unitario }}"></div>
             <div class="col-md-2"><label class="form-label">Sistema</label><input type="text" name="item_sistema[]" class="form-control item-edit-sistema" value="{{ d.sistema }}"></div>
-            <div class="col-md-1"><label class="form-label">Descripción</label><input type="text" name="item_descripcion[]" class="form-control item-edit-descripcion" value="{{ d.descripcion }}"></div>
+            <div class="col-md-1"><label class="form-label">Descripción</label><textarea name="item_descripcion[]" class="form-control item-edit-descripcion quote-textarea" rows="3">{{ d.descripcion }}</textarea></div>
             <div class="col-md-1 text-end"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.item-edit-row').remove()">🗑</button></div>
           </div>
           {% endfor %}
@@ -129,10 +129,10 @@
 <script>
 function agregarRenglon() {
   const html = `
-  <div class="row g-2 align-items-end mb-2 border-bottom pb-2 item-edit-row">
+  <div class="row g-2 align-items-start mb-2 border-bottom pb-2 item-edit-row">
     <div class="col-md-2"><input type="text" name="item_capitulo[]" class="form-control item-edit-capitulo" placeholder="Capítulo"></div>
     <div class="col-md-2">
-      <input type="text" name="item_nombre_concepto[]" class="form-control item-edit-nombre" placeholder="Concepto">
+      <textarea name="item_nombre_concepto[]" class="form-control item-edit-nombre quote-textarea" rows="3" placeholder="Concepto"></textarea>
       <input type="hidden" name="item_origen[]" value="">
       <input type="hidden" name="item_apu_id[]" value="">
       <input type="hidden" name="item_apu_clave[]" value="">
@@ -144,7 +144,7 @@ function agregarRenglon() {
     <div class="col-md-1"><input type="number" step="any" name="item_cantidad[]" class="form-control item-edit-cantidad" placeholder="Cant."></div>
     <div class="col-md-2"><input type="number" step="any" name="item_precio[]" class="form-control item-edit-precio" placeholder="Precio"></div>
     <div class="col-md-2"><input type="text" name="item_sistema[]" class="form-control item-edit-sistema" placeholder="Sistema"></div>
-    <div class="col-md-1"><input type="text" name="item_descripcion[]" class="form-control item-edit-descripcion" placeholder="Descripción"></div>
+    <div class="col-md-1"><textarea name="item_descripcion[]" class="form-control item-edit-descripcion quote-textarea" rows="3" placeholder="Descripción"></textarea></div>
     <div class="col-md-1 text-end"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.item-edit-row').remove()">🗑</button></div>
   </div>`;
   document.getElementById('items').insertAdjacentHTML('beforeend', html);

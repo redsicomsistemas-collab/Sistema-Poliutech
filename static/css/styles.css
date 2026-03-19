@@ -201,3 +201,29 @@ canvas {
   background-color: #ffffff !important;
 }
 
+/* Campos de conceptos: permitir texto completo sin truncado visual */
+.quote-items-table th,
+.quote-items-table td {
+  white-space: normal !important;
+}
+
+.quote-items-table .item-concept-col {
+  min-width: 24rem;
+}
+
+.quote-items-table .item-desc-col {
+  min-width: 16rem;
+}
+
+.quote-textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.quote-concept-display {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-align: left;
+}

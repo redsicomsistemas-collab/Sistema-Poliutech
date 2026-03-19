@@ -50,7 +50,7 @@
       <div class="border rounded p-3 mb-4">
         <h6 class="fw-bold text-primary mb-3">Conceptos</h6>
         <div class="table-responsive">
-          <table class="table table-sm align-middle">
+          <table class="table table-sm align-middle quote-items-table">
             <thead class="table-light">
               <tr>
                 <th>Capítulo</th>
@@ -77,11 +77,11 @@
                 <td>{{ d.cantidad }}</td>
                 <td>{{ d.unidad }}</td>
                 <td>
-                  <div>{{ d.nombre_concepto }}</div>
+                  <div class="quote-concept-display">{{ d.nombre_concepto }}</div>
                   {% if d.origen == 'APU' %}
-                  <div class="small text-muted">APU {{ d.apu_clave or d.apu_id or 'MAR DATA' }} · Directo base ${{ "%.2f"|format(d.apu_directo or 0) }}</div>
+                  <div class="small text-muted quote-concept-display">APU {{ d.apu_clave or d.apu_id or 'MAR DATA' }} · Directo base ${{ "%.2f"|format(d.apu_directo or 0) }}</div>
                   {% elif d.descripcion %}
-                  <div class="small text-muted">{{ d.descripcion }}</div>
+                  <div class="small text-muted quote-concept-display">{{ d.descripcion }}</div>
                   {% endif %}
                 </td>
                 <td class="text-center">{% if d.origen == 'APU' %}<span class="badge bg-dark">MAR DATA</span>{% else %}{{ d.sistema or '-' }}{% endif %}</td>

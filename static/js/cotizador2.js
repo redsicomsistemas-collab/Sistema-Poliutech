@@ -11,7 +11,7 @@ function rowTemplate(){
     <tr>
       <td><input type="text" class="form-control form-control-sm item-capitulo" name="item_capitulo[]" placeholder="Capítulo"></td>
       <td class="position-relative">
-        <input type="text" class="form-control form-control-sm item-nombre" name="item_nombre_concepto[]" placeholder="Escribe para buscar..." autocomplete="off">
+        <textarea class="form-control form-control-sm item-nombre quote-textarea" name="item_nombre_concepto[]" rows="3" placeholder="Escribe para buscar..." autocomplete="off"></textarea>
         <input type="hidden" name="item_origen[]" value="">
         <input type="hidden" name="item_apu_id[]" value="">
         <input type="hidden" name="item_apu_clave[]" value="">
@@ -25,7 +25,7 @@ function rowTemplate(){
       <td><input type="number" step="0.01" class="form-control form-control-sm item-precio" name="item_precio[]" value="0"></td>
       <td><input type="text" class="form-control form-control-sm item-sistema" name="item_sistema[]" placeholder="Sistema"></td>
       <td class="text-end"><span class="item-subtotal">$0.00</span></td>
-      <td><input type="text" class="form-control form-control-sm" name="item_descripcion[]"></td>
+      <td><textarea class="form-control form-control-sm quote-textarea" name="item_descripcion[]" rows="2"></textarea></td>
       <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger btn-del">×</button></td>
     </tr>
   `;
