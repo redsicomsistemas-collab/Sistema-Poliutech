@@ -22,6 +22,15 @@ from html import escape
 # Ya no se agregan condiciones por defecto. Solo se exporta lo capturado
 # por el usuario y, cuando aplique, la trazabilidad de la zona.
 DEFAULT_CONDICIONES: list[str] = []
+VALID_ESTATUS = [
+    "ENVIADA",
+    "PENDIENTE",
+    "EN CURSO",
+    "O. TERMINADA",
+    "FINALIZADA",
+    "GANADA",
+    "PERDIDA",
+]
 
 
 
@@ -1839,6 +1848,7 @@ def index():
         total_importe=float(total_importe),
         total_catalogo=total_catalogo,
         cotizaciones=cotizaciones,
+        valid_estatus=VALID_ESTATUS,
         show_splash=True
     )
 
@@ -2587,7 +2597,7 @@ def api_update_estatus(cot_id):
     else:
         nuevo = (request.form.get("estatus") or "").upper().strip()
 
-    if nuevo not in ["PENDIENTE", "ENVIADA", "GANADA", "PERDIDA"]:
+    if nuevo not in VALID_ESTATUS:
         return jsonify({"ok": False, "error": "Estatus inválido"}), 400
 
     anterior = c.estatus
@@ -3410,7 +3420,7 @@ def api_dashboard_status_breakdown():
         q = q.filter(Cotizacion.responsable == responsable_actual())
 
     rows = q.group_by(Cotizacion.estatus).all()
-    categorias = ["ENVIADA", "PENDIENTE", "GANADA", "PERDIDA"]
+    categorias = VALID_ESTATUS
     conteos_map = {estatus: cnt for estatus, cnt in rows}
     conteos = [int(conteos_map.get(cat, 0)) for cat in categorias]
     total = sum(conteos)
