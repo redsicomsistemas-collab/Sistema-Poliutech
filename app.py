@@ -3209,7 +3209,7 @@ def export_cotizacion_pdf(cot_id: int):
             Paragraph((d.nombre_concepto or "-").strip(), styles["NormalCell"]),
             Paragraph(d.unidad or "-", styles["NormalCenter"]),
             Paragraph(f"{(d.cantidad or 0):.2f}", styles["NormalCenter"]),
-            Paragraph(_truncate_pdf_text(d.sistema or "-", 40), styles["NormalCenter"]),
+            Paragraph((d.sistema or "-").strip(), styles["NormalCell"]),
             Paragraph(money(d.precio_unitario), styles["NormalRight"]),
             Paragraph(money(d.subtotal), styles["NormalRight"]),
         ])
@@ -3227,6 +3227,7 @@ def export_cotizacion_pdf(cot_id: int):
         ("ALIGN", (0, 1), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("ALIGN", (1, 1), (1, -1), "LEFT"),
+        ("ALIGN", (4, 1), (4, -1), "LEFT"),
         ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
         ("FONTSIZE", (0, 0), (-1, -1), 7.5),
         ("WORDWRAP", (0, 0), (-1, -1), True),
