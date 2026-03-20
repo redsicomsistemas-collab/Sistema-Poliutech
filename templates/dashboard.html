@@ -4,7 +4,6 @@
 <style>
   .dashboard-quotes-card {
     width: 100%;
-    overflow: hidden;
   }
 
   .dashboard-filters .filter-actions {
@@ -32,7 +31,6 @@
 
   .dashboard-quotes-table {
     width: 100%;
-    min-width: 1080px;
   }
 
   .dashboard-quotes-table th,
@@ -42,14 +40,28 @@
 
   .dashboard-quotes-table .cell-cliente,
   .dashboard-quotes-table .cell-empresa {
-    min-width: 16rem;
+    min-width: 12rem;
     white-space: normal !important;
     overflow-wrap: anywhere;
     text-align: left;
   }
 
+  .dashboard-quotes-table .cell-estatus {
+    min-width: 9rem;
+  }
+
+  .dashboard-quotes-table .cell-estatus .status-select {
+    width: 100%;
+    min-width: 0;
+  }
+
   .dashboard-quotes-table .cell-acciones {
-    white-space: nowrap !important;
+    min-width: 10rem;
+    white-space: normal !important;
+  }
+
+  .dashboard-quotes-table .cell-acciones .btn {
+    margin: 0.125rem;
   }
 
   @media (max-width: 991.98px) {
@@ -286,7 +298,7 @@
               <td class="cell-cliente">{{ c.cliente.nombre_cliente if c.cliente else '' }}</td>
               <td class="cell-empresa">{{ c.cliente.empresa if c.cliente else '' }}</td>
               <td>${{ "{:,.2f}".format(c.total) }}</td>
-              <td>
+              <td class="cell-estatus">
                 <select class="status-select" onchange="cambiarEstatus({{ c.id }}, this)">
                   {% for estado in valid_estatus %}
                     <option value="{{ estado }}" {% if c.estatus == estado %}selected{% endif %}>{{ estado }}</option>
