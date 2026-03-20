@@ -329,6 +329,34 @@
           </tbody>
         </table>
       </div>
+      {% if pagination and pagination.pages > 1 %}
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mt-3">
+        <div class="text-muted small">
+          Mostrando {{ ((pagination.page - 1) * pagination.per_page) + 1 }} -
+          {{ ((pagination.page - 1) * pagination.per_page) + (cotizaciones|length) }}
+          de {{ pagination.total }} cotizaciones
+        </div>
+        <nav aria-label="Paginacion de cotizaciones">
+          <ul class="pagination pagination-sm mb-0">
+            <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+              <a class="page-link" href="{{ url_for('index', page=pagination.prev_num) if pagination.has_prev else '#' }}">Anterior</a>
+            </li>
+            {% for p in pagination.iter_pages(left_edge=1, left_current=1, right_current=2, right_edge=1) %}
+              {% if p %}
+              <li class="page-item {% if p == pagination.page %}active{% endif %}">
+                <a class="page-link" href="{{ url_for('index', page=p) }}">{{ p }}</a>
+              </li>
+              {% else %}
+              <li class="page-item disabled"><span class="page-link">...</span></li>
+              {% endif %}
+            {% endfor %}
+            <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+              <a class="page-link" href="{{ url_for('index', page=pagination.next_num) if pagination.has_next else '#' }}">Siguiente</a>
+            </li>
+          </ul>
+        </nav>
+      </div>
+      {% endif %}
     </div>
   </div>
 </div>

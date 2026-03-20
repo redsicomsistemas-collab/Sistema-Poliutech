@@ -1825,19 +1825,28 @@ def logout():
 @app.route("/")
 @login_required
 def index():
+    page = request.args.get("page", 1, type=int)
+    per_page = 20
+
     # ADMIN: ve todo
     # USER: ve SOLO lo suyo por responsable
     if is_admin():
-        total_cotizaciones = Cotizacion.query.count()
+        quotes_query = Cotizacion.query.order_by(Cotizacion.fecha.desc())
+        total_cotizaciones = quotes_query.count()
         total_importe = db.session.query(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar() or 0
-        cotizaciones = Cotizacion.query.order_by(Cotizacion.fecha.desc()).limit(100).all()
     else:
         ra = responsable_actual()
-        total_cotizaciones = Cotizacion.query.filter_by(responsable=ra).count()
+        quotes_query = (
+            Cotizacion.query
+            .filter_by(responsable=ra)
+            .order_by(Cotizacion.fecha.desc())
+        )
+        total_cotizaciones = quotes_query.count()
         total_importe = (db.session.query(db.func.coalesce(db.func.sum(Cotizacion.total), 0))
                          .filter(Cotizacion.responsable == ra).scalar() or 0)
-        cotizaciones = (Cotizacion.query.filter_by(responsable=ra)
-                        .order_by(Cotizacion.fecha.desc()).limit(100).all())
+
+    pagination = quotes_query.paginate(page=page, per_page=per_page, error_out=False)
+    cotizaciones = pagination.items
 
     total_catalogo = Concepto.query.count()
 
@@ -1848,6 +1857,7 @@ def index():
         total_importe=float(total_importe),
         total_catalogo=total_catalogo,
         cotizaciones=cotizaciones,
+        pagination=pagination,
         valid_estatus=VALID_ESTATUS,
         show_splash=True
     )
