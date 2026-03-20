@@ -21,26 +21,28 @@
                 <th style="min-width: 180px;">NUMERO</th>
                 <th style="min-width: 220px;">EMPRESA</th>
                 <th style="min-width: 260px;">RAZON SOCIAL POLIUTECH</th>
-                <th style="width: 70px;">Accion</th>
+                <th style="width: 140px;">Accion</th>
               </tr>
             </thead>
             <tbody>
               {% for row in rows %}
               <tr>
-                <td><input type="text" name="numero[]" class="form-control" value="{{ row.numero }}"></td>
-                <td><input type="text" name="empresa[]" class="form-control" value="{{ row.empresa }}"></td>
-                <td><input type="text" name="razon_social_poliutech[]" class="form-control" value="{{ row.razon_social_poliutech }}"></td>
+                <td><input type="text" name="numero[]" class="form-control altas-input" value="{{ row.numero }}" readonly></td>
+                <td><input type="text" name="empresa[]" class="form-control altas-input" value="{{ row.empresa }}" readonly></td>
+                <td><input type="text" name="razon_social_poliutech[]" class="form-control altas-input" value="{{ row.razon_social_poliutech }}" readonly></td>
                 <td class="text-center">
+                  <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>
                   <button type="button" class="btn btn-outline-danger btn-sm btn-remove-row">Quitar</button>
                 </td>
               </tr>
               {% endfor %}
               {% if not rows %}
               <tr>
-                <td><input type="text" name="numero[]" class="form-control"></td>
-                <td><input type="text" name="empresa[]" class="form-control"></td>
-                <td><input type="text" name="razon_social_poliutech[]" class="form-control"></td>
+                <td><input type="text" name="numero[]" class="form-control altas-input"></td>
+                <td><input type="text" name="empresa[]" class="form-control altas-input"></td>
+                <td><input type="text" name="razon_social_poliutech[]" class="form-control altas-input"></td>
                 <td class="text-center">
+                  <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>
                   <button type="button" class="btn btn-outline-danger btn-sm btn-remove-row">Quitar</button>
                 </td>
               </tr>
@@ -60,10 +62,11 @@
 
 <template id="altas-row-template">
   <tr>
-    <td><input type="text" name="numero[]" class="form-control"></td>
-    <td><input type="text" name="empresa[]" class="form-control"></td>
-    <td><input type="text" name="razon_social_poliutech[]" class="form-control"></td>
+    <td><input type="text" name="numero[]" class="form-control altas-input"></td>
+    <td><input type="text" name="empresa[]" class="form-control altas-input"></td>
+    <td><input type="text" name="razon_social_poliutech[]" class="form-control altas-input"></td>
     <td class="text-center">
+      <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>
       <button type="button" class="btn btn-outline-danger btn-sm btn-remove-row">Quitar</button>
     </td>
   </tr>
@@ -85,6 +88,25 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   tbody.addEventListener("click", (event) => {
+    const editButton = event.target.closest(".btn-edit-row");
+    if (editButton) {
+      const row = editButton.closest("tr");
+      const inputs = row ? row.querySelectorAll(".altas-input") : [];
+      const willEnable = Array.from(inputs).every((input) => input.hasAttribute("readonly"));
+      inputs.forEach((input) => {
+        if (willEnable) {
+          input.removeAttribute("readonly");
+        } else {
+          input.setAttribute("readonly", "readonly");
+        }
+      });
+      editButton.textContent = willEnable ? "Bloquear" : "Editar";
+      if (willEnable && inputs.length > 0) {
+        inputs[0].focus();
+      }
+      return;
+    }
+
     const removeButton = event.target.closest(".btn-remove-row");
     if (!removeButton) return;
     removeButton.closest("tr")?.remove();
