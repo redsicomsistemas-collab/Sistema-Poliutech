@@ -1,6 +1,78 @@
 {% extends "base.html" %}
 {% block content %}
 
+<style>
+  .dashboard-quotes-card {
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .dashboard-filters .filter-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: end;
+  }
+
+  .dashboard-filters .filter-actions .btn {
+    min-width: 140px;
+  }
+
+  .dashboard-bulk-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    justify-content: flex-end;
+    align-items: center;
+  }
+
+  .dashboard-bulk-actions .btn {
+    white-space: normal;
+  }
+
+  .dashboard-quotes-table {
+    width: 100%;
+    min-width: 1080px;
+  }
+
+  .dashboard-quotes-table th,
+  .dashboard-quotes-table td {
+    vertical-align: middle;
+  }
+
+  .dashboard-quotes-table .cell-cliente,
+  .dashboard-quotes-table .cell-empresa {
+    min-width: 16rem;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    text-align: left;
+  }
+
+  .dashboard-quotes-table .cell-acciones {
+    white-space: nowrap !important;
+  }
+
+  @media (max-width: 991.98px) {
+    .dashboard-filters .filter-actions {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .dashboard-filters .filter-actions .btn {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .dashboard-bulk-actions {
+      justify-content: stretch;
+    }
+
+    .dashboard-bulk-actions > * {
+      width: 100%;
+    }
+  }
+</style>
+
 <div class="row mb-4 text-center">
   <div class="col-md-3">
     <div class="card border-success shadow-sm">
@@ -121,21 +193,21 @@
 
 <!-- 📋 TABLA DE COTIZACIONES + FILTROS -->
 <div class="mt-5">
-  <div class="card shadow-sm">
+  <div class="card shadow-sm dashboard-quotes-card">
     <div class="card-body">
       <h5 class="card-title mb-3">Últimas Cotizaciones</h5>
 
       <!-- 🔍 FILTROS -->
-      <div class="row g-2 align-items-end mb-3">
-        <div class="col-md-3 col-6">
+      <div class="row g-3 align-items-end mb-3 dashboard-filters">
+        <div class="col-xl-2 col-lg-3 col-md-6">
           <label class="form-label small fw-bold text-secondary mb-1">Desde</label>
           <input type="date" id="filtro-desde" class="form-control form-control-sm">
         </div>
-        <div class="col-md-3 col-6">
+        <div class="col-xl-2 col-lg-3 col-md-6">
           <label class="form-label small fw-bold text-secondary mb-1">Hasta</label>
           <input type="date" id="filtro-hasta" class="form-control form-control-sm">
         </div>
-        <div class="col-md-3 col-6">
+        <div class="col-xl-2 col-lg-3 col-md-6">
           <label class="form-label small fw-bold text-secondary mb-1">Estatus</label>
           <select id="filtro-estatus" class="form-select form-select-sm">
             <option value="">Todos</option>
@@ -144,18 +216,18 @@
             {% endfor %}
           </select>
         </div>
-        <div class="col-md-2 col-6">
+        <div class="col-xl-3 col-lg-3 col-md-6">
           <label class="form-label small fw-bold text-secondary mb-1">Cliente / Empresa</label>
           <input type="text" id="filtro-cliente" class="form-control form-control-sm" placeholder="Buscar...">
         </div>
-        <div class="col-md-2 col-6">
-          <button id="btn-exportar-excel" type="button" class="btn btn-success btn-sm w-100">Exportar Excel</button>
-        </div>
-        <div class="col-md-1 text-end">
-          <button id="btn-limpiar-filtros" type="button" class="btn btn-outline-secondary btn-sm w-100">Limpiar</button>
+        <div class="col-xl-3 col-12">
+          <div class="filter-actions">
+            <button id="btn-exportar-excel" type="button" class="btn btn-success btn-sm">Exportar Excel</button>
+            <button id="btn-limpiar-filtros" type="button" class="btn btn-outline-secondary btn-sm">Limpiar</button>
+          </div>
         </div>
         {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
-        <div class="col-12 mt-2 d-flex flex-wrap gap-2 justify-content-end align-items-center">
+        <div class="col-12 mt-1 dashboard-bulk-actions">
           <span class="small text-secondary me-2" id="bulk-selected-label">Seleccionadas: <b id="bulk-selected-count">0</b></span>
           <span class="small text-secondary me-2" id="bulk-visible-label">Visibles: <b id="bulk-visible-count">0</b></span>
 
@@ -171,7 +243,7 @@
 
       <!-- 📋 TABLA -->
       <div class="table-responsive">
-        <table class="table table-bordered align-middle">
+        <table class="table table-bordered align-middle dashboard-quotes-table">
           <thead class="table-light">
             <tr>
               {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
@@ -211,8 +283,8 @@
               {% endif %}
               <td>{{ c.folio }}</td>
               <td>{{ c.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
-              <td>{{ c.cliente.nombre_cliente if c.cliente else '' }}</td>
-              <td>{{ c.cliente.empresa if c.cliente else '' }}</td>
+              <td class="cell-cliente">{{ c.cliente.nombre_cliente if c.cliente else '' }}</td>
+              <td class="cell-empresa">{{ c.cliente.empresa if c.cliente else '' }}</td>
               <td>${{ "{:,.2f}".format(c.total) }}</td>
               <td>
                 <select class="status-select" onchange="cambiarEstatus({{ c.id }}, this)">
@@ -221,7 +293,7 @@
                   {% endfor %}
                 </select>
               </td>
-              <td class="text-center">
+              <td class="text-center cell-acciones">
                 <a href="{{ url_for('view_cotizacion', cot_id=c.id) }}" class="btn btn-outline-primary btn-sm" title="Ver">👁️</a>
                 <a href="{{ url_for('export_cotizacion_pdf', cot_id=c.id) }}" target="_blank" class="btn btn-outline-danger btn-sm" title="PDF">📄</a>
                 <a href="{{ url_for('export_cotizacion_xlsx', cot_id=c.id) }}" class="btn btn-outline-success btn-sm" title="Excel">📊</a>
