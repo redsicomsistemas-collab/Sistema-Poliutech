@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="py-4">
+  <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+    <div>
+      <h2 class="mb-1">Altas de proveedores</h2>
+      <p class="text-muted mb-0">Tabla editable basada en NUMEROS DE PROVEEDOR POLIUTECH.</p>
+    </div>
+    <div class="text-muted small">
+      Total de registros: <strong>{{ rows|length }}</strong>
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <form method="post" id="altas-form">
+        <div class="table-responsive">
+          <table class="table table-bordered align-middle" id="altas-table">
+            <thead class="table-light">
+              <tr>
+                <th style="min-width: 180px;">NUMERO</th>
+                <th style="min-width: 220px;">EMPRESA</th>
+                <th style="min-width: 260px;">RAZON SOCIAL POLIUTECH</th>
+                <th style="width: 70px;">Accion</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in rows %}
+              <tr>
+                <td><input type="text" name="numero[]" class="form-control" value="{{ row.numero }}"></td>
+                <td><input type="text" name="empresa[]" class="form-control" value="{{ row.empresa }}"></td>
+                <td><input type="text" name="razon_social_poliutech[]" class="form-control" value="{{ row.razon_social_poliutech }}"></td>
+                <td class="text-center">
+                  <button type="button" class="btn btn-outline-danger btn-sm btn-remove-row">Quitar</button>
+                </td>
+              </tr>
+              {% endfor %}
+              {% if not rows %}
+              <tr>
+                <td><input type="text" name="numero[]" class="form-control"></td>
+                <td><input type="text" name="empresa[]" class="form-control"></td>
+                <td><input type="text" name="razon_social_poliutech[]" class="form-control"></td>
+                <td class="text-center">
+                  <button type="button" class="btn btn-outline-danger btn-sm btn-remove-row">Quitar</button>
+                </td>
+              </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="d-flex flex-column flex-md-row justify-content-between gap-2 mt-3">
+          <button type="button" class="btn btn-outline-primary" id="btn-add-row">Agregar linea</button>
+          <button type="submit" class="btn btn-primary">Guardar cambios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<template id="altas-row-template">
+  <tr>
+    <td><input type="text" name="numero[]" class="form-control"></td>
+    <td><input type="text" name="empresa[]" class="form-control"></td>
+    <td><input type="text" name="razon_social_poliutech[]" class="form-control"></td>
+    <td class="text-center">
+      <button type="button" class="btn btn-outline-danger btn-sm btn-remove-row">Quitar</button>
+    </td>
+  </tr>
+</template>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const tbody = document.querySelector("#altas-table tbody");
+  const addButton = document.getElementById("btn-add-row");
+  const rowTemplate = document.getElementById("altas-row-template");
+
+  function ensureAtLeastOneRow() {
+    if (tbody.children.length > 0) return;
+    tbody.appendChild(rowTemplate.content.firstElementChild.cloneNode(true));
+  }
+
+  addButton.addEventListener("click", () => {
+    tbody.appendChild(rowTemplate.content.firstElementChild.cloneNode(true));
+  });
+
+  tbody.addEventListener("click", (event) => {
+    const removeButton = event.target.closest(".btn-remove-row");
+    if (!removeButton) return;
+    removeButton.closest("tr")?.remove();
+    ensureAtLeastOneRow();
+  });
+});
+</script>
+{% endblock %}

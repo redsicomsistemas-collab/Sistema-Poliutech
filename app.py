@@ -4,7 +4,7 @@
 # =========================================================
 from __future__ import annotations
 
-import os, io, csv, sys, math, re, json, traceback, unicodedata, smtplib
+import os, io, csv, sys, math, re, json, traceback, unicodedata, smtplib, zipfile
 import mimetypes
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -14,6 +14,7 @@ from pathlib import Path
 from email.message import EmailMessage
 from email.utils import getaddresses
 from html import escape
+import xml.etree.ElementTree as ET
 
 
 # -------------------------------
@@ -31,6 +32,13 @@ VALID_ESTATUS = [
     "GANADA",
     "PERDIDA",
 ]
+PROVIDER_NUMBERS_JSON = Path(__file__).resolve().parent / "provider_numbers.json"
+PROVIDER_NUMBERS_XLSX = Path.home() / "Downloads" / "NUMEROS DE PROVEEDOR POLIUTECH.xlsx"
+XLSX_NS = {
+    "a": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+    "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    "p": "http://schemas.openxmlformats.org/package/2006/relationships",
+}
 
 
 
@@ -59,6 +67,128 @@ def _condiciones_comerciales_finales(notas_raw: str) -> list[str]:
             if s:
                 items.append(s)
     return items
+
+
+def _excel_col_to_index(ref: str) -> int:
+    letters = "".join(ch for ch in (ref or "") if ch.isalpha()).upper()
+    idx = 0
+    for ch in letters:
+        idx = (idx * 26) + (ord(ch) - 64)
+    return max(idx - 1, 0)
+
+
+def _xlsx_cell_text(cell, shared_strings: list[str]) -> str:
+    cell_type = cell.attrib.get("t")
+    if cell_type == "inlineStr":
+        return "".join((node.text or "") for node in cell.findall(".//a:t", XLSX_NS)).strip()
+
+    value_node = cell.find("a:v", XLSX_NS)
+    raw_value = "" if value_node is None or value_node.text is None else value_node.text
+    if cell_type == "s" and raw_value != "":
+        try:
+            return str(shared_strings[int(raw_value)]).strip()
+        except Exception:
+            return ""
+    return str(raw_value).strip()
+
+
+def _load_provider_numbers_from_xlsx() -> list[dict]:
+    if not PROVIDER_NUMBERS_XLSX.exists():
+        return []
+
+    with zipfile.ZipFile(PROVIDER_NUMBERS_XLSX) as workbook_zip:
+        shared_strings: list[str] = []
+        if "xl/sharedStrings.xml" in workbook_zip.namelist():
+            shared_root = ET.fromstring(workbook_zip.read("xl/sharedStrings.xml"))
+            for item in shared_root.findall("a:si", XLSX_NS):
+                shared_strings.append(
+                    "".join((node.text or "") for node in item.findall(".//a:t", XLSX_NS)).strip()
+                )
+
+        workbook_root = ET.fromstring(workbook_zip.read("xl/workbook.xml"))
+        rels_root = ET.fromstring(workbook_zip.read("xl/_rels/workbook.xml.rels"))
+        rel_map = {
+            rel.attrib.get("Id"): rel.attrib.get("Target", "")
+            for rel in rels_root.findall("p:Relationship", XLSX_NS)
+        }
+
+        target_sheet = None
+        for sheet in workbook_root.findall("a:sheets/a:sheet", XLSX_NS):
+            sheet_name = (sheet.attrib.get("name") or "").strip().lower()
+            rel_id = sheet.attrib.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
+            if rel_id and sheet_name == "table 2":
+                target = rel_map.get(rel_id, "")
+                if target:
+                    target_sheet = f"xl/{target.lstrip('/')}"
+                    break
+
+        if not target_sheet or target_sheet not in workbook_zip.namelist():
+            return []
+
+        sheet_root = ET.fromstring(workbook_zip.read(target_sheet))
+        rows = sheet_root.findall("a:sheetData/a:row", XLSX_NS)
+        parsed_rows: list[list[str]] = []
+
+        for row in rows:
+            values_by_col: dict[int, str] = {}
+            for cell in row.findall("a:c", XLSX_NS):
+                ref = cell.attrib.get("r", "")
+                values_by_col[_excel_col_to_index(ref)] = _xlsx_cell_text(cell, shared_strings)
+
+            if not values_by_col:
+                continue
+
+            max_col = max(values_by_col)
+            parsed_rows.append([values_by_col.get(col, "").strip() for col in range(max_col + 1)])
+
+        if not parsed_rows:
+            return []
+
+        data_rows = parsed_rows[1:]
+        records: list[dict] = []
+        for idx, row in enumerate(data_rows, start=1):
+            numero = row[0].strip() if len(row) > 0 else ""
+            empresa = row[1].strip() if len(row) > 1 else ""
+            razon_social = row[2].strip() if len(row) > 2 else ""
+            if not any([numero, empresa, razon_social]):
+                continue
+            records.append({
+                "id": idx,
+                "numero": numero,
+                "empresa": empresa,
+                "razon_social_poliutech": razon_social,
+            })
+        return records
+
+
+def _save_provider_numbers(rows: list[dict]) -> None:
+    PROVIDER_NUMBERS_JSON.write_text(
+        json.dumps(rows, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _load_provider_numbers() -> list[dict]:
+    if PROVIDER_NUMBERS_JSON.exists():
+        try:
+            data = json.loads(PROVIDER_NUMBERS_JSON.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                normalized: list[dict] = []
+                for idx, row in enumerate(data, start=1):
+                    row = row or {}
+                    normalized.append({
+                        "id": idx,
+                        "numero": str(row.get("numero", "")).strip(),
+                        "empresa": str(row.get("empresa", "")).strip(),
+                        "razon_social_poliutech": str(row.get("razon_social_poliutech", "")).strip(),
+                    })
+                return normalized
+        except Exception:
+            pass
+
+    seeded = _load_provider_numbers_from_xlsx()
+    _save_provider_numbers(seeded)
+    return seeded
 
 from flask import (
     Flask, render_template, request, redirect, url_for,
@@ -1883,6 +2013,43 @@ def cotizador():
         for a in APU.query.order_by(APU.concepto.asc()).all()
     ]
     return render_template("cotizador.html", title="Nuevo - Sistema MAR", apu_catalog=apu_catalog)
+
+
+@app.route("/altas", methods=["GET", "POST"])
+@login_required
+def altas_proveedores():
+    if not is_admin():
+        abort(403)
+
+    if request.method == "POST":
+        numeros = request.form.getlist("numero[]")
+        empresas = request.form.getlist("empresa[]")
+        razones = request.form.getlist("razon_social_poliutech[]")
+
+        total_rows = max(len(numeros), len(empresas), len(razones), 0)
+        rows: list[dict] = []
+        for idx in range(total_rows):
+            numero = (numeros[idx] if idx < len(numeros) else "").strip()
+            empresa = (empresas[idx] if idx < len(empresas) else "").strip()
+            razon_social = (razones[idx] if idx < len(razones) else "").strip()
+            if not any([numero, empresa, razon_social]):
+                continue
+            rows.append({
+                "id": len(rows) + 1,
+                "numero": numero,
+                "empresa": empresa,
+                "razon_social_poliutech": razon_social,
+            })
+
+        _save_provider_numbers(rows)
+        flash("Altas actualizadas correctamente.", "success")
+        return redirect(url_for("altas_proveedores"))
+
+    return render_template(
+        "altas.html",
+        title="Altas de proveedores",
+        rows=_load_provider_numbers(),
+    )
 
 
 @app.route("/admin/cotizaciones/importar", methods=["GET", "POST"])

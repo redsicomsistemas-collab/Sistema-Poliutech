@@ -236,7 +236,7 @@
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('admin_catalogos') }}">📚 Catálogos</a></li>
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('apu.index') }}">🧮 MAR DATA</a></li>
           {% if current_user.is_authenticated and (current_user.rol or "")|upper == "ADMIN" %}
-          <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('importar_cotizacion_externa') }}">Importar</a></li>
+          <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('altas_proveedores') }}">Altas</a></li>
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('admin_usuarios') }}">Usuarios</a></li>
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('admin_bitacora') }}">🧾 Bitácora</a></li>
           {% endif %}
