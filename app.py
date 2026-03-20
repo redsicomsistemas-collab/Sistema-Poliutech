@@ -157,6 +157,9 @@ def _load_provider_numbers_from_xlsx() -> list[dict]:
                 "numero": numero,
                 "empresa": empresa,
                 "razon_social_poliutech": razon_social,
+                "contacto": "",
+                "telefono": "",
+                "correo": "",
             })
         return records
 
@@ -168,27 +171,169 @@ def _save_provider_numbers(rows: list[dict]) -> None:
     )
 
 
+def _normalize_provider_row(row: Optional[dict], idx: int) -> dict:
+    row = row or {}
+    return {
+        "id": idx,
+        "numero": str(row.get("numero", "")).strip(),
+        "empresa": str(row.get("empresa", "")).strip(),
+        "razon_social_poliutech": str(row.get("razon_social_poliutech", "")).strip(),
+        "contacto": str(row.get("contacto", "")).strip(),
+        "telefono": str(row.get("telefono", "")).strip(),
+        "correo": str(row.get("correo", "")).strip(),
+    }
+
+
 def _load_provider_numbers() -> list[dict]:
     if PROVIDER_NUMBERS_JSON.exists():
         try:
             data = json.loads(PROVIDER_NUMBERS_JSON.read_text(encoding="utf-8"))
             if isinstance(data, list):
-                normalized: list[dict] = []
-                for idx, row in enumerate(data, start=1):
-                    row = row or {}
-                    normalized.append({
-                        "id": idx,
-                        "numero": str(row.get("numero", "")).strip(),
-                        "empresa": str(row.get("empresa", "")).strip(),
-                        "razon_social_poliutech": str(row.get("razon_social_poliutech", "")).strip(),
-                    })
-                return normalized
+                return [_normalize_provider_row(row, idx) for idx, row in enumerate(data, start=1)]
         except Exception:
             pass
 
     seeded = _load_provider_numbers_from_xlsx()
     _save_provider_numbers(seeded)
     return seeded
+
+
+def _provider_filters_from_request() -> dict[str, str]:
+    return {
+        "numero": (request.args.get("numero") or "").strip().lower(),
+        "empresa": (request.args.get("empresa") or "").strip().lower(),
+        "razon_social_poliutech": (request.args.get("razon_social_poliutech") or "").strip().lower(),
+        "contacto": (request.args.get("contacto") or "").strip().lower(),
+        "telefono": (request.args.get("telefono") or "").strip().lower(),
+        "correo": (request.args.get("correo") or "").strip().lower(),
+    }
+
+
+def _provider_row_matches_filters(row: dict, filters: dict[str, str]) -> bool:
+    for field, needle in filters.items():
+        if needle and needle not in str(row.get(field, "")).strip().lower():
+            return False
+    return True
+
+
+def _filter_provider_rows(rows: list[dict], filters: dict[str, str]) -> list[dict]:
+    return [row for row in rows if _provider_row_matches_filters(row, filters)]
+
+
+def _build_simple_xlsx(sheet_name: str, headers: list[str], rows: list[list[str]], column_widths: Optional[list[int]] = None) -> bytes:
+    def cell_ref(row_idx: int, col_idx: int) -> str:
+        label = ""
+        num = col_idx
+        while num > 0:
+            num, rem = divmod(num - 1, 26)
+            label = chr(65 + rem) + label
+        return f"{label}{row_idx}"
+
+    def inline_cell(row_idx: int, col_idx: int, value: object) -> str:
+        text = escape("" if value is None else str(value))
+        return (
+            f'<c r="{cell_ref(row_idx, col_idx)}" t="inlineStr">'
+            f"<is><t>{text}</t></is></c>"
+        )
+
+    cols_xml = ""
+    if column_widths:
+        cols_parts = []
+        for idx, width in enumerate(column_widths, start=1):
+            cols_parts.append(
+                f'<col min="{idx}" max="{idx}" width="{width}" customWidth="1"/>'
+            )
+        cols_xml = f"<cols>{''.join(cols_parts)}</cols>"
+
+    sheet_rows = []
+    header_cells = "".join(inline_cell(1, idx, value) for idx, value in enumerate(headers, start=1))
+    sheet_rows.append(f'<row r="1" s="1">{header_cells}</row>')
+
+    for row_idx, row in enumerate(rows, start=2):
+        cells = "".join(inline_cell(row_idx, col_idx, value) for col_idx, value in enumerate(row, start=1))
+        sheet_rows.append(f'<row r="{row_idx}">{cells}</row>')
+
+    sheet_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        f"{cols_xml}"
+        f"<sheetData>{''.join(sheet_rows)}</sheetData>"
+        "</worksheet>"
+    )
+
+    workbook_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        f'<sheets><sheet name="{escape(sheet_name)}" sheetId="1" r:id="rId1"/></sheets>'
+        "</workbook>"
+    )
+
+    workbook_rels_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" '
+        'Target="worksheets/sheet1.xml"/>'
+        '<Relationship Id="rId2" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" '
+        'Target="styles.xml"/>'
+        "</Relationships>"
+    )
+
+    root_rels_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
+        'Target="xl/workbook.xml"/>'
+        "</Relationships>"
+    )
+
+    content_types_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/xl/workbook.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+        '<Override PartName="/xl/worksheets/sheet1.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        '<Override PartName="/xl/styles.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+        "</Types>"
+    )
+
+    styles_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        '<fonts count="2">'
+        '<font><sz val="11"/><name val="Calibri"/></font>'
+        '<font><b/><sz val="11"/><name val="Calibri"/></font>'
+        '</fonts>'
+        '<fills count="2">'
+        '<fill><patternFill patternType="none"/></fill>'
+        '<fill><patternFill patternType="gray125"/></fill>'
+        '</fills>'
+        '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
+        '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+        '<cellXfs count="2">'
+        '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+        '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
+        '</cellXfs>'
+        '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
+        "</styleSheet>"
+    )
+
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", content_types_xml)
+        zf.writestr("_rels/.rels", root_rels_xml)
+        zf.writestr("xl/workbook.xml", workbook_xml)
+        zf.writestr("xl/_rels/workbook.xml.rels", workbook_rels_xml)
+        zf.writestr("xl/worksheets/sheet1.xml", sheet_xml)
+        zf.writestr("xl/styles.xml", styles_xml)
+    return output.getvalue()
 
 from flask import (
     Flask, render_template, request, redirect, url_for,
@@ -2021,34 +2166,126 @@ def altas_proveedores():
     if not is_admin():
         abort(403)
 
+    rows = _load_provider_numbers()
+
     if request.method == "POST":
         numeros = request.form.getlist("numero[]")
         empresas = request.form.getlist("empresa[]")
         razones = request.form.getlist("razon_social_poliutech[]")
+        contactos = request.form.getlist("contacto[]")
+        telefonos = request.form.getlist("telefono[]")
+        correos = request.form.getlist("correo[]")
 
-        total_rows = max(len(numeros), len(empresas), len(razones), 0)
+        total_rows = max(len(numeros), len(empresas), len(razones), len(contactos), len(telefonos), len(correos), 0)
         rows: list[dict] = []
         for idx in range(total_rows):
             numero = (numeros[idx] if idx < len(numeros) else "").strip()
             empresa = (empresas[idx] if idx < len(empresas) else "").strip()
             razon_social = (razones[idx] if idx < len(razones) else "").strip()
-            if not any([numero, empresa, razon_social]):
+            contacto = (contactos[idx] if idx < len(contactos) else "").strip()
+            telefono = (telefonos[idx] if idx < len(telefonos) else "").strip()
+            correo = (correos[idx] if idx < len(correos) else "").strip()
+
+            if not any([numero, empresa, razon_social, contacto, telefono, correo]):
                 continue
+
+            if correo and not re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", correo):
+                flash(f"El correo '{correo}' no es valido.", "danger")
+                return render_template(
+                    "altas.html",
+                    title="Altas de proveedores",
+                    rows=[
+                        _normalize_provider_row({
+                            "numero": (numeros[pos] if pos < len(numeros) else "").strip(),
+                            "empresa": (empresas[pos] if pos < len(empresas) else "").strip(),
+                            "razon_social_poliutech": (razones[pos] if pos < len(razones) else "").strip(),
+                            "contacto": (contactos[pos] if pos < len(contactos) else "").strip(),
+                            "telefono": (telefonos[pos] if pos < len(telefonos) else "").strip(),
+                            "correo": (correos[pos] if pos < len(correos) else "").strip(),
+                        }, pos + 1)
+                        for pos in range(total_rows)
+                    ],
+                    filtered_rows=_filter_provider_rows(
+                        [
+                            _normalize_provider_row({
+                                "numero": (numeros[pos] if pos < len(numeros) else "").strip(),
+                                "empresa": (empresas[pos] if pos < len(empresas) else "").strip(),
+                                "razon_social_poliutech": (razones[pos] if pos < len(razones) else "").strip(),
+                                "contacto": (contactos[pos] if pos < len(contactos) else "").strip(),
+                                "telefono": (telefonos[pos] if pos < len(telefonos) else "").strip(),
+                                "correo": (correos[pos] if pos < len(correos) else "").strip(),
+                            }, pos + 1)
+                            for pos in range(total_rows)
+                        ],
+                        _provider_filters_from_request(),
+                    ),
+                    filters=_provider_filters_from_request(),
+                )
+
             rows.append({
                 "id": len(rows) + 1,
                 "numero": numero,
                 "empresa": empresa,
                 "razon_social_poliutech": razon_social,
+                "contacto": contacto,
+                "telefono": telefono,
+                "correo": correo,
             })
 
         _save_provider_numbers(rows)
         flash("Altas actualizadas correctamente.", "success")
         return redirect(url_for("altas_proveedores"))
 
+    filters = _provider_filters_from_request()
     return render_template(
         "altas.html",
         title="Altas de proveedores",
-        rows=_load_provider_numbers(),
+        rows=rows,
+        filtered_rows=_filter_provider_rows(rows, filters),
+        filters=filters,
+    )
+
+
+@app.route("/altas/export.xlsx")
+@login_required
+def export_altas_proveedores_xlsx():
+    if not is_admin():
+        abort(403)
+
+    filters = _provider_filters_from_request()
+    rows = _filter_provider_rows(_load_provider_numbers(), filters)
+
+    headers = [
+        "NUMERO",
+        "EMPRESA",
+        "RAZON SOCIAL POLIUTECH",
+        "CONTACTO",
+        "TELEFONO",
+        "CORREO",
+    ]
+    body_rows = []
+    for row in rows:
+        body_rows.append([
+            row.get("numero", ""),
+            row.get("empresa", ""),
+            row.get("razon_social_poliutech", ""),
+            row.get("contacto", ""),
+            row.get("telefono", ""),
+            row.get("correo", ""),
+        ])
+
+    output_bytes = _build_simple_xlsx(
+        "Altas",
+        headers,
+        body_rows,
+        column_widths=[18, 28, 28, 24, 18, 32],
+    )
+
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return Response(
+        output_bytes,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="altas_proveedores_{stamp}.xlsx"'},
     )
 
 

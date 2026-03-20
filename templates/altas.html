@@ -13,23 +13,67 @@
 
   <div class="card shadow-sm">
     <div class="card-body">
+      <div class="row g-3 mb-4">
+        <div class="col-xl-2 col-md-4">
+          <label class="form-label small fw-bold text-secondary mb-1">Numero</label>
+          <input type="text" id="filtro-numero" class="form-control form-control-sm" value="{{ filters.numero if filters else '' }}">
+        </div>
+        <div class="col-xl-2 col-md-4">
+          <label class="form-label small fw-bold text-secondary mb-1">Empresa</label>
+          <input type="text" id="filtro-empresa" class="form-control form-control-sm" value="{{ filters.empresa if filters else '' }}">
+        </div>
+        <div class="col-xl-2 col-md-4">
+          <label class="form-label small fw-bold text-secondary mb-1">Razon social</label>
+          <input type="text" id="filtro-razon-social" class="form-control form-control-sm" value="{{ filters.razon_social_poliutech if filters else '' }}">
+        </div>
+        <div class="col-xl-2 col-md-4">
+          <label class="form-label small fw-bold text-secondary mb-1">Contacto</label>
+          <input type="text" id="filtro-contacto" class="form-control form-control-sm" value="{{ filters.contacto if filters else '' }}">
+        </div>
+        <div class="col-xl-2 col-md-4">
+          <label class="form-label small fw-bold text-secondary mb-1">Telefono</label>
+          <input type="text" id="filtro-telefono" class="form-control form-control-sm" value="{{ filters.telefono if filters else '' }}">
+        </div>
+        <div class="col-xl-1 col-md-4">
+          <label class="form-label small fw-bold text-secondary mb-1">Correo</label>
+          <input type="text" id="filtro-correo" class="form-control form-control-sm" value="{{ filters.correo if filters else '' }}">
+        </div>
+        <div class="col-xl-1 col-md-4 d-flex align-items-end gap-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm w-100" id="btn-limpiar-filtros">Limpiar</button>
+          <button type="button" class="btn btn-success btn-sm w-100" id="btn-exportar-excel">Exportar Excel</button>
+        </div>
+      </div>
+
       <form method="post" id="altas-form">
         <div class="table-responsive">
           <table class="table table-bordered align-middle" id="altas-table">
             <thead class="table-light">
               <tr>
-                <th style="min-width: 180px;">NUMERO</th>
+                <th style="min-width: 170px;">NUMERO</th>
                 <th style="min-width: 220px;">EMPRESA</th>
-                <th style="min-width: 260px;">RAZON SOCIAL POLIUTECH</th>
+                <th style="min-width: 250px;">RAZON SOCIAL POLIUTECH</th>
+                <th style="min-width: 220px;">CONTACTO</th>
+                <th style="min-width: 180px;">TELEFONO</th>
+                <th style="min-width: 240px;">CORREO</th>
                 <th style="width: 140px;">Accion</th>
               </tr>
             </thead>
             <tbody>
               {% for row in rows %}
-              <tr>
+              <tr
+                data-numero="{{ row.numero|lower }}"
+                data-empresa="{{ row.empresa|lower }}"
+                data-razon-social-poliutech="{{ row.razon_social_poliutech|lower }}"
+                data-contacto="{{ row.contacto|lower }}"
+                data-telefono="{{ row.telefono|lower }}"
+                data-correo="{{ row.correo|lower }}"
+              >
                 <td><input type="text" name="numero[]" class="form-control altas-input" value="{{ row.numero }}" readonly></td>
                 <td><input type="text" name="empresa[]" class="form-control altas-input" value="{{ row.empresa }}" readonly></td>
                 <td><input type="text" name="razon_social_poliutech[]" class="form-control altas-input" value="{{ row.razon_social_poliutech }}" readonly></td>
+                <td><input type="text" name="contacto[]" class="form-control altas-input" value="{{ row.contacto }}" readonly></td>
+                <td><input type="text" name="telefono[]" class="form-control altas-input" value="{{ row.telefono }}" readonly></td>
+                <td><input type="email" name="correo[]" class="form-control altas-input" value="{{ row.correo }}" readonly></td>
                 <td class="text-center">
                   <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>
                   <button type="button" class="btn btn-outline-danger btn-sm btn-remove-row">Quitar</button>
@@ -37,10 +81,13 @@
               </tr>
               {% endfor %}
               {% if not rows %}
-              <tr>
+              <tr data-numero="" data-empresa="" data-razon-social-poliutech="" data-contacto="" data-telefono="" data-correo="">
                 <td><input type="text" name="numero[]" class="form-control altas-input"></td>
                 <td><input type="text" name="empresa[]" class="form-control altas-input"></td>
                 <td><input type="text" name="razon_social_poliutech[]" class="form-control altas-input"></td>
+                <td><input type="text" name="contacto[]" class="form-control altas-input"></td>
+                <td><input type="text" name="telefono[]" class="form-control altas-input"></td>
+                <td><input type="email" name="correo[]" class="form-control altas-input"></td>
                 <td class="text-center">
                   <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>
                   <button type="button" class="btn btn-outline-danger btn-sm btn-remove-row">Quitar</button>
@@ -61,10 +108,13 @@
 </div>
 
 <template id="altas-row-template">
-  <tr>
+  <tr data-numero="" data-empresa="" data-razon-social-poliutech="" data-contacto="" data-telefono="" data-correo="">
     <td><input type="text" name="numero[]" class="form-control altas-input"></td>
     <td><input type="text" name="empresa[]" class="form-control altas-input"></td>
     <td><input type="text" name="razon_social_poliutech[]" class="form-control altas-input"></td>
+    <td><input type="text" name="contacto[]" class="form-control altas-input"></td>
+    <td><input type="text" name="telefono[]" class="form-control altas-input"></td>
+    <td><input type="email" name="correo[]" class="form-control altas-input"></td>
     <td class="text-center">
       <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>
       <button type="button" class="btn btn-outline-danger btn-sm btn-remove-row">Quitar</button>
@@ -77,14 +127,48 @@ document.addEventListener("DOMContentLoaded", () => {
   const tbody = document.querySelector("#altas-table tbody");
   const addButton = document.getElementById("btn-add-row");
   const rowTemplate = document.getElementById("altas-row-template");
+  const limpiarFiltrosButton = document.getElementById("btn-limpiar-filtros");
+  const exportarExcelButton = document.getElementById("btn-exportar-excel");
+  const filtros = {
+    numero: document.getElementById("filtro-numero"),
+    empresa: document.getElementById("filtro-empresa"),
+    razonSocialPoliutech: document.getElementById("filtro-razon-social"),
+    contacto: document.getElementById("filtro-contacto"),
+    telefono: document.getElementById("filtro-telefono"),
+    correo: document.getElementById("filtro-correo"),
+  };
+
+  function syncRowDataset(row) {
+    if (!row) return;
+    row.dataset.numero = (row.querySelector('input[name="numero[]"]')?.value || "").trim().toLowerCase();
+    row.dataset.empresa = (row.querySelector('input[name="empresa[]"]')?.value || "").trim().toLowerCase();
+    row.dataset.razonSocialPoliutech = (row.querySelector('input[name="razon_social_poliutech[]"]')?.value || "").trim().toLowerCase();
+    row.dataset.contacto = (row.querySelector('input[name="contacto[]"]')?.value || "").trim().toLowerCase();
+    row.dataset.telefono = (row.querySelector('input[name="telefono[]"]')?.value || "").trim().toLowerCase();
+    row.dataset.correo = (row.querySelector('input[name="correo[]"]')?.value || "").trim().toLowerCase();
+  }
+
+  function applyFilters() {
+    Array.from(tbody.querySelectorAll("tr")).forEach((row) => {
+      syncRowDataset(row);
+      const visible = Object.entries(filtros).every(([field, input]) => {
+        const term = (input?.value || "").trim().toLowerCase();
+        return !term || (row.dataset[field] || "").includes(term);
+      });
+      row.style.display = visible ? "" : "none";
+    });
+  }
 
   function ensureAtLeastOneRow() {
     if (tbody.children.length > 0) return;
-    tbody.appendChild(rowTemplate.content.firstElementChild.cloneNode(true));
+    const newRow = rowTemplate.content.firstElementChild.cloneNode(true);
+    tbody.appendChild(newRow);
   }
 
   addButton.addEventListener("click", () => {
-    tbody.appendChild(rowTemplate.content.firstElementChild.cloneNode(true));
+    const newRow = rowTemplate.content.firstElementChild.cloneNode(true);
+    tbody.appendChild(newRow);
+    applyFilters();
   });
 
   tbody.addEventListener("click", (event) => {
@@ -104,6 +188,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (willEnable && inputs.length > 0) {
         inputs[0].focus();
       }
+      syncRowDataset(row);
       return;
     }
 
@@ -111,7 +196,43 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!removeButton) return;
     removeButton.closest("tr")?.remove();
     ensureAtLeastOneRow();
+    applyFilters();
   });
+
+  tbody.addEventListener("input", (event) => {
+    if (!event.target.closest(".altas-input")) return;
+    syncRowDataset(event.target.closest("tr"));
+    applyFilters();
+  });
+
+  Object.values(filtros).forEach((input) => {
+    input?.addEventListener("input", applyFilters);
+  });
+
+  limpiarFiltrosButton?.addEventListener("click", () => {
+    Object.values(filtros).forEach((input) => {
+      if (input) input.value = "";
+    });
+    applyFilters();
+  });
+
+  exportarExcelButton?.addEventListener("click", () => {
+    const params = new URLSearchParams();
+    Object.entries(filtros).forEach(([field, input]) => {
+      const value = (input?.value || "").trim();
+      if (!value) return;
+      if (field === "razonSocialPoliutech") {
+        params.set("razon_social_poliutech", value);
+      } else {
+        params.set(field, value);
+      }
+    });
+    const query = params.toString();
+    window.location.href = `{{ url_for('export_altas_proveedores_xlsx') }}${query ? `?${query}` : ""}`;
+  });
+
+  Array.from(tbody.querySelectorAll("tr")).forEach(syncRowDataset);
+  applyFilters();
 });
 </script>
 {% endblock %}
