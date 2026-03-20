@@ -200,12 +200,7 @@ def _load_provider_numbers() -> list[dict]:
 
 def _provider_filters_from_request() -> dict[str, str]:
     return {
-        "numero": (request.args.get("numero") or "").strip().lower(),
-        "empresa": (request.args.get("empresa") or "").strip().lower(),
         "razon_social_poliutech": (request.args.get("razon_social_poliutech") or "").strip().lower(),
-        "contacto": (request.args.get("contacto") or "").strip().lower(),
-        "telefono": (request.args.get("telefono") or "").strip().lower(),
-        "correo": (request.args.get("correo") or "").strip().lower(),
     }
 
 

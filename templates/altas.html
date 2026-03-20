@@ -4,7 +4,6 @@
   <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
     <div>
       <h2 class="mb-1">Altas de proveedores</h2>
-      <p class="text-muted mb-0">Tabla editable basada en NUMEROS DE PROVEEDOR POLIUTECH.</p>
     </div>
     <div class="text-muted small">
       Total de registros: <strong>{{ rows|length }}</strong>
@@ -13,32 +12,19 @@
 
   <div class="card shadow-sm">
     <div class="card-body">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 mb-3">
+        <div>
+          <h6 class="mb-0">Filtros</h6>
+          <small class="text-muted">Filtra la tabla por razón social antes de exportar.</small>
+        </div>
+      </div>
+
       <div class="row g-3 mb-4">
-        <div class="col-xl-2 col-md-4">
-          <label class="form-label small fw-bold text-secondary mb-1">Numero</label>
-          <input type="text" id="filtro-numero" class="form-control form-control-sm" value="{{ filters.numero if filters else '' }}">
-        </div>
-        <div class="col-xl-2 col-md-4">
-          <label class="form-label small fw-bold text-secondary mb-1">Empresa</label>
-          <input type="text" id="filtro-empresa" class="form-control form-control-sm" value="{{ filters.empresa if filters else '' }}">
-        </div>
-        <div class="col-xl-2 col-md-4">
+        <div class="col-xl-4 col-md-6">
           <label class="form-label small fw-bold text-secondary mb-1">Razon social</label>
           <input type="text" id="filtro-razon-social" class="form-control form-control-sm" value="{{ filters.razon_social_poliutech if filters else '' }}">
         </div>
-        <div class="col-xl-2 col-md-4">
-          <label class="form-label small fw-bold text-secondary mb-1">Contacto</label>
-          <input type="text" id="filtro-contacto" class="form-control form-control-sm" value="{{ filters.contacto if filters else '' }}">
-        </div>
-        <div class="col-xl-2 col-md-4">
-          <label class="form-label small fw-bold text-secondary mb-1">Telefono</label>
-          <input type="text" id="filtro-telefono" class="form-control form-control-sm" value="{{ filters.telefono if filters else '' }}">
-        </div>
-        <div class="col-xl-1 col-md-4">
-          <label class="form-label small fw-bold text-secondary mb-1">Correo</label>
-          <input type="text" id="filtro-correo" class="form-control form-control-sm" value="{{ filters.correo if filters else '' }}">
-        </div>
-        <div class="col-xl-1 col-md-4 d-flex align-items-end gap-2">
+        <div class="col-xl-3 col-md-6 d-flex align-items-end gap-2">
           <button type="button" class="btn btn-outline-secondary btn-sm w-100" id="btn-limpiar-filtros">Limpiar</button>
           <button type="button" class="btn btn-success btn-sm w-100" id="btn-exportar-excel">Exportar Excel</button>
         </div>
@@ -61,12 +47,7 @@
             <tbody>
               {% for row in rows %}
               <tr
-                data-numero="{{ row.numero|lower }}"
-                data-empresa="{{ row.empresa|lower }}"
                 data-razon-social-poliutech="{{ row.razon_social_poliutech|lower }}"
-                data-contacto="{{ row.contacto|lower }}"
-                data-telefono="{{ row.telefono|lower }}"
-                data-correo="{{ row.correo|lower }}"
               >
                 <td><input type="text" name="numero[]" class="form-control altas-input" value="{{ row.numero }}" readonly></td>
                 <td><input type="text" name="empresa[]" class="form-control altas-input" value="{{ row.empresa }}" readonly></td>
@@ -81,7 +62,7 @@
               </tr>
               {% endfor %}
               {% if not rows %}
-              <tr data-numero="" data-empresa="" data-razon-social-poliutech="" data-contacto="" data-telefono="" data-correo="">
+              <tr data-razon-social-poliutech="">
                 <td><input type="text" name="numero[]" class="form-control altas-input"></td>
                 <td><input type="text" name="empresa[]" class="form-control altas-input"></td>
                 <td><input type="text" name="razon_social_poliutech[]" class="form-control altas-input"></td>
@@ -108,7 +89,7 @@
 </div>
 
 <template id="altas-row-template">
-  <tr data-numero="" data-empresa="" data-razon-social-poliutech="" data-contacto="" data-telefono="" data-correo="">
+  <tr data-razon-social-poliutech="">
     <td><input type="text" name="numero[]" class="form-control altas-input"></td>
     <td><input type="text" name="empresa[]" class="form-control altas-input"></td>
     <td><input type="text" name="razon_social_poliutech[]" class="form-control altas-input"></td>
@@ -130,22 +111,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const limpiarFiltrosButton = document.getElementById("btn-limpiar-filtros");
   const exportarExcelButton = document.getElementById("btn-exportar-excel");
   const filtros = {
-    numero: document.getElementById("filtro-numero"),
-    empresa: document.getElementById("filtro-empresa"),
     razonSocialPoliutech: document.getElementById("filtro-razon-social"),
-    contacto: document.getElementById("filtro-contacto"),
-    telefono: document.getElementById("filtro-telefono"),
-    correo: document.getElementById("filtro-correo"),
   };
 
   function syncRowDataset(row) {
     if (!row) return;
-    row.dataset.numero = (row.querySelector('input[name="numero[]"]')?.value || "").trim().toLowerCase();
-    row.dataset.empresa = (row.querySelector('input[name="empresa[]"]')?.value || "").trim().toLowerCase();
     row.dataset.razonSocialPoliutech = (row.querySelector('input[name="razon_social_poliutech[]"]')?.value || "").trim().toLowerCase();
-    row.dataset.contacto = (row.querySelector('input[name="contacto[]"]')?.value || "").trim().toLowerCase();
-    row.dataset.telefono = (row.querySelector('input[name="telefono[]"]')?.value || "").trim().toLowerCase();
-    row.dataset.correo = (row.querySelector('input[name="correo[]"]')?.value || "").trim().toLowerCase();
   }
 
   function applyFilters() {
