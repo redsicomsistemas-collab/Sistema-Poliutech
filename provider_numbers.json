@@ -1,0 +1,110 @@
+[
+  {
+    "id": 1,
+    "numero": "15367672",
+    "empresa": "P&G",
+    "razon_social_poliutech": "CESAR"
+  },
+  {
+    "id": 2,
+    "numero": "155535-1002",
+    "empresa": "EQUINIX",
+    "razon_social_poliutech": "CESAR"
+  },
+  {
+    "id": 3,
+    "numero": "1309",
+    "empresa": "VALLOUREC",
+    "razon_social_poliutech": "CESAR"
+  },
+  {
+    "id": 4,
+    "numero": "60776",
+    "empresa": "COPPEL",
+    "razon_social_poliutech": "CESAR"
+  },
+  {
+    "id": 5,
+    "numero": "4180144",
+    "empresa": "CFE",
+    "razon_social_poliutech": "CESAR"
+  },
+  {
+    "id": 6,
+    "numero": "260123",
+    "empresa": "PEMEX",
+    "razon_social_poliutech": "CESAR"
+  },
+  {
+    "id": 7,
+    "numero": "70001873",
+    "empresa": "BOS",
+    "razon_social_poliutech": "CESAR"
+  },
+  {
+    "id": 8,
+    "numero": "101559",
+    "empresa": "IMMSA",
+    "razon_social_poliutech": "CESAR"
+  },
+  {
+    "id": 9,
+    "numero": "43161",
+    "empresa": "CARVAJAL",
+    "razon_social_poliutech": "CESAR"
+  },
+  {
+    "id": 10,
+    "numero": "PN02431",
+    "empresa": "VICEROY",
+    "razon_social_poliutech": "RIDACE"
+  },
+  {
+    "id": 11,
+    "numero": "51878",
+    "empresa": "CHRISTUS MUGUERZA",
+    "razon_social_poliutech": "RIDACE"
+  },
+  {
+    "id": 12,
+    "numero": "50493",
+    "empresa": "KIMBERLY CLARK",
+    "razon_social_poliutech": "RIDACE"
+  },
+  {
+    "id": 13,
+    "numero": "6853352",
+    "empresa": "BAYER",
+    "razon_social_poliutech": "RIDACE"
+  },
+  {
+    "id": 14,
+    "numero": "11087",
+    "empresa": "WTC",
+    "razon_social_poliutech": "RIDACE"
+  },
+  {
+    "id": 15,
+    "numero": "2-9959",
+    "empresa": "SADASI",
+    "razon_social_poliutech": "RIDACE"
+  },
+  {
+    "id": 16,
+    "numero": "114489",
+    "empresa": "PEMEX PTRI TRASNFORMACION\nINDUSTRIAL",
+    "razon_social_poliutech": "RIDACE"
+  },
+  {
+    "id": 17,
+    "numero": "6199397",
+    "empresa": "ESSITY",
+    "razon_social_poliutech": "RIDACE"
+  },
+  {
+    "id": 18,
+    "numero": "204131",
+    "empresa": "CARNOT",
+    "razon_social_poliutech": "RIDACE"
+  }
+]
