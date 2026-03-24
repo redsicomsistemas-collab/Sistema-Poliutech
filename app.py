@@ -816,12 +816,18 @@ def ensure_schema():
     try:
         obra_cols = _table_columns("apu_obra")
         for col, stmt in [
+            ("numero", "ALTER TABLE apu_obra ADD COLUMN numero VARCHAR(20)"),
             ("programa_intervalo_dias", "ALTER TABLE apu_obra ADD COLUMN programa_intervalo_dias INTEGER DEFAULT 7"),
             ("frentes", "ALTER TABLE apu_obra ADD COLUMN frentes FLOAT DEFAULT 1.0"),
             ("indirecto_campo_pct", "ALTER TABLE apu_obra ADD COLUMN indirecto_campo_pct FLOAT DEFAULT 0.0"),
             ("indirecto_oficina_pct", "ALTER TABLE apu_obra ADD COLUMN indirecto_oficina_pct FLOAT DEFAULT 0.0"),
             ("retenciones_monto", "ALTER TABLE apu_obra ADD COLUMN retenciones_monto FLOAT DEFAULT 0.0"),
             ("total_neto", "ALTER TABLE apu_obra ADD COLUMN total_neto FLOAT DEFAULT 0.0"),
+            ("encargado", "ALTER TABLE apu_obra ADD COLUMN encargado VARCHAR(160)"),
+            ("puesto", "ALTER TABLE apu_obra ADD COLUMN puesto VARCHAR(160)"),
+            ("telefono", "ALTER TABLE apu_obra ADD COLUMN telefono VARCHAR(60)"),
+            ("correo", "ALTER TABLE apu_obra ADD COLUMN correo VARCHAR(160)"),
+            ("responsable", "ALTER TABLE apu_obra ADD COLUMN responsable VARCHAR(120)"),
         ]:
             if col not in obra_cols:
                 db.session.execute(text(stmt))

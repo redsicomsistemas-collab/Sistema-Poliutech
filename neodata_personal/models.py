@@ -122,11 +122,17 @@ class Obra(db.Model):
     __tablename__ = "apu_obra"
 
     id = db.Column(db.Integer, primary_key=True)
+    numero = db.Column(db.String(20))
     clave = db.Column(db.String(60), unique=True)
     nombre = db.Column(db.String(220), nullable=False)
     cliente = db.Column(db.String(160))
     descripcion = db.Column(db.Text)
     ubicacion = db.Column(db.String(220))
+    encargado = db.Column(db.String(160))
+    puesto = db.Column(db.String(160))
+    telefono = db.Column(db.String(60))
+    correo = db.Column(db.String(160))
+    responsable = db.Column(db.String(120))
     unidad_venta = db.Column(db.String(50), nullable=False, default="obra")
     fecha_inicio = db.Column(db.DateTime)
     fecha_fin = db.Column(db.DateTime)
