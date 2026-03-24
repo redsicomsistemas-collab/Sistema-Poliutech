@@ -4115,7 +4115,7 @@ def export_cotizacion_pdf(cot_id: int):
     elems.append(Spacer(1, 4))
 
     # === TABLA DE CONCEPTOS ===
-    data = [["Capítulo", "Concepto", "Uni.", "Cant.", "Sistema", "Precio Unitario", "Subtotal"]]
+    data = [["Ptda", "Concepto", "Uni.", "Cant.", "Sistema", "Precio Unitario", "Subtotal"]]
     for d in c.detalles:
         data.append([
             Paragraph(_truncate_pdf_text(getattr(d, "capitulo", "") or "-", 28), styles["NormalCenter"]),
@@ -4129,7 +4129,7 @@ def export_cotizacion_pdf(cot_id: int):
 
     tbl = Table(
         data,
-        colWidths=[18*mm, 78*mm, 10*mm, 16*mm, 24*mm, 22*mm, 22*mm],
+        colWidths=[12*mm, 78*mm, 16*mm, 16*mm, 24*mm, 22*mm, 22*mm],
         repeatRows=1,
         hAlign="CENTER"
     )
