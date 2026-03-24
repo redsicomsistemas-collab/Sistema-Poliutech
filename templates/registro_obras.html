@@ -152,8 +152,23 @@
   </div>
 </div>
 
+<div id="email-wait-overlay" class="position-fixed top-0 start-0 w-100 h-100 d-none" style="background: rgba(15, 23, 42, 0.75); z-index: 2000;">
+  <div class="d-flex align-items-center justify-content-center h-100">
+    <div class="card shadow-lg border-0" style="max-width: 420px; width: calc(100% - 2rem);">
+      <div class="card-body text-center py-5">
+        <div class="spinner-border text-primary mb-3" role="status"></div>
+        <h5 class="mb-2">Enviando correo...</h5>
+        <div class="text-muted">Espera un momento mientras terminamos el envío.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 document.addEventListener("DOMContentLoaded", () => {
+  const addForm = document.querySelector('form input[name="action"][value="add"]')?.closest("form");
+  const sendEmailAdd = document.getElementById("send-email-add");
+  const emailWaitOverlay = document.getElementById("email-wait-overlay");
   const tbody = document.querySelector("#registro-obras-table tbody");
   const btnLimpiar = document.getElementById("btn-limpiar-filtros");
   const btnExportar = document.getElementById("btn-exportar-excel");
@@ -243,6 +258,11 @@ document.addEventListener("DOMContentLoaded", () => {
       if (input.closest("tr")?.style.display === "none") return;
       input.checked = selectAllRows.checked;
     });
+  });
+
+  addForm?.addEventListener("submit", () => {
+    if (!sendEmailAdd?.checked) return;
+    emailWaitOverlay?.classList.remove("d-none");
   });
 
   Array.from(tbody.querySelectorAll("tr")).forEach(syncRowDataset);

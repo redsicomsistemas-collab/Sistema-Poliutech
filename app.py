@@ -335,8 +335,8 @@ def _send_registro_obra_email(row: dict) -> None:
         raise FileNotFoundError(f"No se encontró el adjunto requerido: {REGISTRO_MAIL_ATTACHMENT.name}")
 
     msg = EmailMessage()
-    msg["Subject"] = "Presentación Corporativo Poliutech"
-    msg["From"] = REGISTRO_MAIL_FROM
+    msg["Subject"] = "Te visitamos recientemente"
+    msg["From"] = f"Poliutech <{REGISTRO_MAIL_FROM}>"
     msg["To"] = recipient
     msg.set_content(_registro_obra_email_body())
 
