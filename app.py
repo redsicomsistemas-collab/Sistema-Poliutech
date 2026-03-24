@@ -216,6 +216,40 @@ def _normalize_registro_obra_row(row: Optional[dict], idx: int) -> dict:
     }
 
 
+def _clean_registro_obra_excel_value(value: object) -> str:
+    text = str(value or "").strip()
+    if text in {'"', "-", "—", "N/A", "n/a"}:
+        return ""
+    return text
+
+
+def _normalize_registro_obra_phone(value: object) -> str:
+    text = _clean_registro_obra_excel_value(value)
+    if not text:
+        return ""
+    try:
+        if re.fullmatch(r"\d+(?:\.\d+)?E\d+", text, re.IGNORECASE):
+            text = format(int(float(text)), "d")
+    except Exception:
+        pass
+    return text
+
+
+def _registro_obra_duplicate_key(row: dict) -> tuple[str, str, str, str, str]:
+    def norm(value: object) -> str:
+        raw = str(value or "").strip()
+        normalized = unicodedata.normalize("NFKD", raw)
+        return "".join(ch for ch in normalized if not unicodedata.combining(ch)).lower().strip()
+
+    return (
+        norm(row.get("obra")),
+        norm(row.get("ubicacion")),
+        norm(row.get("encargado")),
+        norm(row.get("telefono")),
+        norm(row.get("correo")),
+    )
+
+
 def _registro_obra_to_row(item: "RegistroObra", idx: Optional[int] = None) -> dict:
     position = idx if idx is not None else (item.id or 0)
     return _normalize_registro_obra_row({
@@ -314,6 +348,102 @@ def _migrate_registro_obras_from_json() -> None:
     except Exception as e:
         db.session.rollback()
         print("⚠️ ensure_schema(registro_obra.migracion_json):", e)
+
+
+def _load_registro_obras_from_xlsx(file_bytes: bytes, default_responsable: str = "") -> list[dict]:
+    with zipfile.ZipFile(io.BytesIO(file_bytes)) as workbook_zip:
+        shared_strings: list[str] = []
+        if "xl/sharedStrings.xml" in workbook_zip.namelist():
+            shared_root = ET.fromstring(workbook_zip.read("xl/sharedStrings.xml"))
+            for item in shared_root.findall("a:si", XLSX_NS):
+                shared_strings.append(
+                    "".join((node.text or "") for node in item.findall(".//a:t", XLSX_NS)).strip()
+                )
+
+        workbook_root = ET.fromstring(workbook_zip.read("xl/workbook.xml"))
+        rels_root = ET.fromstring(workbook_zip.read("xl/_rels/workbook.xml.rels"))
+        rel_map = {
+            rel.attrib.get("Id"): rel.attrib.get("Target", "")
+            for rel in rels_root.findall("p:Relationship", XLSX_NS)
+        }
+
+        first_sheet_path = None
+        for sheet in workbook_root.findall("a:sheets/a:sheet", XLSX_NS):
+            rel_id = sheet.attrib.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
+            target = rel_map.get(rel_id or "", "")
+            if target:
+                first_sheet_path = f"xl/{target.lstrip('/')}"
+                break
+
+        if not first_sheet_path or first_sheet_path not in workbook_zip.namelist():
+            return []
+
+        sheet_root = ET.fromstring(workbook_zip.read(first_sheet_path))
+        parsed_rows: list[list[str]] = []
+        for row in sheet_root.findall("a:sheetData/a:row", XLSX_NS):
+            values_by_col: dict[int, str] = {}
+            for cell in row.findall("a:c", XLSX_NS):
+                ref = cell.attrib.get("r", "")
+                values_by_col[_excel_col_to_index(ref)] = _xlsx_cell_text(cell, shared_strings)
+            if not values_by_col:
+                continue
+            max_col = max(values_by_col)
+            parsed_rows.append([values_by_col.get(col, "").strip() for col in range(max_col + 1)])
+
+    if not parsed_rows:
+        return []
+
+    header_aliases = {
+        "numero": "numero",
+        "n°": "numero",
+        "no": "numero",
+        "obra": "obra",
+        "ubicacion": "ubicacion",
+        "encargado": "encargado",
+        "puesto": "puesto",
+        "telefono": "telefono",
+        "correo": "correo",
+        "responsable": "responsable",
+    }
+    column_map: dict[str, int] = {}
+    header_row_index = -1
+    for idx, row in enumerate(parsed_rows):
+        current_map: dict[str, int] = {}
+        for col_idx, value in enumerate(row):
+            key = _normalize_text_for_match(value).replace(".", "")
+            if key in header_aliases:
+                current_map[header_aliases[key]] = col_idx
+        if "obra" in current_map:
+            column_map = current_map
+            header_row_index = idx
+            break
+
+    if header_row_index < 0:
+        return []
+
+    imported_rows: list[dict] = []
+    for row in parsed_rows[header_row_index + 1:]:
+        obra = _clean_registro_obra_excel_value(row[column_map["obra"]]) if "obra" in column_map and len(row) > column_map["obra"] else ""
+        ubicacion = _clean_registro_obra_excel_value(row[column_map["ubicacion"]]) if "ubicacion" in column_map and len(row) > column_map["ubicacion"] else ""
+        encargado = _clean_registro_obra_excel_value(row[column_map["encargado"]]) if "encargado" in column_map and len(row) > column_map["encargado"] else ""
+        puesto = _clean_registro_obra_excel_value(row[column_map["puesto"]]) if "puesto" in column_map and len(row) > column_map["puesto"] else ""
+        telefono = _normalize_registro_obra_phone(row[column_map["telefono"]]) if "telefono" in column_map and len(row) > column_map["telefono"] else ""
+        correo = _clean_registro_obra_excel_value(row[column_map["correo"]]) if "correo" in column_map and len(row) > column_map["correo"] else ""
+        responsable = _clean_registro_obra_excel_value(row[column_map["responsable"]]) if "responsable" in column_map and len(row) > column_map["responsable"] else ""
+        if not any([obra, ubicacion, encargado, puesto, telefono, correo, responsable]):
+            continue
+        imported_rows.append(_normalize_registro_obra_row({
+            "numero": "",
+            "obra": obra,
+            "ubicacion": ubicacion,
+            "encargado": encargado,
+            "puesto": puesto,
+            "telefono": telefono,
+            "correo": correo,
+            "responsable": responsable or default_responsable,
+        }, len(imported_rows) + 1))
+
+    return imported_rows
 
 
 def _mobile_json_error(message: str, status: int = 400):
@@ -2623,6 +2753,50 @@ def registro_obras():
                 updated_rows.append(row)
             rows = updated_rows
             flash("Registros actualizados.", "success")
+        elif action == "import":
+            uploaded = request.files.get("import_file")
+            if not uploaded or not (uploaded.filename or "").strip():
+                flash("Selecciona un archivo Excel para importar.", "warning")
+                return redirect(url_for("registro_obras"))
+
+            import_responsable = (request.form.get("import_responsable") or "").strip()
+            if not is_admin():
+                import_responsable = responsable_actual() or import_responsable
+
+            try:
+                imported_rows = _load_registro_obras_from_xlsx(uploaded.read(), default_responsable=import_responsable)
+            except Exception:
+                imported_rows = []
+
+            if not imported_rows:
+                flash("No se encontraron registros válidos en el Excel.", "warning")
+                return redirect(url_for("registro_obras"))
+
+            existing_keys = {_registro_obra_duplicate_key(row) for row in rows}
+            accepted_rows = []
+            skipped_duplicates = 0
+            for imported in imported_rows:
+                if imported["correo"] and not re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", imported["correo"]):
+                    flash(f"El correo '{imported['correo']}' no es valido en el archivo importado.", "danger")
+                    return redirect(url_for("registro_obras"))
+                if not is_admin():
+                    imported["responsable"] = responsable_actual() or imported["responsable"]
+                duplicate_key = _registro_obra_duplicate_key(imported)
+                if duplicate_key in existing_keys:
+                    skipped_duplicates += 1
+                    continue
+                existing_keys.add(duplicate_key)
+                accepted_rows.append(imported)
+                rows.append(imported)
+
+            if not accepted_rows:
+                flash("No se importaron registros nuevos; todos ya existían.", "warning")
+                return redirect(url_for("registro_obras"))
+
+            message = f"Se importaron {len(accepted_rows)} registros desde Excel."
+            if skipped_duplicates:
+                message += f" Se omitieron {skipped_duplicates} duplicados."
+            flash(message, "success")
         elif action == "delete":
             selected_ids = {int(value) for value in request.form.getlist("selected_ids[]") if str(value).strip().isdigit()}
             rows = [row for row in rows if int(row.get("id", 0) or 0) not in selected_ids]
@@ -4639,4 +4813,4 @@ if __name__ == "__main__":
         os.makedirs(app.static_folder or "static", exist_ok=True)
     except Exception:
         pass
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True) 
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True)

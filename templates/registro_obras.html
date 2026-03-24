@@ -55,6 +55,29 @@
     </div>
   </div>
 
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <h6 class="mb-3">Importar desde Excel</h6>
+      <form method="post" enctype="multipart/form-data" class="row g-3">
+        <input type="hidden" name="action" value="import">
+        <div class="col-lg-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Archivo Excel</label>
+          <input type="file" name="import_file" class="form-control" accept=".xlsx" required>
+        </div>
+        <div class="col-lg-3">
+          <label class="form-label small fw-bold text-secondary mb-1">Responsable por defecto</label>
+          <input type="text" name="import_responsable" class="form-control" value="{{ default_responsable or '' }}" {% if current_user.is_authenticated and (current_user.rol or "")|upper != "ADMIN" %}readonly{% endif %}>
+        </div>
+        <div class="col-lg-3 d-flex align-items-end">
+          <button type="submit" class="btn btn-outline-primary w-100">Importar Excel</button>
+        </div>
+      </form>
+      <div class="text-muted small mt-2">
+        Formato soportado: N°, OBRA, UBICACIÓN, ENCARGADO, PUESTO, TELEFONO, CORREO y opcional RESPONSABLE.
+      </div>
+    </div>
+  </div>
+
   <div class="card shadow-sm">
     <div class="card-body">
       <div class="row g-3 mb-4">
