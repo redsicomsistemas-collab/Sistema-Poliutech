@@ -314,6 +314,46 @@ def _sync_cliente_from_registro_obra(row: dict) -> None:
     cliente.direccion = (row.get("ubicacion") or "").strip() or cliente.direccion
 
 
+def _registro_obra_email_body() -> str:
+    return (
+        "Buen día,\n\n"
+        "Con gusto de saludarlo y de acuerdo a la plática que pudimos sostener con usted o un representante de su empresa, por medio del presente, nos permitimos presentar a Corporativo Poliutech, una empresa especializada en la aplicación de recubrimientos para la construcción. Contamos con certificaciones como aplicadores en pisos epóxicos, impermeabilizantes, poliureas, pinturas y diversos recubrimientos especializados para proyectos en los sectores industrial, comercial, público y privado.\n\n"
+        "Nos distinguimos por adaptarnos a los requerimientos de nuestros clientes, optimizando al máximo los recursos y espacios disponibles para garantizar soluciones eficientes y de alta calidad.\n\n"
+        "Adjunto a este correo encontrará nuestro CV empresarial, donde podrá conocer más sobre nuestros servicios y proyectos.\n\n"
+        "Quedamos a sus órdenes para cualquier necesidad o consulta.\n\n"
+        "Atentamente Poliutech Recubrimientos Especializados"
+    )
+
+
+def _send_registro_obra_email(row: dict) -> None:
+    recipient = (row.get("correo") or "").strip()
+    if not recipient:
+        raise ValueError("El registro no tiene correo destino.")
+    if not re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", recipient):
+        raise ValueError("El correo destino no es válido.")
+    if not REGISTRO_MAIL_ATTACHMENT.exists():
+        raise FileNotFoundError(f"No se encontró el adjunto requerido: {REGISTRO_MAIL_ATTACHMENT.name}")
+
+    msg = EmailMessage()
+    msg["Subject"] = "Presentación Corporativo Poliutech"
+    msg["From"] = REGISTRO_MAIL_FROM
+    msg["To"] = recipient
+    msg.set_content(_registro_obra_email_body())
+
+    attachment_bytes = REGISTRO_MAIL_ATTACHMENT.read_bytes()
+    msg.add_attachment(
+        attachment_bytes,
+        maintype="application",
+        subtype="pdf",
+        filename=REGISTRO_MAIL_ATTACHMENT.name,
+    )
+
+    with smtplib.SMTP(REGISTRO_MAIL_HOST, REGISTRO_MAIL_PORT, timeout=30) as smtp:
+        smtp.ehlo()
+        smtp.login(REGISTRO_MAIL_USERNAME, REGISTRO_MAIL_PASSWORD)
+        smtp.send_message(msg, to_addrs=[recipient])
+
+
 def _save_registro_obras(rows: list[dict]) -> None:
     db.session.query(RegistroObra).delete()
     for idx, raw_row in enumerate(rows, start=1):
@@ -789,6 +829,12 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "26"))
 SMTP_USERNAME = os.getenv("SMTP_USERNAME", "cotizaciones@poliutech.com").strip()
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "Cotizaciones2025@").strip()
 SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USERNAME).strip()
+REGISTRO_MAIL_HOST = os.getenv("REGISTRO_MAIL_HOST", "servidor15.escala.net.mx").strip()
+REGISTRO_MAIL_PORT = int(os.getenv("REGISTRO_MAIL_PORT", "26"))
+REGISTRO_MAIL_USERNAME = os.getenv("REGISTRO_MAIL_USERNAME", "info@poliutech.com").strip()
+REGISTRO_MAIL_PASSWORD = os.getenv("REGISTRO_MAIL_PASSWORD", "Info@2025?").strip()
+REGISTRO_MAIL_FROM = os.getenv("REGISTRO_MAIL_FROM", REGISTRO_MAIL_USERNAME).strip()
+REGISTRO_MAIL_ATTACHMENT = Path(__file__).resolve().parent / "presentacion2026OK.pdf"
 
 # Usa SIEMPRE los modelos desde models.py para evitar duplicados
 from models import db, Cliente, Concepto, Cotizacion, CotizacionDetalle, Usuario, RegistroObra, ActivityLog
@@ -2700,7 +2746,9 @@ def registro_obras():
 
     if request.method == "POST":
         action = (request.form.get("action") or "").strip().lower()
+        pending_email_rows: list[dict] = []
         if action == "add":
+            send_email = (request.form.get("send_email") or "").strip().lower() in {"1", "true", "on", "yes"}
             row = _normalize_registro_obra_row({
                 "numero": "",
                 "obra": request.form.get("obra"),
@@ -2714,6 +2762,9 @@ def registro_obras():
             if not any([row["obra"], row["ubicacion"], row["encargado"], row["puesto"], row["telefono"], row["correo"], row["responsable"]]):
                 flash("Captura al menos un dato antes de agregar el registro.", "warning")
                 return redirect(url_for("registro_obras"))
+            if send_email and not row["correo"]:
+                flash("Debes capturar un correo si activas ENVIAR CORREO.", "danger")
+                return redirect(url_for("registro_obras"))
             if row["correo"] and not re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", row["correo"]):
                 flash(f"El correo '{row['correo']}' no es valido.", "danger")
                 return redirect(url_for("registro_obras"))
@@ -2721,7 +2772,12 @@ def registro_obras():
                 row["responsable"] = responsable_actual() or row["responsable"]
             row["numero"] = str(len(rows) + 1)
             rows.append(row)
-            flash("Registro agregado.", "success")
+            if send_email:
+                pending_email_rows.append(row)
+            if send_email:
+                flash("Registro agregado.", "success")
+            else:
+                flash("Registro agregado.", "success")
         elif action == "update":
             row_ids = request.form.getlist("row_id[]")
             obras = request.form.getlist("obra[]")
@@ -2733,6 +2789,7 @@ def registro_obras():
             responsables = request.form.getlist("responsable[]")
             updated_rows = []
             for idx, row_id in enumerate(row_ids):
+                numeric_row_id = int(row_id or idx + 1)
                 row = _normalize_registro_obra_row({
                     "numero": "",
                     "obra": obras[idx] if idx < len(obras) else "",
@@ -2742,7 +2799,7 @@ def registro_obras():
                     "telefono": telefonos[idx] if idx < len(telefonos) else "",
                     "correo": correos[idx] if idx < len(correos) else "",
                     "responsable": responsables[idx] if idx < len(responsables) else "",
-                }, int(row_id or idx + 1))
+                }, numeric_row_id)
                 if not any([row["obra"], row["ubicacion"], row["encargado"], row["puesto"], row["telefono"], row["correo"], row["responsable"]]):
                     continue
                 if row["correo"] and not re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", row["correo"]):
@@ -2809,6 +2866,19 @@ def registro_obras():
         for row in rows:
             _sync_cliente_from_registro_obra(row)
         db.session.commit()
+        if pending_email_rows:
+            email_errors = []
+            email_sent = 0
+            for row in pending_email_rows:
+                try:
+                    _send_registro_obra_email(row)
+                    email_sent += 1
+                except Exception as e:
+                    email_errors.append(f"{row.get('obra') or row.get('encargado') or row.get('correo')}: {e}")
+            if email_sent:
+                flash("Envío de correo exitoso.", "success")
+            if email_errors:
+                flash("No se pudo enviar: " + " | ".join(email_errors), "warning")
         return redirect(url_for("registro_obras"))
 
     filters = _registro_obras_filters_from_request()
@@ -2900,6 +2970,7 @@ def api_mobile_registro_obras_create():
     user = g.mobile_user
     rows = _load_registro_obras()
     payload = request.get_json(silent=True) or {}
+    send_email = bool(payload.get("send_email"))
     row = _normalize_registro_obra_row({
         "numero": "",
         "obra": payload.get("obra"),
@@ -2913,6 +2984,8 @@ def api_mobile_registro_obras_create():
 
     if not row["obra"]:
         return _mobile_json_error("El campo 'obra' es obligatorio.", 400)
+    if send_email and not row["correo"]:
+        return _mobile_json_error("Debes capturar un correo si activas ENVIAR CORREO.", 400)
     if row["correo"] and not re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", row["correo"]):
         return _mobile_json_error("Correo inválido.", 400)
     if not _mobile_user_is_admin(user):
@@ -2924,6 +2997,11 @@ def api_mobile_registro_obras_create():
     _save_registro_obras(rows)
     _sync_cliente_from_registro_obra(row)
     db.session.commit()
+    if send_email:
+        try:
+            _send_registro_obra_email(row)
+        except Exception as e:
+            return jsonify({"ok": True, "item": row, "email_warning": str(e)}), 201
     return jsonify({"ok": True, "item": row}), 201
 
 
@@ -2941,6 +3019,7 @@ def api_mobile_registro_obras_update(item_id: int):
         return _mobile_json_error("No autorizado.", 403)
 
     payload = request.get_json(silent=True) or {}
+    send_email = bool(payload.get("send_email"))
     updated = _normalize_registro_obra_row({
         "numero": target.get("numero"),
         "obra": payload.get("obra"),
@@ -2953,6 +3032,8 @@ def api_mobile_registro_obras_update(item_id: int):
     }, item_id)
     if not updated["obra"]:
         return _mobile_json_error("El campo 'obra' es obligatorio.", 400)
+    if send_email and not updated["correo"]:
+        return _mobile_json_error("Debes capturar un correo si activas ENVIAR CORREO.", 400)
     if updated["correo"] and not re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", updated["correo"]):
         return _mobile_json_error("Correo inválido.", 400)
     if not _mobile_user_is_admin(user):
@@ -2965,6 +3046,11 @@ def api_mobile_registro_obras_update(item_id: int):
     _save_registro_obras(rows)
     _sync_cliente_from_registro_obra(target)
     db.session.commit()
+    if send_email:
+        try:
+            _send_registro_obra_email(target)
+        except Exception as e:
+            return jsonify({"ok": True, "item": target, "email_warning": str(e)})
     return jsonify({"ok": True, "item": target})
 
 
