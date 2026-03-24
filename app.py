@@ -11,10 +11,12 @@ from zoneinfo import ZoneInfo
 from typing import Iterable, Optional, List
 from urllib.parse import urlparse
 from pathlib import Path
+from functools import wraps
 from email.message import EmailMessage
 from email.utils import getaddresses
 from html import escape
 import xml.etree.ElementTree as ET
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 
 # -------------------------------
@@ -214,13 +216,6 @@ def _normalize_registro_obra_row(row: Optional[dict], idx: int) -> dict:
     }
 
 
-def _save_registro_obras(rows: list[dict]) -> None:
-    REGISTRO_OBRAS_JSON.write_text(
-        json.dumps(rows, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-
-
 def _load_registro_obras() -> list[dict]:
     if REGISTRO_OBRAS_JSON.exists():
         try:
@@ -275,6 +270,83 @@ def _sync_cliente_from_registro_obra(row: dict) -> None:
     cliente.correo = (row.get("correo") or "").strip() or cliente.correo
     cliente.telefono = (row.get("telefono") or "").strip() or cliente.telefono
     cliente.direccion = (row.get("ubicacion") or "").strip() or cliente.direccion
+
+
+def _save_registro_obras(rows: list[dict]) -> None:
+    REGISTRO_OBRAS_JSON.write_text(
+        json.dumps(rows, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _mobile_json_error(message: str, status: int = 400):
+    return jsonify({"ok": False, "error": message}), status
+
+
+def _mobile_token_serializer() -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(current_app.secret_key, salt="registro-obras-mobile")
+
+
+def _issue_mobile_token(user: Usuario) -> str:
+    return _mobile_token_serializer().dumps({"user_id": user.id})
+
+
+def _mobile_user_from_token() -> Optional[Usuario]:
+    auth_header = (request.headers.get("Authorization") or "").strip()
+    if not auth_header.lower().startswith("bearer "):
+        return None
+    token = auth_header[7:].strip()
+    if not token:
+        return None
+    try:
+        payload = _mobile_token_serializer().loads(token, max_age=60 * 60 * 24 * 30)
+    except (BadSignature, SignatureExpired):
+        return None
+    user_id = payload.get("user_id")
+    if not user_id:
+        return None
+    return Usuario.query.get(int(user_id))
+
+
+def _mobile_user_is_admin(user: Usuario) -> bool:
+    return ((getattr(user, "rol", "") or "").upper() == "ADMIN")
+
+
+def _mobile_user_responsable(user: Usuario) -> str:
+    nombre = (getattr(user, "nombre", "") or "").strip()
+    if not nombre:
+        return ""
+    first = nombre.split()[0].strip()
+    return first[:1].upper() + first[1:].lower() if first else ""
+
+
+def require_mobile_auth(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        user = _mobile_user_from_token()
+        if not user:
+            return _mobile_json_error("No autorizado.", 401)
+        g.mobile_user = user
+        return fn(*args, **kwargs)
+    return wrapper
+
+
+def _filter_registro_obras_for_mobile(rows: list[dict], user: Usuario, obra: str = "", responsable: str = "") -> list[dict]:
+    obra_filter = (obra or "").strip().lower()
+    responsable_filter = (responsable or "").strip().lower()
+    out = []
+    for row in rows:
+        obra_value = (row.get("obra") or "").strip().lower()
+        responsable_value = (row.get("responsable") or "").strip().lower()
+        if obra_filter and obra_filter not in obra_value:
+            continue
+        if responsable_filter and responsable_filter not in responsable_value:
+            continue
+        if not _mobile_user_is_admin(user):
+            if responsable_value != _mobile_user_responsable(user).lower():
+                continue
+        out.append(row)
+    return out
 
 
 def _provider_filters_from_request() -> dict[str, str]:
@@ -492,7 +564,7 @@ def _build_matrix_xlsx(sheet_name: str, rows: list[list[str]], column_widths: Op
 
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    flash, jsonify, Response, abort, g
+    flash, jsonify, Response, abort, g, current_app
 )
 
 from sqlalchemy import text, or_, case
@@ -597,6 +669,8 @@ def _require_login_everywhere():
     if request.path == "/login" or request.endpoint == "login":
         return
     if request.path in ("/health", "/ping"):
+        return
+    if request.path.startswith("/api/mobile/"):
         return
 
     # Si ya está logueado, ok
@@ -2567,6 +2641,150 @@ def export_registro_obras_xlsx():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="registro_obras_{stamp}.xlsx"'},
     )
+
+
+@app.route("/api/mobile/login", methods=["POST"])
+def api_mobile_login():
+    payload = request.get_json(silent=True) or {}
+    nombre = (payload.get("nombre") or payload.get("usuario") or "").strip()
+    password = str(payload.get("password") or "").strip()
+    if not nombre or not password:
+        return _mobile_json_error("Faltan credenciales.", 400)
+
+    user = Usuario.query.filter(db.func.lower(Usuario.nombre) == nombre.lower()).first()
+    if not user or not user.check_password(password):
+        return _mobile_json_error("Credenciales incorrectas.", 401)
+
+    return jsonify({
+        "ok": True,
+        "token": _issue_mobile_token(user),
+        "user": {
+            "id": user.id,
+            "nombre": user.nombre,
+            "rol": user.rol,
+            "responsable": _mobile_user_responsable(user),
+        },
+    })
+
+
+@app.route("/api/mobile/registro-obras", methods=["GET"])
+@require_mobile_auth
+def api_mobile_registro_obras_list():
+    user = g.mobile_user
+    rows = _load_registro_obras()
+    items = _filter_registro_obras_for_mobile(
+        rows,
+        user,
+        obra=request.args.get("obra", ""),
+        responsable=request.args.get("responsable", ""),
+    )
+    return jsonify({"ok": True, "items": items})
+
+
+@app.route("/api/mobile/registro-obras", methods=["POST"])
+@require_mobile_auth
+def api_mobile_registro_obras_create():
+    user = g.mobile_user
+    rows = _load_registro_obras()
+    payload = request.get_json(silent=True) or {}
+    row = _normalize_registro_obra_row({
+        "numero": "",
+        "obra": payload.get("obra"),
+        "ubicacion": payload.get("ubicacion"),
+        "encargado": payload.get("encargado"),
+        "puesto": payload.get("puesto"),
+        "telefono": payload.get("telefono"),
+        "correo": payload.get("correo"),
+        "responsable": payload.get("responsable"),
+    }, len(rows) + 1)
+
+    if not row["obra"]:
+        return _mobile_json_error("El campo 'obra' es obligatorio.", 400)
+    if row["correo"] and not re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", row["correo"]):
+        return _mobile_json_error("Correo inválido.", 400)
+    if not _mobile_user_is_admin(user):
+        row["responsable"] = _mobile_user_responsable(user)
+
+    row["numero"] = str(len(rows) + 1)
+    row["id"] = len(rows) + 1
+    rows.append(row)
+    _save_registro_obras(rows)
+    _sync_cliente_from_registro_obra(row)
+    db.session.commit()
+    return jsonify({"ok": True, "item": row}), 201
+
+
+@app.route("/api/mobile/registro-obras/<int:item_id>", methods=["PUT"])
+@require_mobile_auth
+def api_mobile_registro_obras_update(item_id: int):
+    user = g.mobile_user
+    rows = _load_registro_obras()
+    target = next((row for row in rows if int(row.get("id", 0) or 0) == item_id), None)
+    if not target:
+        return _mobile_json_error("Registro no encontrado.", 404)
+
+    owner = (target.get("responsable") or "").strip().lower()
+    if not _mobile_user_is_admin(user) and owner != _mobile_user_responsable(user).lower():
+        return _mobile_json_error("No autorizado.", 403)
+
+    payload = request.get_json(silent=True) or {}
+    updated = _normalize_registro_obra_row({
+        "numero": target.get("numero"),
+        "obra": payload.get("obra"),
+        "ubicacion": payload.get("ubicacion"),
+        "encargado": payload.get("encargado"),
+        "puesto": payload.get("puesto"),
+        "telefono": payload.get("telefono"),
+        "correo": payload.get("correo"),
+        "responsable": payload.get("responsable"),
+    }, item_id)
+    if not updated["obra"]:
+        return _mobile_json_error("El campo 'obra' es obligatorio.", 400)
+    if updated["correo"] and not re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", updated["correo"]):
+        return _mobile_json_error("Correo inválido.", 400)
+    if not _mobile_user_is_admin(user):
+        updated["responsable"] = _mobile_user_responsable(user)
+
+    target.update(updated)
+    for idx, row in enumerate(rows, start=1):
+        row["id"] = idx
+        row["numero"] = str(idx)
+    _save_registro_obras(rows)
+    _sync_cliente_from_registro_obra(target)
+    db.session.commit()
+    return jsonify({"ok": True, "item": target})
+
+
+@app.route("/api/mobile/registro-obras/bulk-delete", methods=["POST"])
+@require_mobile_auth
+def api_mobile_registro_obras_bulk_delete():
+    user = g.mobile_user
+    rows = _load_registro_obras()
+    payload = request.get_json(silent=True) or {}
+    raw_ids = payload.get("ids") or []
+    if not isinstance(raw_ids, list):
+        return _mobile_json_error("El campo 'ids' debe ser una lista.", 400)
+    selected_ids = {int(value) for value in raw_ids if str(value).strip().isdigit()}
+    if not selected_ids:
+        return _mobile_json_error("No se enviaron ids válidos.", 400)
+
+    kept = []
+    deleted = 0
+    for row in rows:
+        row_id = int(row.get("id", 0) or 0)
+        owner = (row.get("responsable") or "").strip().lower()
+        can_delete = _mobile_user_is_admin(user) or owner == _mobile_user_responsable(user).lower()
+        if row_id in selected_ids and can_delete:
+            deleted += 1
+            continue
+        kept.append(row)
+
+    for idx, row in enumerate(kept, start=1):
+        row["id"] = idx
+        row["numero"] = str(idx)
+    _save_registro_obras(kept)
+    db.session.commit()
+    return jsonify({"ok": True, "deleted": deleted})
 
 
 @app.route("/admin/cotizaciones/importar", methods=["GET", "POST"])
