@@ -1324,27 +1324,6 @@ def _truncate_pdf_text(value, limit=90):
     return text[: max(0, limit - 3)].rstrip() + "..."
 
 
-def _normalize_unit_value(value: str, default: str = "-") -> str:
-    raw = str(value or "").replace("?", "2").strip()
-    if not raw:
-        return default
-
-    normalized = re.sub(r"\s+", " ", raw)
-    known_units = (
-        "m2", "m3", "m", "cm", "mm", "kg", "g", "lt", "lts", "l", "ml",
-        "pza", "pzas", "pz", "pieza", "piezas", "jgo", "jgos", "juego",
-        "juegos", "kit", "kits", "serv", "servicio", "servicios", "hr",
-        "hrs", "h", "dia", "dias", "jornada", "jor", "gal", "gl", "tk",
-    )
-    for token in re.split(r"[\s,;|]+", normalized):
-        token_norm = token.strip().lower()
-        if token_norm in known_units:
-            return token_norm
-
-    first_token = re.split(r"[\s,;|]+", normalized, maxsplit=1)[0].strip()
-    return (first_token or default)[:12]
-
-
 def parse_datetime_flexible(v) -> Optional[datetime]:
     if v in (None, ""):
         return None
@@ -1554,7 +1533,7 @@ def _extract_items_from_sistema_descripcion_pdf_text(text: str) -> list[dict]:
         if not match:
             return None
         return {
-            "unidad": _normalize_unit_value("m2", default="m2"),
+            "unidad": "m2",
             "cantidad": parse_float(match.group(2), 0.0),
             "precio_unitario": parse_float(match.group(3), 0.0),
             "subtotal_pdf": parse_float(match.group(4), 0.0),
@@ -1608,7 +1587,7 @@ def _extract_items_from_sistema_descripcion_pdf_text(text: str) -> list[dict]:
                     if j < len(lines) and is_money_line(lines[j]):
                         subtotal = parse_float(lines[j], 0.0)
                         parsed = {
-                            "unidad": _normalize_unit_value(unidad, default="m2"),
+                            "unidad": unidad,
                             "cantidad": cantidad,
                             "precio_unitario": precio,
                             "subtotal_pdf": subtotal,
@@ -1758,7 +1737,7 @@ def _extract_items_from_pdf_tables(tables: list[list[list[str]]]) -> list[dict]:
                 parsed_qty, parsed_unit = _parse_pdf_quantity_and_unit(unidad_cell)
                 if cantidad <= 0 and parsed_qty > 0:
                     cantidad = parsed_qty
-                unidad = _normalize_unit_value(parsed_unit or unidad_cell.strip(), default="")
+                unidad = parsed_unit or unidad_cell.strip()
 
             money_values = extract_money_values(cells)
             precio_unitario = _parse_pdf_currency(precio_cell)
@@ -4032,6 +4011,7 @@ def export_cotizacion_pdf(cot_id: int):
     styles.add(ParagraphStyle(name="NormalCell", fontName="Helvetica", fontSize=8, leading=10, splitLongWords=False))
     styles.add(ParagraphStyle(name="NormalRight", fontName="Helvetica", fontSize=8, leading=10, alignment=2, splitLongWords=False))
     styles.add(ParagraphStyle(name="NormalCenter", fontName="Helvetica", fontSize=8, leading=10, alignment=1, splitLongWords=False))
+    styles.add(ParagraphStyle(name="UnitCell", fontName="Helvetica", fontSize=8, leading=8.5, alignment=1, splitLongWords=True))
 
     elems = []
 
@@ -4140,7 +4120,7 @@ def export_cotizacion_pdf(cot_id: int):
         data.append([
             Paragraph(_truncate_pdf_text(getattr(d, "capitulo", "") or "-", 28), styles["NormalCenter"]),
             Paragraph((d.nombre_concepto or "-").strip(), styles["NormalCell"]),
-            Paragraph(_normalize_unit_value(d.unidad), styles["NormalCenter"]),
+            Paragraph("<br/>".join(str(d.unidad or "-").strip().splitlines()), styles["UnitCell"]),
             Paragraph(f"{(d.cantidad or 0):.2f}", styles["NormalCenter"]),
             Paragraph((d.sistema or "-").strip(), styles["NormalCell"]),
             Paragraph(money(d.precio_unitario), styles["NormalRight"]),
