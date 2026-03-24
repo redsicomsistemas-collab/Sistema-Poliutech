@@ -127,6 +127,25 @@ class Usuario(UserMixin, db.Model):
     def __repr__(self):
         return f"<Usuario {self.nombre} ({self.rol})>"
 
+
+class RegistroObra(db.Model):
+    __tablename__ = "registro_obra"
+
+    id = db.Column(db.Integer, primary_key=True)
+    numero = db.Column(db.Integer, nullable=False, default=1)
+    obra = db.Column(db.String(220), nullable=False, default="")
+    ubicacion = db.Column(db.String(220))
+    encargado = db.Column(db.String(160))
+    puesto = db.Column(db.String(160))
+    telefono = db.Column(db.String(60))
+    correo = db.Column(db.String(160))
+    responsable = db.Column(db.String(120))
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    def __repr__(self):
+        return f"<RegistroObra {self.id} {self.obra}>"
+
 # ---------------------------------------------------------
 # BITÁCORA (Audit Log)
 # ---------------------------------------------------------

@@ -216,15 +216,23 @@ def _normalize_registro_obra_row(row: Optional[dict], idx: int) -> dict:
     }
 
 
+def _registro_obra_to_row(item: "RegistroObra", idx: Optional[int] = None) -> dict:
+    position = idx if idx is not None else (item.id or 0)
+    return _normalize_registro_obra_row({
+        "numero": item.numero,
+        "obra": item.obra,
+        "ubicacion": item.ubicacion,
+        "encargado": item.encargado,
+        "puesto": item.puesto,
+        "telefono": item.telefono,
+        "correo": item.correo,
+        "responsable": item.responsable,
+    }, position)
+
+
 def _load_registro_obras() -> list[dict]:
-    if REGISTRO_OBRAS_JSON.exists():
-        try:
-            data = json.loads(REGISTRO_OBRAS_JSON.read_text(encoding="utf-8"))
-            if isinstance(data, list):
-                return [_normalize_registro_obra_row(row, idx) for idx, row in enumerate(data, start=1)]
-        except Exception:
-            pass
-    return []
+    items = RegistroObra.query.order_by(RegistroObra.numero.asc(), RegistroObra.id.asc()).all()
+    return [_registro_obra_to_row(item, idx) for idx, item in enumerate(items, start=1)]
 
 
 def _registro_obras_filters_from_request() -> dict[str, str]:
@@ -273,10 +281,39 @@ def _sync_cliente_from_registro_obra(row: dict) -> None:
 
 
 def _save_registro_obras(rows: list[dict]) -> None:
-    REGISTRO_OBRAS_JSON.write_text(
-        json.dumps(rows, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    db.session.query(RegistroObra).delete()
+    for idx, raw_row in enumerate(rows, start=1):
+        row = _normalize_registro_obra_row(raw_row, idx)
+        db.session.add(RegistroObra(
+            numero=idx,
+            obra=row.get("obra", ""),
+            ubicacion=row.get("ubicacion", ""),
+            encargado=row.get("encargado", ""),
+            puesto=row.get("puesto", ""),
+            telefono=row.get("telefono", ""),
+            correo=row.get("correo", ""),
+            responsable=row.get("responsable", ""),
+        ))
+
+
+def _migrate_registro_obras_from_json() -> None:
+    if RegistroObra.query.first() or not REGISTRO_OBRAS_JSON.exists():
+        return
+
+    try:
+        data = json.loads(REGISTRO_OBRAS_JSON.read_text(encoding="utf-8"))
+        if not isinstance(data, list):
+            return
+
+        rows = [_normalize_registro_obra_row(row, idx) for idx, row in enumerate(data, start=1)]
+        _save_registro_obras(rows)
+        for row in rows:
+            _sync_cliente_from_registro_obra(row)
+        db.session.commit()
+        print(f"✅ Migrados {len(rows)} registros de obras desde JSON a base de datos.")
+    except Exception as e:
+        db.session.rollback()
+        print("⚠️ ensure_schema(registro_obra.migracion_json):", e)
 
 
 def _mobile_json_error(message: str, status: int = 400):
@@ -624,7 +661,7 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "Cotizaciones2025@").strip()
 SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USERNAME).strip()
 
 # Usa SIEMPRE los modelos desde models.py para evitar duplicados
-from models import db, Cliente, Concepto, Cotizacion, CotizacionDetalle, Usuario, ActivityLog
+from models import db, Cliente, Concepto, Cotizacion, CotizacionDetalle, Usuario, RegistroObra, ActivityLog
 from neodata_personal.routes import apu_bp  # módulo MAR DATA
 from neodata_personal.models import APU
 
@@ -1119,6 +1156,8 @@ def ensure_schema():
             db.session.commit()
         except Exception as e:
             print(f"[WARN] ensure_schema({table_name}):", e)
+
+    _migrate_registro_obras_from_json()
 
 # ---------------------------------------------------------
 # Seed: usuarios base (idempotente)
