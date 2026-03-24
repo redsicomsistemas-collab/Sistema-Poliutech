@@ -11,6 +11,50 @@
     </div>
   </div>
 
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <h6 class="mb-3">Nuevo registro</h6>
+      <form method="post" class="row g-3">
+        <input type="hidden" name="action" value="add">
+        <div class="col-lg-1 col-md-2">
+          <label class="form-label small fw-bold text-secondary mb-1">N°</label>
+          <input type="text" class="form-control" value="{{ default_numero }}" readonly>
+        </div>
+        <div class="col-lg-3 col-md-4">
+          <label class="form-label small fw-bold text-secondary mb-1">Obra</label>
+          <input type="text" name="obra" class="form-control">
+        </div>
+        <div class="col-lg-3 col-md-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Ubicación</label>
+          <input type="text" name="ubicacion" class="form-control">
+        </div>
+        <div class="col-lg-2 col-md-4">
+          <label class="form-label small fw-bold text-secondary mb-1">Encargado</label>
+          <input type="text" name="encargado" class="form-control">
+        </div>
+        <div class="col-lg-1 col-md-2">
+          <label class="form-label small fw-bold text-secondary mb-1">Puesto</label>
+          <input type="text" name="puesto" class="form-control">
+        </div>
+        <div class="col-lg-2 col-md-4">
+          <label class="form-label small fw-bold text-secondary mb-1">Telefono</label>
+          <input type="text" name="telefono" class="form-control">
+        </div>
+        <div class="col-lg-3 col-md-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Correo</label>
+          <input type="email" name="correo" class="form-control">
+        </div>
+        <div class="col-lg-2 col-md-4">
+          <label class="form-label small fw-bold text-secondary mb-1">Responsable</label>
+          <input type="text" name="responsable" class="form-control" value="{{ default_responsable or '' }}" {% if current_user.is_authenticated and (current_user.rol or "")|upper != "ADMIN" %}readonly{% endif %}>
+        </div>
+        <div class="col-lg-2 col-md-4 d-flex align-items-end">
+          <button type="submit" class="btn btn-primary w-100">Agregar registro</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div class="card shadow-sm">
     <div class="card-body">
       <div class="row g-3 mb-4">
@@ -29,10 +73,12 @@
       </div>
 
       <form method="post" id="registro-obras-form">
+        <input type="hidden" name="action" id="table-action" value="update">
         <div class="table-responsive">
           <table class="table table-bordered align-middle" id="registro-obras-table">
             <thead class="table-light">
               <tr>
+                <th style="width: 42px;" class="text-center"><input type="checkbox" id="select-all-rows"></th>
                 <th style="min-width: 90px;">N°</th>
                 <th style="min-width: 220px;">OBRA</th>
                 <th style="min-width: 220px;">UBICACIÓN</th>
@@ -47,6 +93,10 @@
             <tbody>
               {% for row in rows %}
               <tr data-obra="{{ row.obra|lower }}" data-responsable="{{ row.responsable|lower }}">
+                <td class="text-center">
+                  <input type="checkbox" name="selected_ids[]" value="{{ row.id }}" class="row-selector">
+                  <input type="hidden" name="row_id[]" value="{{ row.id }}">
+                </td>
                 <td><input type="text" name="numero[]" class="form-control registro-input" value="{{ row.numero }}" readonly></td>
                 <td><input type="text" name="obra[]" class="form-control registro-input" value="{{ row.obra }}" readonly></td>
                 <td><input type="text" name="ubicacion[]" class="form-control registro-input" value="{{ row.ubicacion }}" readonly></td>
@@ -57,7 +107,6 @@
                 <td><input type="text" name="responsable[]" class="form-control registro-input" value="{{ row.responsable }}" {% if current_user.is_authenticated and (current_user.rol or "")|upper != "ADMIN" %}readonly{% else %}readonly{% endif %}></td>
                 <td class="text-center">
                   <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>
-                  <button type="button" class="btn btn-outline-danger btn-sm btn-remove-row">Quitar</button>
                 </td>
               </tr>
               {% endfor %}
@@ -66,7 +115,7 @@
         </div>
 
         <div class="d-flex flex-column flex-md-row justify-content-between gap-2 mt-3">
-          <button type="button" class="btn btn-outline-primary" id="btn-add-row">Agregar linea</button>
+          <button type="button" class="btn btn-outline-danger" id="btn-delete-selected">Eliminar seleccionados</button>
           <button type="submit" class="btn btn-primary">Guardar cambios</button>
         </div>
       </form>
@@ -74,30 +123,15 @@
   </div>
 </div>
 
-<template id="registro-row-template">
-  <tr data-obra="" data-responsable="">
-    <td><input type="text" name="numero[]" class="form-control registro-input" readonly></td>
-    <td><input type="text" name="obra[]" class="form-control registro-input"></td>
-    <td><input type="text" name="ubicacion[]" class="form-control registro-input"></td>
-    <td><input type="text" name="encargado[]" class="form-control registro-input"></td>
-    <td><input type="text" name="puesto[]" class="form-control registro-input"></td>
-    <td><input type="text" name="telefono[]" class="form-control registro-input"></td>
-    <td><input type="email" name="correo[]" class="form-control registro-input"></td>
-    <td><input type="text" name="responsable[]" class="form-control registro-input" value="{{ default_responsable or '' }}" {% if current_user.is_authenticated and (current_user.rol or "")|upper != "ADMIN" %}readonly{% endif %}></td>
-    <td class="text-center">
-      <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>
-      <button type="button" class="btn btn-outline-danger btn-sm btn-remove-row">Quitar</button>
-    </td>
-  </tr>
-</template>
-
 <script>
 document.addEventListener("DOMContentLoaded", () => {
   const tbody = document.querySelector("#registro-obras-table tbody");
-  const rowTemplate = document.getElementById("registro-row-template");
-  const addButton = document.getElementById("btn-add-row");
   const btnLimpiar = document.getElementById("btn-limpiar-filtros");
   const btnExportar = document.getElementById("btn-exportar-excel");
+  const tableForm = document.getElementById("registro-obras-form");
+  const tableAction = document.getElementById("table-action");
+  const btnDeleteSelected = document.getElementById("btn-delete-selected");
+  const selectAllRows = document.getElementById("select-all-rows");
   const filtros = {
     obra: document.getElementById("filtro-obra"),
     responsable: document.getElementById("filtro-responsable"),
@@ -118,12 +152,6 @@ document.addEventListener("DOMContentLoaded", () => {
       row.style.display = visible ? "" : "none";
     });
   }
-
-  addButton.addEventListener("click", () => {
-    const newRow = rowTemplate.content.firstElementChild.cloneNode(true);
-    tbody.appendChild(newRow);
-    applyFilters();
-  });
 
   tbody.addEventListener("click", (event) => {
     const editButton = event.target.closest(".btn-edit-row");
@@ -148,14 +176,6 @@ document.addEventListener("DOMContentLoaded", () => {
       editButton.textContent = willEnable ? "Bloquear" : "Editar";
       return;
     }
-
-    const removeButton = event.target.closest(".btn-remove-row");
-    if (!removeButton) return;
-    removeButton.closest("tr")?.remove();
-    if (!tbody.children.length) {
-      tbody.appendChild(rowTemplate.content.firstElementChild.cloneNode(true));
-    }
-    applyFilters();
   });
 
   tbody.addEventListener("input", (event) => {
@@ -177,6 +197,23 @@ document.addEventListener("DOMContentLoaded", () => {
     if (filtros.responsable?.value.trim()) params.set("responsable", filtros.responsable.value.trim());
     const query = params.toString();
     window.location.href = `{{ url_for('export_registro_obras_xlsx') }}${query ? `?${query}` : ""}`;
+  });
+
+  btnDeleteSelected?.addEventListener("click", () => {
+    const anySelected = Array.from(document.querySelectorAll(".row-selector")).some((input) => input.checked);
+    if (!anySelected) {
+      alert("Selecciona al menos un registro para eliminar.");
+      return;
+    }
+    tableAction.value = "delete";
+    tableForm.submit();
+  });
+
+  selectAllRows?.addEventListener("change", () => {
+    document.querySelectorAll(".row-selector").forEach((input) => {
+      if (input.closest("tr")?.style.display === "none") return;
+      input.checked = selectAllRows.checked;
+    });
   });
 
   Array.from(tbody.querySelectorAll("tr")).forEach(syncRowDataset);

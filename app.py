@@ -2456,57 +2456,72 @@ def registro_obras():
     rows = _load_registro_obras()
 
     if request.method == "POST":
-        numeros = request.form.getlist("numero[]")
-        obras = request.form.getlist("obra[]")
-        ubicaciones = request.form.getlist("ubicacion[]")
-        encargados = request.form.getlist("encargado[]")
-        puestos = request.form.getlist("puesto[]")
-        telefonos = request.form.getlist("telefono[]")
-        correos = request.form.getlist("correo[]")
-        responsables = request.form.getlist("responsable[]")
-
-        total_rows = max(
-            len(numeros), len(obras), len(ubicaciones), len(encargados),
-            len(puestos), len(telefonos), len(correos), len(responsables), 0
-        )
-        rows = []
-        for idx in range(total_rows):
+        action = (request.form.get("action") or "").strip().lower()
+        if action == "add":
             row = _normalize_registro_obra_row({
                 "numero": "",
-                "obra": obras[idx] if idx < len(obras) else "",
-                "ubicacion": ubicaciones[idx] if idx < len(ubicaciones) else "",
-                "encargado": encargados[idx] if idx < len(encargados) else "",
-                "puesto": puestos[idx] if idx < len(puestos) else "",
-                "telefono": telefonos[idx] if idx < len(telefonos) else "",
-                "correo": correos[idx] if idx < len(correos) else "",
-                "responsable": responsables[idx] if idx < len(responsables) else "",
-            }, idx + 1)
-            if not any([
-                row["numero"], row["obra"], row["ubicacion"], row["encargado"],
-                row["puesto"], row["telefono"], row["correo"], row["responsable"],
-            ]):
-                continue
+                "obra": request.form.get("obra"),
+                "ubicacion": request.form.get("ubicacion"),
+                "encargado": request.form.get("encargado"),
+                "puesto": request.form.get("puesto"),
+                "telefono": request.form.get("telefono"),
+                "correo": request.form.get("correo"),
+                "responsable": request.form.get("responsable"),
+            }, len(rows) + 1)
+            if not any([row["obra"], row["ubicacion"], row["encargado"], row["puesto"], row["telefono"], row["correo"], row["responsable"]]):
+                flash("Captura al menos un dato antes de agregar el registro.", "warning")
+                return redirect(url_for("registro_obras"))
             if row["correo"] and not re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", row["correo"]):
                 flash(f"El correo '{row['correo']}' no es valido.", "danger")
-                filters = _registro_obras_filters_from_request()
-                return render_template(
-                    "registro_obras.html",
-                    title="Registro de obras",
-                    rows=rows or [_normalize_registro_obra_row({}, 1)],
-                    filtered_rows=_filter_registro_obras(rows, filters),
-                    filters=filters,
-                    default_responsable=responsable_actual() or "",
-                )
+                return redirect(url_for("registro_obras"))
             if not is_admin():
                 row["responsable"] = responsable_actual() or row["responsable"]
             row["numero"] = str(len(rows) + 1)
             rows.append(row)
+            flash("Registro agregado.", "success")
+        elif action == "update":
+            row_ids = request.form.getlist("row_id[]")
+            obras = request.form.getlist("obra[]")
+            ubicaciones = request.form.getlist("ubicacion[]")
+            encargados = request.form.getlist("encargado[]")
+            puestos = request.form.getlist("puesto[]")
+            telefonos = request.form.getlist("telefono[]")
+            correos = request.form.getlist("correo[]")
+            responsables = request.form.getlist("responsable[]")
+            updated_rows = []
+            for idx, row_id in enumerate(row_ids):
+                row = _normalize_registro_obra_row({
+                    "numero": "",
+                    "obra": obras[idx] if idx < len(obras) else "",
+                    "ubicacion": ubicaciones[idx] if idx < len(ubicaciones) else "",
+                    "encargado": encargados[idx] if idx < len(encargados) else "",
+                    "puesto": puestos[idx] if idx < len(puestos) else "",
+                    "telefono": telefonos[idx] if idx < len(telefonos) else "",
+                    "correo": correos[idx] if idx < len(correos) else "",
+                    "responsable": responsables[idx] if idx < len(responsables) else "",
+                }, int(row_id or idx + 1))
+                if not any([row["obra"], row["ubicacion"], row["encargado"], row["puesto"], row["telefono"], row["correo"], row["responsable"]]):
+                    continue
+                if row["correo"] and not re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", row["correo"]):
+                    flash(f"El correo '{row['correo']}' no es valido.", "danger")
+                    return redirect(url_for("registro_obras"))
+                if not is_admin():
+                    row["responsable"] = responsable_actual() or row["responsable"]
+                updated_rows.append(row)
+            rows = updated_rows
+            flash("Registros actualizados.", "success")
+        elif action == "delete":
+            selected_ids = {int(value) for value in request.form.getlist("selected_ids[]") if str(value).strip().isdigit()}
+            rows = [row for row in rows if int(row.get("id", 0) or 0) not in selected_ids]
+            flash("Registros eliminados.", "success")
 
+        for idx, row in enumerate(rows, start=1):
+            row["id"] = idx
+            row["numero"] = str(idx)
         _save_registro_obras(rows)
         for row in rows:
             _sync_cliente_from_registro_obra(row)
         db.session.commit()
-        flash("Registro de obras actualizado.", "success")
         return redirect(url_for("registro_obras"))
 
     filters = _registro_obras_filters_from_request()
@@ -2514,10 +2529,11 @@ def registro_obras():
     return render_template(
         "registro_obras.html",
         title="Registro de obras",
-        rows=rows or [_normalize_registro_obra_row({"responsable": responsable_actual() or ""}, 1)],
+        rows=rows,
         filtered_rows=filtered_rows,
         filters=filters,
         default_responsable=responsable_actual() or "",
+        default_numero=str(len(rows) + 1),
     )
 
 
