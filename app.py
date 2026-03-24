@@ -4011,7 +4011,15 @@ def export_cotizacion_pdf(cot_id: int):
     styles.add(ParagraphStyle(name="NormalCell", fontName="Helvetica", fontSize=8, leading=10, splitLongWords=False))
     styles.add(ParagraphStyle(name="NormalRight", fontName="Helvetica", fontSize=8, leading=10, alignment=2, splitLongWords=False))
     styles.add(ParagraphStyle(name="NormalCenter", fontName="Helvetica", fontSize=8, leading=10, alignment=1, splitLongWords=False))
-    styles.add(ParagraphStyle(name="UnitCell", fontName="Helvetica", fontSize=8, leading=8.5, alignment=1, splitLongWords=True))
+    styles.add(ParagraphStyle(
+        name="UnitCell",
+        fontName="Helvetica",
+        fontSize=6.5,
+        leading=7,
+        alignment=1,
+        splitLongWords=True,
+        wordWrap="CJK",
+    ))
 
     elems = []
 
@@ -4120,7 +4128,7 @@ def export_cotizacion_pdf(cot_id: int):
         data.append([
             Paragraph(_truncate_pdf_text(getattr(d, "capitulo", "") or "-", 28), styles["NormalCenter"]),
             Paragraph((d.nombre_concepto or "-").strip(), styles["NormalCell"]),
-            Paragraph("<br/>".join(str(d.unidad or "-").strip().splitlines()), styles["UnitCell"]),
+            Paragraph(" ".join(str(d.unidad or "-").strip().splitlines()), styles["UnitCell"]),
             Paragraph(f"{(d.cantidad or 0):.2f}", styles["NormalCenter"]),
             Paragraph((d.sistema or "-").strip(), styles["NormalCell"]),
             Paragraph(money(d.precio_unitario), styles["NormalRight"]),
