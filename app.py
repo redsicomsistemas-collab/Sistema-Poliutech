@@ -4017,8 +4017,7 @@ def export_cotizacion_pdf(cot_id: int):
         fontSize=6.5,
         leading=7,
         alignment=1,
-        splitLongWords=True,
-        wordWrap="CJK",
+        splitLongWords=False,
     ))
 
     elems = []
