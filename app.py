@@ -2472,7 +2472,7 @@ def registro_obras():
         rows = []
         for idx in range(total_rows):
             row = _normalize_registro_obra_row({
-                "numero": numeros[idx] if idx < len(numeros) else "",
+                "numero": "",
                 "obra": obras[idx] if idx < len(obras) else "",
                 "ubicacion": ubicaciones[idx] if idx < len(ubicaciones) else "",
                 "encargado": encargados[idx] if idx < len(encargados) else "",
@@ -2499,6 +2499,7 @@ def registro_obras():
                 )
             if not is_admin():
                 row["responsable"] = responsable_actual() or row["responsable"]
+            row["numero"] = str(len(rows) + 1)
             rows.append(row)
 
         _save_registro_obras(rows)
