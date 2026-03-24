@@ -34,6 +34,7 @@ VALID_ESTATUS = [
 ]
 PROVIDER_NUMBERS_JSON = Path(__file__).resolve().parent / "provider_numbers.json"
 PROVIDER_NUMBERS_XLSX = Path.home() / "Downloads" / "NUMEROS DE PROVEEDOR POLIUTECH.xlsx"
+REGISTRO_OBRAS_JSON = Path(__file__).resolve().parent / "registro_obras.json"
 XLSX_NS = {
     "a": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
     "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
@@ -198,6 +199,84 @@ def _load_provider_numbers() -> list[dict]:
     return seeded
 
 
+def _normalize_registro_obra_row(row: Optional[dict], idx: int) -> dict:
+    row = row or {}
+    return {
+        "id": idx,
+        "numero": str(row.get("numero", "")).strip(),
+        "obra": str(row.get("obra", "")).strip(),
+        "ubicacion": str(row.get("ubicacion", "")).strip(),
+        "encargado": str(row.get("encargado", "")).strip(),
+        "puesto": str(row.get("puesto", "")).strip(),
+        "telefono": str(row.get("telefono", "")).strip(),
+        "correo": str(row.get("correo", "")).strip(),
+        "responsable": str(row.get("responsable", "")).strip(),
+    }
+
+
+def _save_registro_obras(rows: list[dict]) -> None:
+    REGISTRO_OBRAS_JSON.write_text(
+        json.dumps(rows, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _load_registro_obras() -> list[dict]:
+    if REGISTRO_OBRAS_JSON.exists():
+        try:
+            data = json.loads(REGISTRO_OBRAS_JSON.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                return [_normalize_registro_obra_row(row, idx) for idx, row in enumerate(data, start=1)]
+        except Exception:
+            pass
+    return []
+
+
+def _registro_obras_filters_from_request() -> dict[str, str]:
+    return {
+        "obra": (request.args.get("obra") or "").strip().lower(),
+        "responsable": (request.args.get("responsable") or "").strip().lower(),
+    }
+
+
+def _registro_obra_matches_filters(row: dict, filters: dict[str, str]) -> bool:
+    for field, needle in filters.items():
+        if needle and needle not in str(row.get(field, "")).strip().lower():
+            return False
+    return True
+
+
+def _filter_registro_obras(rows: list[dict], filters: dict[str, str]) -> list[dict]:
+    filtered = [row for row in rows if _registro_obra_matches_filters(row, filters)]
+    if is_admin():
+        return filtered
+    ra = (responsable_actual() or "").strip().lower()
+    if not ra:
+        return []
+    return [row for row in filtered if (row.get("responsable") or "").strip().lower() == ra]
+
+
+def _sync_cliente_from_registro_obra(row: dict) -> None:
+    nombre_cliente = (row.get("encargado") or "").strip()
+    empresa = (row.get("obra") or "").strip()
+    if not nombre_cliente:
+        return
+
+    query = Cliente.query.filter(db.func.lower(Cliente.nombre_cliente) == nombre_cliente.lower())
+    if empresa:
+        query = query.filter(db.func.lower(Cliente.empresa) == empresa.lower())
+    cliente = query.first()
+    if not cliente:
+        cliente = Cliente(nombre_cliente=nombre_cliente, empresa=empresa or None)
+        db.session.add(cliente)
+
+    responsable = (row.get("responsable") or "").strip()
+    cliente.responsable = responsable or cliente.responsable
+    cliente.correo = (row.get("correo") or "").strip() or cliente.correo
+    cliente.telefono = (row.get("telefono") or "").strip() or cliente.telefono
+    cliente.direccion = (row.get("ubicacion") or "").strip() or cliente.direccion
+
+
 def _provider_filters_from_request() -> dict[str, str]:
     return {
         "razon_social_poliutech": (request.args.get("razon_social_poliutech") or "").strip().lower(),
@@ -320,6 +399,87 @@ def _build_simple_xlsx(sheet_name: str, headers: list[str], rows: list[list[str]
         "</styleSheet>"
     )
 
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", content_types_xml)
+        zf.writestr("_rels/.rels", root_rels_xml)
+        zf.writestr("xl/workbook.xml", workbook_xml)
+        zf.writestr("xl/_rels/workbook.xml.rels", workbook_rels_xml)
+        zf.writestr("xl/worksheets/sheet1.xml", sheet_xml)
+        zf.writestr("xl/styles.xml", styles_xml)
+    return output.getvalue()
+
+
+def _build_matrix_xlsx(sheet_name: str, rows: list[list[str]], column_widths: Optional[list[int]] = None) -> bytes:
+    def cell_ref(row_idx: int, col_idx: int) -> str:
+        label = ""
+        num = col_idx
+        while num > 0:
+            num, rem = divmod(num - 1, 26)
+            label = chr(65 + rem) + label
+        return f"{label}{row_idx}"
+
+    def inline_cell(row_idx: int, col_idx: int, value: object) -> str:
+        text = escape("" if value is None else str(value))
+        return f'<c r="{cell_ref(row_idx, col_idx)}" t="inlineStr"><is><t>{text}</t></is></c>'
+
+    cols_xml = ""
+    if column_widths:
+        cols_xml = "<cols>" + "".join(
+            f'<col min="{idx}" max="{idx}" width="{width}" customWidth="1"/>'
+            for idx, width in enumerate(column_widths, start=1)
+        ) + "</cols>"
+
+    sheet_rows = []
+    for row_idx, row in enumerate(rows, start=1):
+        cells = "".join(inline_cell(row_idx, col_idx, value) for col_idx, value in enumerate(row, start=1))
+        sheet_rows.append(f'<row r="{row_idx}">{cells}</row>')
+
+    sheet_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        f"{cols_xml}<sheetData>{''.join(sheet_rows)}</sheetData></worksheet>"
+    )
+    workbook_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        f'<sheets><sheet name="{escape(sheet_name)}" sheetId="1" r:id="rId1"/></sheets></workbook>'
+    )
+    workbook_rels_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+        '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+        "</Relationships>"
+    )
+    root_rels_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+        "</Relationships>"
+    )
+    content_types_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+        "</Types>"
+    )
+    styles_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        '<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>'
+        '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>'
+        '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
+        '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+        '<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>'
+        '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
+        "</styleSheet>"
+    )
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("[Content_Types].xml", content_types_xml)
@@ -2287,6 +2447,108 @@ def export_altas_proveedores_xlsx():
         output_bytes,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="altas_proveedores_{stamp}.xlsx"'},
+    )
+
+
+@app.route("/registro-obras", methods=["GET", "POST"])
+@login_required
+def registro_obras():
+    rows = _load_registro_obras()
+
+    if request.method == "POST":
+        numeros = request.form.getlist("numero[]")
+        obras = request.form.getlist("obra[]")
+        ubicaciones = request.form.getlist("ubicacion[]")
+        encargados = request.form.getlist("encargado[]")
+        puestos = request.form.getlist("puesto[]")
+        telefonos = request.form.getlist("telefono[]")
+        correos = request.form.getlist("correo[]")
+        responsables = request.form.getlist("responsable[]")
+
+        total_rows = max(
+            len(numeros), len(obras), len(ubicaciones), len(encargados),
+            len(puestos), len(telefonos), len(correos), len(responsables), 0
+        )
+        rows = []
+        for idx in range(total_rows):
+            row = _normalize_registro_obra_row({
+                "numero": numeros[idx] if idx < len(numeros) else "",
+                "obra": obras[idx] if idx < len(obras) else "",
+                "ubicacion": ubicaciones[idx] if idx < len(ubicaciones) else "",
+                "encargado": encargados[idx] if idx < len(encargados) else "",
+                "puesto": puestos[idx] if idx < len(puestos) else "",
+                "telefono": telefonos[idx] if idx < len(telefonos) else "",
+                "correo": correos[idx] if idx < len(correos) else "",
+                "responsable": responsables[idx] if idx < len(responsables) else "",
+            }, idx + 1)
+            if not any([
+                row["numero"], row["obra"], row["ubicacion"], row["encargado"],
+                row["puesto"], row["telefono"], row["correo"], row["responsable"],
+            ]):
+                continue
+            if row["correo"] and not re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", row["correo"]):
+                flash(f"El correo '{row['correo']}' no es valido.", "danger")
+                filters = _registro_obras_filters_from_request()
+                return render_template(
+                    "registro_obras.html",
+                    title="Registro de obras",
+                    rows=rows or [_normalize_registro_obra_row({}, 1)],
+                    filtered_rows=_filter_registro_obras(rows, filters),
+                    filters=filters,
+                    default_responsable=responsable_actual() or "",
+                )
+            if not is_admin():
+                row["responsable"] = responsable_actual() or row["responsable"]
+            rows.append(row)
+
+        _save_registro_obras(rows)
+        for row in rows:
+            _sync_cliente_from_registro_obra(row)
+        db.session.commit()
+        flash("Registro de obras actualizado.", "success")
+        return redirect(url_for("registro_obras"))
+
+    filters = _registro_obras_filters_from_request()
+    filtered_rows = _filter_registro_obras(rows, filters)
+    return render_template(
+        "registro_obras.html",
+        title="Registro de obras",
+        rows=rows or [_normalize_registro_obra_row({"responsable": responsable_actual() or ""}, 1)],
+        filtered_rows=filtered_rows,
+        filters=filters,
+        default_responsable=responsable_actual() or "",
+    )
+
+
+@app.route("/registro-obras/export.xlsx")
+@login_required
+def export_registro_obras_xlsx():
+    filters = _registro_obras_filters_from_request()
+    rows = _filter_registro_obras(_load_registro_obras(), filters)
+    body_rows = [
+        ["", "", "", "", "", "", "", ""],
+        ["", "", "", "", "", "", "", ""],
+        ["", "", "", "", "", "", "", ""],
+        ["N°", "OBRA", "UBICACIÓN", "ENCARGADO", "PUESTO", "TELEFONO", "CORREO", "RESPONSABLE"],
+    ]
+    for row in rows:
+        body_rows.append([
+            row.get("numero", ""),
+            row.get("obra", ""),
+            row.get("ubicacion", ""),
+            row.get("encargado", ""),
+            row.get("puesto", ""),
+            row.get("telefono", ""),
+            row.get("correo", ""),
+            row.get("responsable", ""),
+        ])
+
+    output_bytes = _build_matrix_xlsx("Registro Obras", body_rows, column_widths=[10, 34, 28, 24, 20, 18, 32, 18])
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return Response(
+        output_bytes,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="registro_obras_{stamp}.xlsx"'},
     )
 
 

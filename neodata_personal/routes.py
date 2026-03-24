@@ -2,9 +2,7 @@ import json
 import io
 import os
 import re
-import zipfile
 from datetime import datetime
-from html import escape
 
 from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
@@ -113,164 +111,6 @@ def _truncate_text(value, limit=120):
     if len(text_value) <= limit:
         return text_value
     return text_value[: limit - 1].rstrip() + "…"
-
-
-def _next_obra_numero():
-    last = (
-        Obra.query.filter(Obra.numero.isnot(None))
-        .order_by(Obra.id.desc())
-        .first()
-    )
-    if not last or not (last.numero or "").strip().isdigit():
-        return str((Obra.query.count() or 0) + 1)
-    return str(int(last.numero.strip()) + 1)
-
-
-def _sync_cliente_from_obra(obra):
-    nombre_cliente = (obra.encargado or obra.nombre or "").strip()
-    empresa = (obra.nombre or "").strip() or None
-    if not nombre_cliente:
-        return
-
-    query = Cliente.query.filter(db.func.lower(Cliente.nombre_cliente) == nombre_cliente.lower())
-    if empresa:
-        query = query.filter(db.func.lower(Cliente.empresa) == empresa.lower())
-    cliente = query.first()
-    if not cliente:
-        cliente = Cliente(nombre_cliente=nombre_cliente, empresa=empresa)
-        db.session.add(cliente)
-
-    cliente.responsable = (obra.responsable or "").strip() or cliente.responsable
-    cliente.correo = (obra.correo or "").strip() or cliente.correo
-    cliente.telefono = (obra.telefono or "").strip() or cliente.telefono
-    cliente.direccion = (obra.ubicacion or "").strip() or cliente.direccion
-
-
-def _build_matrix_xlsx(sheet_name, rows, column_widths=None):
-    def cell_ref(row_idx, col_idx):
-        label = ""
-        num = col_idx
-        while num > 0:
-            num, rem = divmod(num - 1, 26)
-            label = chr(65 + rem) + label
-        return f"{label}{row_idx}"
-
-    def inline_cell(row_idx, col_idx, value):
-        text = escape("" if value is None else str(value))
-        return (
-            f'<c r="{cell_ref(row_idx, col_idx)}" t="inlineStr">'
-            f"<is><t>{text}</t></is></c>"
-        )
-
-    cols_xml = ""
-    if column_widths:
-        cols_parts = []
-        for idx, width in enumerate(column_widths, start=1):
-            cols_parts.append(f'<col min="{idx}" max="{idx}" width="{width}" customWidth="1"/>')
-        cols_xml = f"<cols>{''.join(cols_parts)}</cols>"
-
-    sheet_rows = []
-    for row_idx, row in enumerate(rows, start=1):
-        cells = "".join(inline_cell(row_idx, col_idx, value) for col_idx, value in enumerate(row, start=1))
-        sheet_rows.append(f'<row r="{row_idx}">{cells}</row>')
-
-    sheet_xml = (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-        f"{cols_xml}"
-        f"<sheetData>{''.join(sheet_rows)}</sheetData>"
-        "</worksheet>"
-    )
-    workbook_xml = (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
-        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
-        f'<sheets><sheet name="{escape(sheet_name)}" sheetId="1" r:id="rId1"/></sheets>'
-        "</workbook>"
-    )
-    workbook_rels_xml = (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-        '<Relationship Id="rId1" '
-        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" '
-        'Target="worksheets/sheet1.xml"/>'
-        '<Relationship Id="rId2" '
-        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" '
-        'Target="styles.xml"/>'
-        "</Relationships>"
-    )
-    root_rels_xml = (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-        '<Relationship Id="rId1" '
-        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
-        'Target="xl/workbook.xml"/>'
-        "</Relationships>"
-    )
-    content_types_xml = (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
-        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
-        '<Default Extension="xml" ContentType="application/xml"/>'
-        '<Override PartName="/xl/workbook.xml" '
-        'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
-        '<Override PartName="/xl/worksheets/sheet1.xml" '
-        'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
-        '<Override PartName="/xl/styles.xml" '
-        'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
-        "</Types>"
-    )
-    styles_xml = (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-        '<fonts count="2">'
-        '<font><sz val="11"/><name val="Calibri"/></font>'
-        '<font><b/><sz val="11"/><name val="Calibri"/></font>'
-        '</fonts>'
-        '<fills count="2">'
-        '<fill><patternFill patternType="none"/></fill>'
-        '<fill><patternFill patternType="gray125"/></fill>'
-        '</fills>'
-        '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
-        '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-        '<cellXfs count="2">'
-        '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
-        '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
-        '</cellXfs>'
-        '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
-        "</styleSheet>"
-    )
-
-    output = io.BytesIO()
-    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("[Content_Types].xml", content_types_xml)
-        zf.writestr("_rels/.rels", root_rels_xml)
-        zf.writestr("xl/workbook.xml", workbook_xml)
-        zf.writestr("xl/_rels/workbook.xml.rels", workbook_rels_xml)
-        zf.writestr("xl/worksheets/sheet1.xml", sheet_xml)
-        zf.writestr("xl/styles.xml", styles_xml)
-    return output.getvalue()
-
-
-def _obra_registro_rows(items):
-    rows = [
-        ["", "", "", "", "", "", "", ""],
-        ["", "", "", "", "", "", "", ""],
-        ["", "", "", "", "", "", "", ""],
-        ["N°", "OBRA", "UBICACIÓN", "ENCARGADO", "PUESTO", "TELEFONO", "CORREO", "RESPONSABLE"],
-    ]
-    for idx, obra in enumerate(items, start=1):
-        rows.append([
-            (obra.numero or "").strip() or str(idx),
-            obra.nombre or "",
-            obra.ubicacion or "",
-            obra.encargado or "",
-            obra.puesto or "",
-            obra.telefono or "",
-            obra.correo or "",
-            obra.responsable or "",
-        ])
-    return rows
 
 
 def _resource_for_tipo(tipo_insumo):
@@ -440,10 +280,6 @@ def _dashboard_data():
 
 
 def _set_obra_defaults(obra):
-    if not getattr(obra, "numero", None):
-        obra.numero = _next_obra_numero()
-    if not getattr(obra, "responsable", None):
-        obra.responsable = _responsable_actual()
     if obra.indirecto_pct is None:
         obra.indirecto_pct = 12.0
     if obra.financiamiento_pct is None:
@@ -465,17 +301,11 @@ def _set_obra_defaults(obra):
 
 
 def _guardar_obra_desde_form(obra):
-    obra.numero = _s(request.form.get("numero"))
     obra.clave = _s(request.form.get("clave"))
     obra.nombre = (request.form.get("nombre") or "").strip()
     obra.cliente = _s(request.form.get("cliente"))
     obra.descripcion = _s(request.form.get("descripcion"))
     obra.ubicacion = _s(request.form.get("ubicacion"))
-    obra.encargado = _s(request.form.get("encargado"))
-    obra.puesto = _s(request.form.get("puesto"))
-    obra.telefono = _s(request.form.get("telefono"))
-    obra.correo = _s(request.form.get("correo"))
-    obra.responsable = _s(request.form.get("responsable")) or _responsable_actual()
     obra.unidad_venta = (request.form.get("unidad_venta") or "obra").strip() or "obra"
     obra.indirecto_pct = _f(request.form.get("indirecto_pct"), obra.indirecto_pct or 0.0)
     obra.indirecto_campo_pct = _f(request.form.get("indirecto_campo_pct"), getattr(obra, "indirecto_campo_pct", 0.0) or 0.0)
@@ -1077,26 +907,6 @@ def obras_list():
     return render_template("neodata/obra_list.html", items=items, title="Obras MAR Data", q=q)
 
 
-@apu_bp.route("/obras/registro")
-@login_required
-def obra_registro():
-    q = (request.args.get("q") or "").strip()
-    query = Obra.query
-    if q:
-        pattern = f"%{q}%"
-        query = query.filter(
-            or_(
-                Obra.numero.ilike(pattern),
-                Obra.nombre.ilike(pattern),
-                Obra.ubicacion.ilike(pattern),
-                Obra.encargado.ilike(pattern),
-                Obra.responsable.ilike(pattern),
-            )
-        )
-    items = query.order_by(Obra.id.desc()).all()
-    return render_template("neodata/obra_registro.html", items=items, title="Registro de obras", q=q)
-
-
 @apu_bp.route("/obras/nueva", methods=["GET", "POST"])
 @login_required
 def obra_new():
@@ -1108,7 +918,6 @@ def obra_new():
             return render_template("neodata/obra_form.html", obra=obra, apus=[], title="Nueva obra")
         _guardar_obra_desde_form(obra)
         db.session.add(obra)
-        _sync_cliente_from_obra(obra)
         db.session.commit()
         flash("Obra creada.", "success")
         return redirect(url_for("apu.obra_edit", obra_id=obra.id))
@@ -1122,7 +931,6 @@ def obra_edit(obra_id):
     _set_obra_defaults(obra)
     if request.method == "POST":
         _guardar_obra_desde_form(obra)
-        _sync_cliente_from_obra(obra)
         db.session.commit()
         flash("Encabezado de obra actualizado.", "success")
         return redirect(url_for("apu.obra_edit", obra_id=obra.id))
@@ -1456,36 +1264,6 @@ def obra_export_csv(obra_id):
         "\n".join(rows),
         mimetype="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-@apu_bp.route("/obras/registro/exportar-xlsx")
-@login_required
-def obra_registro_export_xlsx():
-    q = (request.args.get("q") or "").strip()
-    query = Obra.query
-    if q:
-        pattern = f"%{q}%"
-        query = query.filter(
-            or_(
-                Obra.numero.ilike(pattern),
-                Obra.nombre.ilike(pattern),
-                Obra.ubicacion.ilike(pattern),
-                Obra.encargado.ilike(pattern),
-                Obra.responsable.ilike(pattern),
-            )
-        )
-    items = query.order_by(Obra.id.desc()).all()
-    payload = _build_matrix_xlsx(
-        "Registro Obras",
-        _obra_registro_rows(items),
-        column_widths=[10, 34, 28, 24, 20, 18, 30, 18],
-    )
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return Response(
-        payload,
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="registro_obras_{stamp}.xlsx"'},
     )
 
 

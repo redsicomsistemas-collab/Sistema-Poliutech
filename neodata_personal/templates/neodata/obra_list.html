@@ -7,7 +7,6 @@
       <div class="text-muted">Presupuesto por obra, capitulos, sobrecosto global y explosion consolidada.</div>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-      <a class="btn btn-outline-success" href="{{ url_for('apu.obra_registro') }}">Registro de obras</a>
       <a class="btn btn-warning" href="{{ url_for('apu.obra_new') }}">Nueva obra</a>
       <a class="btn btn-outline-primary" href="{{ url_for('apu.apu_new') }}">Nuevo APU</a>
       <a class="btn btn-outline-secondary" href="{{ url_for('apu.index') }}">Panel</a>
@@ -32,8 +31,6 @@
               <th>Clave</th>
               <th>Obra</th>
               <th>Cliente</th>
-              <th>Encargado</th>
-              <th>Responsable</th>
               <th>Partidas</th>
               <th>Directo</th>
               <th>Venta</th>
@@ -47,8 +44,6 @@
               <td>{{ item.clave or "-" }}</td>
               <td>{{ item.nombre }}</td>
               <td>{{ item.cliente or "-" }}</td>
-              <td>{{ item.encargado or "-" }}</td>
-              <td>{{ item.responsable or "-" }}</td>
               <td>{{ item.partidas|length }}</td>
               <td>${{ "{:,.2f}".format(item.subtotal_directo or 0) }}</td>
               <td>${{ "{:,.2f}".format(item.total_venta or 0) }}</td>
@@ -71,7 +66,7 @@
               </td>
             </tr>
             {% else %}
-            <tr><td colspan="10" class="text-center py-4 text-muted">No hay obras registradas.</td></tr>
+            <tr><td colspan="8" class="text-center py-4 text-muted">No hay obras registradas.</td></tr>
             {% endfor %}
           </tbody>
         </table>

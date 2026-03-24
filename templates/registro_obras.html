@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="py-4">
+  <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+    <div>
+      <h2 class="mb-1">Registro de obras</h2>
+      <div class="text-muted small">Captura general fuera de MAR DATA y exportación con el formato solicitado.</div>
+    </div>
+    <div class="text-muted small">
+      Total de registros: <strong>{{ filtered_rows|length }}</strong>
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <div class="row g-3 mb-4">
+        <div class="col-xl-4 col-md-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Obra</label>
+          <input type="text" id="filtro-obra" class="form-control form-control-sm" value="{{ filters.obra if filters else '' }}">
+        </div>
+        <div class="col-xl-4 col-md-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Responsable</label>
+          <input type="text" id="filtro-responsable" class="form-control form-control-sm" value="{{ filters.responsable if filters else '' }}">
+        </div>
+        <div class="col-xl-4 col-md-12 d-flex align-items-end gap-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm w-100" id="btn-limpiar-filtros">Limpiar</button>
+          <button type="button" class="btn btn-success btn-sm w-100" id="btn-exportar-excel">Exportar Excel</button>
+        </div>
+      </div>
+
+      <form method="post" id="registro-obras-form">
+        <div class="table-responsive">
+          <table class="table table-bordered align-middle" id="registro-obras-table">
+            <thead class="table-light">
+              <tr>
+                <th style="min-width: 90px;">N°</th>
+                <th style="min-width: 220px;">OBRA</th>
+                <th style="min-width: 220px;">UBICACIÓN</th>
+                <th style="min-width: 200px;">ENCARGADO</th>
+                <th style="min-width: 180px;">PUESTO</th>
+                <th style="min-width: 150px;">TELEFONO</th>
+                <th style="min-width: 220px;">CORREO</th>
+                <th style="min-width: 160px;">RESPONSABLE</th>
+                <th style="width: 140px;">Accion</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in rows %}
+              <tr data-obra="{{ row.obra|lower }}" data-responsable="{{ row.responsable|lower }}">
+                <td><input type="text" name="numero[]" class="form-control registro-input" value="{{ row.numero }}"></td>
+                <td><input type="text" name="obra[]" class="form-control registro-input" value="{{ row.obra }}"></td>
+                <td><input type="text" name="ubicacion[]" class="form-control registro-input" value="{{ row.ubicacion }}"></td>
+                <td><input type="text" name="encargado[]" class="form-control registro-input" value="{{ row.encargado }}"></td>
+                <td><input type="text" name="puesto[]" class="form-control registro-input" value="{{ row.puesto }}"></td>
+                <td><input type="text" name="telefono[]" class="form-control registro-input" value="{{ row.telefono }}"></td>
+                <td><input type="email" name="correo[]" class="form-control registro-input" value="{{ row.correo }}"></td>
+                <td><input type="text" name="responsable[]" class="form-control registro-input" value="{{ row.responsable }}" {% if current_user.is_authenticated and (current_user.rol or "")|upper != "ADMIN" %}readonly{% endif %}></td>
+                <td class="text-center">
+                  <button type="button" class="btn btn-outline-danger btn-sm btn-remove-row">Quitar</button>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="d-flex flex-column flex-md-row justify-content-between gap-2 mt-3">
+          <button type="button" class="btn btn-outline-primary" id="btn-add-row">Agregar linea</button>
+          <button type="submit" class="btn btn-primary">Guardar cambios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<template id="registro-row-template">
+  <tr data-obra="" data-responsable="">
+    <td><input type="text" name="numero[]" class="form-control registro-input"></td>
+    <td><input type="text" name="obra[]" class="form-control registro-input"></td>
+    <td><input type="text" name="ubicacion[]" class="form-control registro-input"></td>
+    <td><input type="text" name="encargado[]" class="form-control registro-input"></td>
+    <td><input type="text" name="puesto[]" class="form-control registro-input"></td>
+    <td><input type="text" name="telefono[]" class="form-control registro-input"></td>
+    <td><input type="email" name="correo[]" class="form-control registro-input"></td>
+    <td><input type="text" name="responsable[]" class="form-control registro-input" value="{{ default_responsable or '' }}" {% if current_user.is_authenticated and (current_user.rol or "")|upper != "ADMIN" %}readonly{% endif %}></td>
+    <td class="text-center">
+      <button type="button" class="btn btn-outline-danger btn-sm btn-remove-row">Quitar</button>
+    </td>
+  </tr>
+</template>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const tbody = document.querySelector("#registro-obras-table tbody");
+  const rowTemplate = document.getElementById("registro-row-template");
+  const addButton = document.getElementById("btn-add-row");
+  const btnLimpiar = document.getElementById("btn-limpiar-filtros");
+  const btnExportar = document.getElementById("btn-exportar-excel");
+  const filtros = {
+    obra: document.getElementById("filtro-obra"),
+    responsable: document.getElementById("filtro-responsable"),
+  };
+
+  function syncRowDataset(row) {
+    row.dataset.obra = (row.querySelector('input[name="obra[]"]')?.value || "").trim().toLowerCase();
+    row.dataset.responsable = (row.querySelector('input[name="responsable[]"]')?.value || "").trim().toLowerCase();
+  }
+
+  function applyFilters() {
+    Array.from(tbody.querySelectorAll("tr")).forEach((row) => {
+      syncRowDataset(row);
+      const visible = Object.entries(filtros).every(([field, input]) => {
+        const term = (input?.value || "").trim().toLowerCase();
+        return !term || (row.dataset[field] || "").includes(term);
+      });
+      row.style.display = visible ? "" : "none";
+    });
+  }
+
+  addButton.addEventListener("click", () => {
+    const newRow = rowTemplate.content.firstElementChild.cloneNode(true);
+    tbody.appendChild(newRow);
+    applyFilters();
+  });
+
+  tbody.addEventListener("click", (event) => {
+    const removeButton = event.target.closest(".btn-remove-row");
+    if (!removeButton) return;
+    removeButton.closest("tr")?.remove();
+    if (!tbody.children.length) {
+      tbody.appendChild(rowTemplate.content.firstElementChild.cloneNode(true));
+    }
+    applyFilters();
+  });
+
+  tbody.addEventListener("input", (event) => {
+    if (!event.target.closest(".registro-input")) return;
+    syncRowDataset(event.target.closest("tr"));
+    applyFilters();
+  });
+
+  Object.values(filtros).forEach((input) => input?.addEventListener("input", applyFilters));
+
+  btnLimpiar?.addEventListener("click", () => {
+    Object.values(filtros).forEach((input) => { if (input) input.value = ""; });
+    applyFilters();
+  });
+
+  btnExportar?.addEventListener("click", () => {
+    const params = new URLSearchParams();
+    if (filtros.obra?.value.trim()) params.set("obra", filtros.obra.value.trim());
+    if (filtros.responsable?.value.trim()) params.set("responsable", filtros.responsable.value.trim());
+    const query = params.toString();
+    window.location.href = `{{ url_for('export_registro_obras_xlsx') }}${query ? `?${query}` : ""}`;
+  });
+
+  Array.from(tbody.querySelectorAll("tr")).forEach(syncRowDataset);
+  applyFilters();
+});
+</script>
+{% endblock %}
