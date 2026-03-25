@@ -24,8 +24,9 @@
           <label class="form-label small fw-bold text-secondary mb-1">Razon social</label>
           <input type="text" id="filtro-razon-social" class="form-control form-control-sm" value="{{ filters.razon_social_poliutech if filters else '' }}">
         </div>
-        <div class="col-xl-3 col-md-6 d-flex align-items-end gap-2">
+        <div class="col-xl-5 col-md-6 d-flex align-items-end gap-2">
           <button type="button" class="btn btn-outline-secondary btn-sm w-100" id="btn-limpiar-filtros">Limpiar</button>
+          <button type="button" class="btn btn-danger btn-sm w-100" id="btn-exportar-pdf">Exportar PDF</button>
           <button type="button" class="btn btn-success btn-sm w-100" id="btn-exportar-excel">Exportar Excel</button>
         </div>
       </div>
@@ -109,6 +110,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const addButton = document.getElementById("btn-add-row");
   const rowTemplate = document.getElementById("altas-row-template");
   const limpiarFiltrosButton = document.getElementById("btn-limpiar-filtros");
+  const exportarPdfButton = document.getElementById("btn-exportar-pdf");
   const exportarExcelButton = document.getElementById("btn-exportar-excel");
   const filtros = {
     razonSocialPoliutech: document.getElementById("filtro-razon-social"),
@@ -200,6 +202,21 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     const query = params.toString();
     window.location.href = `{{ url_for('export_altas_proveedores_xlsx') }}${query ? `?${query}` : ""}`;
+  });
+
+  exportarPdfButton?.addEventListener("click", () => {
+    const params = new URLSearchParams();
+    Object.entries(filtros).forEach(([field, input]) => {
+      const value = (input?.value || "").trim();
+      if (!value) return;
+      if (field === "razonSocialPoliutech") {
+        params.set("razon_social_poliutech", value);
+      } else {
+        params.set(field, value);
+      }
+    });
+    const query = params.toString();
+    window.location.href = `{{ url_for('export_altas_proveedores_pdf') }}${query ? `?${query}` : ""}`;
   });
 
   Array.from(tbody.querySelectorAll("tr")).forEach(syncRowDataset);

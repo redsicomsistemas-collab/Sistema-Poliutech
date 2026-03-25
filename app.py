@@ -2739,6 +2739,174 @@ def export_altas_proveedores_xlsx():
     )
 
 
+@app.route("/altas/export.pdf")
+@login_required
+def export_altas_proveedores_pdf():
+    if not is_admin():
+        abort(403)
+
+    filters = _provider_filters_from_request()
+    rows = _filter_provider_rows(_load_provider_numbers(), filters)
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=10 * mm,
+        rightMargin=10 * mm,
+        topMargin=24 * mm,
+        bottomMargin=38 * mm,
+    )
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="EncabezadoAltas", fontName="Helvetica", fontSize=9, leading=12, spaceAfter=4, splitLongWords=False))
+    styles.add(ParagraphStyle(name="AltasCell", fontName="Helvetica", fontSize=7.5, leading=9, splitLongWords=False))
+    styles.add(ParagraphStyle(name="AltasCenter", fontName="Helvetica", fontSize=7.5, leading=9, alignment=1, splitLongWords=False))
+
+    elems = []
+
+    def encabezado(canv, doc_):
+        canv.saveState()
+        canv.setFillColor(colors.HexColor("#0d47a1"))
+        canv.rect(0, A4[1] - 40, A4[0], 40, stroke=0, fill=1)
+
+        logo_path = os.path.join(app.static_folder or "static", "logo.png")
+        if os.path.exists(logo_path):
+            try:
+                img = ImageReader(logo_path)
+                iw, ih = img.getSize()
+                max_w = 22.5 * mm
+                scale = max_w / iw
+                w = max_w
+                h = ih * scale
+                x_logo = 12
+                y_logo = A4[1] - h - 8
+                canv.drawImage(img, x_logo, y_logo, width=w, height=h, mask="auto")
+            except Exception:
+                pass
+
+        canv.setFont("Helvetica-Bold", 14)
+        canv.setFillColor(colors.white)
+        canv.drawRightString(A4[0] - 12, A4[1] - 18, "ALTAS DE PROVEEDORES")
+        canv.setFont("Helvetica", 10)
+        canv.drawRightString(A4[0] - 12, A4[1] - 31, "Recubrimientos Especializados")
+        canv.restoreState()
+
+    def footer(canv, doc_):
+        canv.saveState()
+        division_path = os.path.join(app.static_folder or "static", "division.png")
+        if os.path.exists(division_path):
+            try:
+                canv.drawImage(division_path, (A4[0] - 155 * mm) / 2, 45, width=155 * mm, height=3 * mm, mask="auto")
+            except Exception:
+                pass
+
+        canv.setFont("Helvetica-Bold", 9)
+        canv.setFillColor(colors.HexColor("#0d47a1"))
+        canv.drawCentredString(A4[0] / 2, 35, "POLIUTECH - Recubrimientos Especializados")
+
+        canv.setFont("Helvetica", 8)
+        canv.setFillColor(colors.HexColor("#333333"))
+        canv.drawCentredString(A4[0] / 2, 25, "Campos Eliseos 223 Oficina 602 - Col. Polanco V Seccion - Miguel Hidalgo, CDMX 11560")
+        canv.drawCentredString(A4[0] / 2, 15, "Tel: 55 5938 6530 / 55 5938 0536 - info@poliutech.com - www.poliutech.com")
+
+        try:
+            canv.setTitle("Altas de proveedores")
+        except Exception:
+            pass
+
+        canv.restoreState()
+
+    filtro_razon = (filters.get("razon_social_poliutech") or "").strip()
+    generated_at = now_cdmx_naive().strftime("%d/%m/%Y %H:%M")
+    meta_data = [
+        [
+            Paragraph(f"<b>Fecha de exportación:</b> {generated_at}", styles["EncabezadoAltas"]),
+            Paragraph(f"<b>Total de registros:</b> {len(rows)}", styles["EncabezadoAltas"]),
+        ],
+        [
+            Paragraph("<b>Filtro aplicado:</b> Razón social Poliutech", styles["EncabezadoAltas"]),
+            Paragraph(filtro_razon or "Todos", styles["EncabezadoAltas"]),
+        ],
+    ]
+    meta_tbl = Table(meta_data, colWidths=[95 * mm, 95 * mm], hAlign="LEFT")
+    meta_tbl.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+    ]))
+    elems.append(meta_tbl)
+    elems.append(Spacer(1, 6))
+
+    data = [[
+        "NUMERO",
+        "EMPRESA",
+        "RAZON SOCIAL POLIUTECH",
+        "CONTACTO",
+        "TELEFONO",
+        "CORREO",
+    ]]
+    for row in rows:
+        data.append([
+            Paragraph(_truncate_pdf_text(row.get("numero", ""), 24), styles["AltasCenter"]),
+            Paragraph(_truncate_pdf_text(row.get("empresa", ""), 48), styles["AltasCell"]),
+            Paragraph(_truncate_pdf_text(row.get("razon_social_poliutech", ""), 52), styles["AltasCell"]),
+            Paragraph(_truncate_pdf_text(row.get("contacto", ""), 38), styles["AltasCell"]),
+            Paragraph(_truncate_pdf_text(row.get("telefono", ""), 24), styles["AltasCenter"]),
+            Paragraph(_truncate_pdf_text(row.get("correo", ""), 42), styles["AltasCell"]),
+        ])
+
+    if len(data) == 1:
+        data.append([
+            Paragraph("-", styles["AltasCenter"]),
+            Paragraph("No hay registros para exportar con el filtro actual.", styles["AltasCell"]),
+            Paragraph("-", styles["AltasCenter"]),
+            Paragraph("-", styles["AltasCenter"]),
+            Paragraph("-", styles["AltasCenter"]),
+            Paragraph("-", styles["AltasCenter"]),
+        ])
+
+    tbl = Table(
+        data,
+        colWidths=[16 * mm, 38 * mm, 48 * mm, 28 * mm, 22 * mm, 38 * mm],
+        repeatRows=1,
+        hAlign="CENTER",
+    )
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0d47a1")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (0, 0), (0, -1), "CENTER"),
+        ("ALIGN", (4, 0), (4, -1), "CENTER"),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+        ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+        ("WORDWRAP", (0, 0), (-1, -1), True),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    elems.append(tbl)
+
+    doc.build(
+        elems,
+        onFirstPage=lambda canv, d: (draw_watermark(canv, app), encabezado(canv, d), footer(canv, d)),
+        onLaterPages=lambda canv, d: (draw_watermark(canv, app), encabezado(canv, d), footer(canv, d)),
+    )
+
+    buf.seek(0)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    response = Response(
+        buf.getvalue(),
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="altas_proveedores_{stamp}.pdf"'},
+    )
+    response.direct_passthrough = False
+    return response
+
+
 @app.route("/registro-obras", methods=["GET", "POST"])
 @login_required
 def registro_obras():
