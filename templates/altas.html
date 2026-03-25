@@ -216,7 +216,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
     const query = params.toString();
-    window.location.href = `{{ url_for('export_altas_proveedores_pdf') }}${query ? `?${query}` : ""}`;
+    window.open(`{{ url_for('export_altas_proveedores_pdf') }}${query ? `?${query}` : ""}`, "_blank", "noopener");
   });
 
   Array.from(tbody.querySelectorAll("tr")).forEach(syncRowDataset);
