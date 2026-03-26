@@ -139,6 +139,7 @@ class Obra(db.Model):
     plazo_dias = db.Column(db.Integer, default=0)
     programa_intervalo_dias = db.Column(db.Integer, default=7)
     frentes = db.Column(db.Float, nullable=False, default=1.0)
+    modo_indirecto = db.Column(db.String(20), nullable=False, default="automatico")
     indirecto_pct = db.Column(db.Float, nullable=False, default=0.0)
     indirecto_campo_pct = db.Column(db.Float, nullable=False, default=0.0)
     indirecto_oficina_pct = db.Column(db.Float, nullable=False, default=0.0)

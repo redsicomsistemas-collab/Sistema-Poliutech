@@ -280,6 +280,8 @@ def _dashboard_data():
 
 
 def _set_obra_defaults(obra):
+    if getattr(obra, "modo_indirecto", None) is None:
+        obra.modo_indirecto = "automatico"
     if obra.indirecto_pct is None:
         obra.indirecto_pct = 12.0
     if obra.financiamiento_pct is None:
@@ -312,6 +314,7 @@ def _guardar_obra_desde_form(obra):
     obra.telefono = _s(request.form.get("telefono"))
     obra.correo = _s(request.form.get("correo"))
     obra.responsable = _s(request.form.get("responsable"))
+    obra.modo_indirecto = (request.form.get("modo_indirecto") or "automatico").strip() or "automatico"
     obra.unidad_venta = (request.form.get("unidad_venta") or "obra").strip() or "obra"
     obra.indirecto_pct = _f(request.form.get("indirecto_pct"), obra.indirecto_pct or 0.0)
     obra.indirecto_campo_pct = _f(request.form.get("indirecto_campo_pct"), getattr(obra, "indirecto_campo_pct", 0.0) or 0.0)
@@ -372,9 +375,10 @@ def _decorate_obra(obra):
     subtotal_directo = float(obra.subtotal_directo or 0.0)
     campo_pct = float(getattr(obra, "indirecto_campo_pct", 0.0) or 0.0)
     oficina_pct = float(getattr(obra, "indirecto_oficina_pct", 0.0) or 0.0)
-    indirecto_general_pct = float(obra.indirecto_pct or 0.0) if not (campo_pct or oficina_pct) else 0.0
+    modo_indirecto = (getattr(obra, "modo_indirecto", "automatico") or "automatico").strip().lower()
+    indirecto_general_pct = float(obra.indirecto_pct or 0.0) if not (campo_pct or oficina_pct or modo_indirecto == "manual") else 0.0
     indirecto_detalle = []
-    if campo_pct:
+    if modo_indirecto != "manual" and campo_pct:
         indirecto_detalle.append(
             {
                 "label": "Indirecto campo",
@@ -382,7 +386,7 @@ def _decorate_obra(obra):
                 "amount": subtotal_directo * (campo_pct / 100.0),
             }
         )
-    if oficina_pct:
+    if modo_indirecto != "manual" and oficina_pct:
         indirecto_detalle.append(
             {
                 "label": "Indirecto oficina",
@@ -401,12 +405,13 @@ def _decorate_obra(obra):
     if obra.cargos_resumen["indirecto"]:
         indirecto_detalle.append(
             {
-                "label": "Cargos indirectos de obra",
+                "label": "Indirectos manuales capturados",
                 "pct": (obra.cargos_resumen["indirecto"] / subtotal_directo * 100.0) if subtotal_directo else 0.0,
                 "amount": obra.cargos_resumen["indirecto"],
             }
         )
     obra.indirecto_detalle = indirecto_detalle
+    obra.modo_indirecto_label = "Manual por desglose" if modo_indirecto == "manual" else "Automatico por porcentaje"
     return obra
 
 

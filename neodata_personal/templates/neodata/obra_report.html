@@ -33,6 +33,7 @@
       <div class="row g-3">
         <div class="col-lg-6">
           <h2 class="h5 mb-3">Sobrecostos globales</h2>
+          <div class="text-muted small mb-2">Modo de indirecto: {{ obra.modo_indirecto_label }}</div>
           <div class="d-grid gap-2">
             {% for item in obra.sobrecostos %}
             <div class="d-flex justify-content-between">

@@ -161,13 +161,14 @@ def recalcular_obra(obra):
 
     subtotal_directo += extra_directos
     obra.subtotal_directo = round4(subtotal_directo)
+    modo_indirecto = (getattr(obra, "modo_indirecto", "automatico") or "automatico").strip().lower()
     indirecto_pct = _num(getattr(obra, "indirecto_pct", 0.0))
     indirecto_desglosado = _num(getattr(obra, "indirecto_campo_pct", 0.0)) + _num(getattr(obra, "indirecto_oficina_pct", 0.0))
-    if indirecto_desglosado > 0:
+    if modo_indirecto != "manual" and indirecto_desglosado > 0:
         indirecto_pct = indirecto_desglosado
         obra.indirecto_pct = round4(indirecto_desglosado)
-
-    indirecto_monto = (subtotal_directo * (indirecto_pct / 100.0)) + extra_indirectos
+    indirecto_base = 0.0 if modo_indirecto == "manual" else (subtotal_directo * (indirecto_pct / 100.0))
+    indirecto_monto = indirecto_base + extra_indirectos
     base_fin = subtotal_directo + indirecto_monto
 
     financiamiento_monto = base_fin * (_num(getattr(obra, "financiamiento_pct", 0.0)) / 100.0)

@@ -1266,6 +1266,7 @@ def ensure_schema():
             ("numero", "ALTER TABLE apu_obra ADD COLUMN numero VARCHAR(20)"),
             ("programa_intervalo_dias", "ALTER TABLE apu_obra ADD COLUMN programa_intervalo_dias INTEGER DEFAULT 7"),
             ("frentes", "ALTER TABLE apu_obra ADD COLUMN frentes FLOAT DEFAULT 1.0"),
+            ("modo_indirecto", "ALTER TABLE apu_obra ADD COLUMN modo_indirecto VARCHAR(20) DEFAULT 'automatico'"),
             ("indirecto_campo_pct", "ALTER TABLE apu_obra ADD COLUMN indirecto_campo_pct FLOAT DEFAULT 0.0"),
             ("indirecto_oficina_pct", "ALTER TABLE apu_obra ADD COLUMN indirecto_oficina_pct FLOAT DEFAULT 0.0"),
             ("retenciones_monto", "ALTER TABLE apu_obra ADD COLUMN retenciones_monto FLOAT DEFAULT 0.0"),

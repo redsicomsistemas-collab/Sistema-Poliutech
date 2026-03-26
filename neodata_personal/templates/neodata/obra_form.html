@@ -97,6 +97,13 @@
             <div><label>Correo</label><input name="correo" value="{{ obra.correo or '' }}"></div>
             <div style="grid-column: span 2;"><label>Responsable</label><input name="responsable" value="{{ obra.responsable or '' }}"></div>
             <div><label>Frentes simultaneos</label><input name="frentes" type="number" step="0.0001" value="{{ obra.frentes or 1 }}"></div>
+            <div>
+              <label>Modo de indirecto</label>
+              <select name="modo_indirecto">
+                <option value="automatico" {% if (obra.modo_indirecto or 'automatico') != 'manual' %}selected{% endif %}>Automático por %</option>
+                <option value="manual" {% if (obra.modo_indirecto or '') == 'manual' %}selected{% endif %}>Manual por desglose</option>
+              </select>
+            </div>
             <div><label>Indirecto campo %</label><input name="indirecto_campo_pct" type="number" step="0.0001" value="{{ obra.indirecto_campo_pct or 0 }}"></div>
             <div><label>Indirecto oficina %</label><input name="indirecto_oficina_pct" type="number" step="0.0001" value="{{ obra.indirecto_oficina_pct or 0 }}"></div>
             <div><label>Indirecto %</label><input name="indirecto_pct" type="number" step="0.0001" value="{{ obra.indirecto_pct or 0 }}"></div>
@@ -129,6 +136,7 @@
         <hr>
         <div class="d-grid gap-2">
           <div class="fw-semibold">Desglose de indirecto</div>
+          <div class="obra-mini">Modo actual: {{ obra.modo_indirecto_label }}</div>
           {% for item in obra.indirecto_detalle %}
           <div class="d-flex justify-content-between">
             <span>{{ item.label }} <small class="obra-mini">({{ "{:,.2f}".format(item.pct or 0) }}%)</small></span>
@@ -195,8 +203,11 @@
   </div>
 
   <div class="obra-card mt-4">
-    <div class="hd">Cargos globales de obra</div>
+    <div class="hd">Cargos globales de obra e indirectos manuales</div>
     <div class="bd">
+      <div class="obra-mini mb-3">
+        Si eliges <strong>Manual por desglose</strong> en el encabezado, el total de indirecto se tomará de los renglones con incidencia <strong>Indirecto</strong> capturados aquí.
+      </div>
       <form method="post" action="{{ url_for('apu.obra_cargo_add', obra_id=obra.id) }}" class="row g-3" id="cargo-add-form">
         <div class="col-md-3">
           <label class="form-label">Catálogo</label>
