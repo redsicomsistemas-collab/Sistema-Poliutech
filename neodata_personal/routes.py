@@ -20,7 +20,7 @@ try:
 except Exception:
     Workbook = None
 
-from models import Cliente, Concepto, Cotizacion, CotizacionDetalle, db
+from models import Cliente, Concepto, Cotizacion, CotizacionDetalle, RegistroObra, db
 from .calc import explosion_insumos_obra, programa_obra, programa_recursos_obra, recalcular_apu, recalcular_obra
 from .models import APU, APUDetalle, ManoObra, Maquinaria, Material, Obra, ObraCargo, ObraPartida
 
@@ -302,10 +302,16 @@ def _set_obra_defaults(obra):
 
 def _guardar_obra_desde_form(obra):
     obra.clave = _s(request.form.get("clave"))
+    obra.numero = _s(request.form.get("numero"))
     obra.nombre = (request.form.get("nombre") or "").strip()
     obra.cliente = _s(request.form.get("cliente"))
     obra.descripcion = _s(request.form.get("descripcion"))
     obra.ubicacion = _s(request.form.get("ubicacion"))
+    obra.encargado = _s(request.form.get("encargado"))
+    obra.puesto = _s(request.form.get("puesto"))
+    obra.telefono = _s(request.form.get("telefono"))
+    obra.correo = _s(request.form.get("correo"))
+    obra.responsable = _s(request.form.get("responsable"))
     obra.unidad_venta = (request.form.get("unidad_venta") or "obra").strip() or "obra"
     obra.indirecto_pct = _f(request.form.get("indirecto_pct"), obra.indirecto_pct or 0.0)
     obra.indirecto_campo_pct = _f(request.form.get("indirecto_campo_pct"), getattr(obra, "indirecto_campo_pct", 0.0) or 0.0)
@@ -363,6 +369,28 @@ def _decorate_obra(obra):
         "cargo_adicional": sum(float(c.importe or 0) for c in obra.cargos if c.incidencia == "cargo_adicional"),
         "retencion": sum(float(c.importe or 0) for c in obra.cargos if c.incidencia == "retencion"),
     }
+    return obra
+
+
+def _recent_registro_obras(limit=8):
+    return (
+        RegistroObra.query.order_by(RegistroObra.actualizado_en.desc(), RegistroObra.id.desc())
+        .limit(limit)
+        .all()
+    )
+
+
+def _prefill_obra_from_registro(obra, registro):
+    if not obra or not registro:
+        return obra
+    obra.numero = obra.numero or str(registro.numero or "").strip()
+    obra.nombre = obra.nombre or registro.obra
+    obra.ubicacion = obra.ubicacion or registro.ubicacion
+    obra.encargado = obra.encargado or registro.encargado
+    obra.puesto = obra.puesto or registro.puesto
+    obra.telefono = obra.telefono or registro.telefono
+    obra.correo = obra.correo or registro.correo
+    obra.responsable = obra.responsable or registro.responsable
     return obra
 
 
@@ -435,7 +463,12 @@ def _render_apu_form(apu=None, title="APU"):
 @login_required
 def index():
     dashboard = _dashboard_data()
-    return render_template("neodata/apu_index.html", dashboard=dashboard, title="MAR DATA")
+    return render_template(
+        "neodata/apu_index.html",
+        dashboard=dashboard,
+        recent_registros=_recent_registro_obras(),
+        title="MAR DATA",
+    )
 
 
 @apu_bp.route("/lista")
@@ -912,16 +945,32 @@ def obras_list():
 def obra_new():
     obra = Obra()
     _set_obra_defaults(obra)
+    registro_id = request.values.get("registro_id", type=int)
+    registro = RegistroObra.query.get(registro_id) if registro_id else None
+    if request.method == "GET" and registro:
+        _prefill_obra_from_registro(obra, registro)
     if request.method == "POST":
         if not (request.form.get("nombre") or "").strip():
             flash("El nombre de la obra es obligatorio.", "danger")
-            return render_template("neodata/obra_form.html", obra=obra, apus=[], title="Nueva obra")
+            return render_template(
+                "neodata/obra_form.html",
+                obra=obra,
+                apus=[],
+                title="Nueva obra",
+                registro_origen=registro,
+            )
         _guardar_obra_desde_form(obra)
         db.session.add(obra)
         db.session.commit()
         flash("Obra creada.", "success")
         return redirect(url_for("apu.obra_edit", obra_id=obra.id))
-    return render_template("neodata/obra_form.html", obra=obra, apus=APU.query.order_by(APU.concepto.asc()).all(), title="Nueva obra")
+    return render_template(
+        "neodata/obra_form.html",
+        obra=obra,
+        apus=APU.query.order_by(APU.concepto.asc()).all(),
+        title="Nueva obra",
+        registro_origen=registro,
+    )
 
 
 @apu_bp.route("/obras/<int:obra_id>/editar", methods=["GET", "POST"])
@@ -939,7 +988,7 @@ def obra_edit(obra_id):
         db.session.commit()
     _decorate_obra(obra)
     apus = APU.query.order_by(APU.categoria.asc(), APU.concepto.asc()).all()
-    return render_template("neodata/obra_form.html", obra=obra, apus=apus, title="Editar obra")
+    return render_template("neodata/obra_form.html", obra=obra, apus=apus, title="Editar obra", registro_origen=None)
 
 
 @apu_bp.route("/obras/<int:obra_id>/eliminar", methods=["POST"])

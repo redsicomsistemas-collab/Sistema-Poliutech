@@ -4,9 +4,10 @@
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
     <div>
       <h1 class="h3 mb-1">Obras y Presupuestos MAR Data</h1>
-      <div class="text-muted">Presupuesto por obra, capitulos, sobrecosto global y explosion consolidada.</div>
+      <div class="text-muted">Proceso definido: obra -> partidas desde APU -> sobrecostos -> explosion consolidada -> reporte.</div>
     </div>
     <div class="d-flex gap-2 flex-wrap">
+      <a class="btn btn-outline-dark" href="{{ url_for('registro_obras') }}">Registro Obras</a>
       <a class="btn btn-warning" href="{{ url_for('apu.obra_new') }}">Nueva obra</a>
       <a class="btn btn-outline-primary" href="{{ url_for('apu.apu_new') }}">Nuevo APU</a>
       <a class="btn btn-outline-secondary" href="{{ url_for('apu.index') }}">Panel</a>
