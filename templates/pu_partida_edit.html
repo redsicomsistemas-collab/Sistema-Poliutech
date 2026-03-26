@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+  <div>
+    <h2 class="mb-1">{{ partida.descripcion }}</h2>
+    <div class="text-muted">{{ obra.nombre }} · {{ partida.capitulo or 'General' }}</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{{ url_for('pu.obra_detalle', obra_id=obra.id, tab='presupuesto') }}" class="btn btn-outline-secondary">Volver a la obra</a>
+    <a href="{{ url_for('pu.obra_detalle', obra_id=obra.id, tab='sobrecosto') }}" class="btn btn-outline-primary">Sobrecosto</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3"><div class="border rounded bg-white p-3 h-100"><small class="text-muted d-block">Materiales</small><strong>${{ '%.2f'|format(metrics.materiales) }}</strong></div></div>
+  <div class="col-md-3"><div class="border rounded bg-white p-3 h-100"><small class="text-muted d-block">Mano de obra</small><strong>${{ '%.2f'|format(metrics.mano_obra) }}</strong></div></div>
+  <div class="col-md-3"><div class="border rounded bg-white p-3 h-100"><small class="text-muted d-block">Maquinaria</small><strong>${{ '%.2f'|format(metrics.maquinaria) }}</strong></div></div>
+  <div class="col-md-3"><div class="border rounded bg-white p-3 h-100"><small class="text-muted d-block">Cargos porcentuales</small><strong>${{ '%.2f'|format(metrics.porcentajes) }}</strong></div></div>
+  <div class="col-md-4"><div class="border rounded bg-light p-3 h-100"><small class="text-muted d-block">Precio directo</small><strong>${{ '%.2f'|format(metrics.precio_directo) }}</strong></div></div>
+  <div class="col-md-4"><div class="border rounded bg-light p-3 h-100"><small class="text-muted d-block">Factor sobrecosto</small><strong>{{ '%.4f'|format(metrics.factor_sobrecosto) }}</strong></div></div>
+  <div class="col-md-4"><div class="border rounded bg-light p-3 h-100"><small class="text-muted d-block">Precio unitario</small><strong>${{ '%.2f'|format(metrics.precio_unitario) }}</strong></div></div>
+</div>
+
+<section class="panel mb-4 p-3 border rounded bg-white shadow-sm">
+  <h5 class="mb-3">Datos de la partida</h5>
+  <form method="POST" action="{{ url_for('pu.partida_actualizar', partida_id=partida.id) }}">
+    <div class="row g-3">
+      <div class="col-md-3"><label class="form-label">Capítulo</label><input type="text" name="capitulo" class="form-control" value="{{ partida.capitulo or '' }}"></div>
+      <div class="col-md-2"><label class="form-label">WBS</label><input type="text" name="wbs" class="form-control" value="{{ partida.wbs or '' }}"></div>
+      <div class="col-md-2"><label class="form-label">Código</label><input type="text" name="codigo" class="form-control" value="{{ partida.codigo or '' }}"></div>
+      <div class="col-md-2"><label class="form-label">Unidad</label><input type="text" name="unidad" class="form-control" value="{{ partida.unidad or '' }}"></div>
+      <div class="col-md-3"><label class="form-label">Cantidad</label><input type="number" step="0.0001" name="cantidad" class="form-control" value="{{ partida.cantidad or 0 }}"></div>
+      <div class="col-md-12"><label class="form-label">Descripción completa</label><textarea name="descripcion" class="form-control" rows="2" required>{{ partida.descripcion }}</textarea></div>
+    </div>
+    <div class="mt-3 text-end">
+      <button type="submit" class="btn btn-primary">Guardar partida</button>
+    </div>
+  </form>
+</section>
+
+<div class="row g-4">
+  <div class="col-lg-5">
+    <section class="panel mb-4 p-3 border rounded bg-white shadow-sm">
+      <h5 class="mb-3">Agregar desde catálogo</h5>
+      <form method="POST" action="{{ url_for('pu.partida_insumo_agregar', partida_id=partida.id) }}">
+        <input type="hidden" name="row_kind" value="recurso">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Tipo</label>
+            <select name="tipo_selector" id="tipo_selector" class="form-select" onchange="filterResources(this.value)">
+              {% for key, label in resource_types.items() %}
+              <option value="{{ key }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-8">
+            <label class="form-label">Recurso</label>
+            <select name="recurso_id" id="recurso_id" class="form-select" required>
+              {% for key, items in recursos.items() %}
+                {% for item in items %}
+                <option value="{{ item.id }}" data-type="{{ key }}">{{ (item.codigo or '-') ~ ' · ' ~ item.descripcion }}</option>
+                {% endfor %}
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Cantidad</label>
+            <input type="number" step="0.0001" name="cantidad" class="form-control" value="1">
+          </div>
+        </div>
+        <div class="mt-3 text-end">
+          <button type="submit" class="btn btn-success">Agregar renglón</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel p-3 border rounded bg-white shadow-sm">
+      <h5 class="mb-3">Agregar cargo porcentual</h5>
+      <form method="POST" action="{{ url_for('pu.partida_insumo_agregar', partida_id=partida.id) }}">
+        <input type="hidden" name="row_kind" value="porcentaje">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Tipo</label>
+            <select name="tipo_porcentaje" class="form-select">
+              <option value="porcentaje_mo">% sobre mano de obra</option>
+              <option value="porcentaje_cd">% sobre costo directo</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Base</label>
+            <select name="base_tipo" class="form-select">
+              <option value="mano_obra">Mano de obra</option>
+              <option value="costo_directo">Costo directo</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Código</label>
+            <input type="text" name="codigo" class="form-control" placeholder="%MO1">
+          </div>
+          <div class="col-md-8">
+            <label class="form-label">Descripción</label>
+            <input type="text" name="descripcion" class="form-control" placeholder="Herramienta menor" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Porcentaje</label>
+            <input type="number" step="0.0001" name="porcentaje" class="form-control" value="0">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Unidad</label>
+            <input type="text" name="unidad" class="form-control" value="%MO">
+          </div>
+        </div>
+        <div class="mt-3 text-end">
+          <button type="submit" class="btn btn-outline-primary">Agregar porcentaje</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <div class="col-lg-7">
+    <section class="panel p-3 border rounded bg-white shadow-sm">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0">Matriz del precio unitario</h5>
+        <span class="text-muted small">Indirectos manuales desde el sobrecosto de la obra</span>
+      </div>
+      {% if partida.insumos %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Tipo</th>
+              <th>Código</th>
+              <th>Descripción</th>
+              <th>Unidad</th>
+              <th class="text-end">Costo</th>
+              <th class="text-end">Cantidad</th>
+              <th class="text-end">% </th>
+              <th class="text-end">Importe</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in partida.insumos %}
+            <tr>
+              <td class="text-nowrap">{{ row_types.get(row.tipo, row.tipo) }}</td>
+              <td colspan="7">
+                <form method="POST" action="{{ url_for('pu.partida_insumo_actualizar', row_id=row.id) }}">
+                  <div class="row g-2">
+                    <div class="col-md-1"><input type="text" name="codigo" class="form-control form-control-sm" value="{{ row.codigo or '' }}"></div>
+                    <div class="col-md-3"><input type="text" name="descripcion" class="form-control form-control-sm" value="{{ row.descripcion }}"></div>
+                    <div class="col-md-1"><input type="text" name="unidad" class="form-control form-control-sm" value="{{ row.unidad or '' }}"></div>
+                    <div class="col-md-2"><input type="number" step="0.0001" name="costo_unitario" class="form-control form-control-sm text-end" value="{{ row.costo_unitario or 0 }}"></div>
+                    <div class="col-md-2"><input type="number" step="0.0001" name="cantidad" class="form-control form-control-sm text-end" value="{{ row.cantidad or 0 }}"></div>
+                    <div class="col-md-1"><input type="number" step="0.0001" name="porcentaje" class="form-control form-control-sm text-end" value="{{ row.porcentaje or 0 }}"></div>
+                    <div class="col-md-1">
+                      <select name="base_tipo" class="form-select form-select-sm">
+                        <option value="mano_obra" {% if row.base_tipo == 'mano_obra' %}selected{% endif %}>MO</option>
+                        <option value="costo_directo" {% if row.base_tipo == 'costo_directo' %}selected{% endif %}>CD</option>
+                      </select>
+                    </div>
+                    <div class="col-md-1 text-end">
+                      <div class="small text-muted">${{ '%.2f'|format(row.importe or 0) }}</div>
+                    </div>
+                    <div class="col-md-2">
+                      <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="gravable" value="1" {% if row.gravable %}checked{% endif %}>
+                        <label class="form-check-label small">Gravable</label>
+                      </div>
+                    </div>
+                    <div class="col-md-2">
+                      <button type="submit" class="btn btn-outline-primary btn-sm w-100">Guardar</button>
+                    </div>
+                  </div>
+                </form>
+              </td>
+              <td class="text-end">
+                <form method="POST" action="{{ url_for('pu.partida_insumo_eliminar', row_id=row.id) }}" onsubmit="return confirm('¿Eliminar este renglón?');">
+                  <button type="submit" class="btn btn-outline-danger btn-sm">Eliminar</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-muted">La matriz todavía no tiene renglones.</div>
+      {% endif %}
+    </section>
+  </div>
+</div>
+
+<script>
+function filterResources(type) {
+  const select = document.getElementById('recurso_id');
+  if (!select) return;
+  let firstVisible = null;
+  Array.from(select.options).forEach((option) => {
+    const visible = option.dataset.type === type;
+    option.hidden = !visible;
+    if (visible && !firstVisible) firstVisible = option;
+  });
+  if (firstVisible) {
+    select.value = firstVisible.value;
+  }
+}
+document.addEventListener('DOMContentLoaded', () => filterResources(document.getElementById('tipo_selector')?.value || 'material'));
+</script>
+{% endblock %}

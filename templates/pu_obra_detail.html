@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+  <div>
+    <h2 class="mb-1">{{ obra.nombre }}</h2>
+    <div class="text-muted">{{ obra.descripcion or 'Obra sin descripción.' }}</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{{ url_for('pu.obras_index') }}" class="btn btn-outline-secondary">Volver</a>
+    <a href="{{ url_for('pu.catalogo_recurso', tipo='material') }}" class="btn btn-outline-primary">Catálogos</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3"><div class="border rounded bg-white p-3 h-100"><small class="text-muted d-block">Partidas</small><strong>{{ summary.partidas }}</strong></div></div>
+  <div class="col-md-3"><div class="border rounded bg-white p-3 h-100"><small class="text-muted d-block">Costo directo</small><strong>${{ '%.2f'|format(summary.costo_directo) }}</strong></div></div>
+  <div class="col-md-3"><div class="border rounded bg-white p-3 h-100"><small class="text-muted d-block">Importe total obra</small><strong>${{ '%.2f'|format(summary.precio_total) }}</strong></div></div>
+  <div class="col-md-3"><div class="border rounded bg-white p-3 h-100"><small class="text-muted d-block">M.O. gravable</small><strong>${{ '%.2f'|format(summary.mano_obra_gravable) }}</strong></div></div>
+</div>
+
+<ul class="nav nav-tabs mb-4">
+  <li class="nav-item"><a class="nav-link {% if tab == 'generales' %}active{% endif %}" href="{{ url_for('pu.obra_detalle', obra_id=obra.id, tab='generales') }}">Generales</a></li>
+  <li class="nav-item"><a class="nav-link {% if tab == 'presupuesto' %}active{% endif %}" href="{{ url_for('pu.obra_detalle', obra_id=obra.id, tab='presupuesto') }}">Presupuesto</a></li>
+  <li class="nav-item"><a class="nav-link {% if tab == 'sobrecosto' %}active{% endif %}" href="{{ url_for('pu.obra_detalle', obra_id=obra.id, tab='sobrecosto') }}">Sobrecosto</a></li>
+</ul>
+
+{% if tab == 'generales' %}
+<section class="panel p-3 border rounded bg-white shadow-sm">
+  <form method="POST" action="{{ url_for('pu.obra_actualizar_generales', obra_id=obra.id) }}">
+    <div class="row g-3">
+      <div class="col-md-4"><label class="form-label">Nombre</label><input type="text" name="nombre" class="form-control" value="{{ obra.nombre }}" required></div>
+      <div class="col-md-4"><label class="form-label">Empresa</label><input type="text" name="empresa" class="form-control" value="{{ obra.empresa or '' }}"></div>
+      <div class="col-md-4"><label class="form-label">Responsable</label><input type="text" name="responsable" class="form-control" value="{{ obra.responsable or '' }}"></div>
+      <div class="col-md-12"><label class="form-label">Descripción</label><textarea name="descripcion" class="form-control" rows="2">{{ obra.descripcion or '' }}</textarea></div>
+      <div class="col-md-6"><label class="form-label">Dirección</label><input type="text" name="direccion" class="form-control" value="{{ obra.direccion or '' }}"></div>
+      <div class="col-md-3"><label class="form-label">Colonia</label><input type="text" name="colonia" class="form-control" value="{{ obra.colonia or '' }}"></div>
+      <div class="col-md-3"><label class="form-label">Código postal</label><input type="text" name="codigo_postal" class="form-control" value="{{ obra.codigo_postal or '' }}"></div>
+      <div class="col-md-4"><label class="form-label">Ciudad</label><input type="text" name="ciudad" class="form-control" value="{{ obra.ciudad or '' }}"></div>
+      <div class="col-md-4"><label class="form-label">Estado</label><input type="text" name="estado" class="form-control" value="{{ obra.estado or '' }}"></div>
+      <div class="col-md-4"><label class="form-label">Encargado</label><input type="text" name="encargado" class="form-control" value="{{ obra.encargado or '' }}"></div>
+      <div class="col-md-3"><label class="form-label">Teléfono</label><input type="text" name="telefono" class="form-control" value="{{ obra.telefono or '' }}"></div>
+      <div class="col-md-3"><label class="form-label">Correo</label><input type="email" name="correo" class="form-control" value="{{ obra.correo or '' }}"></div>
+      <div class="col-md-2"><label class="form-label">Inicio</label><input type="date" name="fecha_inicio" class="form-control" value="{{ obra.fecha_inicio.isoformat() if obra.fecha_inicio else '' }}"></div>
+      <div class="col-md-2"><label class="form-label">Terminación</label><input type="date" name="fecha_terminacion" class="form-control" value="{{ obra.fecha_terminacion.isoformat() if obra.fecha_terminacion else '' }}"></div>
+      <div class="col-md-2"><label class="form-label">Plazo (días)</label><input type="number" name="plazo_dias" class="form-control" value="{{ obra.plazo_dias or 0 }}"></div>
+      <div class="col-md-2"><label class="form-label">Moneda</label><input type="text" name="moneda" class="form-control" value="{{ obra.moneda or 'PESOS' }}"></div>
+      <div class="col-md-10"><label class="form-label">Observaciones</label><textarea name="observaciones" class="form-control" rows="3">{{ obra.observaciones or '' }}</textarea></div>
+    </div>
+    <div class="mt-3 text-end">
+      <button type="submit" class="btn btn-primary">Guardar generales</button>
+    </div>
+  </form>
+</section>
+{% elif tab == 'presupuesto' %}
+<div class="row g-4">
+  <div class="col-lg-4">
+    <section class="panel p-3 border rounded bg-white shadow-sm">
+      <h5 class="mb-3">Nueva partida</h5>
+      <form method="POST" action="{{ url_for('pu.partida_nueva', obra_id=obra.id) }}">
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label">Capítulo</label><input type="text" name="capitulo" class="form-control" value="Preliminares"></div>
+          <div class="col-md-6"><label class="form-label">WBS</label><input type="text" name="wbs" class="form-control"></div>
+          <div class="col-md-4"><label class="form-label">Código</label><input type="text" name="codigo" class="form-control"></div>
+          <div class="col-md-8"><label class="form-label">Unidad</label><input type="text" name="unidad" class="form-control" value="m2"></div>
+          <div class="col-md-12"><label class="form-label">Descripción completa</label><textarea name="descripcion" class="form-control" rows="3" required></textarea></div>
+          <div class="col-md-12"><label class="form-label">Cantidad</label><input type="number" step="0.0001" name="cantidad" class="form-control" value="1"></div>
+        </div>
+        <div class="mt-3 text-end">
+          <button type="submit" class="btn btn-success">Agregar partida</button>
+        </div>
+      </form>
+    </section>
+  </div>
+  <div class="col-lg-8">
+    <section class="panel p-3 border rounded bg-white shadow-sm">
+      <h5 class="mb-3">Presupuesto</h5>
+      {% if grouped_partidas %}
+        {% for capitulo, partidas in grouped_partidas.items() %}
+        <div class="mb-4">
+          <div class="fw-semibold text-primary mb-2">{{ capitulo }}</div>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>WBS</th>
+                  <th>Código</th>
+                  <th>Descripción</th>
+                  <th>Unidad</th>
+                  <th>Cantidad</th>
+                  <th class="text-end">Directo</th>
+                  <th class="text-end">P.U.</th>
+                  <th class="text-end">Importe</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for partida in partidas %}
+                {% set m = partida_metrics.get(partida.id, {}) %}
+                <tr>
+                  <td>{{ partida.wbs or '-' }}</td>
+                  <td>{{ partida.codigo or '-' }}</td>
+                  <td>{{ partida.descripcion }}</td>
+                  <td>{{ partida.unidad }}</td>
+                  <td>{{ '%.4f'|format(partida.cantidad or 0) }}</td>
+                  <td class="text-end">${{ '%.2f'|format(m.precio_directo or 0) }}</td>
+                  <td class="text-end">${{ '%.2f'|format(m.precio_unitario or 0) }}</td>
+                  <td class="text-end">${{ '%.2f'|format(m.importe_total or 0) }}</td>
+                  <td class="text-end"><a href="{{ url_for('pu.partida_detalle', partida_id=partida.id) }}" class="btn btn-outline-primary btn-sm">Matriz</a></td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+      <div class="text-muted">Todavía no hay partidas en esta obra.</div>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% else %}
+<section class="panel p-3 border rounded bg-white shadow-sm">
+  <div class="row g-3 mb-3">
+    <div class="col-md-3"><div class="border rounded bg-light p-3 h-100"><small class="text-muted d-block">Importe de la obra</small><strong>${{ '%.2f'|format(summary.precio_total) }}</strong></div></div>
+    <div class="col-md-3"><div class="border rounded bg-light p-3 h-100"><small class="text-muted d-block">Costo directo</small><strong>${{ '%.2f'|format(summary.costo_directo) }}</strong></div></div>
+    <div class="col-md-3"><div class="border rounded bg-light p-3 h-100"><small class="text-muted d-block">M.O. gravable</small><strong>${{ '%.2f'|format(summary.mano_obra_gravable) }}</strong></div></div>
+    <div class="col-md-3"><div class="border rounded bg-light p-3 h-100"><small class="text-muted d-block">Indirecto total</small><strong>{{ '%.4f'|format((sob.indirecto_campo_pct or 0) + (sob.indirecto_oficina_pct or 0)) }}%</strong></div></div>
+  </div>
+  <form method="POST" action="{{ url_for('pu.obra_actualizar_sobrecosto', obra_id=obra.id) }}">
+    <div class="row g-3">
+      <div class="col-md-3"><label class="form-label">Utilidad propuesta %</label><input type="number" step="0.0001" name="porcentaje_utilidad_propuesta" class="form-control" value="{{ sob.porcentaje_utilidad_propuesta or 0 }}"></div>
+      <div class="col-md-3"><label class="form-label">Tasa de interés usada %</label><input type="number" step="0.0001" name="tasa_interes_usada" class="form-control" value="{{ sob.tasa_interes_usada or 0 }}"></div>
+      <div class="col-md-3"><label class="form-label">Puntos del banco %</label><input type="number" step="0.0001" name="porcentaje_puntos_banco" class="form-control" value="{{ sob.porcentaje_puntos_banco or 0 }}"></div>
+      <div class="col-md-3"><label class="form-label">Primer anticipo %</label><input type="number" step="0.0001" name="porcentaje_primer_anticipo" class="form-control" value="{{ sob.porcentaje_primer_anticipo or 0 }}"></div>
+      <div class="col-md-3"><label class="form-label">Factor SFP</label><input type="number" step="0.0001" name="factor_sfp" class="form-control" value="{{ sob.factor_sfp or 0 }}"></div>
+      <div class="col-md-3"><label class="form-label">Indicador económico</label><input type="text" name="indicador_economico" class="form-control" value="{{ sob.indicador_economico or '' }}"></div>
+      <div class="col-md-3"><label class="form-label">Tipo de anticipo</label><input type="text" name="tipo_anticipo" class="form-control" value="{{ sob.tipo_anticipo or '' }}"></div>
+      <div class="col-md-3"><label class="form-label">Libro sobrecosto</label><input type="text" name="libro_sobrecosto" class="form-control" value="{{ sob.libro_sobrecosto or '' }}"></div>
+      <div class="col-md-3"><label class="form-label">Programa de obra</label><input type="text" name="programa_obra" class="form-control" value="{{ sob.programa_obra or '' }}"></div>
+      <div class="col-md-2"><label class="form-label">Num. veces</label><input type="number" name="num_veces" class="form-control" value="{{ sob.num_veces or 1 }}"></div>
+      <div class="col-md-3"><label class="form-label">Libro pie indirectos</label><input type="text" name="libro_pie_indirectos" class="form-control" value="{{ sob.libro_pie_indirectos or '' }}"></div>
+      <div class="col-md-2"><label class="form-label">Indirecto campo %</label><input type="number" step="0.0001" name="indirecto_campo_pct" class="form-control" value="{{ sob.indirecto_campo_pct or 0 }}"></div>
+      <div class="col-md-2"><label class="form-label">Indirecto oficina %</label><input type="number" step="0.0001" name="indirecto_oficina_pct" class="form-control" value="{{ sob.indirecto_oficina_pct or 0 }}"></div>
+      <div class="col-md-2"><label class="form-label">Financiamiento %</label><input type="number" step="0.0001" name="financiamiento_pct" class="form-control" value="{{ sob.financiamiento_pct or 0 }}"></div>
+      <div class="col-md-2"><label class="form-label">Utilidad %</label><input type="number" step="0.0001" name="utilidad_pct" class="form-control" value="{{ sob.utilidad_pct or 0 }}"></div>
+      <div class="col-md-2"><label class="form-label">Cargos adicionales %</label><input type="number" step="0.0001" name="cargos_adicionales_pct" class="form-control" value="{{ sob.cargos_adicionales_pct or 0 }}"></div>
+      <div class="col-md-2"><label class="form-label">Factor pie indirectos</label><input type="number" step="0.0001" name="factor_pie_indirectos" class="form-control" value="{{ sob.factor_pie_indirectos or 1 }}"></div>
+    </div>
+    <div class="mt-3 text-end">
+      <button type="submit" class="btn btn-primary">Guardar sobrecosto</button>
+    </div>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

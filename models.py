@@ -179,3 +179,135 @@ class ActivityLog(db.Model):
 
     def __repr__(self):
         return f"<ActivityLog {self.fecha} {self.usuario} {self.metodo} {self.ruta}>"
+
+
+class PUObra(db.Model):
+    __tablename__ = "pu_obra"
+
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(200), nullable=False)
+    descripcion = db.Column(db.String(1000))
+    direccion = db.Column(db.String(220))
+    colonia = db.Column(db.String(160))
+    ciudad = db.Column(db.String(160))
+    estado = db.Column(db.String(160))
+    codigo_postal = db.Column(db.String(20))
+    telefono = db.Column(db.String(60))
+    correo = db.Column(db.String(160))
+    observaciones = db.Column(db.Text)
+    empresa = db.Column(db.String(180))
+    encargado = db.Column(db.String(160))
+    responsable = db.Column(db.String(120))
+    fecha_inicio = db.Column(db.Date)
+    fecha_terminacion = db.Column(db.Date)
+    plazo_dias = db.Column(db.Integer, default=0)
+    moneda = db.Column(db.String(20), default="PESOS")
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    partidas = db.relationship("PUPartida", backref="obra", cascade="all, delete-orphan", order_by="PUPartida.id.asc()")
+    sobrecosto = db.relationship("PUSobrecosto", backref="obra", cascade="all, delete-orphan", uselist=False)
+
+    def __repr__(self):
+        return f"<PUObra {self.nombre}>"
+
+
+class PURecurso(db.Model):
+    __tablename__ = "pu_recurso"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tipo = db.Column(db.String(30), nullable=False)  # material, mano_obra, maquinaria
+    codigo = db.Column(db.String(60))
+    descripcion = db.Column(db.String(300), nullable=False)
+    unidad = db.Column(db.String(50))
+    costo_base = db.Column(db.Float, default=0.0)
+    familia = db.Column(db.String(120))
+    gravable = db.Column(db.Boolean, default=True, nullable=False)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    def __repr__(self):
+        return f"<PURecurso {self.tipo} {self.codigo or self.id}>"
+
+
+class PUSobrecosto(db.Model):
+    __tablename__ = "pu_sobrecosto"
+
+    id = db.Column(db.Integer, primary_key=True)
+    obra_id = db.Column(db.Integer, db.ForeignKey("pu_obra.id"), nullable=False, unique=True)
+    porcentaje_utilidad_propuesta = db.Column(db.Float, default=10.0)
+    tasa_interes_usada = db.Column(db.Float, default=0.0)
+    porcentaje_puntos_banco = db.Column(db.Float, default=0.0)
+    porcentaje_primer_anticipo = db.Column(db.Float, default=0.0)
+    factor_sfp = db.Column(db.Float, default=0.0)
+    indicador_economico = db.Column(db.String(120))
+    tipo_anticipo = db.Column(db.String(120), default="Un ejercicio con un anticipo")
+    libro_sobrecosto = db.Column(db.String(120), default="Sobrecosto estandar")
+    programa_obra = db.Column(db.String(120), default="Programa base")
+    num_veces = db.Column(db.Integer, default=1)
+    libro_pie_indirectos = db.Column(db.String(120), default="Indirectos manuales")
+    indirecto_campo_pct = db.Column(db.Float, default=0.0)
+    indirecto_oficina_pct = db.Column(db.Float, default=0.0)
+    financiamiento_pct = db.Column(db.Float, default=0.0)
+    utilidad_pct = db.Column(db.Float, default=10.0)
+    cargos_adicionales_pct = db.Column(db.Float, default=0.0)
+    factor_pie_indirectos = db.Column(db.Float, default=1.0)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    def __repr__(self):
+        return f"<PUSobrecosto obra={self.obra_id}>"
+
+
+class PUPartida(db.Model):
+    __tablename__ = "pu_partida"
+
+    id = db.Column(db.Integer, primary_key=True)
+    obra_id = db.Column(db.Integer, db.ForeignKey("pu_obra.id"), nullable=False)
+    capitulo = db.Column(db.String(160), default="General")
+    wbs = db.Column(db.String(40))
+    codigo = db.Column(db.String(60))
+    descripcion = db.Column(db.String(500), nullable=False)
+    unidad = db.Column(db.String(50), default="pza")
+    cantidad = db.Column(db.Float, default=1.0)
+    precio_directo = db.Column(db.Float, default=0.0)
+    precio_unitario = db.Column(db.Float, default=0.0)
+    importe_total = db.Column(db.Float, default=0.0)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    insumos = db.relationship(
+        "PUPartidaInsumo",
+        backref="partida",
+        cascade="all, delete-orphan",
+        order_by="PUPartidaInsumo.orden.asc(), PUPartidaInsumo.id.asc()",
+    )
+
+    def __repr__(self):
+        return f"<PUPartida {self.codigo or self.id}>"
+
+
+class PUPartidaInsumo(db.Model):
+    __tablename__ = "pu_partida_insumo"
+
+    id = db.Column(db.Integer, primary_key=True)
+    partida_id = db.Column(db.Integer, db.ForeignKey("pu_partida.id"), nullable=False)
+    recurso_id = db.Column(db.Integer, db.ForeignKey("pu_recurso.id"), nullable=True)
+    orden = db.Column(db.Integer, default=0)
+    tipo = db.Column(db.String(30), nullable=False)  # material, mano_obra, maquinaria, porcentaje_mo, porcentaje_cd, otro
+    base_tipo = db.Column(db.String(30))
+    codigo = db.Column(db.String(60))
+    descripcion = db.Column(db.String(300), nullable=False)
+    unidad = db.Column(db.String(50))
+    costo_unitario = db.Column(db.Float, default=0.0)
+    cantidad = db.Column(db.Float, default=0.0)
+    porcentaje = db.Column(db.Float, default=0.0)
+    importe = db.Column(db.Float, default=0.0)
+    gravable = db.Column(db.Boolean, default=True, nullable=False)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    recurso = db.relationship("PURecurso")
+
+    def __repr__(self):
+        return f"<PUPartidaInsumo {self.tipo} {self.codigo or self.id}>"

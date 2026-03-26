@@ -837,7 +837,21 @@ REGISTRO_MAIL_FROM = os.getenv("REGISTRO_MAIL_FROM", REGISTRO_MAIL_USERNAME).str
 REGISTRO_MAIL_ATTACHMENT = Path(__file__).resolve().parent / "presentacion2026OK.pdf"
 
 # Usa SIEMPRE los modelos desde models.py para evitar duplicados
-from models import db, Cliente, Concepto, Cotizacion, CotizacionDetalle, Usuario, RegistroObra, ActivityLog
+from models import (
+    db,
+    Cliente,
+    Concepto,
+    Cotizacion,
+    CotizacionDetalle,
+    Usuario,
+    RegistroObra,
+    ActivityLog,
+    PUObra,
+    PURecurso,
+    PUSobrecosto,
+    PUPartida,
+    PUPartidaInsumo,
+)
 
 # ---------------------------------------------------------
 # Flask + DB + Login
@@ -4923,6 +4937,12 @@ try:
     app.register_blueprint(catalogos_bp, url_prefix="/catalogos")
 except Exception as e:
     print(f"[WARN] No se pudo cargar blueprint catalogos_routes: {e}", file=sys.stderr)
+
+try:
+    from pu_routes import pu_bp
+    app.register_blueprint(pu_bp, url_prefix="/pu")
+except Exception as e:
+    print(f"[WARN] No se pudo cargar blueprint pu_routes: {e}", file=sys.stderr)
 
 # ---------------------------------------------------------
 # Main

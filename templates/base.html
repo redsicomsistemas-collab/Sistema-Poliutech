@@ -234,6 +234,7 @@
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('index') }}">🏠 Dashboard</a></li>
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('cotizador') }}">💰 Cotizador</a></li>
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('admin_catalogos') }}">📚 Catálogos</a></li>
+          <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('pu.obras_index') }}">🧮 Precios Unitarios</a></li>
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('registro_obras') }}">🏗️ Registro Obras</a></li>
           {% if current_user.is_authenticated and (current_user.rol or "")|upper == "ADMIN" %}
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('altas_proveedores') }}">🗂️ Altas</a></li>

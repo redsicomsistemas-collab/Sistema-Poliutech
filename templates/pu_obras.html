@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+  <div>
+    <h2 class="mb-1">Precios Unitarios</h2>
+    <div class="text-muted">Flujo de obra, presupuesto, matriz y sobrecosto manual.</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{{ url_for('pu.catalogo_recurso', tipo='material') }}" class="btn btn-outline-primary">Materiales</a>
+    <a href="{{ url_for('pu.catalogo_recurso', tipo='mano_obra') }}" class="btn btn-outline-success">Mano de obra</a>
+    <a href="{{ url_for('pu.catalogo_recurso', tipo='maquinaria') }}" class="btn btn-outline-dark">Maquinaria</a>
+  </div>
+</div>
+
+<section class="panel mb-4 p-3 border rounded bg-white shadow-sm">
+  <h5 class="mb-3">Nueva obra</h5>
+  <form method="POST" action="{{ url_for('pu.obra_nueva') }}">
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label">Nombre</label>
+        <input type="text" name="nombre" class="form-control" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Empresa</label>
+        <input type="text" name="empresa" class="form-control">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Responsable</label>
+        <input type="text" name="responsable" class="form-control">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Descripción</label>
+        <input type="text" name="descripcion" class="form-control">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Inicio</label>
+        <input type="date" name="fecha_inicio" class="form-control">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Terminación</label>
+        <input type="date" name="fecha_terminacion" class="form-control">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Plazo (días)</label>
+        <input type="number" name="plazo_dias" class="form-control" value="0">
+      </div>
+    </div>
+    <div class="mt-3 text-end">
+      <button type="submit" class="btn btn-primary">Crear obra</button>
+    </div>
+  </form>
+</section>
+
+<section class="panel p-3 border rounded bg-white shadow-sm">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0">Obras registradas</h5>
+    <span class="text-muted small">{{ obras|length }} obra(s)</span>
+  </div>
+  {% if obras %}
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Obra</th>
+          <th>Empresa</th>
+          <th>Partidas</th>
+          <th class="text-end">Costo directo</th>
+          <th class="text-end">Precio total</th>
+          <th>Actualizado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for obra in obras %}
+        {% set resumen = resumenes.get(obra.id, {}) %}
+        <tr>
+          <td>
+            <div class="fw-semibold">{{ obra.nombre }}</div>
+            <div class="small text-muted">{{ obra.descripcion or 'Sin descripción' }}</div>
+          </td>
+          <td>{{ obra.empresa or '-' }}</td>
+          <td>{{ resumen.partidas or 0 }}</td>
+          <td class="text-end">${{ '%.2f'|format(resumen.costo_directo or 0) }}</td>
+          <td class="text-end">${{ '%.2f'|format(resumen.precio_total or 0) }}</td>
+          <td>{{ obra.actualizado_en.strftime('%d/%m/%Y %H:%M') if obra.actualizado_en else '-' }}</td>
+          <td class="text-end">
+            <a href="{{ url_for('pu.obra_detalle', obra_id=obra.id) }}" class="btn btn-outline-primary btn-sm">Abrir</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="text-muted">Todavía no hay obras en el sistema de precios unitarios.</div>
+  {% endif %}
+</section>
+{% endblock %}
