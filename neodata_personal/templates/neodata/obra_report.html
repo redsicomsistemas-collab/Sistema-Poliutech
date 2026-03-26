@@ -47,6 +47,22 @@
             </div>
             {% endfor %}
           </div>
+          {% if obra.indirecto_detalle %}
+          <hr>
+          <h3 class="h6 mb-3">Desglose de precio indirecto</h3>
+          <div class="d-grid gap-2">
+            {% for item in obra.indirecto_detalle %}
+            <div class="d-flex justify-content-between">
+              <span>{{ item.label }} <small class="text-muted">({{ "{:,.2f}".format(item.pct or 0) }}%)</small></span>
+              <strong>${{ "{:,.2f}".format(item.amount or 0) }}</strong>
+            </div>
+            {% endfor %}
+            <div class="d-flex justify-content-between border-top pt-2">
+              <span>Total indirecto</span>
+              <strong>${{ "{:,.2f}".format(obra.indirecto_monto or 0) }}</strong>
+            </div>
+          </div>
+          {% endif %}
         </div>
         <div class="col-lg-6">
           <h2 class="h5 mb-3">Resumen por capitulos</h2>

@@ -369,6 +369,44 @@ def _decorate_obra(obra):
         "cargo_adicional": sum(float(c.importe or 0) for c in obra.cargos if c.incidencia == "cargo_adicional"),
         "retencion": sum(float(c.importe or 0) for c in obra.cargos if c.incidencia == "retencion"),
     }
+    subtotal_directo = float(obra.subtotal_directo or 0.0)
+    campo_pct = float(getattr(obra, "indirecto_campo_pct", 0.0) or 0.0)
+    oficina_pct = float(getattr(obra, "indirecto_oficina_pct", 0.0) or 0.0)
+    indirecto_general_pct = float(obra.indirecto_pct or 0.0) if not (campo_pct or oficina_pct) else 0.0
+    indirecto_detalle = []
+    if campo_pct:
+        indirecto_detalle.append(
+            {
+                "label": "Indirecto campo",
+                "pct": campo_pct,
+                "amount": subtotal_directo * (campo_pct / 100.0),
+            }
+        )
+    if oficina_pct:
+        indirecto_detalle.append(
+            {
+                "label": "Indirecto oficina",
+                "pct": oficina_pct,
+                "amount": subtotal_directo * (oficina_pct / 100.0),
+            }
+        )
+    if indirecto_general_pct:
+        indirecto_detalle.append(
+            {
+                "label": "Indirecto general",
+                "pct": indirecto_general_pct,
+                "amount": subtotal_directo * (indirecto_general_pct / 100.0),
+            }
+        )
+    if obra.cargos_resumen["indirecto"]:
+        indirecto_detalle.append(
+            {
+                "label": "Cargos indirectos de obra",
+                "pct": (obra.cargos_resumen["indirecto"] / subtotal_directo * 100.0) if subtotal_directo else 0.0,
+                "amount": obra.cargos_resumen["indirecto"],
+            }
+        )
+    obra.indirecto_detalle = indirecto_detalle
     return obra
 
 
@@ -1555,7 +1593,7 @@ def obra_export_pdf(obra_id):
     story.append(summary_table)
     story.append(Spacer(1, 5 * mm))
 
-    if getattr(obra, "indirectos_desglosados", None):
+    if getattr(obra, "indirecto_detalle", None):
         story.append(Paragraph("<b>Desglose de indirectos y globales</b>", styles["Heading3"]))
         indirect_rows = [["Concepto", "%", "Monto"]]
         for item in obra.sobrecostos:
@@ -1566,12 +1604,12 @@ def obra_export_pdf(obra_id):
                     Paragraph(_fmt_money(item["amount"]), styles["MarCellRight"]),
                 ]
             )
-        for item in obra.indirectos_desglosados:
+        for item in obra.indirecto_detalle:
             indirect_rows.append(
                 [
                     Paragraph(item["label"], styles["MarCell"]),
                     Paragraph("{:,.2f}%".format(float(item["pct"] or 0)), styles["MarCellCenter"]),
-                    Paragraph("-", styles["MarCellRight"]),
+                    Paragraph(_fmt_money(item["amount"]), styles["MarCellRight"]),
                 ]
             )
         indirect_table = Table(indirect_rows, colWidths=[90 * mm, 28 * mm, 42 * mm], repeatRows=1)

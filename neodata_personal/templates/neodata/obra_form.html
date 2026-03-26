@@ -125,6 +125,18 @@
           <div class="d-flex justify-content-between border-top pt-2"><span>Total venta</span><strong>${{ "{:,.2f}".format(obra.total_venta or 0) }}</strong></div>
           <div class="d-flex justify-content-between"><span>Total neto</span><strong>${{ "{:,.2f}".format(obra.total_neto or 0) }}</strong></div>
         </div>
+        {% if obra.indirecto_detalle %}
+        <hr>
+        <div class="d-grid gap-2">
+          <div class="fw-semibold">Desglose de indirecto</div>
+          {% for item in obra.indirecto_detalle %}
+          <div class="d-flex justify-content-between">
+            <span>{{ item.label }} <small class="obra-mini">({{ "{:,.2f}".format(item.pct or 0) }}%)</small></span>
+            <strong>${{ "{:,.2f}".format(item.amount or 0) }}</strong>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
         {% if obra.resumen_capitulos %}
         <hr>
         <div class="d-grid gap-2">
