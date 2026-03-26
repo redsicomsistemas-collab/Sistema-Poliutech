@@ -838,8 +838,6 @@ REGISTRO_MAIL_ATTACHMENT = Path(__file__).resolve().parent / "presentacion2026OK
 
 # Usa SIEMPRE los modelos desde models.py para evitar duplicados
 from models import db, Cliente, Concepto, Cotizacion, CotizacionDetalle, Usuario, RegistroObra, ActivityLog
-from neodata_personal.routes import apu_bp  # módulo MAR DATA
-from neodata_personal.models import APU
 
 # ---------------------------------------------------------
 # Flask + DB + Login
@@ -850,7 +848,6 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", DEFAULT_DATABA
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db.init_app(app)
-app.register_blueprint(apu_bp)  # registrar módulo MAR DATA
 
 
 login_manager = LoginManager()
@@ -1217,122 +1214,6 @@ def ensure_schema():
         db.session.commit()
     except Exception as e:
         print("[WARN] ensure_schema(detalle extras):", e)
-
-    try:
-        apu_cols = _table_columns("apu")
-        for col, stmt in [
-            ("clave", "ALTER TABLE apu ADD COLUMN clave VARCHAR(50)"),
-            ("concepto", "ALTER TABLE apu ADD COLUMN concepto VARCHAR(300)"),
-            ("descripcion", "ALTER TABLE apu ADD COLUMN descripcion TEXT"),
-            ("categoria", "ALTER TABLE apu ADD COLUMN categoria VARCHAR(120)"),
-            ("capitulo", "ALTER TABLE apu ADD COLUMN capitulo VARCHAR(120)"),
-            ("subcapitulo", "ALTER TABLE apu ADD COLUMN subcapitulo VARCHAR(120)"),
-            ("alcance", "ALTER TABLE apu ADD COLUMN alcance VARCHAR(300)"),
-            ("es_auxiliar", "ALTER TABLE apu ADD COLUMN es_auxiliar BOOLEAN DEFAULT 0"),
-            ("unidad", "ALTER TABLE apu ADD COLUMN unidad VARCHAR(50) DEFAULT 'm2'"),
-            ("cantidad_objetivo", "ALTER TABLE apu ADD COLUMN cantidad_objetivo FLOAT DEFAULT 1.0"),
-            ("rendimiento_base", "ALTER TABLE apu ADD COLUMN rendimiento_base FLOAT DEFAULT 1.0"),
-            ("jornada_horas", "ALTER TABLE apu ADD COLUMN jornada_horas FLOAT DEFAULT 8.0"),
-            ("desperdicio_general_pct", "ALTER TABLE apu ADD COLUMN desperdicio_general_pct FLOAT DEFAULT 0.0"),
-            ("herramienta_menor_pct", "ALTER TABLE apu ADD COLUMN herramienta_menor_pct FLOAT DEFAULT 0.0"),
-            ("notas", "ALTER TABLE apu ADD COLUMN notas TEXT"),
-            ("indirecto_pct", "ALTER TABLE apu ADD COLUMN indirecto_pct FLOAT DEFAULT 0.0"),
-            ("utilidad_pct", "ALTER TABLE apu ADD COLUMN utilidad_pct FLOAT DEFAULT 0.0"),
-            ("financiamiento_pct", "ALTER TABLE apu ADD COLUMN financiamiento_pct FLOAT DEFAULT 0.0"),
-            ("cargos_adicionales_pct", "ALTER TABLE apu ADD COLUMN cargos_adicionales_pct FLOAT DEFAULT 0.0"),
-            ("costo_materiales", "ALTER TABLE apu ADD COLUMN costo_materiales FLOAT DEFAULT 0.0"),
-            ("costo_mano_obra", "ALTER TABLE apu ADD COLUMN costo_mano_obra FLOAT DEFAULT 0.0"),
-            ("costo_maquinaria", "ALTER TABLE apu ADD COLUMN costo_maquinaria FLOAT DEFAULT 0.0"),
-            ("costo_herramienta", "ALTER TABLE apu ADD COLUMN costo_herramienta FLOAT DEFAULT 0.0"),
-            ("costo_directo", "ALTER TABLE apu ADD COLUMN costo_directo FLOAT DEFAULT 0.0"),
-            ("indirecto_monto", "ALTER TABLE apu ADD COLUMN indirecto_monto FLOAT DEFAULT 0.0"),
-            ("financiamiento_monto", "ALTER TABLE apu ADD COLUMN financiamiento_monto FLOAT DEFAULT 0.0"),
-            ("utilidad_monto", "ALTER TABLE apu ADD COLUMN utilidad_monto FLOAT DEFAULT 0.0"),
-            ("cargos_adicionales_monto", "ALTER TABLE apu ADD COLUMN cargos_adicionales_monto FLOAT DEFAULT 0.0"),
-            ("precio_unitario", "ALTER TABLE apu ADD COLUMN precio_unitario FLOAT DEFAULT 0.0"),
-            ("importe_partida", "ALTER TABLE apu ADD COLUMN importe_partida FLOAT DEFAULT 0.0"),
-            ("creado_en", "ALTER TABLE apu ADD COLUMN creado_en DATETIME"),
-            ("actualizado_en", "ALTER TABLE apu ADD COLUMN actualizado_en DATETIME"),
-        ]:
-            if col not in apu_cols:
-                db.session.execute(text(stmt))
-        db.session.commit()
-    except Exception as e:
-        print("[WARN] ensure_schema(apu):", e)
-
-    try:
-        obra_cols = _table_columns("apu_obra")
-        for col, stmt in [
-            ("numero", "ALTER TABLE apu_obra ADD COLUMN numero VARCHAR(20)"),
-            ("programa_intervalo_dias", "ALTER TABLE apu_obra ADD COLUMN programa_intervalo_dias INTEGER DEFAULT 7"),
-            ("frentes", "ALTER TABLE apu_obra ADD COLUMN frentes FLOAT DEFAULT 1.0"),
-            ("modo_indirecto", "ALTER TABLE apu_obra ADD COLUMN modo_indirecto VARCHAR(20) DEFAULT 'automatico'"),
-            ("indirecto_campo_pct", "ALTER TABLE apu_obra ADD COLUMN indirecto_campo_pct FLOAT DEFAULT 0.0"),
-            ("indirecto_oficina_pct", "ALTER TABLE apu_obra ADD COLUMN indirecto_oficina_pct FLOAT DEFAULT 0.0"),
-            ("retenciones_monto", "ALTER TABLE apu_obra ADD COLUMN retenciones_monto FLOAT DEFAULT 0.0"),
-            ("total_neto", "ALTER TABLE apu_obra ADD COLUMN total_neto FLOAT DEFAULT 0.0"),
-            ("encargado", "ALTER TABLE apu_obra ADD COLUMN encargado VARCHAR(160)"),
-            ("puesto", "ALTER TABLE apu_obra ADD COLUMN puesto VARCHAR(160)"),
-            ("telefono", "ALTER TABLE apu_obra ADD COLUMN telefono VARCHAR(60)"),
-            ("correo", "ALTER TABLE apu_obra ADD COLUMN correo VARCHAR(160)"),
-            ("responsable", "ALTER TABLE apu_obra ADD COLUMN responsable VARCHAR(120)"),
-        ]:
-            if col not in obra_cols:
-                db.session.execute(text(stmt))
-        db.session.commit()
-    except Exception as e:
-        print("[WARN] ensure_schema(apu_obra):", e)
-
-    try:
-        apu_det_cols = _table_columns("apu_detalle")
-        for col, stmt in [
-            ("tipo_insumo", "ALTER TABLE apu_detalle ADD COLUMN tipo_insumo VARCHAR(20) DEFAULT 'material'"),
-            ("referencia_id", "ALTER TABLE apu_detalle ADD COLUMN referencia_id INTEGER"),
-            ("descripcion", "ALTER TABLE apu_detalle ADD COLUMN descripcion VARCHAR(300) DEFAULT ''"),
-            ("codigo", "ALTER TABLE apu_detalle ADD COLUMN codigo VARCHAR(60)"),
-            ("categoria", "ALTER TABLE apu_detalle ADD COLUMN categoria VARCHAR(120)"),
-            ("unidad", "ALTER TABLE apu_detalle ADD COLUMN unidad VARCHAR(50) DEFAULT 'kg'"),
-            ("cantidad", "ALTER TABLE apu_detalle ADD COLUMN cantidad FLOAT DEFAULT 0.0"),
-            ("factor", "ALTER TABLE apu_detalle ADD COLUMN factor FLOAT DEFAULT 1.0"),
-            ("cuadrilla", "ALTER TABLE apu_detalle ADD COLUMN cuadrilla FLOAT DEFAULT 1.0"),
-            ("rendimiento", "ALTER TABLE apu_detalle ADD COLUMN rendimiento FLOAT DEFAULT 0.0"),
-            ("desperdicio_pct", "ALTER TABLE apu_detalle ADD COLUMN desperdicio_pct FLOAT DEFAULT 0.0"),
-            ("comentario", "ALTER TABLE apu_detalle ADD COLUMN comentario VARCHAR(500)"),
-            ("precio_unitario", "ALTER TABLE apu_detalle ADD COLUMN precio_unitario FLOAT DEFAULT 0.0"),
-            ("unidad_compra", "ALTER TABLE apu_detalle ADD COLUMN unidad_compra VARCHAR(50)"),
-            ("cantidad_presentacion", "ALTER TABLE apu_detalle ADD COLUMN cantidad_presentacion FLOAT DEFAULT 0.0"),
-            ("precio_presentacion", "ALTER TABLE apu_detalle ADD COLUMN precio_presentacion FLOAT DEFAULT 0.0"),
-            ("compra_minima", "ALTER TABLE apu_detalle ADD COLUMN compra_minima FLOAT DEFAULT 0.0"),
-            ("subtotal", "ALTER TABLE apu_detalle ADD COLUMN subtotal FLOAT DEFAULT 0.0"),
-            ("auxiliar_apu_id", "ALTER TABLE apu_detalle ADD COLUMN auxiliar_apu_id INTEGER"),
-        ]:
-            if col not in apu_det_cols:
-                db.session.execute(text(stmt))
-        db.session.commit()
-    except Exception as e:
-        print("[WARN] ensure_schema(apu_detalle):", e)
-
-    for table_name in ("apu_material", "apu_mano_obra", "apu_maquinaria"):
-        try:
-            cols = _table_columns(table_name)
-            for col, stmt in [
-                ("clave", f"ALTER TABLE {table_name} ADD COLUMN clave VARCHAR(60)"),
-                ("categoria", f"ALTER TABLE {table_name} ADD COLUMN categoria VARCHAR(120)"),
-            ]:
-                if col not in cols:
-                    db.session.execute(text(stmt))
-            if table_name == "apu_material":
-                for col, stmt in [
-                    ("unidad_compra", "ALTER TABLE apu_material ADD COLUMN unidad_compra VARCHAR(50)"),
-                    ("cantidad_presentacion", "ALTER TABLE apu_material ADD COLUMN cantidad_presentacion FLOAT DEFAULT 0.0"),
-                    ("precio_presentacion", "ALTER TABLE apu_material ADD COLUMN precio_presentacion FLOAT DEFAULT 0.0"),
-                    ("compra_minima", "ALTER TABLE apu_material ADD COLUMN compra_minima FLOAT DEFAULT 0.0"),
-                ]:
-                    if col not in cols:
-                        db.session.execute(text(stmt))
-            db.session.commit()
-        except Exception as e:
-            print(f"[WARN] ensure_schema({table_name}):", e)
 
     _migrate_registro_obras_from_json()
 
@@ -2591,24 +2472,7 @@ def index():
 @app.route("/cotizador")
 @login_required
 def cotizador():
-    apu_catalog = [
-        {
-            "id": a.id,
-            "clave": a.clave or "",
-            "concepto": a.concepto or "",
-            "categoria": getattr(a, "categoria", "") or "",
-            "unidad": a.unidad or "",
-            "precio_unitario": float(a.precio_unitario or 0),
-            "costo_directo": float(a.costo_directo or 0),
-            "descripcion": getattr(a, "descripcion", "") or "",
-            "indirecto_monto": float(getattr(a, "indirecto_monto", 0) or 0),
-            "financiamiento_monto": float(getattr(a, "financiamiento_monto", 0) or 0),
-            "utilidad_monto": float(getattr(a, "utilidad_monto", 0) or 0),
-            "cargos_adicionales_monto": float(getattr(a, "cargos_adicionales_monto", 0) or 0),
-        }
-        for a in APU.query.order_by(APU.concepto.asc()).all()
-    ]
-    return render_template("cotizador.html", title="Nuevo - Sistema MAR", apu_catalog=apu_catalog)
+    return render_template("cotizador.html", title="Nuevo - Sistema MAR")
 
 
 @app.route("/altas", methods=["GET", "POST"])

@@ -12,12 +12,6 @@ function rowTemplate(){
       <td><input type="text" class="form-control form-control-sm item-capitulo" name="item_capitulo[]" placeholder="Capítulo"></td>
       <td class="position-relative">
         <textarea class="form-control form-control-sm item-nombre quote-textarea" name="item_nombre_concepto[]" rows="3" placeholder="Escribe para buscar..." autocomplete="off"></textarea>
-        <input type="hidden" name="item_origen[]" value="">
-        <input type="hidden" name="item_apu_id[]" value="">
-        <input type="hidden" name="item_apu_clave[]" value="">
-        <input type="hidden" name="item_apu_directo[]" value="0">
-        <input type="hidden" name="item_apu_resumen[]" value="">
-        <div class="small text-muted mt-1 item-origin-badge"></div>
         <div class="list-group position-absolute w-100 item-suggest" style="z-index:1000; max-height:180px; overflow:auto;"></div>
       </td>
       <td><input type="text" class="form-control form-control-sm item-unidad" name="item_unidad[]"></td>
@@ -39,12 +33,6 @@ function bindRowEvents(tr){
   const precio = tr.querySelector(".item-precio");
   const sistema = tr.querySelector(".item-sistema");
   const desc = tr.querySelector('input[name="item_descripcion[]"]');
-  const origen = tr.querySelector('input[name="item_origen[]"]');
-  const apuId = tr.querySelector('input[name="item_apu_id[]"]');
-  const apuClave = tr.querySelector('input[name="item_apu_clave[]"]');
-  const apuDirecto = tr.querySelector('input[name="item_apu_directo[]"]');
-  const apuResumen = tr.querySelector('input[name="item_apu_resumen[]"]');
-  const originBadge = tr.querySelector(".item-origin-badge");
   const subtotalEl = tr.querySelector(".item-subtotal");
   const sug = tr.querySelector(".item-suggest");
 
@@ -66,12 +54,6 @@ function bindRowEvents(tr){
         precio.value = it.precio_unitario ?? 0;
         sistema.value = it.sistema || "";     // 👈 ahora “jala” sistema del catálogo
         desc.value = it.descripcion || "";
-        if (origen) origen.value = "";
-        if (apuId) apuId.value = "";
-        if (apuClave) apuClave.value = "";
-        if (apuDirecto) apuDirecto.value = "0";
-        if (apuResumen) apuResumen.value = "";
-        if (originBadge) originBadge.textContent = "";
         sug.innerHTML="";
         recalcRow(); recalcTotals();
       };
@@ -126,74 +108,6 @@ function recalcTotals(){
   if (uiSubDesc) uiSubDesc.textContent = "$"+fmt(subtotalDesc);
   document.getElementById("ui-iva").textContent = "$"+fmt(iva);
   document.getElementById("ui-total").textContent = "$"+fmt(total);
-  renderMarDataBudget(rows);
-}
-
-function renderMarDataBudget(rows){
-  const box = document.getElementById("mardata-budget-summary");
-  if (!box) return;
-  const groups = new Map();
-  let directoTotal = 0;
-  let ventaTotal = 0;
-
-  rows.forEach((tr) => {
-    const origen = tr.querySelector('input[name="item_origen[]"]')?.value || "";
-    if (origen !== "APU") return;
-
-    const capitulo = tr.querySelector(".item-capitulo")?.value || "";
-    const apuId = tr.querySelector('input[name="item_apu_id[]"]')?.value || "";
-    const apuClave = tr.querySelector('input[name="item_apu_clave[]"]')?.value || "";
-    const apuDirecto = Number(tr.querySelector('input[name="item_apu_directo[]"]')?.value || 0);
-    const nombre = tr.querySelector(".item-nombre")?.value || "Partida MAR DATA";
-    const cantidad = Number(tr.querySelector(".item-cantidad")?.value || 0);
-    const precio = Number(tr.querySelector(".item-precio")?.value || 0);
-    const key = apuId || apuClave || nombre;
-    const data = groups.get(key) || { clave: apuClave || apuId || "-", nombre, capitulo, cantidad: 0, directo: 0, venta: 0 };
-
-    data.cantidad += cantidad;
-    if (!data.capitulo && capitulo) data.capitulo = capitulo;
-    data.directo += apuDirecto * cantidad;
-    data.venta += precio * cantidad;
-    groups.set(key, data);
-    directoTotal += apuDirecto * cantidad;
-    ventaTotal += precio * cantidad;
-  });
-
-  if (!groups.size) {
-    box.className = "border rounded p-3 bg-light text-muted";
-    box.textContent = "Aún no hay partidas MAR DATA agregadas.";
-    return;
-  }
-
-  const rowsHtml = Array.from(groups.values()).map((item) => `
-    <tr>
-      <td>${item.clave}</td>
-      <td>${item.capitulo || "-"}</td>
-      <td>${item.nombre}</td>
-      <td class="text-end">${fmt(item.cantidad)}</td>
-      <td class="text-end">$${fmt(item.directo)}</td>
-      <td class="text-end">$${fmt(item.venta)}</td>
-      <td class="text-end">${item.directo ? fmt((item.venta / item.directo)) : "0.00"}</td>
-    </tr>
-  `).join("");
-
-  box.className = "border rounded p-3 bg-white";
-  box.innerHTML = `
-    <div class="row g-3 mb-3">
-      <div class="col-md-3"><div class="rounded bg-light p-3"><small class="text-muted d-block">Partidas APU</small><strong>${groups.size}</strong></div></div>
-      <div class="col-md-3"><div class="rounded bg-light p-3"><small class="text-muted d-block">Costo directo total</small><strong>$${fmt(directoTotal)}</strong></div></div>
-      <div class="col-md-3"><div class="rounded bg-light p-3"><small class="text-muted d-block">Venta total</small><strong>$${fmt(ventaTotal)}</strong></div></div>
-      <div class="col-md-3"><div class="rounded bg-light p-3"><small class="text-muted d-block">Factor venta/directo</small><strong>${directoTotal ? fmt(ventaTotal / directoTotal) : "0.00"}</strong></div></div>
-    </div>
-    <div class="table-responsive">
-      <table class="table table-sm align-middle mb-0">
-        <thead class="table-light">
-          <tr><th>APU</th><th>Capítulo</th><th>Partida</th><th class="text-end">Cantidad</th><th class="text-end">Directo</th><th class="text-end">Venta</th><th class="text-end">Factor</th></tr>
-        </thead>
-        <tbody>${rowsHtml}</tbody>
-      </table>
-    </div>
-  `;
 }
 
 document.addEventListener("DOMContentLoaded", ()=>{

@@ -21,32 +21,6 @@
         <div class="mt-2"><label class="fw-bold">Representante:</label><div>{{ c.responsable or "—" }}</div></div>
       </div>
 
-      <div class="alert alert-light border mb-4">
-        <div class="fw-semibold mb-1">Origen de conceptos</div>
-        <div>
-          {% set mar_count = c.detalles|selectattr('origen', 'equalto', 'APU')|list|length %}
-          Esta cotización contiene <b>{{ mar_count }}</b> concepto(s) provenientes de <b>MAR DATA</b>.
-        </div>
-      </div>
-
-      {% if mar_count %}
-      {% set ns = namespace(directo=0.0, venta=0.0) %}
-      {% for d in c.detalles %}
-        {% if d.origen == 'APU' %}
-          {% set ns.directo = ns.directo + ((d.apu_directo or 0) * (d.cantidad or 0)) %}
-          {% set ns.venta = ns.venta + (d.subtotal or 0) %}
-        {% endif %}
-      {% endfor %}
-      <div class="border rounded p-3 mb-4 bg-light">
-        <h6 class="fw-bold text-primary mb-3">Presupuesto consolidado MAR DATA</h6>
-        <div class="row g-3">
-          <div class="col-md-4"><div class="border rounded bg-white p-3"><small class="text-muted d-block">Partidas MAR DATA</small><strong>{{ mar_count }}</strong></div></div>
-          <div class="col-md-4"><div class="border rounded bg-white p-3"><small class="text-muted d-block">Costo directo acumulado</small><strong>${{ "%.2f"|format(ns.directo) }}</strong></div></div>
-          <div class="col-md-4"><div class="border rounded bg-white p-3"><small class="text-muted d-block">Venta acumulada</small><strong>${{ "%.2f"|format(ns.venta) }}</strong></div></div>
-        </div>
-      </div>
-      {% endif %}
-
       <div class="border rounded p-3 mb-4">
         <h6 class="fw-bold text-primary mb-3">Conceptos</h6>
         <div class="table-responsive">
@@ -79,12 +53,12 @@
                 <td>
                   <div class="quote-concept-display">{{ d.nombre_concepto }}</div>
                   {% if d.origen == 'APU' %}
-                  <div class="small text-muted quote-concept-display">APU {{ d.apu_clave or d.apu_id or 'MAR DATA' }} · Directo base ${{ "%.2f"|format(d.apu_directo or 0) }}</div>
+                  <div class="small text-muted quote-concept-display">APU {{ d.apu_clave or d.apu_id or '-' }} · Directo base ${{ "%.2f"|format(d.apu_directo or 0) }}</div>
                   {% elif d.descripcion %}
                   <div class="small text-muted quote-concept-display">{{ d.descripcion }}</div>
                   {% endif %}
                 </td>
-                <td class="text-center">{% if d.origen == 'APU' %}<span class="badge bg-dark">MAR DATA</span>{% else %}{{ d.sistema or '-' }}{% endif %}</td>
+                <td class="text-center">{% if d.origen == 'APU' %}<span class="badge bg-dark">APU</span>{% else %}{{ d.sistema or '-' }}{% endif %}</td>
                 <td class="text-end">${{ "%.2f"|format(d.precio_unitario) }}</td>
                 <td class="text-end">${{ "%.2f"|format(d.subtotal) }}</td>
               </tr>
@@ -98,7 +72,6 @@
 
       <div class="text-end mt-4">
         <a href="{{ url_for('editar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-primary">✏️ Editar</a>
-        <a href="{{ url_for('apu.index') }}" class="btn btn-outline-dark">🧮 MAR DATA</a>
         <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">← Volver al Dashboard</a>
       </div>
     </div>
