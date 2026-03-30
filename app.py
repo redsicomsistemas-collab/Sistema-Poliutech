@@ -546,6 +546,12 @@ def require_mobile_auth(fn):
     return wrapper
 
 
+def _mobile_user_can_access_quote(user: Usuario, cot: Cotizacion) -> bool:
+    if _mobile_user_is_admin(user):
+        return True
+    return (cot.responsable or "").strip().lower() == _mobile_user_responsable(user).lower()
+
+
 def _firebase_is_configured() -> bool:
     return PUSH_NOTIFICATIONS_ENABLED and firebase_admin is not None and bool(FIREBASE_CREDENTIALS_FILE or FIREBASE_CREDENTIALS_JSON)
 
@@ -4710,10 +4716,16 @@ def draw_watermark(canvas, app):
 
 
 @app.route("/cotizaciones/<int:cot_id>/export.pdf")
-@login_required
 def export_cotizacion_pdf(cot_id: int):
     c = Cotizacion.query.get_or_404(cot_id)
-    require_owner_or_admin(c)
+    mobile_user = _mobile_user_from_token()
+    if mobile_user:
+        if not _mobile_user_can_access_quote(mobile_user, c):
+            abort(403)
+    elif current_user.is_authenticated:
+        require_owner_or_admin(c)
+    else:
+        return login_manager.unauthorized()
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
