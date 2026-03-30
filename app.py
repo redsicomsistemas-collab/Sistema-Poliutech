@@ -3403,7 +3403,7 @@ def api_mobile_quote_pdf(cot_id: int):
     cot = Cotizacion.query.get_or_404(cot_id)
     if not _mobile_user_can_access_quote(g.mobile_user, cot):
         return _mobile_json_error("No autorizado para esta cotización.", 403)
-    return export_cotizacion_pdf(cot_id)
+    return _build_cotizacion_pdf_response(cot)
 
 
 @app.route("/api/mobile/registro-obras", methods=["POST"])
@@ -4732,18 +4732,7 @@ def draw_watermark(canvas, app):
         pass
 
 
-@app.route("/cotizaciones/<int:cot_id>/export.pdf")
-def export_cotizacion_pdf(cot_id: int):
-    c = Cotizacion.query.get_or_404(cot_id)
-    mobile_user = _mobile_user_from_token()
-    if mobile_user:
-        if not _mobile_user_can_access_quote(mobile_user, c):
-            abort(403)
-    elif current_user.is_authenticated:
-        require_owner_or_admin(c)
-    else:
-        return login_manager.unauthorized()
-
+def _build_cotizacion_pdf_response(c: Cotizacion):
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
@@ -4977,6 +4966,20 @@ def export_cotizacion_pdf(cot_id: int):
     )
     response.direct_passthrough = False
     return response
+
+
+@app.route("/cotizaciones/<int:cot_id>/export.pdf")
+def export_cotizacion_pdf(cot_id: int):
+    c = Cotizacion.query.get_or_404(cot_id)
+    mobile_user = _mobile_user_from_token()
+    if mobile_user:
+        if not _mobile_user_can_access_quote(mobile_user, c):
+            abort(403)
+    elif current_user.is_authenticated:
+        require_owner_or_admin(c)
+    else:
+        return login_manager.unauthorized()
+    return _build_cotizacion_pdf_response(c)
 
 @app.route("/cotizaciones/<int:cot_id>/pdf")
 @login_required
