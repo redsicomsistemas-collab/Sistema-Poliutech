@@ -4,7 +4,7 @@
 # =========================================================
 from __future__ import annotations
 
-import os, io, csv, sys, math, re, json, traceback, unicodedata, smtplib, zipfile
+import os, io, csv, sys, math, re, json, traceback, unicodedata, smtplib, zipfile, logging
 import mimetypes
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -17,6 +17,14 @@ from email.utils import getaddresses
 from html import escape
 import xml.etree.ElementTree as ET
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+try:
+    import firebase_admin
+    from firebase_admin import credentials as firebase_credentials
+    from firebase_admin import messaging as firebase_messaging
+except Exception:
+    firebase_admin = None
+    firebase_credentials = None
+    firebase_messaging = None
 
 
 # -------------------------------
@@ -538,6 +546,136 @@ def require_mobile_auth(fn):
     return wrapper
 
 
+def _firebase_is_configured() -> bool:
+    return PUSH_NOTIFICATIONS_ENABLED and firebase_admin is not None and bool(FIREBASE_CREDENTIALS_FILE or FIREBASE_CREDENTIALS_JSON)
+
+
+def _get_firebase_app():
+    if not _firebase_is_configured():
+        return None
+    try:
+        return firebase_admin.get_app()
+    except Exception:
+        pass
+
+    try:
+        if FIREBASE_CREDENTIALS_JSON:
+            cred = firebase_credentials.Certificate(json.loads(FIREBASE_CREDENTIALS_JSON))
+        elif FIREBASE_CREDENTIALS_FILE:
+            cred = firebase_credentials.Certificate(FIREBASE_CREDENTIALS_FILE)
+        else:
+            return None
+        return firebase_admin.initialize_app(cred)
+    except Exception as exc:
+        logger.warning("Firebase no se pudo inicializar: %s", exc)
+        return None
+
+
+def _upsert_mobile_device(user: Usuario, token: str, plataforma: str = "android", device_name: str = "", app_version: str = "") -> MobileDevice:
+    existing = MobileDevice.query.filter_by(token=token).first()
+    if existing:
+        existing.usuario_id = user.id
+        existing.plataforma = (plataforma or "android").strip().lower()[:30]
+        existing.device_name = (device_name or "").strip()[:120]
+        existing.app_version = (app_version or "").strip()[:40]
+        existing.is_active = True
+        existing.last_seen_at = now_cdmx_naive()
+        db.session.add(existing)
+        db.session.commit()
+        return existing
+
+    device = MobileDevice(
+        usuario_id=user.id,
+        token=token,
+        plataforma=(plataforma or "android").strip().lower()[:30] or "android",
+        device_name=(device_name or "").strip()[:120],
+        app_version=(app_version or "").strip()[:40],
+        is_active=True,
+        last_seen_at=now_cdmx_naive(),
+    )
+    db.session.add(device)
+    db.session.commit()
+    return device
+
+
+def _deactivate_mobile_device(token: str) -> None:
+    if not token:
+        return
+    device = MobileDevice.query.filter_by(token=token).first()
+    if not device:
+        return
+    device.is_active = False
+    device.updated_at = now_cdmx_naive()
+    db.session.add(device)
+    db.session.commit()
+
+
+def _mobile_push_tokens_for_users(user_ids: list[int]) -> list[str]:
+    if not user_ids:
+        return []
+    rows = (
+        MobileDevice.query
+        .filter(MobileDevice.usuario_id.in_(user_ids), MobileDevice.is_active.is_(True))
+        .all()
+    )
+    unique_tokens: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        token = (row.token or "").strip()
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        unique_tokens.append(token)
+    return unique_tokens
+
+
+def _mobile_push_user_ids_for_pending_quote(cot: Cotizacion) -> list[int]:
+    user_ids: set[int] = set()
+    admins = Usuario.query.filter(db.func.upper(Usuario.rol) == "ADMIN").all()
+    user_ids.update(u.id for u in admins if getattr(u, "id", None))
+    responsable = (cot.responsable or "").strip().lower()
+    if responsable:
+        owner = Usuario.query.filter(db.func.lower(Usuario.nombre) == responsable).first()
+        if owner and owner.id:
+            user_ids.add(owner.id)
+        else:
+            users = Usuario.query.all()
+            for user in users:
+                first_name = _mobile_user_responsable(user).strip().lower()
+                if first_name and first_name == responsable and user.id:
+                    user_ids.add(user.id)
+    return list(user_ids)
+
+
+def _send_push_notification(tokens: list[str], title: str, body: str, data: Optional[dict[str, str]] = None) -> dict[str, int]:
+    if not tokens:
+        return {"sent": 0, "failed": 0}
+    app_instance = _get_firebase_app()
+    if app_instance is None or firebase_messaging is None:
+        return {"sent": 0, "failed": len(tokens)}
+
+    sent = 0
+    failed = 0
+    payload_data = {str(k): str(v) for k, v in (data or {}).items()}
+    for token in tokens:
+        try:
+            message = firebase_messaging.Message(
+                token=token,
+                notification=firebase_messaging.Notification(title=title, body=body),
+                data=payload_data,
+                android=firebase_messaging.AndroidConfig(priority="high"),
+            )
+            firebase_messaging.send(message, app=app_instance)
+            sent += 1
+        except Exception as exc:
+            failed += 1
+            logger.warning("Push fallido para token móvil: %s", exc)
+            err = str(exc).lower()
+            if any(fragment in err for fragment in ["registration-token", "not registered", "invalid argument"]):
+                _deactivate_mobile_device(token)
+    return {"sent": sent, "failed": failed}
+
+
 def _filter_registro_obras_for_mobile(rows: list[dict], user: Usuario, obra: str = "", responsable: str = "") -> list[dict]:
     obra_filter = (obra or "").strip().lower()
     responsable_filter = (responsable or "").strip().lower()
@@ -835,6 +973,9 @@ REGISTRO_MAIL_USERNAME = os.getenv("REGISTRO_MAIL_USERNAME", "info@poliutech.com
 REGISTRO_MAIL_PASSWORD = os.getenv("REGISTRO_MAIL_PASSWORD", "Info@2025?").strip()
 REGISTRO_MAIL_FROM = os.getenv("REGISTRO_MAIL_FROM", REGISTRO_MAIL_USERNAME).strip()
 REGISTRO_MAIL_ATTACHMENT = Path(__file__).resolve().parent / "presentacion2026OK.pdf"
+FIREBASE_CREDENTIALS_FILE = os.getenv("FIREBASE_CREDENTIALS_FILE", "").strip()
+FIREBASE_CREDENTIALS_JSON = os.getenv("FIREBASE_CREDENTIALS_JSON", "").strip()
+PUSH_NOTIFICATIONS_ENABLED = os.getenv("PUSH_NOTIFICATIONS_ENABLED", "1").strip().lower() not in {"0", "false", "no"}
 
 # Usa SIEMPRE los modelos desde models.py para evitar duplicados
 from models import (
@@ -844,6 +985,7 @@ from models import (
     Cotizacion,
     CotizacionDetalle,
     Usuario,
+    MobileDevice,
     RegistroObra,
     ActivityLog,
     PUObra,
@@ -860,6 +1002,7 @@ app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", DEFAULT_SECRET_KEY)
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+logger = logging.getLogger(__name__)
 
 db.init_app(app)
 
@@ -2997,6 +3140,44 @@ def api_mobile_login():
     })
 
 
+@app.route("/api/mobile/push-token", methods=["POST"])
+@require_mobile_auth
+def api_mobile_push_token_register():
+    payload = request.get_json(silent=True) or {}
+    token = (payload.get("token") or "").strip()
+    if not token:
+        return _mobile_json_error("Falta el token push.", 400)
+
+    user = g.mobile_user
+    device = _upsert_mobile_device(
+        user,
+        token=token,
+        plataforma=(payload.get("platform") or "android"),
+        device_name=(payload.get("device_name") or ""),
+        app_version=(payload.get("app_version") or ""),
+    )
+    return jsonify({
+        "ok": True,
+        "device": {
+            "id": device.id,
+            "platform": device.plataforma,
+            "active": bool(device.is_active),
+        },
+        "firebase_configured": bool(_firebase_is_configured()),
+    })
+
+
+@app.route("/api/mobile/push-token", methods=["DELETE"])
+@require_mobile_auth
+def api_mobile_push_token_unregister():
+    payload = request.get_json(silent=True) or {}
+    token = (payload.get("token") or "").strip()
+    if not token:
+        return _mobile_json_error("Falta el token push.", 400)
+    _deactivate_mobile_device(token)
+    return jsonify({"ok": True})
+
+
 @app.route("/api/mobile/registro-obras", methods=["GET"])
 @require_mobile_auth
 def api_mobile_registro_obras_list():
@@ -3008,6 +3189,29 @@ def api_mobile_registro_obras_list():
         obra=request.args.get("obra", ""),
         responsable=request.args.get("responsable", ""),
     )
+    return jsonify({"ok": True, "items": items})
+
+
+@app.route("/api/mobile/cotizaciones/pendientes", methods=["GET"])
+@require_mobile_auth
+def api_mobile_pending_quotes():
+    user = g.mobile_user
+    query = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
+    query = query.filter(db.func.upper(Cotizacion.estatus) == "PENDIENTE")
+    if not _mobile_user_is_admin(user):
+        query = query.filter(Cotizacion.responsable == _mobile_user_responsable(user))
+
+    items = []
+    for cot in query.order_by(Cotizacion.fecha.desc()).limit(100).all():
+        items.append({
+            "id": cot.id,
+            "folio": cot.folio or "",
+            "fecha": cot.fecha.isoformat() if cot.fecha else "",
+            "estatus": cot.estatus or "",
+            "total": cot.total or 0,
+            "responsable": cot.responsable or "",
+            "cliente": cot.cliente.nombre_cliente if cot.cliente else "",
+        })
     return jsonify({"ok": True, "items": items})
 
 
@@ -4744,6 +4948,20 @@ def enviar_notificaciones_pendientes():
                         f"Total: {money(cot.total)}"
                     )
                     send_whatsapp_multi(ADMIN_LIST, body)
+                    push_title = "Pendiente por revisar"
+                    push_body = f"{cot.folio or 'Sin folio'} · {money(cot.total)}"
+                    push_tokens = _mobile_push_tokens_for_users(_mobile_push_user_ids_for_pending_quote(cot))
+                    _send_push_notification(
+                        push_tokens,
+                        title=push_title,
+                        body=push_body,
+                        data={
+                            "type": "pending_quote",
+                            "cotizacion_id": str(cot.id or ""),
+                            "folio": str(cot.folio or ""),
+                            "estatus": str(cot.estatus or ""),
+                        },
+                    )
                     cot.last_whatsapp_at = ahora
                     db.session.commit()
                 except Exception as e:

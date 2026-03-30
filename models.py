@@ -128,6 +128,26 @@ class Usuario(UserMixin, db.Model):
         return f"<Usuario {self.nombre} ({self.rol})>"
 
 
+class MobileDevice(db.Model):
+    __tablename__ = "mobile_device"
+
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=False)
+    token = db.Column(db.String(512), nullable=False, unique=True)
+    plataforma = db.Column(db.String(30), default="android", nullable=False)
+    device_name = db.Column(db.String(120))
+    app_version = db.Column(db.String(40))
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    last_seen_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    usuario = db.relationship("Usuario", backref=db.backref("mobile_devices", lazy=True, cascade="all, delete-orphan"))
+
+    def __repr__(self):
+        return f"<MobileDevice user={self.usuario_id} platform={self.plataforma} active={self.is_active}>"
+
+
 class RegistroObra(db.Model):
     __tablename__ = "registro_obra"
 
