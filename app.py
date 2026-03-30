@@ -4183,7 +4183,7 @@ def export_dashboard_cotizaciones_xlsx():
     thin = Side(style="thin", color="DDDDDD")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-    ws.merge_cells("A1:J1")
+    ws.merge_cells("A1:K1")
     ws["A1"] = "REPORTE DE COTIZACIONES"
     ws["A1"].font = Font(bold=True, size=14)
     ws["A1"].alignment = center
@@ -4200,11 +4200,11 @@ def export_dashboard_cotizaciones_xlsx():
     if not filtros_texto:
         filtros_texto.append("Sin filtros")
 
-    ws.merge_cells("A2:J2")
+    ws.merge_cells("A2:K2")
     ws["A2"] = " | ".join(filtros_texto)
     ws["A2"].alignment = left
 
-    headers = ["Folio", "Fecha", "Cliente", "Empresa", "Responsable", "Estatus", "Subtotal", "IVA %", "IVA $", "Total"]
+    headers = ["Folio", "Fecha", "Cliente", "Empresa", "Telefono", "Responsable", "Estatus", "Subtotal", "IVA %", "IVA $", "Total"]
     ws.append([])
     ws.append(headers)
 
@@ -4222,6 +4222,7 @@ def export_dashboard_cotizaciones_xlsx():
             c.fecha.strftime("%Y-%m-%d %H:%M") if c.fecha else "",
             c.cliente.nombre_cliente if c.cliente else "",
             c.cliente.empresa if c.cliente else "",
+            c.cliente.telefono if c.cliente and c.cliente.telefono else "",
             c.responsable or "",
             c.estatus or "",
             float(c.subtotal or 0),
@@ -4232,32 +4233,34 @@ def export_dashboard_cotizaciones_xlsx():
         row = ws.max_row
         for col in range(1, len(headers) + 1):
             ws.cell(row=row, column=col).border = border
-        for col in (7, 9, 10):
+        for col in (8, 10, 11):
             ws.cell(row=row, column=col).number_format = '"$"#,##0.00'
-        ws.cell(row=row, column=8).number_format = '0.00'
+        ws.cell(row=row, column=9).number_format = '0.00'
         ws.cell(row=row, column=1).alignment = left
         ws.cell(row=row, column=2).alignment = center
         ws.cell(row=row, column=3).alignment = left
         ws.cell(row=row, column=4).alignment = left
+        ws.cell(row=row, column=5).alignment = left
 
     total_row = ws.max_row + 2
-    ws.cell(row=total_row, column=9, value="Total exportado:").font = bold
-    ws.cell(row=total_row, column=10, value=f"=SUM(J{header_row + 1}:J{ws.max_row})")
-    ws.cell(row=total_row, column=10).font = bold
-    ws.cell(row=total_row, column=10).number_format = '"$"#,##0.00'
+    ws.cell(row=total_row, column=10, value="Total exportado:").font = bold
+    ws.cell(row=total_row, column=11, value=f"=SUM(K{header_row + 1}:K{ws.max_row})")
+    ws.cell(row=total_row, column=11).font = bold
+    ws.cell(row=total_row, column=11).number_format = '"$"#,##0.00'
 
-    ws.auto_filter.ref = f"A{header_row}:J{max(header_row, ws.max_row)}"
+    ws.auto_filter.ref = f"A{header_row}:K{max(header_row, ws.max_row)}"
     ws.freeze_panes = f"A{header_row + 1}"
     ws.column_dimensions["A"].width = 18
     ws.column_dimensions["B"].width = 18
     ws.column_dimensions["C"].width = 28
     ws.column_dimensions["D"].width = 28
     ws.column_dimensions["E"].width = 18
-    ws.column_dimensions["F"].width = 14
+    ws.column_dimensions["F"].width = 18
     ws.column_dimensions["G"].width = 14
-    ws.column_dimensions["H"].width = 10
-    ws.column_dimensions["I"].width = 14
+    ws.column_dimensions["H"].width = 14
+    ws.column_dimensions["I"].width = 10
     ws.column_dimensions["J"].width = 14
+    ws.column_dimensions["K"].width = 14
 
     bio = io.BytesIO()
     wb.save(bio)
