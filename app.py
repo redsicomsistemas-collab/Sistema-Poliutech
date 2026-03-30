@@ -553,7 +553,10 @@ def _mobile_user_can_access_quote(user: Usuario, cot: Cotizacion) -> bool:
 
 
 def _mobile_quote_pdf_url(cot_id: int) -> str:
-    return url_for("api_mobile_quote_pdf", cot_id=cot_id, _external=True)
+    url = url_for("api_mobile_quote_pdf", cot_id=cot_id, _external=True)
+    if url.startswith("http://"):
+        return "https://" + url[len("http://"):]
+    return url
 
 
 def _firebase_is_configured() -> bool:
