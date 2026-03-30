@@ -665,6 +665,55 @@ def _send_quote_status_push(cot: Cotizacion, previous_status: str, new_status: s
     )
 
 
+def _send_quote_created_notification(cot: Cotizacion) -> None:
+    estatus_actual = (cot.estatus or "").strip().upper()
+    try:
+        msg = (
+            "🧾 *Nueva Cotización Creada*\\n"
+            f"Folio: *{cot.folio or 'Sin folio'}*\\n"
+            f"Estatus: *{estatus_actual or 'SIN ESTATUS'}*\\n"
+            f"Fecha (CDMX): {cot.fecha.strftime('%d/%m/%Y %H:%M') if cot.fecha else ''}\\n"
+            f"Total: {money(cot.total)}"
+        )
+        send_whatsapp_multi(ADMIN_LIST, msg)
+    except Exception as exc:
+        logger.warning("WhatsApp de creación falló: %s", exc)
+
+    try:
+        tokens = _mobile_push_tokens_for_users(_mobile_push_user_ids_for_quote(cot))
+        _send_push_notification(
+            tokens,
+            title="Nueva cotización creada",
+            body=f"{cot.folio or 'Sin folio'} · {money(cot.total)} · {estatus_actual or 'SIN ESTATUS'}",
+            data={
+                "type": "quote_created",
+                "cotizacion_id": str(cot.id or ""),
+                "folio": str(cot.folio or ""),
+                "estatus": str(cot.estatus or ""),
+            },
+        )
+    except Exception as exc:
+        logger.warning("Push de creación falló: %s", exc)
+
+
+def _send_daily_status_reminder(cot: Cotizacion, ahora: datetime) -> None:
+    estatus_actual = (cot.estatus or "").strip().upper()
+    if not estatus_actual or estatus_actual == "FINALIZADA":
+        return
+
+    body = (
+        "🔔 *Recordatorio diario de cotización*\\n"
+        f"Folio: *{cot.folio or 'Sin folio'}*\\n"
+        f"Estatus: *{estatus_actual}*\\n"
+        f"Fecha (CDMX): {cot.fecha.strftime('%d/%m/%Y %H:%M') if cot.fecha else ''}\\n"
+        f"Total: {money(cot.total)}"
+    )
+    send_whatsapp_multi(ADMIN_LIST, body)
+    _send_quote_status_push(cot, estatus_actual, estatus_actual)
+    cot.last_whatsapp_at = ahora
+    db.session.commit()
+
+
 def _send_push_notification(tokens: list[str], title: str, body: str, data: Optional[dict[str, str]] = None) -> dict[str, int]:
     if not tokens:
         return {"sent": 0, "failed": 0}
@@ -2480,6 +2529,7 @@ def import_external_quote_payload(payload: dict, source_label: Optional[str] = N
         db.session.add(det)
 
     db.session.commit()
+    _send_quote_created_notification(cot)
     return cot
 
 def money(n: float) -> str:
@@ -3213,11 +3263,8 @@ def api_mobile_registro_obras_list():
 @app.route("/api/mobile/cotizaciones/pendientes", methods=["GET"])
 @require_mobile_auth
 def api_mobile_pending_quotes():
-    user = g.mobile_user
     query = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
     query = query.filter(db.func.upper(Cotizacion.estatus) == "PENDIENTE")
-    if not _mobile_user_is_admin(user):
-        query = query.filter(Cotizacion.responsable == _mobile_user_responsable(user))
 
     items = []
     for cot in query.order_by(Cotizacion.fecha.desc()).limit(100).all():
@@ -3236,10 +3283,7 @@ def api_mobile_pending_quotes():
 @app.route("/api/mobile/dashboard/summary", methods=["GET"])
 @require_mobile_auth
 def api_mobile_dashboard_summary():
-    user = g.mobile_user
     query = Cotizacion.query
-    if not _mobile_user_is_admin(user):
-        query = query.filter(Cotizacion.responsable == _mobile_user_responsable(user))
 
     total_cotizaciones = query.count()
     total_importe = float(
@@ -3268,16 +3312,13 @@ def api_mobile_dashboard_summary():
 @app.route("/api/mobile/cotizaciones", methods=["GET"])
 @require_mobile_auth
 def api_mobile_quotes():
-    user = g.mobile_user
     estatus = (request.args.get("estatus") or "").strip().upper()
     query = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
-    if not _mobile_user_is_admin(user):
-        query = query.filter(Cotizacion.responsable == _mobile_user_responsable(user))
     if estatus:
         query = query.filter(Cotizacion.estatus == estatus)
 
     items = []
-    for cot in query.order_by(Cotizacion.fecha.desc()).limit(200).all():
+    for cot in query.order_by(Cotizacion.fecha.desc()).all():
         items.append({
             "id": cot.id,
             "folio": cot.folio or "",
@@ -3733,18 +3774,7 @@ def crear_cotizacion():
     cot.total = fmt(total)
     db.session.commit()
 
-    # --- Notificación WhatsApp ---
-    try:
-        msg = (
-            "🧾 *Nueva Cotización Creada*\\n"
-            f"Folio: *{cot.folio}*\\n"
-            f"Estatus: *{cot.estatus}*\\n"
-            f"Fecha (CDMX): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\\n"
-            f"Total: {money(cot.total)}"
-        )
-        send_whatsapp_multi(ADMIN_LIST, msg)
-    except Exception as e:
-        print(f"[WARN] WhatsApp creación ({cot.folio}): {e}", file=sys.stderr)
+    _send_quote_created_notification(cot)
 
     # --- Apertura automática del PDF ---
     pdf_url = url_for("export_cotizacion_pdf", cot_id=cot.id)
@@ -5058,54 +5088,36 @@ def debug_force_reminders():
 def enviar_notificaciones_pendientes():
     with app.app_context():
         ahora = now_cdmx_naive()
-        hace_24h = ahora - timedelta(hours=24)
+        inicio_hoy = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
 
-        q = Cotizacion.query.filter_by(estatus="PENDIENTE")
-        # En recordatorios, normalmente quieres avisar admins siempre (no depende de rol)
-        pendientes = q.all()
+        cotizaciones = (
+            Cotizacion.query
+            .filter(db.func.upper(Cotizacion.estatus) != "FINALIZADA")
+            .all()
+        )
 
-        for cot in pendientes:
-            if cot.last_whatsapp_at is None or cot.last_whatsapp_at <= hace_24h:
-                try:
-                    body = (
-                        "🔔 *Recordatorio: Cotización PENDIENTE*\\n"
-                        f"Folio: *{cot.folio}*\\n"
-                        f"Fecha (CDMX): {cot.fecha.strftime('%d/%m/%Y %H:%M')}\\n"
-                        f"Total: {money(cot.total)}"
-                    )
-                    send_whatsapp_multi(ADMIN_LIST, body)
-                    push_title = "Pendiente por revisar"
-                    push_body = f"{cot.folio or 'Sin folio'} · {money(cot.total)}"
-                    push_tokens = _mobile_push_tokens_for_users(_mobile_push_user_ids_for_quote(cot))
-                    _send_push_notification(
-                        push_tokens,
-                        title=push_title,
-                        body=push_body,
-                        data={
-                            "type": "pending_quote",
-                            "cotizacion_id": str(cot.id or ""),
-                            "folio": str(cot.folio or ""),
-                            "estatus": str(cot.estatus or ""),
-                        },
-                    )
-                    cot.last_whatsapp_at = ahora
-                    db.session.commit()
-                except Exception as e:
-                    print(f"[Scheduler] ERROR recordatorio ({cot.folio}): {e}", file=sys.stderr)
+        for cot in cotizaciones:
+            if cot.last_whatsapp_at is not None and cot.last_whatsapp_at >= inicio_hoy:
+                continue
+            try:
+                _send_daily_status_reminder(cot, ahora)
+            except Exception as e:
+                print(f"[Scheduler] ERROR recordatorio ({cot.folio}): {e}", file=sys.stderr)
 
 scheduler: Optional[BackgroundScheduler] = None
 try:
     if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
-        scheduler = BackgroundScheduler(daemon=True)
+        scheduler = BackgroundScheduler(timezone=TZ_CDMX, daemon=True)
         scheduler.add_job(
             enviar_notificaciones_pendientes,
-            "interval",
-            minutes=60,
-            id="pending_quotes_reminder",
+            "cron",
+            hour=10,
+            minute=0,
+            id="daily_quotes_status_reminder",
             replace_existing=True
         )
         scheduler.start()
-        print("[Scheduler] Iniciado (interval=60m).")
+        print("[Scheduler] Iniciado (10:00 AM CDMX).")
 except Exception as e:
     print(f"[Scheduler] No pudo iniciar: {e}", file=sys.stderr)
 
