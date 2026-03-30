@@ -3276,6 +3276,7 @@ def api_mobile_pending_quotes():
             "total": cot.total or 0,
             "responsable": cot.responsable or "",
             "cliente": cot.cliente.nombre_cliente if cot.cliente else "",
+            "pdf_url": url_for("export_cotizacion_pdf", cot_id=cot.id, _external=True),
         })
     return jsonify({"ok": True, "items": items})
 
@@ -3327,6 +3328,7 @@ def api_mobile_quotes():
             "total": cot.total or 0,
             "responsable": cot.responsable or "",
             "cliente": cot.cliente.nombre_cliente if cot.cliente else "",
+            "pdf_url": url_for("export_cotizacion_pdf", cot_id=cot.id, _external=True),
         })
     return jsonify({"ok": True, "items": items, "valid_estatus": VALID_ESTATUS})
 
