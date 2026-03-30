@@ -1116,6 +1116,10 @@ def _require_login_everywhere():
         return
     if request.path.startswith("/api/mobile/"):
         return
+    if request.path.startswith("/cotizaciones/") and request.path.endswith("/export.pdf"):
+        auth_header = (request.headers.get("Authorization") or "").strip()
+        if auth_header.lower().startswith("bearer "):
+            return
 
     # Si ya está logueado, ok
     if current_user.is_authenticated:
