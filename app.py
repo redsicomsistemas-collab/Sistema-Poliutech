@@ -552,6 +552,10 @@ def _mobile_user_can_access_quote(user: Usuario, cot: Cotizacion) -> bool:
     return (cot.responsable or "").strip().lower() == _mobile_user_responsable(user).lower()
 
 
+def _mobile_quote_pdf_url(cot_id: int) -> str:
+    return url_for("api_mobile_quote_pdf", cot_id=cot_id, _external=True)
+
+
 def _firebase_is_configured() -> bool:
     return PUSH_NOTIFICATIONS_ENABLED and firebase_admin is not None and bool(FIREBASE_CREDENTIALS_FILE or FIREBASE_CREDENTIALS_JSON)
 
@@ -656,7 +660,7 @@ def _mobile_push_user_ids_for_quote(cot: Cotizacion) -> list[int]:
 def _send_quote_status_push(cot: Cotizacion, previous_status: str, new_status: str) -> dict[str, int]:
     if (new_status or "").strip().upper() == "FINALIZADA":
         return {"sent": 0, "failed": 0}
-    pdf_url = url_for("export_cotizacion_pdf", cot_id=cot.id, _external=True)
+    pdf_url = _mobile_quote_pdf_url(cot.id)
     tokens = _mobile_push_tokens_for_users(_mobile_push_user_ids_for_quote(cot))
     return _send_push_notification(
         tokens,
@@ -675,7 +679,7 @@ def _send_quote_status_push(cot: Cotizacion, previous_status: str, new_status: s
 
 def _send_quote_created_notification(cot: Cotizacion) -> None:
     estatus_actual = (cot.estatus or "").strip().upper()
-    pdf_url = url_for("export_cotizacion_pdf", cot_id=cot.id, _external=True)
+    pdf_url = _mobile_quote_pdf_url(cot.id)
     try:
         msg = (
             "🧾 *Nueva Cotización Creada*\\n"
@@ -3290,7 +3294,7 @@ def api_mobile_pending_quotes():
             "total": cot.total or 0,
             "responsable": cot.responsable or "",
             "cliente": cot.cliente.nombre_cliente if cot.cliente else "",
-            "pdf_url": url_for("export_cotizacion_pdf", cot_id=cot.id, _external=True),
+            "pdf_url": _mobile_quote_pdf_url(cot.id),
         })
     return jsonify({"ok": True, "items": items})
 
@@ -3342,7 +3346,7 @@ def api_mobile_quotes():
             "total": cot.total or 0,
             "responsable": cot.responsable or "",
             "cliente": cot.cliente.nombre_cliente if cot.cliente else "",
-            "pdf_url": url_for("export_cotizacion_pdf", cot_id=cot.id, _external=True),
+            "pdf_url": _mobile_quote_pdf_url(cot.id),
         })
     return jsonify({"ok": True, "items": items, "valid_estatus": VALID_ESTATUS})
 
@@ -3391,6 +3395,15 @@ def api_mobile_update_quote_status(cot_id: int):
         "estatus": nuevo,
         "mensaje": f"Estatus de la cotización {cot.folio} actualizado a {nuevo}.",
     })
+
+
+@app.route("/api/mobile/cotizaciones/<int:cot_id>/pdf", methods=["GET"])
+@require_mobile_auth
+def api_mobile_quote_pdf(cot_id: int):
+    cot = Cotizacion.query.get_or_404(cot_id)
+    if not _mobile_user_can_access_quote(g.mobile_user, cot):
+        return _mobile_json_error("No autorizado para esta cotización.", 403)
+    return export_cotizacion_pdf(cot_id)
 
 
 @app.route("/api/mobile/registro-obras", methods=["POST"])
