@@ -629,7 +629,7 @@ def _mobile_push_tokens_for_users(user_ids: list[int]) -> list[str]:
     return unique_tokens
 
 
-def _mobile_push_user_ids_for_pending_quote(cot: Cotizacion) -> list[int]:
+def _mobile_push_user_ids_for_quote(cot: Cotizacion) -> list[int]:
     user_ids: set[int] = set()
     admins = Usuario.query.filter(db.func.upper(Usuario.rol) == "ADMIN").all()
     user_ids.update(u.id for u in admins if getattr(u, "id", None))
@@ -642,9 +642,27 @@ def _mobile_push_user_ids_for_pending_quote(cot: Cotizacion) -> list[int]:
             users = Usuario.query.all()
             for user in users:
                 first_name = _mobile_user_responsable(user).strip().lower()
-                if first_name and first_name == responsable and user.id:
+            if first_name and first_name == responsable and user.id:
                     user_ids.add(user.id)
     return list(user_ids)
+
+
+def _send_quote_status_push(cot: Cotizacion, previous_status: str, new_status: str) -> dict[str, int]:
+    if (new_status or "").strip().upper() == "FINALIZADA":
+        return {"sent": 0, "failed": 0}
+    tokens = _mobile_push_tokens_for_users(_mobile_push_user_ids_for_quote(cot))
+    return _send_push_notification(
+        tokens,
+        title=f"Cotización {new_status}",
+        body=f"{cot.folio or 'Sin folio'} · {money(cot.total)}",
+        data={
+            "type": "quote_status",
+            "cotizacion_id": str(cot.id or ""),
+            "folio": str(cot.folio or ""),
+            "previous_status": str(previous_status or ""),
+            "estatus": str(new_status or ""),
+        },
+    )
 
 
 def _send_push_notification(tokens: list[str], title: str, body: str, data: Optional[dict[str, str]] = None) -> dict[str, int]:
@@ -3215,6 +3233,109 @@ def api_mobile_pending_quotes():
     return jsonify({"ok": True, "items": items})
 
 
+@app.route("/api/mobile/dashboard/summary", methods=["GET"])
+@require_mobile_auth
+def api_mobile_dashboard_summary():
+    user = g.mobile_user
+    query = Cotizacion.query
+    if not _mobile_user_is_admin(user):
+        query = query.filter(Cotizacion.responsable == _mobile_user_responsable(user))
+
+    total_cotizaciones = query.count()
+    total_importe = float(
+        query.with_entities(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar() or 0
+    )
+    rows = (
+        query.with_entities(Cotizacion.estatus, db.func.count(Cotizacion.id))
+        .group_by(Cotizacion.estatus)
+        .all()
+    )
+    by_status = {status: 0 for status in VALID_ESTATUS}
+    for status, count in rows:
+        by_status[(status or "").strip().upper()] = int(count or 0)
+
+    return jsonify({
+        "ok": True,
+        "kpis": {
+            "total_cotizaciones": int(total_cotizaciones),
+            "total_importe": total_importe,
+        },
+        "status_breakdown": by_status,
+        "valid_estatus": VALID_ESTATUS,
+    })
+
+
+@app.route("/api/mobile/cotizaciones", methods=["GET"])
+@require_mobile_auth
+def api_mobile_quotes():
+    user = g.mobile_user
+    estatus = (request.args.get("estatus") or "").strip().upper()
+    query = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
+    if not _mobile_user_is_admin(user):
+        query = query.filter(Cotizacion.responsable == _mobile_user_responsable(user))
+    if estatus:
+        query = query.filter(Cotizacion.estatus == estatus)
+
+    items = []
+    for cot in query.order_by(Cotizacion.fecha.desc()).limit(200).all():
+        items.append({
+            "id": cot.id,
+            "folio": cot.folio or "",
+            "fecha": cot.fecha.isoformat() if cot.fecha else "",
+            "estatus": cot.estatus or "",
+            "total": cot.total or 0,
+            "responsable": cot.responsable or "",
+            "cliente": cot.cliente.nombre_cliente if cot.cliente else "",
+        })
+    return jsonify({"ok": True, "items": items, "valid_estatus": VALID_ESTATUS})
+
+
+@app.route("/api/mobile/cotizaciones/<int:cot_id>/estatus", methods=["POST"])
+@require_mobile_auth
+def api_mobile_update_quote_status(cot_id: int):
+    user = g.mobile_user
+    cot = Cotizacion.query.get_or_404(cot_id)
+    if not _mobile_user_is_admin(user):
+        if (cot.responsable or "").strip().lower() != _mobile_user_responsable(user).lower():
+            return _mobile_json_error("No autorizado para esta cotización.", 403)
+
+    payload = request.get_json(silent=True) or {}
+    nuevo = (payload.get("estatus") or "").strip().upper()
+    if nuevo not in VALID_ESTATUS:
+        return _mobile_json_error("Estatus inválido.", 400)
+
+    anterior = (cot.estatus or "").strip().upper()
+    if nuevo == anterior:
+        return jsonify({"ok": True, "folio": cot.folio or "", "estatus": nuevo, "mensaje": "Sin cambios."})
+
+    cot.estatus = nuevo
+    db.session.commit()
+
+    try:
+        _send_quote_status_push(cot, anterior, nuevo)
+    except Exception as exc:
+        logger.warning("Push de estatus móvil fallida: %s", exc)
+
+    try:
+        body = (
+            f"🔄 *Actualización de estatus*\\n"
+            f"Folio: *{cot.folio}*\\n"
+            f"Anterior: {anterior}\\n"
+            f"Nuevo: *{nuevo}*\\n"
+            f"Total: {money(cot.total)}"
+        )
+        send_whatsapp_multi(ADMIN_LIST, body)
+    except Exception as exc:
+        logger.warning("WhatsApp de estatus móvil falló: %s", exc)
+
+    return jsonify({
+        "ok": True,
+        "folio": cot.folio or "",
+        "estatus": nuevo,
+        "mensaje": f"Estatus de la cotización {cot.folio} actualizado a {nuevo}.",
+    })
+
+
 @app.route("/api/mobile/registro-obras", methods=["POST"])
 @require_mobile_auth
 def api_mobile_registro_obras_create():
@@ -4068,6 +4189,11 @@ def api_update_estatus(cot_id):
 
     c.estatus = nuevo
     db.session.commit()
+
+    try:
+        _send_quote_status_push(c, anterior, nuevo)
+    except Exception as e:
+        logger.warning("Push de estatus fallida: %s", e)
 
     try:
         body = (
@@ -4950,7 +5076,7 @@ def enviar_notificaciones_pendientes():
                     send_whatsapp_multi(ADMIN_LIST, body)
                     push_title = "Pendiente por revisar"
                     push_body = f"{cot.folio or 'Sin folio'} · {money(cot.total)}"
-                    push_tokens = _mobile_push_tokens_for_users(_mobile_push_user_ids_for_pending_quote(cot))
+                    push_tokens = _mobile_push_tokens_for_users(_mobile_push_user_ids_for_quote(cot))
                     _send_push_notification(
                         push_tokens,
                         title=push_title,
