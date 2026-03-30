@@ -650,6 +650,7 @@ def _mobile_push_user_ids_for_quote(cot: Cotizacion) -> list[int]:
 def _send_quote_status_push(cot: Cotizacion, previous_status: str, new_status: str) -> dict[str, int]:
     if (new_status or "").strip().upper() == "FINALIZADA":
         return {"sent": 0, "failed": 0}
+    pdf_url = url_for("export_cotizacion_pdf", cot_id=cot.id, _external=True)
     tokens = _mobile_push_tokens_for_users(_mobile_push_user_ids_for_quote(cot))
     return _send_push_notification(
         tokens,
@@ -661,12 +662,14 @@ def _send_quote_status_push(cot: Cotizacion, previous_status: str, new_status: s
             "folio": str(cot.folio or ""),
             "previous_status": str(previous_status or ""),
             "estatus": str(new_status or ""),
+            "pdf_url": pdf_url,
         },
     )
 
 
 def _send_quote_created_notification(cot: Cotizacion) -> None:
     estatus_actual = (cot.estatus or "").strip().upper()
+    pdf_url = url_for("export_cotizacion_pdf", cot_id=cot.id, _external=True)
     try:
         msg = (
             "🧾 *Nueva Cotización Creada*\\n"
@@ -690,6 +693,7 @@ def _send_quote_created_notification(cot: Cotizacion) -> None:
                 "cotizacion_id": str(cot.id or ""),
                 "folio": str(cot.folio or ""),
                 "estatus": str(cot.estatus or ""),
+                "pdf_url": pdf_url,
             },
         )
     except Exception as exc:
