@@ -741,11 +741,12 @@ def _send_push_notification(tokens: list[str], title: str, body: str, data: Opti
     sent = 0
     failed = 0
     payload_data = {str(k): str(v) for k, v in (data or {}).items()}
+    payload_data["title"] = str(title)
+    payload_data["body"] = str(body)
     for token in tokens:
         try:
             message = firebase_messaging.Message(
                 token=token,
-                notification=firebase_messaging.Notification(title=title, body=body),
                 data=payload_data,
                 android=firebase_messaging.AndroidConfig(priority="high"),
             )
