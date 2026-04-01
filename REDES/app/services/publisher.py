@@ -1,0 +1,140 @@
+from __future__ import annotations
+
+from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+import json
+import mimetypes
+import uuid
+
+from app.config import settings
+
+
+FACEBOOK_GRAPH_BASE = "https://graph.facebook.com/v25.0"
+
+
+def publish_to_selected_networks(
+    *,
+    publish_facebook: bool,
+    publish_linkedin: bool,
+    facebook_copy: str,
+    linkedin_copy: str,
+    image_path: str,
+) -> str:
+    results: list[str] = []
+
+    if publish_facebook:
+        if settings.facebook_page_id and settings.facebook_page_access_token:
+            try:
+                facebook_result = _publish_facebook_photo(
+                    page_id=settings.facebook_page_id,
+                    access_token=settings.facebook_page_access_token,
+                    caption=facebook_copy,
+                    image_path=Path(image_path),
+                )
+                results.append(
+                    f"Facebook publicado correctamente. Post ID: {facebook_result}"
+                )
+            except (HTTPError, URLError, OSError, ValueError) as exc:
+                results.append(f"Facebook fallo: {_format_error(exc)}")
+        else:
+            results.append("Facebook en simulacion: faltan FACEBOOK_PAGE_ID o FACEBOOK_PAGE_ACCESS_TOKEN.")
+
+    if publish_linkedin:
+        if settings.linkedin_author_urn and settings.linkedin_access_token:
+            results.append(
+                f"LinkedIn listo para integracion real con la imagen {image_path}."
+            )
+        else:
+            results.append("LinkedIn en simulacion: faltan credenciales reales.")
+
+    if not results:
+        results.append("No se selecciono ninguna red.")
+
+    return " ".join(results)
+
+
+def _publish_facebook_photo(
+    *,
+    page_id: str,
+    access_token: str,
+    caption: str,
+    image_path: Path,
+) -> str:
+    if not image_path.exists():
+        raise ValueError(f"No se encontro la imagen en {image_path}")
+
+    boundary = f"----SocialCopyPilot{uuid.uuid4().hex}"
+    mime_type = mimetypes.guess_type(str(image_path))[0] or "application/octet-stream"
+    image_bytes = image_path.read_bytes()
+
+    parts: list[bytes] = []
+    parts.append(_multipart_field(boundary, "caption", caption))
+    parts.append(_multipart_field(boundary, "published", "true"))
+    parts.append(_multipart_field(boundary, "access_token", access_token))
+    parts.append(
+        _multipart_file(
+            boundary,
+            field_name="source",
+            filename=image_path.name,
+            mime_type=mime_type,
+            content=image_bytes,
+        )
+    )
+    parts.append(f"--{boundary}--\r\n".encode("utf-8"))
+    body = b"".join(parts)
+
+    request = Request(
+        f"{FACEBOOK_GRAPH_BASE}/{page_id}/photos",
+        data=body,
+        headers={
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+        },
+        method="POST",
+    )
+
+    with urlopen(request, timeout=90) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+
+    post_id = payload.get("post_id") or payload.get("id")
+    if not post_id:
+        raise ValueError(f"Respuesta inesperada de Facebook: {payload}")
+    return str(post_id)
+
+
+
+def _multipart_field(boundary: str, name: str, value: str) -> bytes:
+    return (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
+        f"{value}\r\n"
+    ).encode("utf-8")
+
+
+
+def _multipart_file(
+    boundary: str,
+    *,
+    field_name: str,
+    filename: str,
+    mime_type: str,
+    content: bytes,
+) -> bytes:
+    header = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="{field_name}"; filename="{filename}"\r\n'
+        f"Content-Type: {mime_type}\r\n\r\n"
+    ).encode("utf-8")
+    return header + content + b"\r\n"
+
+
+
+def _format_error(exc: Exception) -> str:
+    if isinstance(exc, HTTPError):
+        try:
+            payload = exc.read().decode("utf-8")
+        except Exception:
+            payload = str(exc)
+        return f"HTTP {exc.code}: {payload}"
+    return str(exc)
