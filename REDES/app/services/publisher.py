@@ -27,7 +27,7 @@ def publish_to_selected_networks(
     if publish_facebook:
         if settings.facebook_page_id and settings.facebook_page_access_token:
             try:
-                facebook_result = _publish_facebook_photo(
+                facebook_result = _publish_facebook_feed_post(
                     page_id=settings.facebook_page_id,
                     access_token=settings.facebook_page_access_token,
                     caption=facebook_copy,
@@ -55,7 +55,7 @@ def publish_to_selected_networks(
     return " ".join(results)
 
 
-def _publish_facebook_photo(
+def _publish_facebook_feed_post(
     *,
     page_id: str,
     access_token: str,
@@ -136,5 +136,18 @@ def _format_error(exc: Exception) -> str:
             payload = exc.read().decode("utf-8")
         except Exception:
             payload = str(exc)
+        lowered = payload.lower()
+        if "publish_actions" in lowered or "permission(s) publish_actions" in lowered:
+            return (
+                f"HTTP {exc.code}: Facebook rechazo el token actual para publicar. "
+                f"Actualiza FACEBOOK_PAGE_ACCESS_TOKEN en Render con el access_token real de la pagina. "
+                f"Detalle: {payload}"
+            )
+        if "session has expired" in lowered or '"error_subcode":463' in lowered:
+            return (
+                f"HTTP {exc.code}: El token de Facebook vencio. "
+                f"Genera uno nuevo para la pagina y actualizalo en Render. "
+                f"Detalle: {payload}"
+            )
         return f"HTTP {exc.code}: {payload}"
     return str(exc)
