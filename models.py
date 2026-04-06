@@ -72,6 +72,12 @@ class Cotizacion(db.Model):
         backref="cotizacion",
         cascade="all, delete-orphan"
     )
+    seguimientos = db.relationship(
+        "CotizacionSeguimiento",
+        backref="cotizacion",
+        cascade="all, delete-orphan",
+        order_by="CotizacionSeguimiento.fecha_seguimiento.desc()"
+    )
 
     def __repr__(self):
         return f"<Cotizacion {self.folio or self.id}>"
@@ -102,6 +108,23 @@ class CotizacionDetalle(db.Model):
 
     def __repr__(self):
         return f"<Detalle {self.nombre_concepto}>"
+
+
+class CotizacionSeguimiento(db.Model):
+    __tablename__ = "cotizacion_seguimiento"
+
+    id = db.Column(db.Integer, primary_key=True)
+    cotizacion_id = db.Column(db.Integer, db.ForeignKey("cotizacion.id"), nullable=False, index=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
+    autor = db.Column(db.String(120), nullable=False)
+    comentario = db.Column(db.Text, nullable=False)
+    fecha_seguimiento = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    usuario = db.relationship("Usuario", backref=db.backref("seguimientos_cotizacion", lazy=True))
+
+    def __repr__(self):
+        return f"<CotizacionSeguimiento cotizacion={self.cotizacion_id} autor={self.autor}>"
 
 
 class Usuario(UserMixin, db.Model):

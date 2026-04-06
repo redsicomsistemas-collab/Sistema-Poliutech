@@ -71,6 +71,7 @@
       </div>
 
       <div class="text-end mt-4">
+        <a href="{{ url_for('cotizacion_seguimiento', cot_id=c.id) }}" class="btn btn-outline-dark">💬 Seguimiento</a>
         <a href="{{ url_for('editar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-primary">✏️ Editar</a>
         <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">← Volver al Dashboard</a>
       </div>

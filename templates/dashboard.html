@@ -266,7 +266,11 @@
                 >📧</button>
               </td>
               {% endif %}
-              <td>{{ c.folio }}</td>
+              <td>
+                <a href="{{ url_for('cotizacion_seguimiento', cot_id=c.id) }}" class="fw-semibold text-decoration-none">
+                  {{ c.folio }}
+                </a>
+              </td>
               <td>{{ c.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
               <td class="cell-cliente">{{ c.cliente.nombre_cliente if c.cliente else '' }}</td>
               <td class="cell-empresa">{{ c.cliente.empresa if c.cliente else '' }}</td>
@@ -280,6 +284,7 @@
               </td>
               <td class="text-center cell-acciones">
                 <a href="{{ url_for('view_cotizacion', cot_id=c.id) }}" class="btn btn-outline-primary btn-sm" title="Ver">👁️</a>
+                <a href="{{ url_for('cotizacion_seguimiento', cot_id=c.id) }}" class="btn btn-outline-dark btn-sm" title="Seguimiento">💬</a>
                 <a href="{{ url_for('export_cotizacion_pdf', cot_id=c.id) }}" target="_blank" class="btn btn-outline-danger btn-sm" title="PDF">📄</a>
                 <a href="{{ url_for('export_cotizacion_xlsx', cot_id=c.id) }}" class="btn btn-outline-success btn-sm" title="Excel">📊</a>
                 <a href="{{ url_for('editar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-warning btn-sm" title="Editar">✏️</a>

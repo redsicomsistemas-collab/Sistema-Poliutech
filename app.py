@@ -1069,6 +1069,7 @@ from models import (
     Concepto,
     Cotizacion,
     CotizacionDetalle,
+    CotizacionSeguimiento,
     Usuario,
     MobileDevice,
     RegistroObra,
@@ -1559,6 +1560,14 @@ def require_owner_or_admin(cot: Cotizacion) -> None:
     ra = responsable_actual()
     if not ra or (cot.responsable or "") != ra:
         abort(403)
+
+def require_followup_author_or_admin(seg: CotizacionSeguimiento) -> None:
+    if is_admin():
+        return
+    current_user_id = getattr(current_user, "id", None)
+    if current_user_id and seg.usuario_id == current_user_id:
+        return
+    abort(403)
 
 def require_cliente_owner_or_admin(cli: Cliente) -> None:
     if is_admin():
@@ -4217,6 +4226,74 @@ def view_cotizacion(cot_id: int):
     condiciones_finales = _condiciones_comerciales_finales(c.notas or "")
     notas_adicionales, _ = _split_notas_y_zona(c.notas or "")
     return render_template("cotizacion_view.html", c=c, zona_actual=zona_actual, condiciones_finales=condiciones_finales, notas_adicionales=notas_adicionales, title=f"Ver {c.folio}")
+
+@app.route("/cotizaciones/<int:cot_id>/seguimiento")
+@login_required
+def cotizacion_seguimiento(cot_id: int):
+    c = Cotizacion.query.get_or_404(cot_id)
+    require_owner_or_admin(c)
+    return render_template(
+        "cotizacion_seguimiento.html",
+        c=c,
+        seguimientos=c.seguimientos,
+        title=f"Seguimiento {c.folio}",
+    )
+
+@app.route("/cotizaciones/<int:cot_id>/seguimiento", methods=["POST"])
+@login_required
+def crear_cotizacion_seguimiento(cot_id: int):
+    c = Cotizacion.query.get_or_404(cot_id)
+    require_owner_or_admin(c)
+
+    comentario = (request.form.get("comentario") or "").strip()
+    if not comentario:
+        flash("Escribe un comentario de seguimiento antes de guardarlo.", "warning")
+        return redirect(url_for("cotizacion_seguimiento", cot_id=c.id))
+
+    seg = CotizacionSeguimiento(
+        cotizacion_id=c.id,
+        usuario_id=getattr(current_user, "id", None),
+        autor=(getattr(current_user, "nombre", None) or responsable_actual() or "Sistema").strip(),
+        comentario=comentario,
+        fecha_seguimiento=now_cdmx_naive(),
+        actualizado_en=now_cdmx_naive(),
+    )
+    db.session.add(seg)
+    db.session.commit()
+    flash("Seguimiento guardado correctamente.", "success")
+    return redirect(url_for("cotizacion_seguimiento", cot_id=c.id))
+
+@app.route("/cotizaciones/<int:cot_id>/seguimiento/<int:seg_id>/editar", methods=["POST"])
+@login_required
+def editar_cotizacion_seguimiento(cot_id: int, seg_id: int):
+    c = Cotizacion.query.get_or_404(cot_id)
+    require_owner_or_admin(c)
+    seg = CotizacionSeguimiento.query.filter_by(id=seg_id, cotizacion_id=c.id).first_or_404()
+    require_followup_author_or_admin(seg)
+
+    comentario = (request.form.get("comentario") or "").strip()
+    if not comentario:
+        flash("El comentario no puede quedar vacío.", "warning")
+        return redirect(url_for("cotizacion_seguimiento", cot_id=c.id))
+
+    seg.comentario = comentario
+    seg.actualizado_en = now_cdmx_naive()
+    db.session.commit()
+    flash("Seguimiento actualizado.", "success")
+    return redirect(url_for("cotizacion_seguimiento", cot_id=c.id))
+
+@app.route("/cotizaciones/<int:cot_id>/seguimiento/<int:seg_id>/eliminar", methods=["POST"])
+@login_required
+def eliminar_cotizacion_seguimiento(cot_id: int, seg_id: int):
+    c = Cotizacion.query.get_or_404(cot_id)
+    require_owner_or_admin(c)
+    seg = CotizacionSeguimiento.query.filter_by(id=seg_id, cotizacion_id=c.id).first_or_404()
+    require_followup_author_or_admin(seg)
+
+    db.session.delete(seg)
+    db.session.commit()
+    flash("Seguimiento eliminado.", "success")
+    return redirect(url_for("cotizacion_seguimiento", cot_id=c.id))
 
 @app.route("/cotizaciones/<int:cot_id>/ver")
 @login_required
