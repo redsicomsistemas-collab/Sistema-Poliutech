@@ -33,9 +33,7 @@ def publish_to_selected_networks(
                     caption=facebook_copy,
                     image_path=Path(image_path),
                 )
-                results.append(
-                    f"Facebook publicado correctamente. Post ID: {facebook_result}"
-                )
+                results.append(facebook_result)
             except (HTTPError, URLError, OSError, ValueError) as exc:
                 results.append(f"Facebook fallo: {_format_error(exc)}")
         else:
@@ -65,13 +63,57 @@ def _publish_facebook_feed_post(
     if not image_path.exists():
         raise ValueError(f"No se encontro la imagen en {image_path}")
 
+    photo_id = _upload_facebook_photo_unpublished(
+        page_id=page_id,
+        access_token=access_token,
+        image_path=image_path,
+        caption=caption,
+    )
+
+    feed_payload = urlencode(
+        {
+            "message": caption,
+            "attached_media": json.dumps([{"media_fbid": photo_id}]),
+            "access_token": access_token,
+        }
+    )
+    request = Request(
+        f"{FACEBOOK_GRAPH_BASE}/{page_id}/feed",
+        data=feed_payload.encode("utf-8"),
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        method="POST",
+    )
+
+    with urlopen(request, timeout=90) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+
+    post_id = payload.get("post_id") or payload.get("id")
+    if not post_id:
+        raise ValueError(f"Respuesta inesperada de Facebook al crear el feed post: {payload}")
+    return (
+        "Facebook publicado correctamente por /feed. "
+        f"Post ID: {post_id}. "
+        f"Photo ID usada: {photo_id}."
+    )
+
+
+
+def _upload_facebook_photo_unpublished(
+    *,
+    page_id: str,
+    access_token: str,
+    image_path: Path,
+    caption: str,
+) -> str:
     boundary = f"----SocialCopyPilot{uuid.uuid4().hex}"
     mime_type = mimetypes.guess_type(str(image_path))[0] or "application/octet-stream"
     image_bytes = image_path.read_bytes()
 
     parts: list[bytes] = []
     parts.append(_multipart_field(boundary, "caption", caption))
-    parts.append(_multipart_field(boundary, "published", "true"))
+    parts.append(_multipart_field(boundary, "published", "false"))
     parts.append(_multipart_field(boundary, "access_token", access_token))
     parts.append(
         _multipart_file(
@@ -97,10 +139,10 @@ def _publish_facebook_feed_post(
     with urlopen(request, timeout=90) as response:
         payload = json.loads(response.read().decode("utf-8"))
 
-    post_id = payload.get("post_id") or payload.get("id")
-    if not post_id:
-        raise ValueError(f"Respuesta inesperada de Facebook: {payload}")
-    return str(post_id)
+    photo_id = payload.get("id")
+    if not photo_id:
+        raise ValueError(f"Respuesta inesperada al subir foto a Facebook: {payload}")
+    return str(photo_id)
 
 
 
