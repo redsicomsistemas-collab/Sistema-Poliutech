@@ -208,6 +208,7 @@
         <div class="col-xl-3 col-12">
           <div class="filter-actions">
             <button id="btn-exportar-excel" type="button" class="btn btn-success btn-sm">Exportar Excel</button>
+            <button id="btn-exportar-seguimientos-pdf" type="button" class="btn btn-danger btn-sm">PDF Seguimientos</button>
             <button id="btn-limpiar-filtros" type="button" class="btn btn-outline-secondary btn-sm">Limpiar</button>
           </div>
         </div>
@@ -353,6 +354,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const cliente = document.getElementById("filtro-cliente");
   const limpiar = document.getElementById("btn-limpiar-filtros");
   const exportarExcel = document.getElementById("btn-exportar-excel");
+  const exportarSeguimientosPdf = document.getElementById("btn-exportar-seguimientos-pdf");
   const importeSummaryEls = document.querySelectorAll('[data-summary="importe-total"]');
   const cotizacionesSummaryEls = document.querySelectorAll('[data-summary="cotizaciones-total"]');
   const conceptosSummaryEls = document.querySelectorAll('[data-summary="conceptos-total"]');
@@ -380,12 +382,17 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  async function refreshSummaryCards() {
+  function buildFilterParams() {
     const params = new URLSearchParams();
     if (desde?.value) params.set("desde", desde.value);
     if (hasta?.value) params.set("hasta", hasta.value);
     if (estatus?.value) params.set("estatus", estatus.value);
     if (cliente?.value.trim()) params.set("cliente", cliente.value.trim());
+    return params;
+  }
+
+  async function refreshSummaryCards() {
+    const params = buildFilterParams();
 
     try {
       const query = params.toString();
@@ -733,13 +740,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (exportarExcel) {
     exportarExcel.addEventListener("click", () => {
-      const params = new URLSearchParams();
-      if (desde?.value) params.set("desde", desde.value);
-      if (hasta?.value) params.set("hasta", hasta.value);
-      if (estatus?.value) params.set("estatus", estatus.value);
-      if (cliente?.value.trim()) params.set("cliente", cliente.value.trim());
+      const params = buildFilterParams();
       const query = params.toString();
       window.location.href = `{{ url_for('export_dashboard_cotizaciones_xlsx') }}${query ? `?${query}` : ""}`;
+    });
+  }
+
+  if (exportarSeguimientosPdf) {
+    exportarSeguimientosPdf.addEventListener("click", () => {
+      const params = buildFilterParams();
+      const query = params.toString();
+      window.location.href = `{{ url_for('export_dashboard_followups_pdf') }}${query ? `?${query}` : ""}`;
     });
   }
 

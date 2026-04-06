@@ -4830,6 +4830,177 @@ def export_dashboard_cotizaciones_xlsx():
     )
 
 
+@app.route("/cotizaciones/export/seguimientos.pdf")
+@login_required
+def export_dashboard_followups_pdf():
+    desde = (request.args.get("desde") or "").strip()
+    hasta = (request.args.get("hasta") or "").strip()
+    estatus = (request.args.get("estatus") or "").strip()
+    cliente = (request.args.get("cliente") or "").strip()
+
+    try:
+        cotizaciones = (
+            _build_dashboard_cotizaciones_query(
+                desde=desde,
+                hasta=hasta,
+                estatus=estatus,
+                cliente=cliente,
+            )
+            .order_by(Cotizacion.fecha.desc())
+            .all()
+        )
+    except ValueError as exc:
+        abort(400, description=str(exc))
+
+    total_con_seguimiento = sum(1 for cot in cotizaciones if cot.seguimientos)
+    total_sin_seguimiento = max(0, len(cotizaciones) - total_con_seguimiento)
+    total_importe = sum(float(c.total or 0) for c in cotizaciones)
+    estatus_counts = {status: 0 for status in VALID_ESTATUS}
+    for cot in cotizaciones:
+        status = (cot.estatus or "").strip().upper()
+        if status in estatus_counts:
+            estatus_counts[status] += 1
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=12 * mm,
+        rightMargin=12 * mm,
+        topMargin=22 * mm,
+        bottomMargin=16 * mm,
+    )
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="FollowupHeading", fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=colors.HexColor("#0d47a1"), spaceAfter=4))
+    styles.add(ParagraphStyle(name="FollowupBody", fontName="Helvetica", fontSize=9, leading=12, textColor=colors.HexColor("#222222"), spaceAfter=2))
+    styles.add(ParagraphStyle(name="FollowupMeta", fontName="Helvetica", fontSize=8.3, leading=10.5, textColor=colors.HexColor("#5f6b7a"), spaceAfter=2))
+    styles.add(ParagraphStyle(name="FollowupComment", fontName="Helvetica", fontSize=9, leading=12, textColor=colors.HexColor("#222222"), spaceAfter=4))
+
+    elems = []
+
+    def _header_footer(canv, doc_):
+        canv.saveState()
+        canv.setFillColor(colors.HexColor("#0d47a1"))
+        canv.rect(0, A4[1] - 34, A4[0], 34, stroke=0, fill=1)
+
+        logo_path = os.path.join(app.static_folder or "static", "logo.png")
+        if os.path.exists(logo_path):
+            try:
+                img = ImageReader(logo_path)
+                iw, ih = img.getSize()
+                max_w = 18 * mm
+                scale = max_w / iw
+                canv.drawImage(img, 12, A4[1] - (ih * scale) - 8, width=max_w, height=ih * scale, mask="auto")
+            except Exception:
+                pass
+
+        canv.setFont("Helvetica-Bold", 13)
+        canv.setFillColor(colors.white)
+        canv.drawRightString(A4[0] - 12, A4[1] - 14, "BITACORA DE SEGUIMIENTO")
+        canv.setFont("Helvetica", 8.5)
+        canv.drawRightString(A4[0] - 12, A4[1] - 25, "Comentarios de cotizaciones")
+
+        canv.setFont("Helvetica", 8)
+        canv.setFillColor(colors.HexColor("#555555"))
+        canv.drawString(12 * mm, 8 * mm, f"Generado: {now_cdmx_naive().strftime('%d/%m/%Y %H:%M')}")
+        canv.drawRightString(A4[0] - 12 * mm, 8 * mm, f"Pagina {doc_.page}")
+        canv.restoreState()
+
+    filtros_texto = []
+    if desde:
+        filtros_texto.append(f"Desde: {desde}")
+    if hasta:
+        filtros_texto.append(f"Hasta: {hasta}")
+    if estatus:
+        filtros_texto.append(f"Estatus: {estatus}")
+    if cliente:
+        filtros_texto.append(f"Cliente/Empresa: {cliente}")
+    if not filtros_texto:
+        filtros_texto.append("Sin filtros")
+
+    resumen_data = [
+        [Paragraph(f"<b>Total cotizaciones:</b> {len(cotizaciones)}", styles["FollowupBody"]),
+         Paragraph(f"<b>Con seguimiento:</b> {total_con_seguimiento}", styles["FollowupBody"])],
+        [Paragraph(f"<b>Sin seguimiento:</b> {total_sin_seguimiento}", styles["FollowupBody"]),
+         Paragraph(f"<b>Importe total:</b> {money(total_importe)}", styles["FollowupBody"])],
+        [Paragraph(f"<b>Filtros:</b> {' | '.join(filtros_texto)}", styles["FollowupMeta"]),
+         Paragraph(f"<b>Estatus:</b> {' | '.join(f'{k}: {v}' for k, v in estatus_counts.items())}", styles["FollowupMeta"])],
+    ]
+    resumen_tbl = Table(resumen_data, colWidths=[90 * mm, 90 * mm], hAlign="LEFT")
+    resumen_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 1), colors.HexColor("#f3f7fb")),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cfd9e5")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#d9e2ec")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+    elems.append(Paragraph("Resumen", styles["FollowupHeading"]))
+    elems.append(resumen_tbl)
+    elems.append(Spacer(1, 8))
+
+    if not cotizaciones:
+        elems.append(Paragraph("No hay cotizaciones para los filtros seleccionados.", styles["FollowupBody"]))
+    else:
+        for idx, cot in enumerate(cotizaciones, start=1):
+            cli = cot.cliente
+            cliente_nombre = (cli.nombre_cliente if cli else "") or "Sin cliente"
+            empresa_nombre = (cli.empresa if cli else "") or "-"
+            fecha_cot = cot.fecha.strftime("%d/%m/%Y %H:%M") if cot.fecha else "-"
+
+            block_items = [
+                Paragraph(f"{idx}. {escape(cot.folio or '-')}", styles["FollowupHeading"]),
+                Paragraph(
+                    f"<b>Cliente:</b> {escape(cliente_nombre)} &nbsp;&nbsp;&nbsp; "
+                    f"<b>Empresa:</b> {escape(empresa_nombre)} &nbsp;&nbsp;&nbsp; "
+                    f"<b>Estatus:</b> {escape(cot.estatus or '-')}",
+                    styles["FollowupBody"],
+                ),
+                Paragraph(
+                    f"<b>Responsable:</b> {escape(cot.responsable or '-')} &nbsp;&nbsp;&nbsp; "
+                    f"<b>Fecha:</b> {fecha_cot} &nbsp;&nbsp;&nbsp; "
+                    f"<b>Total:</b> {money(cot.total)}",
+                    styles["FollowupBody"],
+                ),
+                Spacer(1, 2),
+            ]
+
+            seguimientos = sorted(list(cot.seguimientos), key=lambda seg: seg.fecha_seguimiento or datetime.min)
+            if seguimientos:
+                for seg in seguimientos:
+                    fecha_seg = seg.fecha_seguimiento.strftime("%d/%m/%Y %H:%M") if seg.fecha_seguimiento else "-"
+                    editado = ""
+                    if seg.actualizado_en and seg.fecha_seguimiento and seg.actualizado_en != seg.fecha_seguimiento:
+                        editado = f" · Editado {seg.actualizado_en.strftime('%d/%m/%Y %H:%M')}"
+                    block_items.append(Paragraph(f"<b>{fecha_seg}</b> · {escape(seg.autor or 'Sistema')}{editado}", styles["FollowupMeta"]))
+                    comentario_html = escape(seg.comentario or "").replace("\n", "<br/>")
+                    block_items.append(Paragraph(comentario_html, styles["FollowupComment"]))
+            else:
+                block_items.append(Paragraph("Sin seguimiento registrado.", styles["FollowupMeta"]))
+
+            bloque = Table([[item] for item in block_items], colWidths=[180 * mm], hAlign="LEFT")
+            bloque.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#edf4fb")),
+                ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#c7d6e6")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]))
+            elems.append(KeepTogether([bloque, Spacer(1, 6)]))
+
+    doc.build(elems, onFirstPage=_header_footer, onLaterPages=_header_footer)
+    stamp = now_cdmx_naive().strftime("%Y%m%d_%H%M%S")
+    return Response(
+        buf.getvalue(),
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="seguimientos_cotizaciones_{stamp}.pdf"'}
+    )
+
+
 @app.route("/api/dashboard/filter-summary")
 @login_required
 def api_dashboard_filter_summary():
