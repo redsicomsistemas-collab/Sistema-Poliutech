@@ -713,6 +713,27 @@ def _send_quote_created_notification(cot: Cotizacion) -> None:
         logger.warning("Push de creación falló: %s", exc)
 
 
+def _send_quote_followup_push(cot: Cotizacion, seg: CotizacionSeguimiento) -> dict[str, int]:
+    tokens = _mobile_push_tokens_for_users(_mobile_push_user_ids_for_quote(cot))
+    preview = " ".join((seg.comentario or "").split())
+    if len(preview) > 120:
+        preview = preview[:117] + "..."
+    return _send_push_notification(
+        tokens,
+        title=f"Nuevo seguimiento · {cot.folio or 'Sin folio'}",
+        body=preview or f"{seg.autor} agregó un seguimiento.",
+        data={
+            "type": "quote_followup",
+            "cotizacion_id": str(cot.id or ""),
+            "seguimiento_id": str(seg.id or ""),
+            "folio": str(cot.folio or ""),
+            "estatus": str(cot.estatus or ""),
+            "autor": str(seg.autor or ""),
+            "pdf_url": _mobile_quote_pdf_url(cot.id),
+        },
+    )
+
+
 def _send_daily_status_reminder(cot: Cotizacion, ahora: datetime) -> None:
     estatus_actual = (cot.estatus or "").strip().upper()
     if not estatus_actual or estatus_actual == "FINALIZADA":
@@ -3410,6 +3431,37 @@ def api_mobile_update_quote_status(cot_id: int):
     })
 
 
+@app.route("/api/mobile/cotizaciones/<int:cot_id>/seguimiento/<int:seg_id>", methods=["GET"])
+@require_mobile_auth
+def api_mobile_quote_followup_detail(cot_id: int, seg_id: int):
+    user = g.mobile_user
+    cot = Cotizacion.query.get_or_404(cot_id)
+    if not _mobile_user_can_access_quote(user, cot):
+        return _mobile_json_error("No autorizado para esta cotización.", 403)
+
+    seg = CotizacionSeguimiento.query.filter_by(id=seg_id, cotizacion_id=cot.id).first()
+    if not seg:
+        return _mobile_json_error("Seguimiento no encontrado.", 404)
+
+    return jsonify({
+        "ok": True,
+        "cotizacion": {
+            "id": cot.id,
+            "folio": cot.folio or "",
+            "estatus": cot.estatus or "",
+            "responsable": cot.responsable or "",
+            "cliente": cot.cliente.nombre_cliente if cot.cliente else "",
+        },
+        "seguimiento": {
+            "id": seg.id,
+            "autor": seg.autor or "",
+            "comentario": seg.comentario or "",
+            "fecha": seg.fecha_seguimiento.isoformat() if seg.fecha_seguimiento else "",
+            "actualizado_en": seg.actualizado_en.isoformat() if seg.actualizado_en else "",
+        },
+    })
+
+
 @app.route("/api/mobile/cotizaciones/<int:cot_id>/pdf", methods=["GET"])
 @require_mobile_auth
 def api_mobile_quote_pdf(cot_id: int):
@@ -4236,6 +4288,7 @@ def cotizacion_seguimiento(cot_id: int):
         "cotizacion_seguimiento.html",
         c=c,
         seguimientos=c.seguimientos,
+        valid_estatus=VALID_ESTATUS,
         title=f"Seguimiento {c.folio}",
     )
 
@@ -4245,22 +4298,56 @@ def crear_cotizacion_seguimiento(cot_id: int):
     c = Cotizacion.query.get_or_404(cot_id)
     require_owner_or_admin(c)
 
+    nuevo_estatus = (request.form.get("estatus") or "").strip().upper()
+    nuevo_responsable = (request.form.get("responsable") or "").strip()
     comentario = (request.form.get("comentario") or "").strip()
-    if not comentario:
-        flash("Escribe un comentario de seguimiento antes de guardarlo.", "warning")
+    hubo_cambio = False
+
+    if nuevo_estatus:
+        if nuevo_estatus not in VALID_ESTATUS:
+            flash("Selecciona un estatus válido.", "danger")
+            return redirect(url_for("cotizacion_seguimiento", cot_id=c.id))
+        if (c.estatus or "").strip().upper() != nuevo_estatus:
+            c.estatus = nuevo_estatus
+            hubo_cambio = True
+
+    if nuevo_responsable != (c.responsable or "").strip():
+        c.responsable = nuevo_responsable
+        hubo_cambio = True
+
+    if not comentario and not hubo_cambio:
+        flash("Haz un cambio de estatus/responsable o escribe un comentario para guardar.", "warning")
         return redirect(url_for("cotizacion_seguimiento", cot_id=c.id))
 
-    seg = CotizacionSeguimiento(
-        cotizacion_id=c.id,
-        usuario_id=getattr(current_user, "id", None),
-        autor=(getattr(current_user, "nombre", None) or responsable_actual() or "Sistema").strip(),
-        comentario=comentario,
-        fecha_seguimiento=now_cdmx_naive(),
-        actualizado_en=now_cdmx_naive(),
-    )
-    db.session.add(seg)
+    seg = None
+    if comentario:
+        seg = CotizacionSeguimiento(
+            cotizacion_id=c.id,
+            usuario_id=getattr(current_user, "id", None),
+            autor=(getattr(current_user, "nombre", None) or responsable_actual() or "Sistema").strip(),
+            comentario=comentario,
+            fecha_seguimiento=now_cdmx_naive(),
+            actualizado_en=now_cdmx_naive(),
+        )
+        db.session.add(seg)
+
     db.session.commit()
-    flash("Seguimiento guardado correctamente.", "success")
+
+    if seg is not None:
+        try:
+            _send_quote_followup_push(c, seg)
+        except Exception as exc:
+            logger.warning("Push de seguimiento fallida: %s", exc)
+
+    if seg is not None and hubo_cambio:
+        flash("Se guardó el seguimiento y también se actualizó la cotización.", "success")
+    elif seg is not None:
+        flash("Seguimiento guardado correctamente.", "success")
+    else:
+        flash("Cambios de la cotización guardados.", "success")
+
+    if seg is not None:
+        return redirect(url_for("cotizacion_seguimiento", cot_id=c.id, _anchor=f"seguimiento-{seg.id}"))
     return redirect(url_for("cotizacion_seguimiento", cot_id=c.id))
 
 @app.route("/cotizaciones/<int:cot_id>/seguimiento/<int:seg_id>/editar", methods=["POST"])

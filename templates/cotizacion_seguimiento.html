@@ -42,18 +42,6 @@
       <div class="row g-3 mb-3">
         <div class="col-md-3">
           <div class="border rounded p-3 h-100">
-            <div class="small text-muted">Estatus</div>
-            <div class="fw-semibold">{{ c.estatus or "PENDIENTE" }}</div>
-          </div>
-        </div>
-        <div class="col-md-3">
-          <div class="border rounded p-3 h-100">
-            <div class="small text-muted">Responsable</div>
-            <div class="fw-semibold">{{ c.responsable or "—" }}</div>
-          </div>
-        </div>
-        <div class="col-md-3">
-          <div class="border rounded p-3 h-100">
             <div class="small text-muted">Fecha cotización</div>
             <div class="fw-semibold">{{ c.fecha.strftime('%Y-%m-%d %H:%M') if c.fecha else "—" }}</div>
           </div>
@@ -67,6 +55,27 @@
       </div>
 
       <form method="post" action="{{ url_for('crear_cotizacion_seguimiento', cot_id=c.id) }}">
+        <div class="row g-3 mb-3">
+          <div class="col-md-4">
+            <label for="estatus" class="form-label fw-bold text-primary">Estatus</label>
+            <select id="estatus" name="estatus" class="form-select">
+              {% for estado in valid_estatus %}
+              <option value="{{ estado }}" {% if (c.estatus or "") == estado %}selected{% endif %}>{{ estado }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-8">
+            <label for="responsable" class="form-label fw-bold text-primary">Responsable</label>
+            <textarea
+              id="responsable"
+              name="responsable"
+              class="form-control"
+              rows="2"
+              placeholder="Responsable de la cotización"
+            >{{ c.responsable or "" }}</textarea>
+          </div>
+        </div>
+
         <label for="comentario" class="form-label fw-bold text-primary">Nuevo comentario de seguimiento</label>
         <textarea
           id="comentario"
@@ -90,7 +99,7 @@
   </div>
 
   {% for seg in seguimientos %}
-  <div class="card shadow-sm border-0 followup-card">
+  <div class="card shadow-sm border-0 followup-card" id="seguimiento-{{ seg.id }}">
     <div class="card-body">
       <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
         <div>
