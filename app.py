@@ -42,6 +42,13 @@ VALID_ESTATUS = [
     "GANADA",
     "PERDIDA",
 ]
+PROSPECT_STATUS_OPTIONS = [
+    "PENDIENTE",
+    "CONTACTADO",
+    "COTIZADO",
+    "FINALIZADO",
+    "RECHAZADO",
+]
 PROVIDER_NUMBERS_JSON = Path(__file__).resolve().parent / "provider_numbers.json"
 PROVIDER_NUMBERS_XLSX = Path.home() / "Downloads" / "NUMEROS DE PROVEEDOR POLIUTECH.xlsx"
 REGISTRO_OBRAS_JSON = Path(__file__).resolve().parent / "registro_obras.json"
@@ -817,6 +824,87 @@ def _filter_provider_rows(rows: list[dict], filters: dict[str, str]) -> list[dic
     return [row for row in rows if _provider_row_matches_filters(row, filters)]
 
 
+def _normalize_prospecto_status(value: object) -> str:
+    status = str(value or "").strip().upper()
+    return status if status in PROSPECT_STATUS_OPTIONS else "PENDIENTE"
+
+
+def _prospecto_to_row(item: "Prospecto", idx: Optional[int] = None) -> dict:
+    position = idx if idx is not None else (item.id or 0)
+    return {
+        "id": item.id,
+        "numero": position,
+        "titulo": (item.titulo or "").strip(),
+        "descripcion": (item.descripcion or "").strip(),
+        "contacto": (item.contacto or "").strip(),
+        "telefono": (item.telefono or "").strip(),
+        "correo": (item.correo or "").strip(),
+        "status": _normalize_prospecto_status(item.status),
+        "responsable": (item.responsable or "").strip(),
+    }
+
+
+def _load_prospectos() -> list[dict]:
+    query = Prospecto.query.order_by(Prospecto.id.desc())
+    items = query.all()
+    return [_prospecto_to_row(item, idx) for idx, item in enumerate(items, start=1)]
+
+
+def _prospectos_filters_from_request() -> dict[str, str]:
+    status_raw = (request.args.get("status") or "").strip()
+    return {
+        "titulo": (request.args.get("titulo") or "").strip().lower(),
+        "status": _normalize_prospecto_status(status_raw) if status_raw else "",
+        "contacto": (request.args.get("contacto") or "").strip().lower(),
+    }
+
+
+def _prospecto_matches_filters(row: dict, filters: dict[str, str]) -> bool:
+    titulo = filters.get("titulo") or ""
+    status = filters.get("status") or ""
+    contacto = filters.get("contacto") or ""
+
+    if titulo and titulo not in str(row.get("titulo", "")).strip().lower():
+        return False
+    if status and status != _normalize_prospecto_status(row.get("status")):
+        return False
+    if contacto and contacto not in str(row.get("contacto", "")).strip().lower():
+        return False
+    return True
+
+
+def _filter_prospectos(rows: list[dict], filters: dict[str, str]) -> list[dict]:
+    return [row for row in rows if _prospecto_matches_filters(row, filters)]
+
+
+def _build_simple_xls(sheet_name: str, headers: list[str], rows: list[list[str]]) -> bytes:
+    def html_cell(value: object) -> str:
+        text = "" if value is None else str(value)
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        return escape(text).replace("\n", "<br>")
+
+    parts = [
+        "<html>",
+        "<head>",
+        '<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />',
+        f"<title>{escape(sheet_name)}</title>",
+        "</head>",
+        "<body>",
+        "<table border='1'>",
+        "<thead><tr>",
+    ]
+    for header in headers:
+        parts.append(f"<th>{html_cell(header)}</th>")
+    parts.append("</tr></thead><tbody>")
+    for row in rows:
+        parts.append("<tr>")
+        for cell in row:
+            parts.append(f"<td>{html_cell(cell)}</td>")
+        parts.append("</tr>")
+    parts.append("</tbody></table></body></html>")
+    return "".join(parts).encode("utf-8")
+
+
 def _build_simple_xlsx(sheet_name: str, headers: list[str], rows: list[list[str]], column_widths: Optional[list[int]] = None) -> bytes:
     def cell_ref(row_idx: int, col_idx: int) -> str:
         label = ""
@@ -1094,6 +1182,7 @@ from models import (
     Usuario,
     MobileDevice,
     RegistroObra,
+    Prospecto,
     ActivityLog,
     PUObra,
     PURecurso,
@@ -1595,6 +1684,14 @@ def require_cliente_owner_or_admin(cli: Cliente) -> None:
         return
     ra = responsable_actual()
     if not ra or (cli.responsable or "") != ra:
+        abort(403)
+
+
+def require_prospecto_owner_or_admin(prospecto: Prospecto) -> None:
+    if is_admin():
+        return
+    ra = responsable_actual()
+    if not ra or (prospecto.responsable or "") != ra:
         abort(403)
 
 
@@ -3044,6 +3141,303 @@ def export_altas_proveedores_pdf():
         buf.getvalue(),
         mimetype="application/pdf",
         headers={"Content-Disposition": f'inline; filename="altas_proveedores_{stamp}.pdf"'},
+    )
+    response.direct_passthrough = False
+    return response
+
+
+@app.route("/prospectos", methods=["GET", "POST"])
+@login_required
+def prospectos():
+    if request.method == "POST":
+        action = (request.form.get("action") or "").strip().lower()
+
+        if action == "add":
+            titulo = (request.form.get("titulo") or "").strip()
+            descripcion = (request.form.get("descripcion") or "").strip()
+            contacto = (request.form.get("contacto") or "").strip()
+            telefono = (request.form.get("telefono") or "").strip()
+            correo = (request.form.get("correo") or "").strip()
+            status = _normalize_prospecto_status(request.form.get("status"))
+            responsable = (request.form.get("responsable") or "").strip() if is_admin() else (responsable_actual() or "").strip()
+
+            if not titulo:
+                flash("Captura el título del prospecto.", "warning")
+                return redirect(url_for("prospectos"))
+            if correo and not re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", correo):
+                flash(f"El correo '{correo}' no es valido.", "danger")
+                return redirect(url_for("prospectos"))
+
+            prospecto = Prospecto(
+                titulo=titulo,
+                descripcion=descripcion or None,
+                contacto=contacto or None,
+                telefono=telefono or None,
+                correo=correo or None,
+                status=status,
+                responsable=responsable or None,
+            )
+            db.session.add(prospecto)
+            db.session.commit()
+            flash("Prospecto agregado correctamente.", "success")
+            return redirect(url_for("prospectos"))
+
+        if action == "update":
+            row_ids = request.form.getlist("row_id[]")
+            titulos = request.form.getlist("titulo[]")
+            descripciones = request.form.getlist("descripcion[]")
+            contactos = request.form.getlist("contacto[]")
+            telefonos = request.form.getlist("telefono[]")
+            correos = request.form.getlist("correo[]")
+            statuses = request.form.getlist("status[]")
+
+            updated = 0
+            for idx, row_id in enumerate(row_ids):
+                if not str(row_id).strip().isdigit():
+                    continue
+                prospecto = db.session.get(Prospecto, int(row_id))
+                if not prospecto:
+                    continue
+                require_prospecto_owner_or_admin(prospecto)
+
+                titulo = (titulos[idx] if idx < len(titulos) else "").strip()
+                descripcion = (descripciones[idx] if idx < len(descripciones) else "").strip()
+                contacto = (contactos[idx] if idx < len(contactos) else "").strip()
+                telefono = (telefonos[idx] if idx < len(telefonos) else "").strip()
+                correo = (correos[idx] if idx < len(correos) else "").strip()
+                status = _normalize_prospecto_status(statuses[idx] if idx < len(statuses) else "")
+
+                if not titulo:
+                    flash("Todos los prospectos deben tener título.", "warning")
+                    return redirect(url_for("prospectos"))
+                if correo and not re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", correo):
+                    flash(f"El correo '{correo}' no es valido.", "danger")
+                    return redirect(url_for("prospectos"))
+
+                prospecto.titulo = titulo
+                prospecto.descripcion = descripcion or None
+                prospecto.contacto = contacto or None
+                prospecto.telefono = telefono or None
+                prospecto.correo = correo or None
+                prospecto.status = status
+                if not prospecto.responsable:
+                    prospecto.responsable = responsable_actual() or prospecto.responsable
+                updated += 1
+
+            db.session.commit()
+            flash(f"Se actualizaron {updated} prospecto(s).", "success")
+            return redirect(url_for("prospectos"))
+
+        if action == "delete":
+            selected_ids = [int(value) for value in request.form.getlist("selected_ids[]") if str(value).strip().isdigit()]
+            if not selected_ids:
+                flash("Selecciona al menos un prospecto para eliminar.", "warning")
+                return redirect(url_for("prospectos"))
+
+            items = Prospecto.query.filter(Prospecto.id.in_(selected_ids)).all()
+            deleted = 0
+            for prospecto in items:
+                require_prospecto_owner_or_admin(prospecto)
+                db.session.delete(prospecto)
+                deleted += 1
+            db.session.commit()
+            flash(f"Se eliminaron {deleted} prospecto(s).", "success")
+            return redirect(url_for("prospectos"))
+
+        flash("Acción no válida para prospectos.", "danger")
+        return redirect(url_for("prospectos"))
+
+    rows = _load_prospectos()
+    filters = _prospectos_filters_from_request()
+    filtered_rows = _filter_prospectos(rows, filters)
+    return render_template(
+        "prospectos.html",
+        title="Prospectos",
+        rows=rows,
+        filtered_rows=filtered_rows,
+        filters=filters,
+        status_options=PROSPECT_STATUS_OPTIONS,
+        default_responsable=responsable_actual() or "",
+    )
+
+
+@app.route("/prospectos/export.xls")
+@login_required
+def export_prospectos_xls():
+    rows = _filter_prospectos(_load_prospectos(), _prospectos_filters_from_request())
+    headers = ["TITULO", "DESCRIPCION", "CONTACTO", "TELEFONO", "CORREO", "STATUS"]
+    body_rows = [
+        [
+            row.get("titulo", ""),
+            row.get("descripcion", ""),
+            row.get("contacto", ""),
+            row.get("telefono", ""),
+            row.get("correo", ""),
+            row.get("status", ""),
+        ]
+        for row in rows
+    ]
+    output_bytes = _build_simple_xls("Prospectos", headers, body_rows)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return Response(
+        output_bytes,
+        mimetype="application/vnd.ms-excel",
+        headers={"Content-Disposition": f'attachment; filename="prospectos_{stamp}.xls"'},
+    )
+
+
+@app.route("/prospectos/export.pdf")
+@login_required
+def export_prospectos_pdf():
+    filters = _prospectos_filters_from_request()
+    rows = _filter_prospectos(_load_prospectos(), filters)
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=10 * mm,
+        rightMargin=10 * mm,
+        topMargin=24 * mm,
+        bottomMargin=38 * mm,
+    )
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="EncabezadoProspectos", fontName="Helvetica", fontSize=9, leading=12, spaceAfter=4, splitLongWords=False))
+    styles.add(ParagraphStyle(name="ProspectosCell", fontName="Helvetica", fontSize=7.2, leading=8.5, splitLongWords=False))
+    styles.add(ParagraphStyle(name="ProspectosCenter", fontName="Helvetica", fontSize=7.2, leading=8.5, alignment=1, splitLongWords=False))
+
+    elems = []
+
+    def encabezado(canv, doc_):
+        canv.saveState()
+        canv.setFillColor(colors.HexColor("#0d47a1"))
+        canv.rect(0, A4[1] - 40, A4[0], 40, stroke=0, fill=1)
+
+        logo_path = os.path.join(app.static_folder or "static", "logo.png")
+        if os.path.exists(logo_path):
+            try:
+                img = ImageReader(logo_path)
+                iw, ih = img.getSize()
+                max_w = 22.5 * mm
+                scale = max_w / iw
+                canv.drawImage(img, 12, A4[1] - (ih * scale) - 8, width=max_w, height=ih * scale, mask="auto")
+            except Exception:
+                pass
+
+        canv.setFont("Helvetica-Bold", 14)
+        canv.setFillColor(colors.white)
+        canv.drawRightString(A4[0] - 12, A4[1] - 18, "PROSPECTOS")
+        canv.setFont("Helvetica", 10)
+        canv.drawRightString(A4[0] - 12, A4[1] - 31, "Recubrimientos Especializados")
+        canv.restoreState()
+
+    def footer(canv, doc_):
+        canv.saveState()
+        division_path = os.path.join(app.static_folder or "static", "division.png")
+        if os.path.exists(division_path):
+            try:
+                canv.drawImage(division_path, (A4[0] - 155 * mm) / 2, 45, width=155 * mm, height=3 * mm, mask="auto")
+            except Exception:
+                pass
+
+        canv.setFont("Helvetica-Bold", 9)
+        canv.setFillColor(colors.HexColor("#0d47a1"))
+        canv.drawCentredString(A4[0] / 2, 35, "POLIUTECH - Recubrimientos Especializados")
+        canv.setFont("Helvetica", 8)
+        canv.setFillColor(colors.HexColor("#333333"))
+        canv.drawCentredString(A4[0] / 2, 25, "Campos Eliseos 223 Oficina 602 - Col. Polanco V Seccion - Miguel Hidalgo, CDMX 11560")
+        canv.drawCentredString(A4[0] / 2, 15, "Tel: 55 5938 6530 / 55 5938 0536 - info@poliutech.com - www.poliutech.com")
+        canv.restoreState()
+
+    generated_at = now_cdmx_naive().strftime("%d/%m/%Y %H:%M")
+    meta_data = [
+        [
+            Paragraph(f"<b>Fecha de exportación:</b> {generated_at}", styles["EncabezadoProspectos"]),
+            Paragraph(f"<b>Total de registros:</b> {len(rows)}", styles["EncabezadoProspectos"]),
+        ],
+        [
+            Paragraph("<b>Filtro título/contacto:</b>", styles["EncabezadoProspectos"]),
+            Paragraph((filters.get("titulo") or filters.get("contacto") or "Todos").upper() if (filters.get("titulo") or filters.get("contacto")) else "Todos", styles["EncabezadoProspectos"]),
+        ],
+        [
+            Paragraph("<b>Filtro status:</b>", styles["EncabezadoProspectos"]),
+            Paragraph(filters.get("status") or "Todos", styles["EncabezadoProspectos"]),
+        ],
+    ]
+    meta_tbl = Table(meta_data, colWidths=[95 * mm, 95 * mm], hAlign="LEFT")
+    meta_tbl.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+    ]))
+    elems.append(meta_tbl)
+    elems.append(Spacer(1, 6))
+
+    data = [[
+        "TITULO",
+        "DESCRIPCION",
+        "CONTACTO",
+        "TELEFONO",
+        "CORREO",
+        "STATUS",
+    ]]
+    for row in rows:
+        data.append([
+            Paragraph(_truncate_pdf_text(row.get("titulo", ""), 38), styles["ProspectosCell"]),
+            Paragraph(_truncate_pdf_text(row.get("descripcion", ""), 78), styles["ProspectosCell"]),
+            Paragraph(_truncate_pdf_text(row.get("contacto", ""), 30), styles["ProspectosCell"]),
+            Paragraph(_truncate_pdf_text(row.get("telefono", ""), 22), styles["ProspectosCenter"]),
+            Paragraph(_truncate_pdf_text(row.get("correo", ""), 34), styles["ProspectosCell"]),
+            Paragraph(_truncate_pdf_text(row.get("status", ""), 18), styles["ProspectosCenter"]),
+        ])
+
+    if len(data) == 1:
+        data.append([
+            Paragraph("-", styles["ProspectosCenter"]),
+            Paragraph("No hay registros para exportar con el filtro actual.", styles["ProspectosCell"]),
+            Paragraph("-", styles["ProspectosCenter"]),
+            Paragraph("-", styles["ProspectosCenter"]),
+            Paragraph("-", styles["ProspectosCenter"]),
+            Paragraph("-", styles["ProspectosCenter"]),
+        ])
+
+    tbl = Table(
+        data,
+        colWidths=[28 * mm, 64 * mm, 26 * mm, 22 * mm, 34 * mm, 20 * mm],
+        repeatRows=1,
+        hAlign="CENTER",
+    )
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0d47a1")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (3, 0), (3, -1), "CENTER"),
+        ("ALIGN", (5, 0), (5, -1), "CENTER"),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+        ("FONTSIZE", (0, 0), (-1, -1), 7.2),
+        ("WORDWRAP", (0, 0), (-1, -1), True),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    elems.append(tbl)
+
+    doc.build(
+        elems,
+        onFirstPage=lambda canv, d: (draw_watermark(canv, app), encabezado(canv, d), footer(canv, d)),
+        onLaterPages=lambda canv, d: (draw_watermark(canv, app), encabezado(canv, d), footer(canv, d)),
+    )
+
+    buf.seek(0)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    response = Response(
+        buf.getvalue(),
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="prospectos_{stamp}.pdf"'},
     )
     response.direct_passthrough = False
     return response

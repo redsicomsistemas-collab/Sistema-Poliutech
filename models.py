@@ -189,6 +189,24 @@ class RegistroObra(db.Model):
     def __repr__(self):
         return f"<RegistroObra {self.id} {self.obra}>"
 
+
+class Prospecto(db.Model):
+    __tablename__ = "prospecto"
+
+    id = db.Column(db.Integer, primary_key=True)
+    titulo = db.Column(db.String(220), nullable=False, default="")
+    descripcion = db.Column(db.Text)
+    contacto = db.Column(db.String(160))
+    telefono = db.Column(db.String(60))
+    correo = db.Column(db.String(160))
+    status = db.Column(db.String(30), nullable=False, default="PENDIENTE")
+    responsable = db.Column(db.String(120))
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    def __repr__(self):
+        return f"<Prospecto {self.id} {self.titulo}>"
+
 # ---------------------------------------------------------
 # BITÁCORA (Audit Log)
 # ---------------------------------------------------------

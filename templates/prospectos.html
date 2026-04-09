@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="py-4">
+  <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+    <div>
+      <h2 class="mb-1">Prospectos</h2>
+      <div class="text-muted small">Control de oportunidades con seguimiento por status y exportación.</div>
+    </div>
+    <div class="text-muted small">
+      Total de registros: <strong>{{ filtered_rows|length }}</strong>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <h6 class="mb-3">Nuevo prospecto</h6>
+      <form method="post" class="row g-3">
+        <input type="hidden" name="action" value="add">
+        <div class="col-lg-3 col-md-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Título</label>
+          <input type="text" name="titulo" class="form-control" required>
+        </div>
+        <div class="col-lg-4 col-md-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Descripción</label>
+          <textarea name="descripcion" class="form-control" rows="2"></textarea>
+        </div>
+        <div class="col-lg-2 col-md-4">
+          <label class="form-label small fw-bold text-secondary mb-1">Contacto</label>
+          <input type="text" name="contacto" class="form-control">
+        </div>
+        <div class="col-lg-1 col-md-4">
+          <label class="form-label small fw-bold text-secondary mb-1">Teléfono</label>
+          <input type="text" name="telefono" class="form-control">
+        </div>
+        <div class="col-lg-2 col-md-4">
+          <label class="form-label small fw-bold text-secondary mb-1">Correo</label>
+          <input type="email" name="correo" class="form-control">
+        </div>
+        <div class="col-lg-2 col-md-4">
+          <label class="form-label small fw-bold text-secondary mb-1">Status</label>
+          <select name="status" class="form-select">
+            {% for status in status_options %}
+            <option value="{{ status }}" {% if status == "PENDIENTE" %}selected{% endif %}>{{ status }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% if current_user.is_authenticated and (current_user.rol or "")|upper == "ADMIN" %}
+        <div class="col-lg-2 col-md-4">
+          <label class="form-label small fw-bold text-secondary mb-1">Responsable</label>
+          <input type="text" name="responsable" class="form-control" value="{{ default_responsable or '' }}">
+        </div>
+        {% endif %}
+        <div class="col-lg-2 col-md-4 d-flex align-items-end">
+          <button type="submit" class="btn btn-primary w-100">Agregar prospecto</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <div class="row g-3 mb-4">
+        <div class="col-xl-4 col-md-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Título</label>
+          <input type="text" id="filtro-titulo" class="form-control form-control-sm" value="{{ filters.titulo if filters else '' }}">
+        </div>
+        <div class="col-xl-3 col-md-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Contacto</label>
+          <input type="text" id="filtro-contacto" class="form-control form-control-sm" value="{{ filters.contacto if filters else '' }}">
+        </div>
+        <div class="col-xl-3 col-md-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Status</label>
+          <select id="filtro-status" class="form-select form-select-sm">
+            <option value="">Todos</option>
+            {% for status in status_options %}
+            <option value="{{ status }}" {% if filters.status == status %}selected{% endif %}>{{ status }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-xl-2 col-md-6 d-flex align-items-end gap-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm w-100" id="btn-limpiar-filtros">Limpiar</button>
+        </div>
+      </div>
+
+      <div class="d-flex flex-column flex-md-row justify-content-end gap-2 mb-3">
+        <button type="button" class="btn btn-success btn-sm" id="btn-exportar-xls">Exportar XLS</button>
+        <button type="button" class="btn btn-danger btn-sm" id="btn-exportar-pdf">Exportar PDF</button>
+      </div>
+
+      <form method="post" id="prospectos-form">
+        <input type="hidden" name="action" id="table-action" value="update">
+        <div class="table-responsive">
+          <table class="table table-bordered align-middle" id="prospectos-table">
+            <thead class="table-light">
+              <tr>
+                <th style="width: 42px;" class="text-center"><input type="checkbox" id="select-all-rows"></th>
+                <th style="min-width: 180px;">TÍTULO</th>
+                <th style="min-width: 280px;">DESCRIPCIÓN</th>
+                <th style="min-width: 180px;">CONTACTO</th>
+                <th style="min-width: 140px;">TELÉFONO</th>
+                <th style="min-width: 220px;">CORREO</th>
+                <th style="min-width: 170px;">STATUS</th>
+                <th style="width: 120px;">ACCIÓN</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in rows %}
+              <tr data-titulo="{{ row.titulo|lower }}" data-contacto="{{ row.contacto|lower }}" data-status="{{ row.status }}">
+                <td class="text-center">
+                  <input type="checkbox" name="selected_ids[]" value="{{ row.id }}" class="row-selector">
+                  <input type="hidden" name="row_id[]" value="{{ row.id }}">
+                </td>
+                <td><input type="text" name="titulo[]" class="form-control prospecto-input" value="{{ row.titulo }}" readonly></td>
+                <td><textarea name="descripcion[]" class="form-control prospecto-input" rows="2" readonly>{{ row.descripcion }}</textarea></td>
+                <td><input type="text" name="contacto[]" class="form-control prospecto-input" value="{{ row.contacto }}" readonly></td>
+                <td><input type="text" name="telefono[]" class="form-control prospecto-input" value="{{ row.telefono }}" readonly></td>
+                <td><input type="email" name="correo[]" class="form-control prospecto-input" value="{{ row.correo }}" readonly></td>
+                <td>
+                  <select name="status[]" class="form-select prospecto-input" disabled>
+                    {% for status in status_options %}
+                    <option value="{{ status }}" {% if row.status == status %}selected{% endif %}>{{ status }}</option>
+                    {% endfor %}
+                  </select>
+                </td>
+                <td class="text-center">
+                  <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="d-flex flex-column flex-md-row justify-content-between gap-2 mt-3">
+          <button type="button" class="btn btn-outline-danger" id="btn-delete-selected">Eliminar seleccionados</button>
+          <button type="submit" class="btn btn-primary">Guardar cambios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const tbody = document.querySelector("#prospectos-table tbody");
+  const filtros = {
+    titulo: document.getElementById("filtro-titulo"),
+    contacto: document.getElementById("filtro-contacto"),
+    status: document.getElementById("filtro-status"),
+  };
+  const btnLimpiar = document.getElementById("btn-limpiar-filtros");
+  const btnExportarXls = document.getElementById("btn-exportar-xls");
+  const btnExportarPdf = document.getElementById("btn-exportar-pdf");
+  const form = document.getElementById("prospectos-form");
+  const tableAction = document.getElementById("table-action");
+  const btnDeleteSelected = document.getElementById("btn-delete-selected");
+  const selectAllRows = document.getElementById("select-all-rows");
+
+  function syncRowDataset(row) {
+    row.dataset.titulo = (row.querySelector('input[name="titulo[]"]')?.value || "").trim().toLowerCase();
+    row.dataset.contacto = (row.querySelector('input[name="contacto[]"]')?.value || "").trim().toLowerCase();
+    row.dataset.status = (row.querySelector('select[name="status[]"]')?.value || "").trim().toUpperCase();
+  }
+
+  function applyFilters() {
+    Array.from(tbody.querySelectorAll("tr")).forEach((row) => {
+      syncRowDataset(row);
+      const titulo = (filtros.titulo?.value || "").trim().toLowerCase();
+      const contacto = (filtros.contacto?.value || "").trim().toLowerCase();
+      const status = (filtros.status?.value || "").trim().toUpperCase();
+      const visible =
+        (!titulo || (row.dataset.titulo || "").includes(titulo)) &&
+        (!contacto || (row.dataset.contacto || "").includes(contacto)) &&
+        (!status || (row.dataset.status || "") === status);
+      row.style.display = visible ? "" : "none";
+    });
+  }
+
+  tbody.addEventListener("click", (event) => {
+    const editButton = event.target.closest(".btn-edit-row");
+    if (!editButton) return;
+    const row = editButton.closest("tr");
+    const textInputs = row ? row.querySelectorAll("input.prospecto-input, textarea.prospecto-input") : [];
+    const statusSelect = row ? row.querySelector('select[name="status[]"]') : null;
+    const willEnable = Array.from(textInputs).every((input) => input.hasAttribute("readonly"));
+
+    textInputs.forEach((input) => {
+      if (willEnable) {
+        input.removeAttribute("readonly");
+      } else {
+        input.setAttribute("readonly", "readonly");
+      }
+    });
+    if (statusSelect) {
+      statusSelect.disabled = !willEnable ? true : false;
+    }
+    editButton.textContent = willEnable ? "Bloquear" : "Editar";
+  });
+
+  tbody.addEventListener("input", (event) => {
+    if (!event.target.closest(".prospecto-input")) return;
+    syncRowDataset(event.target.closest("tr"));
+    applyFilters();
+  });
+
+  tbody.addEventListener("change", (event) => {
+    if (!event.target.closest('select[name="status[]"]')) return;
+    syncRowDataset(event.target.closest("tr"));
+    applyFilters();
+  });
+
+  Object.values(filtros).forEach((input) => {
+    input?.addEventListener("input", applyFilters);
+    input?.addEventListener("change", applyFilters);
+  });
+
+  btnLimpiar?.addEventListener("click", () => {
+    Object.values(filtros).forEach((input) => {
+      if (!input) return;
+      input.value = "";
+    });
+    applyFilters();
+  });
+
+  function buildQuery() {
+    const params = new URLSearchParams();
+    if (filtros.titulo?.value.trim()) params.set("titulo", filtros.titulo.value.trim());
+    if (filtros.contacto?.value.trim()) params.set("contacto", filtros.contacto.value.trim());
+    if (filtros.status?.value.trim()) params.set("status", filtros.status.value.trim());
+    return params.toString();
+  }
+
+  btnExportarXls?.addEventListener("click", () => {
+    const query = buildQuery();
+    window.location.href = `{{ url_for('export_prospectos_xls') }}${query ? `?${query}` : ""}`;
+  });
+
+  btnExportarPdf?.addEventListener("click", () => {
+    const query = buildQuery();
+    window.open(`{{ url_for('export_prospectos_pdf') }}${query ? `?${query}` : ""}`, "_blank", "noopener");
+  });
+
+  btnDeleteSelected?.addEventListener("click", () => {
+    const anySelected = Array.from(document.querySelectorAll(".row-selector")).some((input) => input.checked);
+    if (!anySelected) {
+      alert("Selecciona al menos un prospecto para eliminar.");
+      return;
+    }
+    tableAction.value = "delete";
+    form.submit();
+  });
+
+  selectAllRows?.addEventListener("change", () => {
+    document.querySelectorAll(".row-selector").forEach((input) => {
+      if (input.closest("tr")?.style.display === "none") return;
+      input.checked = selectAllRows.checked;
+    });
+  });
+
+  Array.from(tbody.querySelectorAll("tr")).forEach(syncRowDataset);
+  applyFilters();
+});
+</script>
+{% endblock %}
