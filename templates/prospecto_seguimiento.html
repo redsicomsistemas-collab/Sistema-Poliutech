@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .followup-page {
+    max-width: 1100px;
+  }
+
+  .followup-card + .followup-card {
+    margin-top: 1rem;
+  }
+
+  .followup-meta {
+    font-size: 0.92rem;
+    color: #5f6b7a;
+  }
+
+  .followup-text {
+    white-space: pre-wrap;
+  }
+</style>
+
+<div class="container mt-4 mb-5 followup-page">
+  <div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-primary text-white d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+      <div>
+        <h5 class="mb-1">Seguimiento de prospecto</h5>
+        <div class="small">{{ prospecto.titulo }}</div>
+      </div>
+      <div class="d-flex gap-2 flex-wrap">
+        <a href="{{ url_for('prospectos') }}" class="btn btn-outline-light btn-sm">Volver a prospectos</a>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="row g-3 mb-3">
+        <div class="col-md-4">
+          <div class="border rounded p-3 h-100">
+            <div class="small text-muted">Contacto</div>
+            <div class="fw-semibold">{{ prospecto.contacto or "Sin contacto" }}</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="border rounded p-3 h-100">
+            <div class="small text-muted">Correo</div>
+            <div class="fw-semibold">{{ prospecto.correo or "Sin correo" }}</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="border rounded p-3 h-100">
+            <div class="small text-muted">Teléfono</div>
+            <div class="fw-semibold">{{ prospecto.telefono or "Sin teléfono" }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="border rounded p-3 mb-4 bg-light">
+        <div class="small text-muted mb-1">Descripción</div>
+        <div style="white-space: pre-wrap;">{{ prospecto.descripcion or "Sin descripción" }}</div>
+      </div>
+
+      <form method="post" action="{{ url_for('crear_prospecto_seguimiento', prospecto_id=prospecto.id) }}">
+        <div class="row g-3 mb-3">
+          <div class="col-md-4">
+            <label for="status" class="form-label fw-bold text-primary">Status</label>
+            <select id="status" name="status" class="form-select">
+              {% for estado in ["PENDIENTE", "CONTACTADO", "COTIZADO", "FINALIZADO", "RECHAZADO"] %}
+              <option value="{{ estado }}" {% if (prospecto.status or "") == estado %}selected{% endif %}>{{ estado }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <label for="comentario" class="form-label fw-bold text-primary">Nuevo comentario de seguimiento</label>
+        <textarea
+          id="comentario"
+          name="comentario"
+          class="form-control"
+          rows="5"
+          placeholder="Escribe aquí el seguimiento realizado con este prospecto..."
+          required
+        ></textarea>
+        <div class="d-flex justify-content-between align-items-center mt-3 gap-2 flex-wrap">
+          <div class="small text-muted">Se guardará con fecha, hora y el usuario actual.</div>
+          <button type="submit" class="btn btn-primary">Guardar seguimiento</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
+    <h5 class="mb-0">Historial de seguimiento</h5>
+    <span class="badge text-bg-secondary">{{ seguimientos|length }} comentario{{ "" if seguimientos|length == 1 else "s" }}</span>
+  </div>
+
+  {% for seg in seguimientos %}
+  <div class="card shadow-sm border-0 followup-card" id="seguimiento-{{ seg.id }}">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+        <div>
+          <div class="fw-semibold">{{ seg.autor }}</div>
+          <div class="followup-meta">
+            {{ seg.fecha_seguimiento.strftime('%Y-%m-%d %H:%M') if seg.fecha_seguimiento else "—" }}
+            {% if seg.actualizado_en and seg.fecha_seguimiento and seg.actualizado_en != seg.fecha_seguimiento %}
+            · Editado {{ seg.actualizado_en.strftime('%Y-%m-%d %H:%M') }}
+            {% endif %}
+          </div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+          {% if current_user.is_authenticated and ((current_user.rol or "")|upper == "ADMIN" or current_user.id == seg.usuario_id) %}
+          <button
+            type="button"
+            class="btn btn-outline-warning btn-sm"
+            data-bs-toggle="collapse"
+            data-bs-target="#editar-seg-{{ seg.id }}"
+            aria-expanded="false"
+            aria-controls="editar-seg-{{ seg.id }}"
+          >
+            Editar
+          </button>
+          <form method="post" action="{{ url_for('eliminar_prospecto_seguimiento', prospecto_id=prospecto.id, seg_id=seg.id) }}" onsubmit="return confirm('¿Eliminar este seguimiento?');">
+            <button type="submit" class="btn btn-outline-danger btn-sm">Eliminar</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="mt-3 followup-text">{{ seg.comentario }}</div>
+
+      {% if current_user.is_authenticated and ((current_user.rol or "")|upper == "ADMIN" or current_user.id == seg.usuario_id) %}
+      <div class="collapse mt-3" id="editar-seg-{{ seg.id }}">
+        <form method="post" action="{{ url_for('editar_prospecto_seguimiento', prospecto_id=prospecto.id, seg_id=seg.id) }}">
+          <label class="form-label fw-bold">Editar comentario</label>
+          <textarea name="comentario" class="form-control" rows="4" required>{{ seg.comentario }}</textarea>
+          <div class="d-flex justify-content-end mt-3">
+            <button type="submit" class="btn btn-warning">Guardar cambios</button>
+          </div>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="card shadow-sm border-0">
+    <div class="card-body text-center text-muted py-5">
+      Aún no hay comentarios de seguimiento para este prospecto.
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

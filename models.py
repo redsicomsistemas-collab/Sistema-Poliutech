@@ -204,8 +204,32 @@ class Prospecto(db.Model):
     creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
+    seguimientos = db.relationship(
+        "ProspectoSeguimiento",
+        backref="prospecto",
+        cascade="all, delete-orphan",
+        order_by="ProspectoSeguimiento.fecha_seguimiento.desc()"
+    )
+
     def __repr__(self):
         return f"<Prospecto {self.id} {self.titulo}>"
+
+
+class ProspectoSeguimiento(db.Model):
+    __tablename__ = "prospecto_seguimiento"
+
+    id = db.Column(db.Integer, primary_key=True)
+    prospecto_id = db.Column(db.Integer, db.ForeignKey("prospecto.id"), nullable=False, index=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
+    autor = db.Column(db.String(120), nullable=False)
+    comentario = db.Column(db.Text, nullable=False)
+    fecha_seguimiento = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    usuario = db.relationship("Usuario", backref=db.backref("seguimientos_prospecto", lazy=True))
+
+    def __repr__(self):
+        return f"<ProspectoSeguimiento prospecto={self.prospecto_id} autor={self.autor}>"
 
 # ---------------------------------------------------------
 # BITÁCORA (Audit Log)

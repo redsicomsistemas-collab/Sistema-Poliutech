@@ -841,6 +841,7 @@ def _prospecto_to_row(item: "Prospecto", idx: Optional[int] = None) -> dict:
         "correo": (item.correo or "").strip(),
         "status": _normalize_prospecto_status(item.status),
         "responsable": (item.responsable or "").strip(),
+        "seguimiento_count": len(item.seguimientos or []),
     }
 
 
@@ -903,6 +904,87 @@ def _build_simple_xls(sheet_name: str, headers: list[str], rows: list[list[str]]
         parts.append("</tr>")
     parts.append("</tbody></table></body></html>")
     return "".join(parts).encode("utf-8")
+
+
+def _normalize_import_header(value: object) -> str:
+    raw = str(value or "").strip().lower()
+    normalized = unicodedata.normalize("NFKD", raw)
+    normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    return normalized
+
+
+def _load_prospectos_from_xlsx(file_bytes: bytes) -> list[dict]:
+    with zipfile.ZipFile(io.BytesIO(file_bytes)) as workbook_zip:
+        shared_strings: list[str] = []
+        if "xl/sharedStrings.xml" in workbook_zip.namelist():
+            shared_root = ET.fromstring(workbook_zip.read("xl/sharedStrings.xml"))
+            for item in shared_root.findall("a:si", XLSX_NS):
+                shared_strings.append(
+                    "".join((node.text or "") for node in item.findall(".//a:t", XLSX_NS)).strip()
+                )
+
+        workbook_root = ET.fromstring(workbook_zip.read("xl/workbook.xml"))
+        rels_root = ET.fromstring(workbook_zip.read("xl/_rels/workbook.xml.rels"))
+        rel_map = {
+            rel.attrib.get("Id"): rel.attrib.get("Target", "")
+            for rel in rels_root.findall("p:Relationship", XLSX_NS)
+        }
+
+        target_sheet = None
+        for sheet in workbook_root.findall("a:sheets/a:sheet", XLSX_NS):
+            rel_id = sheet.attrib.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
+            if rel_id:
+                target = rel_map.get(rel_id, "")
+                if target:
+                    target_sheet = f"xl/{target.lstrip('/')}"
+                    break
+
+        if not target_sheet or target_sheet not in workbook_zip.namelist():
+            return []
+
+        sheet_root = ET.fromstring(workbook_zip.read(target_sheet))
+        parsed_rows: list[list[str]] = []
+        for row in sheet_root.findall("a:sheetData/a:row", XLSX_NS):
+            values_by_col: dict[int, str] = {}
+            for cell in row.findall("a:c", XLSX_NS):
+                ref = cell.attrib.get("r", "")
+                values_by_col[_excel_col_to_index(ref)] = _xlsx_cell_text(cell, shared_strings)
+            if not values_by_col:
+                continue
+            max_col = max(values_by_col)
+            parsed_rows.append([values_by_col.get(col, "").strip() for col in range(max_col + 1)])
+
+        if len(parsed_rows) < 2:
+            return []
+
+        header_map = {
+            _normalize_import_header(name): idx
+            for idx, name in enumerate(parsed_rows[0])
+            if str(name or "").strip()
+        }
+
+        required = ["titulo", "descripcion", "contacto", "telefono", "correo"]
+        if any(col not in header_map for col in required):
+            raise ValueError("El Excel debe incluir las columnas: Título, Descripción, Contacto, Teléfono y Correo.")
+
+        rows: list[dict] = []
+        for row in parsed_rows[1:]:
+            titulo = row[header_map["titulo"]].strip() if len(row) > header_map["titulo"] else ""
+            descripcion = row[header_map["descripcion"]].strip() if len(row) > header_map["descripcion"] else ""
+            contacto = row[header_map["contacto"]].strip() if len(row) > header_map["contacto"] else ""
+            telefono = row[header_map["telefono"]].strip() if len(row) > header_map["telefono"] else ""
+            correo = row[header_map["correo"]].strip() if len(row) > header_map["correo"] else ""
+            if not any([titulo, descripcion, contacto, telefono, correo]):
+                continue
+            rows.append({
+                "titulo": titulo,
+                "descripcion": descripcion,
+                "contacto": contacto,
+                "telefono": telefono,
+                "correo": correo,
+                "status": "PENDIENTE",
+            })
+        return rows
 
 
 def _build_simple_xlsx(sheet_name: str, headers: list[str], rows: list[list[str]], column_widths: Optional[list[int]] = None) -> bytes:
@@ -1183,6 +1265,7 @@ from models import (
     MobileDevice,
     RegistroObra,
     Prospecto,
+    ProspectoSeguimiento,
     ActivityLog,
     PUObra,
     PURecurso,
@@ -1693,6 +1776,15 @@ def require_prospecto_owner_or_admin(prospecto: Prospecto) -> None:
     ra = responsable_actual()
     if not ra or (prospecto.responsable or "") != ra:
         abort(403)
+
+
+def require_prospecto_followup_author_or_admin(seg: ProspectoSeguimiento) -> None:
+    if is_admin():
+        return
+    current_user_id = getattr(current_user, "id", None)
+    if current_user_id and seg.usuario_id == current_user_id:
+        return
+    abort(403)
 
 
 
@@ -3182,6 +3274,72 @@ def prospectos():
             flash("Prospecto agregado correctamente.", "success")
             return redirect(url_for("prospectos"))
 
+        if action == "import":
+            uploaded = request.files.get("import_file")
+            if not uploaded or not (uploaded.filename or "").strip():
+                flash("Selecciona un archivo Excel antes de importar.", "warning")
+                return redirect(url_for("prospectos"))
+
+            filename = (uploaded.filename or "").strip().lower()
+            if not filename.endswith(".xlsx"):
+                flash("Solo se permite importar archivos .xlsx.", "danger")
+                return redirect(url_for("prospectos"))
+
+            try:
+                file_bytes = uploaded.read()
+                if not file_bytes:
+                    raise ValueError("El archivo Excel llegó vacío.")
+                imported_rows = _load_prospectos_from_xlsx(file_bytes)
+            except Exception as exc:
+                flash(f"No pude leer el Excel: {exc}", "danger")
+                return redirect(url_for("prospectos"))
+
+            if not imported_rows:
+                flash("No se encontraron prospectos válidos en el Excel.", "warning")
+                return redirect(url_for("prospectos"))
+
+            inserted = 0
+            updated = 0
+            for row in imported_rows:
+                titulo = (row.get("titulo") or "").strip()
+                descripcion = (row.get("descripcion") or "").strip()
+                contacto = (row.get("contacto") or "").strip()
+                telefono = (row.get("telefono") or "").strip()
+                correo = (row.get("correo") or "").strip()
+
+                if correo and not re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", correo):
+                    flash(f"El correo '{correo}' no es valido.", "danger")
+                    return redirect(url_for("prospectos"))
+
+                existing = Prospecto.query.filter(
+                    db.func.lower(Prospecto.titulo) == titulo.lower(),
+                    db.func.lower(db.func.coalesce(Prospecto.correo, "")) == correo.lower(),
+                ).first()
+
+                if existing:
+                    existing.descripcion = descripcion or existing.descripcion
+                    existing.contacto = contacto or existing.contacto
+                    existing.telefono = telefono or existing.telefono
+                    existing.correo = correo or existing.correo
+                    if not (existing.status or "").strip():
+                        existing.status = "PENDIENTE"
+                    updated += 1
+                    continue
+
+                db.session.add(Prospecto(
+                    titulo=titulo,
+                    descripcion=descripcion or None,
+                    contacto=contacto or None,
+                    telefono=telefono or None,
+                    correo=correo or None,
+                    status="PENDIENTE",
+                ))
+                inserted += 1
+
+            db.session.commit()
+            flash(f"Importación completada. Nuevos: {inserted}. Actualizados: {updated}.", "success")
+            return redirect(url_for("prospectos"))
+
         if action == "update":
             row_ids = request.form.getlist("row_id[]")
             titulos = request.form.getlist("titulo[]")
@@ -3284,6 +3442,74 @@ def export_prospectos_xls():
         mimetype="application/vnd.ms-excel",
         headers={"Content-Disposition": f'attachment; filename="prospectos_{stamp}.xls"'},
     )
+
+
+@app.route("/prospectos/<int:prospecto_id>/seguimiento")
+@login_required
+def prospecto_seguimiento(prospecto_id: int):
+    prospecto = Prospecto.query.get_or_404(prospecto_id)
+    return render_template(
+        "prospecto_seguimiento.html",
+        prospecto=prospecto,
+        seguimientos=prospecto.seguimientos,
+        title=f"Seguimiento prospecto {prospecto.titulo}",
+    )
+
+
+@app.route("/prospectos/<int:prospecto_id>/seguimiento", methods=["POST"])
+@login_required
+def crear_prospecto_seguimiento(prospecto_id: int):
+    prospecto = Prospecto.query.get_or_404(prospecto_id)
+    comentario = (request.form.get("comentario") or "").strip()
+    nuevo_status = _normalize_prospecto_status(request.form.get("status"))
+
+    if not comentario:
+        flash("Escribe un comentario de seguimiento.", "warning")
+        return redirect(url_for("prospecto_seguimiento", prospecto_id=prospecto.id))
+
+    prospecto.status = nuevo_status
+    seg = ProspectoSeguimiento(
+        prospecto_id=prospecto.id,
+        usuario_id=getattr(current_user, "id", None),
+        autor=(getattr(current_user, "nombre", None) or responsable_actual() or "Sistema").strip(),
+        comentario=comentario,
+        fecha_seguimiento=now_cdmx_naive(),
+    )
+    db.session.add(seg)
+    db.session.commit()
+    flash("Seguimiento guardado correctamente.", "success")
+    return redirect(url_for("prospecto_seguimiento", prospecto_id=prospecto.id, _anchor=f"seguimiento-{seg.id}"))
+
+
+@app.route("/prospectos/<int:prospecto_id>/seguimiento/<int:seg_id>/editar", methods=["POST"])
+@login_required
+def editar_prospecto_seguimiento(prospecto_id: int, seg_id: int):
+    prospecto = Prospecto.query.get_or_404(prospecto_id)
+    seg = ProspectoSeguimiento.query.filter_by(id=seg_id, prospecto_id=prospecto.id).first_or_404()
+    require_prospecto_followup_author_or_admin(seg)
+
+    comentario = (request.form.get("comentario") or "").strip()
+    if not comentario:
+        flash("El comentario no puede quedar vacío.", "warning")
+        return redirect(url_for("prospecto_seguimiento", prospecto_id=prospecto.id))
+
+    seg.comentario = comentario
+    seg.actualizado_en = now_cdmx_naive()
+    db.session.commit()
+    flash("Seguimiento actualizado.", "success")
+    return redirect(url_for("prospecto_seguimiento", prospecto_id=prospecto.id, _anchor=f"seguimiento-{seg.id}"))
+
+
+@app.route("/prospectos/<int:prospecto_id>/seguimiento/<int:seg_id>/eliminar", methods=["POST"])
+@login_required
+def eliminar_prospecto_seguimiento(prospecto_id: int, seg_id: int):
+    prospecto = Prospecto.query.get_or_404(prospecto_id)
+    seg = ProspectoSeguimiento.query.filter_by(id=seg_id, prospecto_id=prospecto.id).first_or_404()
+    require_prospecto_followup_author_or_admin(seg)
+    db.session.delete(seg)
+    db.session.commit()
+    flash("Seguimiento eliminado.", "success")
+    return redirect(url_for("prospecto_seguimiento", prospecto_id=prospecto.id))
 
 
 @app.route("/prospectos/export.pdf")

@@ -57,6 +57,25 @@
     </div>
   </div>
 
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <h6 class="mb-3">Importar desde Excel</h6>
+      <form method="post" enctype="multipart/form-data" class="row g-3">
+        <input type="hidden" name="action" value="import">
+        <div class="col-lg-8">
+          <label class="form-label small fw-bold text-secondary mb-1">Archivo Excel</label>
+          <input type="file" name="import_file" class="form-control" accept=".xlsx" required>
+        </div>
+        <div class="col-lg-4 d-flex align-items-end">
+          <button type="submit" class="btn btn-outline-primary w-100">Importar Excel</button>
+        </div>
+      </form>
+      <div class="text-muted small mt-2">
+        Estructura soportada: <strong>Título</strong>, <strong>Descripción</strong>, <strong>Contacto</strong>, <strong>Teléfono</strong> y <strong>Correo</strong>.
+      </div>
+    </div>
+  </div>
+
   <div class="card shadow-sm">
     <div class="card-body">
       <div class="row g-3 mb-4">
@@ -100,7 +119,7 @@
                 <th style="min-width: 140px;">TELÉFONO</th>
                 <th style="min-width: 220px;">CORREO</th>
                 <th style="min-width: 170px;">STATUS</th>
-                <th style="width: 120px;">ACCIÓN</th>
+                <th style="width: 170px;">ACCIÓN</th>
               </tr>
             </thead>
             <tbody>
@@ -123,7 +142,12 @@
                   </select>
                 </td>
                 <td class="text-center">
-                  <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>
+                  <div class="d-flex flex-column gap-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>
+                    <a href="{{ url_for('prospecto_seguimiento', prospecto_id=row.id) }}" class="btn btn-outline-secondary btn-sm">
+                      Seguimiento ({{ row.seguimiento_count }})
+                    </a>
+                  </div>
                 </td>
               </tr>
               {% endfor %}
