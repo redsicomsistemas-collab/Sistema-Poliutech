@@ -146,7 +146,7 @@
         <div class="text-uppercase small text-muted fw-bold">Libro base</div>
         <div class="fw-bold">{{ workbook_name }}</div>
       </div>
-      <a href="{{ url_for('pu.download_runtime') }}" class="btn btn-outline-primary btn-sm">Descargar</a>
+      <a href="{{ url_for('pu.download_template_xlsm') }}" class="btn btn-outline-primary btn-sm">Excel Base</a>
     </div>
 
     <div class="pu-sheet-list">
@@ -171,7 +171,6 @@
         <div class="pu-meta">
           Rango visible: {{ header_cols[0].label if header_cols else 'A' }}{{ start_row }} a {{ header_cols[-1].label if header_cols else 'A' }}{{ end_row }}
           · Límite detectado: {{ min_row }}-{{ max_row }} / {{ min_col }}-{{ max_col }}
-          {% if freeze_panes %}· <span class="pu-chip">Freeze {{ freeze_panes }}</span>{% endif %}
         </div>
       </div>
       <div class="pu-actions">
@@ -195,11 +194,11 @@
       </div>
       <div class="col-md-2">
         <label class="form-label">Filas</label>
-        <input class="form-control" type="number" name="rows" value="{{ rows }}" min="5" max="80">
+        <input class="form-control" type="number" name="rows" value="{{ rows }}" min="5" max="40">
       </div>
       <div class="col-md-2">
         <label class="form-label">Columnas</label>
-        <input class="form-control" type="number" name="cols" value="{{ cols }}" min="5" max="30">
+        <input class="form-control" type="number" name="cols" value="{{ cols }}" min="5" max="18">
       </div>
       <div class="col-md-2">
         <button type="submit" class="btn btn-outline-secondary w-100">Mover ventana</button>
