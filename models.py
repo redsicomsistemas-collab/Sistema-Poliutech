@@ -98,10 +98,6 @@ class CotizacionDetalle(db.Model):
     descripcion = db.Column(db.String(1000))
     subtotal = db.Column(db.Float, default=0)
     origen = db.Column(db.String(50))
-    apu_id = db.Column(db.Integer)
-    apu_clave = db.Column(db.String(80))
-    apu_directo = db.Column(db.Float, default=0.0)
-    apu_resumen_json = db.Column(db.Text)
 
     # ✅ ESTA RELACIÓN SÍ ES VÁLIDA porque existe concepto_id con FK
     concepto = db.relationship("Concepto")
@@ -266,27 +262,84 @@ class ActivityLog(db.Model):
         return f"<ActivityLog {self.fecha} {self.usuario} {self.metodo} {self.ruta}>"
 
 
+class APUSheet(db.Model):
+    __tablename__ = "apu_sheet"
+
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(120), nullable=False, unique=True, index=True)
+    hidden = db.Column(db.Boolean, default=False, nullable=False)
+    max_row = db.Column(db.Integer, default=1, nullable=False)
+    max_col = db.Column(db.Integer, default=1, nullable=False)
+    freeze_panes = db.Column(db.String(30))
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    celdas = db.relationship(
+        "APUCell",
+        backref="sheet",
+        cascade="all, delete-orphan",
+        lazy=True,
+        order_by="APUCell.row_idx.asc(), APUCell.col_idx.asc()",
+    )
+    merges = db.relationship(
+        "APUMerge",
+        backref="sheet",
+        cascade="all, delete-orphan",
+        lazy=True,
+        order_by="APUMerge.start_row.asc(), APUMerge.start_col.asc()",
+    )
+
+    def __repr__(self):
+        return f"<APUSheet {self.nombre}>"
+
+
+class APUCell(db.Model):
+    __tablename__ = "apu_cell"
+    __table_args__ = (
+        db.UniqueConstraint("sheet_id", "coord", name="uq_apu_cell_sheet_coord"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    sheet_id = db.Column(db.Integer, db.ForeignKey("apu_sheet.id"), nullable=False, index=True)
+    coord = db.Column(db.String(20), nullable=False)
+    row_idx = db.Column(db.Integer, nullable=False, index=True)
+    col_idx = db.Column(db.Integer, nullable=False, index=True)
+    col_letter = db.Column(db.String(10), nullable=False)
+    value = db.Column(db.Text)
+    raw = db.Column(db.Text)
+    formula = db.Column(db.Text)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    def __repr__(self):
+        return f"<APUCell {self.coord}>"
+
+
+class APUMerge(db.Model):
+    __tablename__ = "apu_merge"
+
+    id = db.Column(db.Integer, primary_key=True)
+    sheet_id = db.Column(db.Integer, db.ForeignKey("apu_sheet.id"), nullable=False, index=True)
+    rango = db.Column(db.String(40), nullable=False)
+    start_row = db.Column(db.Integer, nullable=False)
+    start_col = db.Column(db.Integer, nullable=False)
+    end_row = db.Column(db.Integer, nullable=False)
+    end_col = db.Column(db.Integer, nullable=False)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    def __repr__(self):
+        return f"<APUMerge {self.rango}>"
+
+
 class PUObra(db.Model):
     __tablename__ = "pu_obra"
 
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(200), nullable=False)
-    descripcion = db.Column(db.String(1000))
-    direccion = db.Column(db.String(220))
-    colonia = db.Column(db.String(160))
-    ciudad = db.Column(db.String(160))
-    estado = db.Column(db.String(160))
-    codigo_postal = db.Column(db.String(20))
-    telefono = db.Column(db.String(60))
-    correo = db.Column(db.String(160))
-    observaciones = db.Column(db.Text)
-    empresa = db.Column(db.String(180))
-    encargado = db.Column(db.String(160))
-    responsable = db.Column(db.String(120))
-    fecha_inicio = db.Column(db.Date)
-    fecha_terminacion = db.Column(db.Date)
-    plazo_dias = db.Column(db.Integer, default=0)
-    moneda = db.Column(db.String(20), default="PESOS")
+    cliente = db.Column(db.String(180))
+    ubicacion = db.Column(db.String(220))
+    descripcion = db.Column(db.Text)
+    moneda = db.Column(db.String(20), default="MXN", nullable=False)
     creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -297,46 +350,16 @@ class PUObra(db.Model):
         return f"<PUObra {self.nombre}>"
 
 
-class PURecurso(db.Model):
-    __tablename__ = "pu_recurso"
-
-    id = db.Column(db.Integer, primary_key=True)
-    tipo = db.Column(db.String(30), nullable=False)  # material, mano_obra, maquinaria
-    codigo = db.Column(db.String(60))
-    descripcion = db.Column(db.String(300), nullable=False)
-    unidad = db.Column(db.String(50))
-    costo_base = db.Column(db.Float, default=0.0)
-    familia = db.Column(db.String(120))
-    gravable = db.Column(db.Boolean, default=True, nullable=False)
-    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-
-    def __repr__(self):
-        return f"<PURecurso {self.tipo} {self.codigo or self.id}>"
-
-
 class PUSobrecosto(db.Model):
     __tablename__ = "pu_sobrecosto"
 
     id = db.Column(db.Integer, primary_key=True)
     obra_id = db.Column(db.Integer, db.ForeignKey("pu_obra.id"), nullable=False, unique=True)
-    porcentaje_utilidad_propuesta = db.Column(db.Float, default=10.0)
-    tasa_interes_usada = db.Column(db.Float, default=0.0)
-    porcentaje_puntos_banco = db.Column(db.Float, default=0.0)
-    porcentaje_primer_anticipo = db.Column(db.Float, default=0.0)
-    factor_sfp = db.Column(db.Float, default=0.0)
-    indicador_economico = db.Column(db.String(120))
-    tipo_anticipo = db.Column(db.String(120), default="Un ejercicio con un anticipo")
-    libro_sobrecosto = db.Column(db.String(120), default="Sobrecosto estandar")
-    programa_obra = db.Column(db.String(120), default="Programa base")
-    num_veces = db.Column(db.Integer, default=1)
-    libro_pie_indirectos = db.Column(db.String(120), default="Indirectos manuales")
     indirecto_campo_pct = db.Column(db.Float, default=0.0)
     indirecto_oficina_pct = db.Column(db.Float, default=0.0)
     financiamiento_pct = db.Column(db.Float, default=0.0)
     utilidad_pct = db.Column(db.Float, default=10.0)
     cargos_adicionales_pct = db.Column(db.Float, default=0.0)
-    factor_pie_indirectos = db.Column(db.Float, default=1.0)
     creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -344,55 +367,61 @@ class PUSobrecosto(db.Model):
         return f"<PUSobrecosto obra={self.obra_id}>"
 
 
+class PURecurso(db.Model):
+    __tablename__ = "pu_recurso"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tipo = db.Column(db.String(30), nullable=False)  # material, mano_obra, maquinaria, basico, extra
+    codigo = db.Column(db.String(60))
+    descripcion = db.Column(db.String(300), nullable=False)
+    unidad = db.Column(db.String(50), default="")
+    costo_unitario = db.Column(db.Float, default=0.0)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    def __repr__(self):
+        return f"<PURecurso {self.tipo} {self.descripcion}>"
+
+
 class PUPartida(db.Model):
     __tablename__ = "pu_partida"
 
     id = db.Column(db.Integer, primary_key=True)
-    obra_id = db.Column(db.Integer, db.ForeignKey("pu_obra.id"), nullable=False)
+    obra_id = db.Column(db.Integer, db.ForeignKey("pu_obra.id"), nullable=False, index=True)
     capitulo = db.Column(db.String(160), default="General")
-    wbs = db.Column(db.String(40))
-    codigo = db.Column(db.String(60))
-    descripcion = db.Column(db.String(500), nullable=False)
+    clave = db.Column(db.String(80))
+    descripcion = db.Column(db.String(600), nullable=False)
     unidad = db.Column(db.String(50), default="pza")
     cantidad = db.Column(db.Float, default=1.0)
-    precio_directo = db.Column(db.Float, default=0.0)
+    costo_directo = db.Column(db.Float, default=0.0)
     precio_unitario = db.Column(db.Float, default=0.0)
-    importe_total = db.Column(db.Float, default=0.0)
+    importe = db.Column(db.Float, default=0.0)
     creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
-    insumos = db.relationship(
-        "PUPartidaInsumo",
-        backref="partida",
-        cascade="all, delete-orphan",
-        order_by="PUPartidaInsumo.orden.asc(), PUPartidaInsumo.id.asc()",
-    )
+    insumos = db.relationship("PUPartidaInsumo", backref="partida", cascade="all, delete-orphan", order_by="PUPartidaInsumo.id.asc()")
 
     def __repr__(self):
-        return f"<PUPartida {self.codigo or self.id}>"
+        return f"<PUPartida {self.clave or self.id}>"
 
 
 class PUPartidaInsumo(db.Model):
     __tablename__ = "pu_partida_insumo"
 
     id = db.Column(db.Integer, primary_key=True)
-    partida_id = db.Column(db.Integer, db.ForeignKey("pu_partida.id"), nullable=False)
+    partida_id = db.Column(db.Integer, db.ForeignKey("pu_partida.id"), nullable=False, index=True)
     recurso_id = db.Column(db.Integer, db.ForeignKey("pu_recurso.id"), nullable=True)
-    orden = db.Column(db.Integer, default=0)
-    tipo = db.Column(db.String(30), nullable=False)  # material, mano_obra, maquinaria, porcentaje_mo, porcentaje_cd, otro
-    base_tipo = db.Column(db.String(30))
+    tipo = db.Column(db.String(30), nullable=False, default="material")
     codigo = db.Column(db.String(60))
-    descripcion = db.Column(db.String(300), nullable=False)
-    unidad = db.Column(db.String(50))
-    costo_unitario = db.Column(db.Float, default=0.0)
+    descripcion = db.Column(db.String(400), nullable=False)
+    unidad = db.Column(db.String(50), default="")
     cantidad = db.Column(db.Float, default=0.0)
-    porcentaje = db.Column(db.Float, default=0.0)
+    costo_unitario = db.Column(db.Float, default=0.0)
     importe = db.Column(db.Float, default=0.0)
-    gravable = db.Column(db.Boolean, default=True, nullable=False)
     creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     recurso = db.relationship("PURecurso")
 
     def __repr__(self):
-        return f"<PUPartidaInsumo {self.tipo} {self.codigo or self.id}>"
+        return f"<PUPartidaInsumo {self.tipo} {self.descripcion}>"
