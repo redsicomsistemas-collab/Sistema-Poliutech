@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Precios Unitarios{% endblock %}
+
+{% block content %}
+<style>
+.pu-home {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.pu-hero {
+  background: linear-gradient(135deg, #0b5cab, #168aad);
+  color: #fff;
+  border-radius: 22px;
+  padding: 2rem;
+  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.18);
+}
+.pu-grid-home {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+.pu-card {
+  display: block;
+  padding: 1.25rem;
+  border-radius: 18px;
+  background: #fff;
+  color: #243b53;
+  text-decoration: none;
+  border: 1px solid #d9e2ec;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.07);
+}
+.pu-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.11);
+}
+.pu-card-title {
+  font-weight: 800;
+  font-size: 1.05rem;
+}
+.pu-card-meta {
+  color: #627d98;
+  font-size: 0.88rem;
+  margin-top: 0.35rem;
+}
+</style>
+
+<section class="pu-home">
+  <div class="pu-hero">
+    <div class="text-uppercase small fw-bold opacity-75">Sistema Poliutech</div>
+    <h1 class="fw-bold mb-2">Precios Unitarios</h1>
+    <p class="mb-0">Sección nativa APU. Elige una hoja para abrir solo esa parte y evitar cargar todo el libro completo.</p>
+  </div>
+
+  <div class="pu-grid-home">
+    {% for sheet in sheets %}
+    <a class="pu-card" href="{{ url_for('pu.sheet_view', sheet_name=sheet.name) }}">
+      <div class="pu-card-title">{{ sheet.name }}</div>
+      <div class="pu-card-meta">
+        {{ sheet.max_row }} filas · {{ sheet.max_col }} columnas
+        {% if sheet.hidden %}· hoja oculta{% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}
