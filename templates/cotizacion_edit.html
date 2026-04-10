@@ -29,7 +29,6 @@
             <div class="col-md-2">
               <label class="form-label">Concepto</label>
               <textarea name="item_nombre_concepto[]" class="form-control item-edit-nombre quote-textarea" rows="3">{{ d.nombre_concepto }}</textarea>
-              <div class="small text-muted mt-1">{{ ('Origen: APU ' ~ (d.apu_clave or d.apu_id)) if d.origen == 'APU' else '' }}</div>
             </div>
             <div class="col-md-1"><label class="form-label">Unidad</label><input type="text" name="item_unidad[]" class="form-control item-edit-unidad" value="{{ d.unidad }}"></div>
             <div class="col-md-1"><label class="form-label">Cantidad</label><input type="number" step="any" name="item_cantidad[]" class="form-control item-edit-cantidad" value="{{ d.cantidad }}"></div>

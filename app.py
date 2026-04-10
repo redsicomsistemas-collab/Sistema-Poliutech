@@ -1267,11 +1267,6 @@ from models import (
     Prospecto,
     ProspectoSeguimiento,
     ActivityLog,
-    PUObra,
-    PURecurso,
-    PUSobrecosto,
-    PUPartida,
-    PUPartidaInsumo,
 )
 
 # ---------------------------------------------------------
@@ -1644,10 +1639,6 @@ def ensure_schema():
         for col, stmt in [
             ("capitulo", "ALTER TABLE cotizacion_detalle ADD COLUMN capitulo VARCHAR(120)"),
             ("origen", "ALTER TABLE cotizacion_detalle ADD COLUMN origen VARCHAR(50)"),
-            ("apu_id", "ALTER TABLE cotizacion_detalle ADD COLUMN apu_id INTEGER"),
-            ("apu_clave", "ALTER TABLE cotizacion_detalle ADD COLUMN apu_clave VARCHAR(80)"),
-            ("apu_directo", "ALTER TABLE cotizacion_detalle ADD COLUMN apu_directo FLOAT DEFAULT 0.0"),
-            ("apu_resumen_json", "ALTER TABLE cotizacion_detalle ADD COLUMN apu_resumen_json TEXT"),
         ]:
             if col not in dcols:
                 db.session.execute(text(stmt))
@@ -4409,11 +4400,6 @@ def crear_cotizacion():
     precios = f.getlist("item_precio[]")
     sistemas = f.getlist("item_sistema[]")
     descripciones = f.getlist("item_descripcion[]")
-    origenes = f.getlist("item_origen[]")
-    apu_ids = f.getlist("item_apu_id[]")
-    apu_claves = f.getlist("item_apu_clave[]")
-    apu_directos = f.getlist("item_apu_directo[]")
-    apu_resumenes = f.getlist("item_apu_resumen[]")
 
     subtotal = 0.0
     n = max(len(nombres), len(unidades), len(cantidades), len(precios))
@@ -4427,11 +4413,6 @@ def crear_cotizacion():
         pu   = parse_float(precios[i] if i < len(precios) else 0, 0.0)
         sis  = (sistemas[i] if i < len(sistemas) else "").strip()
         desc = (descripciones[i] if i < len(descripciones) else "") or ""
-        origen = (origenes[i] if i < len(origenes) else "").strip() or None
-        apu_id_val = parse_int(apu_ids[i] if i < len(apu_ids) else None, None)
-        apu_clave_val = (apu_claves[i] if i < len(apu_claves) else "").strip() or None
-        apu_directo_val = parse_float(apu_directos[i] if i < len(apu_directos) else 0, 0.0)
-        apu_resumen_val = (apu_resumenes[i] if i < len(apu_resumenes) else "").strip() or None
 
         line_subtotal = cant * pu
         subtotal += line_subtotal
@@ -4458,11 +4439,6 @@ def crear_cotizacion():
             sistema=sis or None,
             descripcion=desc,
             subtotal=line_subtotal,
-            origen=origen,
-            apu_id=apu_id_val,
-            apu_clave=apu_clave_val,
-            apu_directo=apu_directo_val,
-            apu_resumen_json=apu_resumen_val,
         ))
         db.session.add(det)
 
@@ -4626,11 +4602,6 @@ def actualizar_cotizacion(cot_id: int):
     precios = f.getlist("item_precio[]")
     sistemas = f.getlist("item_sistema[]")
     descripciones = f.getlist("item_descripcion[]")
-    origenes = f.getlist("item_origen[]")
-    apu_ids = f.getlist("item_apu_id[]")
-    apu_claves = f.getlist("item_apu_clave[]")
-    apu_directos = f.getlist("item_apu_directo[]")
-    apu_resumenes = f.getlist("item_apu_resumen[]")
 
     subtotal = 0.0
     n = max(len(nombres), len(unidades), len(cantidades), len(precios))
@@ -4644,11 +4615,6 @@ def actualizar_cotizacion(cot_id: int):
         precio = parse_float(precios[i] if i < len(precios) else 0, 0.0)
         sistema = (sistemas[i] if i < len(sistemas) else "").strip()
         descripcion = (descripciones[i] if i < len(descripciones) else "").strip()
-        origen = (origenes[i] if i < len(origenes) else "").strip() or None
-        apu_id_val = parse_int(apu_ids[i] if i < len(apu_ids) else None, None)
-        apu_clave_val = (apu_claves[i] if i < len(apu_claves) else "").strip() or None
-        apu_directo_val = parse_float(apu_directos[i] if i < len(apu_directos) else 0, 0.0)
-        apu_resumen_val = (apu_resumenes[i] if i < len(apu_resumenes) else "").strip() or None
 
         linea_subtotal = cantidad * precio
         subtotal += linea_subtotal
@@ -4676,11 +4642,6 @@ def actualizar_cotizacion(cot_id: int):
             sistema=sistema or None,
             descripcion=descripcion,
             subtotal=linea_subtotal,
-            origen=origen,
-            apu_id=apu_id_val,
-            apu_clave=apu_clave_val,
-            apu_directo=apu_directo_val,
-            apu_resumen_json=apu_resumen_val,
         ))
         db.session.add(det)
 

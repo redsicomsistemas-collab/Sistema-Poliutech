@@ -52,13 +52,11 @@
                 <td>{{ d.unidad }}</td>
                 <td>
                   <div class="quote-concept-display">{{ d.nombre_concepto }}</div>
-                  {% if d.origen == 'APU' %}
-                  <div class="small text-muted quote-concept-display">APU {{ d.apu_clave or d.apu_id or '-' }} · Directo base ${{ "%.2f"|format(d.apu_directo or 0) }}</div>
-                  {% elif d.descripcion %}
+                  {% if d.descripcion %}
                   <div class="small text-muted quote-concept-display">{{ d.descripcion }}</div>
                   {% endif %}
                 </td>
-                <td class="text-center">{% if d.origen == 'APU' %}<span class="badge bg-dark">APU</span>{% else %}{{ d.sistema or '-' }}{% endif %}</td>
+                <td class="text-center">{{ d.sistema or '-' }}</td>
                 <td class="text-end">${{ "%.2f"|format(d.precio_unitario) }}</td>
                 <td class="text-end">${{ "%.2f"|format(d.subtotal) }}</td>
               </tr>
