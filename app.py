@@ -1646,6 +1646,97 @@ def ensure_schema():
     except Exception as e:
         print("[WARN] ensure_schema(detalle extras):", e)
 
+    # --- PRECIOS UNITARIOS: columnas nativas ---
+    try:
+        pu_obra_cols = _table_columns("pu_obra")
+        for col, stmt in [
+            ("cliente", "ALTER TABLE pu_obra ADD COLUMN cliente VARCHAR(180)"),
+            ("ubicacion", "ALTER TABLE pu_obra ADD COLUMN ubicacion VARCHAR(220)"),
+            ("descripcion", "ALTER TABLE pu_obra ADD COLUMN descripcion TEXT"),
+            ("moneda", "ALTER TABLE pu_obra ADD COLUMN moneda VARCHAR(20) DEFAULT 'MXN'"),
+            ("creado_en", "ALTER TABLE pu_obra ADD COLUMN creado_en TIMESTAMP"),
+            ("actualizado_en", "ALTER TABLE pu_obra ADD COLUMN actualizado_en TIMESTAMP"),
+        ]:
+            if col not in pu_obra_cols:
+                db.session.execute(text(stmt))
+        db.session.commit()
+    except Exception as e:
+        print("[WARN] ensure_schema(pu_obra):", e)
+
+    try:
+        pu_sob_cols = _table_columns("pu_sobrecosto")
+        for col, stmt in [
+            ("indirecto_campo_pct", "ALTER TABLE pu_sobrecosto ADD COLUMN indirecto_campo_pct FLOAT DEFAULT 0.0"),
+            ("indirecto_oficina_pct", "ALTER TABLE pu_sobrecosto ADD COLUMN indirecto_oficina_pct FLOAT DEFAULT 0.0"),
+            ("financiamiento_pct", "ALTER TABLE pu_sobrecosto ADD COLUMN financiamiento_pct FLOAT DEFAULT 0.0"),
+            ("utilidad_pct", "ALTER TABLE pu_sobrecosto ADD COLUMN utilidad_pct FLOAT DEFAULT 10.0"),
+            ("cargos_adicionales_pct", "ALTER TABLE pu_sobrecosto ADD COLUMN cargos_adicionales_pct FLOAT DEFAULT 0.0"),
+            ("creado_en", "ALTER TABLE pu_sobrecosto ADD COLUMN creado_en TIMESTAMP"),
+            ("actualizado_en", "ALTER TABLE pu_sobrecosto ADD COLUMN actualizado_en TIMESTAMP"),
+        ]:
+            if col not in pu_sob_cols:
+                db.session.execute(text(stmt))
+        db.session.commit()
+    except Exception as e:
+        print("[WARN] ensure_schema(pu_sobrecosto):", e)
+
+    try:
+        pu_recurso_cols = _table_columns("pu_recurso")
+        for col, stmt in [
+            ("tipo", "ALTER TABLE pu_recurso ADD COLUMN tipo VARCHAR(30) DEFAULT 'material'"),
+            ("codigo", "ALTER TABLE pu_recurso ADD COLUMN codigo VARCHAR(60)"),
+            ("descripcion", "ALTER TABLE pu_recurso ADD COLUMN descripcion VARCHAR(300)"),
+            ("unidad", "ALTER TABLE pu_recurso ADD COLUMN unidad VARCHAR(50)"),
+            ("costo_unitario", "ALTER TABLE pu_recurso ADD COLUMN costo_unitario FLOAT DEFAULT 0.0"),
+            ("creado_en", "ALTER TABLE pu_recurso ADD COLUMN creado_en TIMESTAMP"),
+            ("actualizado_en", "ALTER TABLE pu_recurso ADD COLUMN actualizado_en TIMESTAMP"),
+        ]:
+            if col not in pu_recurso_cols:
+                db.session.execute(text(stmt))
+        db.session.commit()
+    except Exception as e:
+        print("[WARN] ensure_schema(pu_recurso):", e)
+
+    try:
+        pu_partida_cols = _table_columns("pu_partida")
+        for col, stmt in [
+            ("capitulo", "ALTER TABLE pu_partida ADD COLUMN capitulo VARCHAR(160) DEFAULT 'General'"),
+            ("clave", "ALTER TABLE pu_partida ADD COLUMN clave VARCHAR(80)"),
+            ("descripcion", "ALTER TABLE pu_partida ADD COLUMN descripcion VARCHAR(600)"),
+            ("unidad", "ALTER TABLE pu_partida ADD COLUMN unidad VARCHAR(50) DEFAULT 'pza'"),
+            ("cantidad", "ALTER TABLE pu_partida ADD COLUMN cantidad FLOAT DEFAULT 1.0"),
+            ("costo_directo", "ALTER TABLE pu_partida ADD COLUMN costo_directo FLOAT DEFAULT 0.0"),
+            ("precio_unitario", "ALTER TABLE pu_partida ADD COLUMN precio_unitario FLOAT DEFAULT 0.0"),
+            ("importe", "ALTER TABLE pu_partida ADD COLUMN importe FLOAT DEFAULT 0.0"),
+            ("creado_en", "ALTER TABLE pu_partida ADD COLUMN creado_en TIMESTAMP"),
+            ("actualizado_en", "ALTER TABLE pu_partida ADD COLUMN actualizado_en TIMESTAMP"),
+        ]:
+            if col not in pu_partida_cols:
+                db.session.execute(text(stmt))
+        db.session.commit()
+    except Exception as e:
+        print("[WARN] ensure_schema(pu_partida):", e)
+
+    try:
+        pu_insumo_cols = _table_columns("pu_partida_insumo")
+        for col, stmt in [
+            ("recurso_id", "ALTER TABLE pu_partida_insumo ADD COLUMN recurso_id INTEGER"),
+            ("tipo", "ALTER TABLE pu_partida_insumo ADD COLUMN tipo VARCHAR(30) DEFAULT 'material'"),
+            ("codigo", "ALTER TABLE pu_partida_insumo ADD COLUMN codigo VARCHAR(60)"),
+            ("descripcion", "ALTER TABLE pu_partida_insumo ADD COLUMN descripcion VARCHAR(400)"),
+            ("unidad", "ALTER TABLE pu_partida_insumo ADD COLUMN unidad VARCHAR(50)"),
+            ("cantidad", "ALTER TABLE pu_partida_insumo ADD COLUMN cantidad FLOAT DEFAULT 0.0"),
+            ("costo_unitario", "ALTER TABLE pu_partida_insumo ADD COLUMN costo_unitario FLOAT DEFAULT 0.0"),
+            ("importe", "ALTER TABLE pu_partida_insumo ADD COLUMN importe FLOAT DEFAULT 0.0"),
+            ("creado_en", "ALTER TABLE pu_partida_insumo ADD COLUMN creado_en TIMESTAMP"),
+            ("actualizado_en", "ALTER TABLE pu_partida_insumo ADD COLUMN actualizado_en TIMESTAMP"),
+        ]:
+            if col not in pu_insumo_cols:
+                db.session.execute(text(stmt))
+        db.session.commit()
+    except Exception as e:
+        print("[WARN] ensure_schema(pu_partida_insumo):", e)
+
     _migrate_registro_obras_from_json()
 
 # ---------------------------------------------------------
