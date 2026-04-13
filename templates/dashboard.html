@@ -65,17 +65,28 @@
   }
 
   .dashboard-chart-card .card-body {
-    height: 460px;
+    height: 595px;
   }
 
   .dashboard-monthly-chart {
     position: relative;
-    height: 380px;
+    height: 520px;
   }
 
   .dashboard-status-chart {
     position: relative;
     height: 330px;
+  }
+
+  .dashboard-charts-row {
+    max-width: none !important;
+    width: 100% !important;
+  }
+
+  .dashboard-charts-row canvas {
+    width: 100% !important;
+    height: 100% !important;
+    max-height: none !important;
   }
 
   @media (max-width: 991.98px) {
@@ -101,9 +112,12 @@
       height: 420px;
     }
 
-    .dashboard-monthly-chart,
-    .dashboard-status-chart {
+    .dashboard-monthly-chart {
       height: 330px;
+    }
+
+    .dashboard-status-chart {
+      height: 300px;
     }
   }
 </style>
@@ -164,8 +178,8 @@
 </div>
 
 <!-- 📊 GRÁFICAS -->
-<div class="row mt-4">
-  <div class="col-lg-9">
+<div class="row mt-4 dashboard-charts-row">
+  <div class="col-12">
     <div class="card shadow-sm h-100 dashboard-chart-card">
       <div class="card-body">
         <h5 class="card-title text-primary">Resumen Mensual</h5>
@@ -176,7 +190,7 @@
     </div>
   </div>
 
-  <div class="col-lg-3">
+  <div class="col-lg-4 mt-4">
     <div class="card shadow-sm h-100 dashboard-chart-card">
       <div class="card-body">
         <h5 class="card-title">Distribución por Estatus</h5>
