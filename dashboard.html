@@ -1,0 +1,1039 @@
+{% extends "base.html" %}
+{% block content %}
+
+<style>
+  .dashboard-quotes-card {
+    width: 100%;
+  }
+
+  .dashboard-filters .filter-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: end;
+  }
+
+  .dashboard-filters .filter-actions .btn {
+    min-width: 140px;
+  }
+
+  .dashboard-bulk-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    justify-content: flex-end;
+    align-items: center;
+  }
+
+  .dashboard-bulk-actions .btn {
+    white-space: normal;
+  }
+
+  .dashboard-quotes-table {
+    width: 100%;
+  }
+
+  .dashboard-quotes-table th,
+  .dashboard-quotes-table td {
+    vertical-align: middle;
+  }
+
+  .dashboard-quotes-table .cell-cliente,
+  .dashboard-quotes-table .cell-empresa {
+    min-width: 12rem;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    text-align: left;
+  }
+
+  .dashboard-quotes-table .cell-estatus {
+    min-width: 9rem;
+  }
+
+  .dashboard-quotes-table .cell-estatus .status-select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .dashboard-quotes-table .cell-acciones {
+    min-width: 10rem;
+    white-space: normal !important;
+  }
+
+  .dashboard-quotes-table .cell-acciones .btn {
+    margin: 0.125rem;
+  }
+
+  .dashboard-chart-card .card-body {
+    height: 560px;
+  }
+
+  .dashboard-monthly-chart {
+    position: relative;
+    height: 485px;
+  }
+
+  .dashboard-status-chart {
+    position: relative;
+    height: 330px;
+  }
+
+  .dashboard-charts-row {
+    max-width: none !important;
+    width: 100% !important;
+  }
+
+  .dashboard-charts-row canvas {
+    width: 100% !important;
+    height: 100% !important;
+    max-height: none !important;
+  }
+
+  @media (max-width: 991.98px) {
+    .dashboard-filters .filter-actions {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .dashboard-filters .filter-actions .btn {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .dashboard-bulk-actions {
+      justify-content: stretch;
+    }
+
+    .dashboard-bulk-actions > * {
+      width: 100%;
+    }
+
+    .dashboard-chart-card .card-body {
+      height: 420px;
+    }
+
+    .dashboard-monthly-chart {
+      height: 330px;
+    }
+
+    .dashboard-status-chart {
+      height: 300px;
+    }
+  }
+</style>
+
+<div class="row mb-4 text-center">
+  <div class="col-md-3">
+    <div class="card border-success shadow-sm">
+      <div class="card-body">
+        <h6 class="text-success">Importe Total</h6>
+        <h3 class="fw-bold text-dark" data-summary="importe-total">${{ "{:,.2f}".format(total_importe) }}</h3>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-primary shadow-sm">
+      <div class="card-body">
+        <h6 class="text-primary">Cotizaciones Totales</h6>
+        <h3 class="fw-bold text-dark" data-summary="cotizaciones-total">{{ total_cotizaciones }}</h3>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-info shadow-sm">
+      <div class="card-body">
+        <h6 class="text-info">Conceptos Registrados</h6>
+        <h3 class="fw-bold text-dark" data-summary="conceptos-total">{{ total_catalogo }}</h3>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 🔢 MÉTRICAS -->
+<div class="row mb-4 text-center">
+  <div class="col-md-4">
+    <div class="card border-success shadow-sm">
+      <div class="card-body">
+        <h6 class="text-success">Importe Total</h6>
+        <h3 class="fw-bold text-dark" data-summary="importe-total">${{ "{:,.2f}".format(total_importe) }}</h3>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-primary shadow-sm">
+      <div class="card-body">
+        <h6 class="text-primary">Cotizaciones Totales</h6>
+        <h3 class="fw-bold text-dark" data-summary="cotizaciones-total">{{ total_cotizaciones }}</h3>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-info shadow-sm">
+      <div class="card-body">
+        <h6 class="text-info">Conceptos Registrados</h6>
+        <h3 class="fw-bold text-dark" data-summary="conceptos-total">{{ total_catalogo }}</h3>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 📊 GRÁFICAS -->
+<div class="row mt-4 dashboard-charts-row">
+  <div class="col-12">
+    <div class="card shadow-sm h-100 dashboard-chart-card">
+      <div class="card-body">
+        <h5 class="card-title text-primary">Resumen Mensual</h5>
+        <div class="dashboard-monthly-chart">
+          <canvas id="chartMensual"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4 mt-4">
+    <div class="card shadow-sm h-100 dashboard-chart-card">
+      <div class="card-body">
+        <h5 class="card-title">Distribución por Estatus</h5>
+        <div class="dashboard-status-chart">
+          <canvas id="chartEstatus"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 📋 TABLA DE COTIZACIONES + FILTROS -->
+<div class="mt-5">
+  <div class="card shadow-sm dashboard-quotes-card">
+    <div class="card-body">
+      <h5 class="card-title mb-3">Últimas Cotizaciones</h5>
+
+      <!-- 🔍 FILTROS -->
+      <div class="row g-3 align-items-end mb-3 dashboard-filters">
+        <div class="col-xl-2 col-lg-3 col-md-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Desde</label>
+          <input type="date" id="filtro-desde" class="form-control form-control-sm">
+        </div>
+        <div class="col-xl-2 col-lg-3 col-md-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Hasta</label>
+          <input type="date" id="filtro-hasta" class="form-control form-control-sm">
+        </div>
+        <div class="col-xl-2 col-lg-3 col-md-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Estatus</label>
+          <select id="filtro-estatus" class="form-select form-select-sm">
+            <option value="">Todos</option>
+            {% for estado in valid_estatus %}
+            <option value="{{ estado }}">{{ estado }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-xl-3 col-lg-3 col-md-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Cliente / Empresa</label>
+          <input type="text" id="filtro-cliente" class="form-control form-control-sm" placeholder="Buscar...">
+        </div>
+        <div class="col-xl-3 col-12">
+          <div class="filter-actions">
+            <button id="btn-exportar-excel" type="button" class="btn btn-success btn-sm">Exportar Excel</button>
+            <button id="btn-exportar-seguimientos-pdf" type="button" class="btn btn-danger btn-sm">PDF Seguimientos</button>
+            <button id="btn-limpiar-filtros" type="button" class="btn btn-outline-secondary btn-sm">Limpiar</button>
+          </div>
+        </div>
+        {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
+        <div class="col-12 mt-1 dashboard-bulk-actions">
+          <span class="small text-secondary me-2" id="bulk-selected-label">Seleccionadas: <b id="bulk-selected-count">0</b></span>
+          <span class="small text-secondary me-2" id="bulk-visible-label">Visibles: <b id="bulk-visible-count">0</b></span>
+
+          <button id="btn-bulk-delete" class="btn btn-danger btn-sm" disabled>
+            🗑️ Eliminar seleccionadas
+          </button>
+          <button id="btn-bulk-delete-visible" class="btn btn-outline-danger btn-sm" disabled>
+            🗑️ Eliminar visibles (filtradas)
+          </button>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- 📋 TABLA -->
+      <div class="table-responsive">
+        <table class="table table-bordered align-middle dashboard-quotes-table">
+          <thead class="table-light">
+            <tr>
+              {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
+              <th style="width:36px" class="text-center">
+                <input type="checkbox" id="chk-select-all" title="Seleccionar todo (visibles)">
+              </th>
+              {% endif %}
+              <th>Folio</th>
+              <th>Fecha</th>
+              <th>Cliente</th>
+              <th>Empresa</th>
+              <th>Total</th>
+              <th>Estatus</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tablaCotizaciones">
+            {% for c in cotizaciones %}
+            <tr data-id="{{ c.id }}" 
+                data-fecha="{{ c.fecha.strftime('%Y-%m-%d') }}"
+                data-estatus="{{ c.estatus }}"
+                data-total="{{ '%.2f'|format(c.total or 0) }}"
+                data-cliente="{{ (c.cliente.nombre_cliente if c.cliente else '')|lower }}"
+                data-empresa="{{ (c.cliente.empresa if c.cliente else '')|lower }}">
+              {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
+              <td class="text-center">
+                <input type="checkbox" class="chk-cot" value="{{ c.id }}" aria-label="Seleccionar {{ c.folio }}">
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary btn-sm btn-send-email ms-1"
+                  title="Enviar por correo"
+                  data-id="{{ c.id }}"
+                  data-folio="{{ c.folio }}"
+                  data-email="{{ c.cliente.correo if c.cliente and c.cliente.correo else '' }}"
+                >📧</button>
+              </td>
+              {% endif %}
+              <td>
+                <a href="{{ url_for('cotizacion_seguimiento', cot_id=c.id) }}" class="fw-semibold text-decoration-none">
+                  {{ c.folio }}
+                </a>
+              </td>
+              <td>{{ c.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
+              <td class="cell-cliente">{{ c.cliente.nombre_cliente if c.cliente else '' }}</td>
+              <td class="cell-empresa">{{ c.cliente.empresa if c.cliente else '' }}</td>
+              <td>${{ "{:,.2f}".format(c.total) }}</td>
+              <td class="cell-estatus">
+                <select class="status-select" onchange="cambiarEstatus({{ c.id }}, this)">
+                  {% for estado in valid_estatus %}
+                    <option value="{{ estado }}" {% if c.estatus == estado %}selected{% endif %}>{{ estado }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td class="text-center cell-acciones">
+                <a href="{{ url_for('view_cotizacion', cot_id=c.id) }}" class="btn btn-outline-primary btn-sm" title="Ver">👁️</a>
+                <a href="{{ url_for('cotizacion_seguimiento', cot_id=c.id) }}" class="btn btn-outline-dark btn-sm" title="Seguimiento">💬</a>
+                <a href="{{ url_for('export_cotizacion_pdf', cot_id=c.id) }}" target="_blank" class="btn btn-outline-danger btn-sm" title="PDF">📄</a>
+                <a href="{{ url_for('export_cotizacion_xlsx', cot_id=c.id) }}" class="btn btn-outline-success btn-sm" title="Excel">📊</a>
+                <a href="{{ url_for('editar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-warning btn-sm" title="Editar">✏️</a>
+                {% if not (current_user.is_authenticated and current_user.rol == 'ADMIN') %}
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary btn-sm btn-send-email"
+                  title="Enviar por correo"
+                  data-id="{{ c.id }}"
+                  data-folio="{{ c.folio }}"
+                  data-email="{{ c.cliente.correo if c.cliente and c.cliente.correo else '' }}"
+                >📧</button>
+                {% endif %}
+                {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
+                <a href="{{ url_for('eliminar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-danger btn-sm" title="Eliminar">🗑️</a>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if pagination and pagination.pages > 1 %}
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mt-3">
+        <div class="text-muted small">
+          Mostrando {{ ((pagination.page - 1) * pagination.per_page) + 1 }} -
+          {{ ((pagination.page - 1) * pagination.per_page) + (cotizaciones|length) }}
+          de {{ pagination.total }} cotizaciones
+        </div>
+        <nav aria-label="Paginacion de cotizaciones">
+          <ul class="pagination pagination-sm mb-0">
+            <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+              <a class="page-link" href="{{ url_for('index', page=pagination.prev_num) if pagination.has_prev else '#' }}">Anterior</a>
+            </li>
+            {% for p in pagination.iter_pages(left_edge=1, left_current=1, right_current=2, right_edge=1) %}
+              {% if p %}
+              <li class="page-item {% if p == pagination.page %}active{% endif %}">
+                <a class="page-link" href="{{ url_for('index', page=p) }}">{{ p }}</a>
+              </li>
+              {% else %}
+              <li class="page-item disabled"><span class="page-link">...</span></li>
+              {% endif %}
+            {% endfor %}
+            <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+              <a class="page-link" href="{{ url_for('index', page=pagination.next_num) if pagination.has_next else '#' }}">Siguiente</a>
+            </li>
+          </ul>
+        </nav>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- 📈 SCRIPTS -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<!-- ✅ FILTROS FUNCIONALES EN TIEMPO REAL -->
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const IS_ADMIN = {{ 'true' if (current_user.is_authenticated and current_user.rol == 'ADMIN') else 'false' }};
+  const desde = document.getElementById("filtro-desde");
+  const hasta = document.getElementById("filtro-hasta");
+  const estatus = document.getElementById("filtro-estatus");
+  const cliente = document.getElementById("filtro-cliente");
+  const limpiar = document.getElementById("btn-limpiar-filtros");
+  const exportarExcel = document.getElementById("btn-exportar-excel");
+  const exportarSeguimientosPdf = document.getElementById("btn-exportar-seguimientos-pdf");
+  const importeSummaryEls = document.querySelectorAll('[data-summary="importe-total"]');
+  const cotizacionesSummaryEls = document.querySelectorAll('[data-summary="cotizaciones-total"]');
+  const conceptosSummaryEls = document.querySelectorAll('[data-summary="conceptos-total"]');
+  const statuses = {{ valid_estatus|tojson }};
+  const chartColors = ["#1565c0", "#f9a825", "#00897b", "#6d4c41", "#546e7a", "#2e7d32", "#c62828"];
+  const monthNames = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+  const moneyCompact = new Intl.NumberFormat("es-MX", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  });
+  let chartMensualInstance = null;
+  let chartEstatusInstance = null;
+
+  // ✅ Selección masiva + borrado (solo admin)
+  const chkAll = document.getElementById("chk-select-all");
+  const btnBulkDelete = document.getElementById("btn-bulk-delete");
+  const btnBulkDeleteVisible = document.getElementById("btn-bulk-delete-visible");
+  const selCountEl = document.getElementById("bulk-selected-count");
+  const visCountEl = document.getElementById("bulk-visible-count");
+
+  function getVisibleRows() {
+    return Array.from(document.querySelectorAll("#tablaCotizaciones tr"))
+      .filter(tr => tr.style.display !== "none");
+  }
+
+  function setSummaryText(elements, value) {
+    elements.forEach((el) => {
+      el.textContent = value;
+    });
+  }
+
+  function buildFilterParams() {
+    const params = new URLSearchParams();
+    if (desde?.value) params.set("desde", desde.value);
+    if (hasta?.value) params.set("hasta", hasta.value);
+    if (estatus?.value) params.set("estatus", estatus.value);
+    if (cliente?.value.trim()) params.set("cliente", cliente.value.trim());
+    return params;
+  }
+
+  async function refreshSummaryCards() {
+    const params = buildFilterParams();
+
+    try {
+      const query = params.toString();
+      const response = await fetch(`/api/dashboard/filter-summary${query ? `?${query}` : ""}`);
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "No se pudo actualizar el resumen.");
+      }
+
+      const importe = new Intl.NumberFormat("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(Number(data.total_importe || 0));
+      setSummaryText(importeSummaryEls, `$${importe}`);
+      setSummaryText(cotizacionesSummaryEls, String(data.total_cotizaciones || 0));
+      setSummaryText(conceptosSummaryEls, String(data.total_conceptos || 0));
+    } catch (err) {
+      console.error("Error actualizando resumen del dashboard", err);
+    }
+  }
+  window.refreshDashboardSummary = refreshSummaryCards;
+
+  function buildVisibleMonthlyData(visibleRows) {
+    const monthly = new Map();
+    const years = new Set();
+
+    visibleRows.forEach((tr) => {
+      const fecha = (tr.dataset.fecha || "").trim();
+      const month = fecha ? fecha.slice(0, 7) : "";
+      const year = fecha ? fecha.slice(0, 4) : "";
+      const total = Number.parseFloat(tr.dataset.total || "0") || 0;
+
+      if (!month) return;
+      if (!monthly.has(month)) {
+        monthly.set(month, { total: 0, cotizaciones: 0 });
+      }
+      const monthData = monthly.get(month);
+      monthData.total += total;
+      monthData.cotizaciones += 1;
+      if (/^\d{4}$/.test(year)) {
+        years.add(year);
+      }
+    });
+
+    return { monthly, years };
+  }
+
+  async function getDashboardMonthlyData(visibleRows) {
+    const params = buildFilterParams();
+    const query = params.toString();
+
+    try {
+      const response = await fetch(`/api/dashboard/metrics${query ? `?${query}` : ""}`);
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "No se pudo cargar la grafica mensual.");
+      }
+
+      const monthly = new Map();
+      const years = new Set();
+      (data.series || []).forEach((item) => {
+        const month = String(item.mes || "");
+        const year = month.slice(0, 4);
+        if (!/^\d{4}-\d{2}$/.test(month)) return;
+        monthly.set(month, {
+          total: Number(item.total || 0),
+          cotizaciones: Number(item.cotizaciones || 0),
+        });
+        years.add(year);
+      });
+      return { monthly, years };
+    } catch (err) {
+      console.error("Error cargando grafica mensual del dashboard", err);
+      return buildVisibleMonthlyData(visibleRows);
+    }
+  }
+
+  function getActiveChartYear(years, monthly) {
+    const currentYear = String(new Date().getFullYear());
+    const sortedYears = Array.from(years).sort();
+    const desdeYear = desde?.value ? desde.value.slice(0, 4) : "";
+    const hastaYear = hasta?.value ? hasta.value.slice(0, 4) : "";
+
+    if (/^\d{4}$/.test(desdeYear) && years.has(desdeYear)) return desdeYear;
+    if (/^\d{4}$/.test(hastaYear) && years.has(hastaYear)) return hastaYear;
+    if (years.has(currentYear)) return currentYear;
+    if (sortedYears.length > 0) return sortedYears[sortedYears.length - 1];
+
+    for (const key of monthly.keys()) {
+      const year = key.slice(0, 4);
+      if (/^\d{4}$/.test(year)) return year;
+    }
+    return currentYear;
+  }
+
+  async function renderFilteredCharts() {
+    const visibleRows = getVisibleRows();
+    const statusCounts = Object.fromEntries(statuses.map((status) => [status, 0]));
+    const { monthly, years } = await getDashboardMonthlyData(visibleRows);
+
+    visibleRows.forEach((tr) => {
+      const rowStatus = (tr.dataset.estatus || "").trim().toUpperCase();
+
+      if (Object.prototype.hasOwnProperty.call(statusCounts, rowStatus)) {
+        statusCounts[rowStatus] += 1;
+      }
+    });
+
+    const activeYear = getActiveChartYear(years, monthly);
+    const monthKeys = monthNames.map((_, index) => `${activeYear}-${String(index + 1).padStart(2, "0")}`);
+    const labels = monthNames;
+    const importes = monthKeys.map((key) => Number(monthly.get(key)?.total || 0));
+    const cantidades = monthKeys.map((key) => Number(monthly.get(key)?.cotizaciones || 0));
+    const statusData = statuses.map((status) => statusCounts[status] || 0);
+
+    if (chartMensualInstance) chartMensualInstance.destroy();
+    chartMensualInstance = new Chart(document.getElementById("chartMensual"), {
+      data: {
+        labels,
+        datasets: [
+          {
+            type: "bar",
+            label: "Importe Total ($)",
+            data: importes,
+            yAxisID: "y",
+            backgroundColor: "#1565c0",
+            borderRadius: 6,
+            maxBarThickness: 42
+          },
+          {
+            type: "line",
+            label: "Cotizaciones",
+            data: cantidades,
+            yAxisID: "y1",
+            borderColor: "#43a047",
+            backgroundColor: "#43a047",
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            tension: 0.25
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        layout: { padding: { top: 8, right: 8, bottom: 0, left: 8 } },
+        plugins: {
+          title: {
+            display: true,
+            text: activeYear,
+            color: "#444",
+            font: { size: 13, weight: "normal" }
+          },
+          legend: {
+            position: "top",
+            labels: { boxWidth: 28, padding: 12 }
+          },
+          tooltip: {
+            callbacks: {
+              label: (context) => {
+                if (context.dataset.yAxisID === "y") {
+                  return ` ${context.dataset.label}: $${Number(context.raw || 0).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                }
+                return ` ${context.dataset.label}: ${context.raw || 0}`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: {
+              autoSkip: false,
+              maxRotation: 0,
+              minRotation: 0
+            }
+          },
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: (value) => `$${moneyCompact.format(value)}`
+            }
+          },
+          y1: {
+            beginAtZero: true,
+            position: "right",
+            grid: { drawOnChartArea: false },
+            ticks: { precision: 0 }
+          }
+        }
+      }
+    });
+
+    if (chartEstatusInstance) chartEstatusInstance.destroy();
+    chartEstatusInstance = new Chart(document.getElementById("chartEstatus"), {
+      type: "doughnut",
+      data: {
+        labels: statuses,
+        datasets: [{
+          data: statusData,
+          backgroundColor: chartColors
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: "bottom" } }
+      }
+    });
+  }
+
+  window.refreshDashboardCharts = renderFilteredCharts;
+
+  function getVisibleRowCheckboxes() {
+    return getVisibleRows()
+      .map(tr => tr.querySelector(".chk-cot"))
+      .filter(Boolean);
+  }
+
+  function updateBulkDeleteState() {
+    if (!IS_ADMIN) return;
+    const allChecks = Array.from(document.querySelectorAll(".chk-cot"));
+    const anyChecked = allChecks.some(chk => chk.checked);
+    const checkedCount = allChecks.filter(chk => chk.checked).length;
+    if (selCountEl) selCountEl.textContent = String(checkedCount);
+    if (btnBulkDelete) btnBulkDelete.disabled = !anyChecked;
+
+    const visible = getVisibleRowCheckboxes();
+    if (visCountEl) visCountEl.textContent = String(visible.length);
+    if (btnBulkDeleteVisible) btnBulkDeleteVisible.disabled = visible.length === 0;
+    if (visible.length === 0) {
+      if (chkAll) {
+        chkAll.checked = false;
+        chkAll.indeterminate = false;
+      }
+      return;
+    }
+    const visChecked = visible.filter(chk => chk.checked).length;
+    if (chkAll) {
+      chkAll.checked = visChecked === visible.length;
+      chkAll.indeterminate = visChecked > 0 && visChecked < visible.length;
+    }
+  }
+
+  if (IS_ADMIN && chkAll) {
+    chkAll.addEventListener("change", () => {
+      const visible = getVisibleRowCheckboxes();
+      visible.forEach(chk => (chk.checked = chkAll.checked));
+      updateBulkDeleteState();
+    });
+  }
+
+  if (IS_ADMIN) {
+    document.addEventListener("change", (e) => {
+      if (e.target && e.target.classList.contains("chk-cot")) {
+        updateBulkDeleteState();
+      }
+    });
+  }
+
+  async function confirmIfGanadas(ids) {
+    // detectar si hay GANADA en selección
+    const ganadas = ids.filter(id => {
+      const tr = document.querySelector(`#tablaCotizaciones tr[data-id="${id}"]`);
+      return tr && (tr.dataset.estatus || "").toUpperCase() === "GANADA";
+    });
+    if (ganadas.length === 0) return true;
+
+    const step1 = await Swal.fire({
+      icon: "warning",
+      title: "¡Ojo! Hay cotizaciones GANADAS",
+      html: `Estás por eliminar <b>${ganadas.length}</b> cotización(es) con estatus <b>GANADA</b>.<br><br>Para continuar escribe <b>ELIMINAR</b>.`,
+      input: "text",
+      inputPlaceholder: "Escribe ELIMINAR",
+      showCancelButton: true,
+      confirmButtonText: "Continuar",
+      cancelButtonText: "Cancelar",
+      confirmButtonColor: "#dc3545",
+      preConfirm: (val) => {
+        if ((val || "").trim().toUpperCase() !== "ELIMINAR") {
+          Swal.showValidationMessage("Debes escribir ELIMINAR para confirmar.");
+          return false;
+        }
+        return true;
+      }
+    });
+    return !!step1.isConfirmed;
+  }
+
+  if (IS_ADMIN && btnBulkDelete) btnBulkDelete.addEventListener("click", async () => {
+    const ids = Array.from(document.querySelectorAll(".chk-cot"))
+      .filter(chk => chk.checked)
+      .map(chk => parseInt(chk.value, 10))
+      .filter(n => Number.isFinite(n));
+
+    if (ids.length === 0) return;
+
+    if (!(await confirmIfGanadas(ids))) return;
+
+    const res = await Swal.fire({
+      icon: "warning",
+      title: "¿Eliminar cotizaciones seleccionadas?",
+      html: `Vas a eliminar <b>${ids.length}</b> cotización(es). Esta acción no se puede deshacer.`,
+      showCancelButton: true,
+      confirmButtonText: "Sí, eliminar",
+      cancelButtonText: "Cancelar",
+      confirmButtonColor: "#dc3545",
+    });
+    if (!res.isConfirmed) return;
+
+    try {
+      const r = await fetch("{{ url_for('bulk_eliminar_cotizaciones') }}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data?.error || "Error al eliminar");
+
+      // Quitar filas eliminadas
+      (data.deleted_ids || ids).forEach((id) => {
+        const tr = document.querySelector(`#tablaCotizaciones tr[data-id="${id}"]`);
+        if (tr) tr.remove();
+      });
+
+      // Reset UI
+      chkAll.checked = false;
+      chkAll.indeterminate = false;
+      updateBulkDeleteState();
+      renderFilteredCharts();
+      refreshSummaryCards();
+
+      await Swal.fire({
+        icon: "success",
+        title: "Listo",
+        text: `Eliminadas: ${data.deleted || 0}. Omitidas (sin permiso / no encontradas): ${data.skipped || 0}.`,
+      });
+    } catch (err) {
+      await Swal.fire({
+        icon: "error",
+        title: "No se pudo eliminar",
+        text: err?.message || "Error desconocido",
+      });
+    }
+  });
+
+  // Eliminar visibles por filtros
+  if (IS_ADMIN && btnBulkDeleteVisible) btnBulkDeleteVisible.addEventListener("click", async () => {
+    const visibleIds = Array.from(document.querySelectorAll("#tablaCotizaciones tr"))
+      .filter(tr => tr.style.display !== "none")
+      .map(tr => parseInt(tr.dataset.id, 10))
+      .filter(n => Number.isFinite(n));
+    if (visibleIds.length === 0) return;
+
+    if (!(await confirmIfGanadas(visibleIds))) return;
+
+    const res = await Swal.fire({
+      icon: "warning",
+      title: "¿Eliminar cotizaciones visibles (filtradas)?",
+      html: `Vas a eliminar <b>${visibleIds.length}</b> cotización(es) que coinciden con los filtros actuales.<br>Esta acción no se puede deshacer.`,
+      showCancelButton: true,
+      confirmButtonText: "Sí, eliminar",
+      cancelButtonText: "Cancelar",
+      confirmButtonColor: "#dc3545",
+    });
+    if (!res.isConfirmed) return;
+
+    try {
+      const r = await fetch("{{ url_for('bulk_eliminar_filtradas') }}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filters: {
+            desde: (desde?.value || ""),
+            hasta: (hasta?.value || ""),
+            estatus: (estatus?.value || ""),
+            cliente: (cliente?.value || ""),
+          }
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data?.error || "Error al eliminar");
+
+      (data.deleted_ids || visibleIds).forEach((id) => {
+        const tr = document.querySelector(`#tablaCotizaciones tr[data-id="${id}"]`);
+        if (tr) tr.remove();
+      });
+
+      if (chkAll) {
+        chkAll.checked = false;
+        chkAll.indeterminate = false;
+      }
+      updateBulkDeleteState();
+      renderFilteredCharts();
+      refreshSummaryCards();
+
+      await Swal.fire({
+        icon: "success",
+        title: "Listo",
+        text: `Eliminadas: ${data.deleted || 0}.`,
+      });
+    } catch (err) {
+      await Swal.fire({
+        icon: "error",
+        title: "No se pudo eliminar",
+        text: err?.message || "Error desconocido",
+      });
+    }
+  });
+  const filas = document.querySelectorAll("#tablaCotizaciones tr");
+
+  function filtrar() {
+    const d = desde.value ? new Date(desde.value + "T00:00:00") : null;
+    const h = hasta.value ? new Date(hasta.value + "T23:59:59") : null;
+    const e = estatus.value.trim();
+    const c = cliente.value.trim().toLowerCase();
+
+    filas.forEach(tr => {
+      const f = new Date(tr.dataset.fecha);
+      const est = tr.dataset.estatus?.trim() || "";
+      const cli = tr.dataset.cliente || "";
+      const emp = tr.dataset.empresa || "";
+      let visible = true;
+
+      if (d && f < d) visible = false;
+      if (h && f > h) visible = false;
+      if (e && est !== e) visible = false;
+      if (c && !(cli.includes(c) || emp.includes(c))) visible = false;
+
+      tr.style.display = visible ? "" : "none";
+    });
+
+    // recalcular estado del checkbox "seleccionar todo" y botón
+    updateBulkDeleteState();
+    renderFilteredCharts();
+    refreshSummaryCards();
+  }
+
+  ["input", "change", "keyup"].forEach(evt => {
+    [desde, hasta, estatus, cliente].forEach(el => el.addEventListener(evt, filtrar));
+  });
+
+  limpiar.addEventListener("click", () => {
+    [desde, hasta, estatus, cliente].forEach(el => el.value = "");
+    filas.forEach(tr => tr.style.display = "");
+    updateBulkDeleteState();
+    renderFilteredCharts();
+    refreshSummaryCards();
+  });
+
+  if (exportarExcel) {
+    exportarExcel.addEventListener("click", () => {
+      const params = buildFilterParams();
+      const query = params.toString();
+      window.location.href = `{{ url_for('export_dashboard_cotizaciones_xlsx') }}${query ? `?${query}` : ""}`;
+    });
+  }
+
+  if (exportarSeguimientosPdf) {
+    exportarSeguimientosPdf.addEventListener("click", () => {
+      const params = buildFilterParams();
+      const query = params.toString();
+      window.location.href = `{{ url_for('export_dashboard_followups_pdf') }}${query ? `?${query}` : ""}`;
+    });
+  }
+
+  document.addEventListener("click", async (e) => {
+    const btn = e.target.closest(".btn-send-email");
+    if (!btn) return;
+
+    const cotId = btn.dataset.id;
+    const folio = btn.dataset.folio || "";
+    const defaultEmail = btn.dataset.email || "";
+
+    const modal = await Swal.fire({
+      icon: "question",
+      title: `Enviar cotización ${folio}`,
+      html: `
+        <input id="swal-email-to" type="email" class="swal2-input" placeholder="Destino" value="${defaultEmail}">
+        <input id="swal-email-cc" type="text" class="swal2-input" placeholder="CC (separa con comas)">
+        <input id="swal-email-bcc" type="text" class="swal2-input" placeholder="CCO (separa con comas)">
+      `,
+      showCancelButton: true,
+      confirmButtonText: "Enviar",
+      cancelButtonText: "Cancelar",
+      focusConfirm: false,
+      preConfirm: () => {
+        const email = (document.getElementById("swal-email-to")?.value || "").trim();
+        const cc = (document.getElementById("swal-email-cc")?.value || "").trim();
+        const bcc = (document.getElementById("swal-email-bcc")?.value || "").trim();
+        if (!email) {
+          Swal.showValidationMessage("Captura un correo destino.");
+          return false;
+        }
+        return { to: email, cc, bcc };
+      }
+    });
+
+    if (!modal.isConfirmed) return;
+
+    try {
+      btn.disabled = true;
+      const response = await fetch(`/api/cotizaciones/${cotId}/send-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(modal.value)
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(data?.error || "No se pudo enviar el correo.");
+      }
+
+      btn.dataset.email = modal.value.to;
+      await Swal.fire({
+        icon: "success",
+        title: "Correo enviado",
+        text: data.message || `La cotización ${folio} fue enviada correctamente.`,
+      });
+    } catch (err) {
+      await Swal.fire({
+        icon: "error",
+        title: "No se pudo enviar",
+        text: err?.message || "Error desconocido",
+      });
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // estado inicial
+  updateBulkDeleteState();
+  renderFilteredCharts();
+  refreshSummaryCards();
+});
+</script>
+
+<script>
+</script>
+
+<script>
+function cambiarEstatus(id, selectElem) {
+    const nuevo = selectElem.value;
+
+    fetch(`/api/cotizaciones/${id}/estatus`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estatus: nuevo })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            Swal.fire({
+                icon: "success",
+                title: "Estatus actualizado",
+                text: data.mensaje,
+                timer: 1500,
+                showConfirmButton: false
+            });
+
+            const fila = selectElem.closest("tr");
+            if (fila) fila.dataset.estatus = nuevo;
+            if (typeof window.refreshDashboardCharts === "function") {
+                window.refreshDashboardCharts();
+            }
+            if (typeof window.refreshDashboardSummary === "function") {
+                window.refreshDashboardSummary();
+            }
+        } else {
+            Swal.fire("Error", data.error, "error");
+        }
+    })
+    .catch(err => {
+        Swal.fire("Error", "No se pudo actualizar el estatus.", "error");
+        console.error(err);
+    });
+}
+</script>
+
+<script>
+function cambiarEstatus(id, selectElem) {
+    const nuevo = selectElem.value;
+
+    fetch(`/api/cotizaciones/${id}/estatus`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estatus: nuevo })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            Swal.fire({
+                icon: "success",
+                title: "Estatus actualizado",
+                text: data.mensaje,
+                timer: 1500,
+                showConfirmButton: false
+            });
+
+            const fila = selectElem.closest("tr");
+            if (fila) fila.dataset.estatus = nuevo;
+        } else {
+            Swal.fire("Error", data.error, "error");
+        }
+    })
+    .catch(err => {
+        Swal.fire("Error", "No se pudo actualizar el estatus.", "error");
+        console.error(err);
+    });
+}
+</script>
+
+
+
+{% endblock %}
