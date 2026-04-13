@@ -64,6 +64,20 @@
     margin: 0.125rem;
   }
 
+  .dashboard-chart-card .card-body {
+    height: 460px;
+  }
+
+  .dashboard-monthly-chart {
+    position: relative;
+    height: 380px;
+  }
+
+  .dashboard-status-chart {
+    position: relative;
+    height: 330px;
+  }
+
   @media (max-width: 991.98px) {
     .dashboard-filters .filter-actions {
       flex-direction: column;
@@ -81,6 +95,15 @@
 
     .dashboard-bulk-actions > * {
       width: 100%;
+    }
+
+    .dashboard-chart-card .card-body {
+      height: 420px;
+    }
+
+    .dashboard-monthly-chart,
+    .dashboard-status-chart {
+      height: 330px;
     }
   }
 </style>
@@ -142,22 +165,22 @@
 
 <!-- 📊 GRÁFICAS -->
 <div class="row mt-4">
-  <div class="col-md-8">
-    <div class="card shadow-sm h-100">
-      <div class="card-body" style="height: 340px;">
+  <div class="col-lg-9">
+    <div class="card shadow-sm h-100 dashboard-chart-card">
+      <div class="card-body">
         <h5 class="card-title text-primary">Resumen Mensual</h5>
-        <div style="position: relative; height: 250px;">
+        <div class="dashboard-monthly-chart">
           <canvas id="chartMensual"></canvas>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="col-md-4">
-    <div class="card shadow-sm h-100">
-      <div class="card-body" style="height: 340px;">
+  <div class="col-lg-3">
+    <div class="card shadow-sm h-100 dashboard-chart-card">
+      <div class="card-body">
         <h5 class="card-title">Distribución por Estatus</h5>
-        <div style="position: relative; height: 250px;">
+        <div class="dashboard-status-chart">
           <canvas id="chartEstatus"></canvas>
         </div>
       </div>
@@ -350,6 +373,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const statuses = {{ valid_estatus|tojson }};
   const chartColors = ["#1565c0", "#f9a825", "#00897b", "#6d4c41", "#546e7a", "#2e7d32", "#c62828"];
   const monthNames = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+  const moneyCompact = new Intl.NumberFormat("es-MX", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  });
   let chartMensualInstance = null;
   let chartEstatusInstance = null;
 
@@ -459,6 +486,24 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  function getActiveChartYear(years, monthly) {
+    const currentYear = String(new Date().getFullYear());
+    const sortedYears = Array.from(years).sort();
+    const desdeYear = desde?.value ? desde.value.slice(0, 4) : "";
+    const hastaYear = hasta?.value ? hasta.value.slice(0, 4) : "";
+
+    if (/^\d{4}$/.test(desdeYear) && years.has(desdeYear)) return desdeYear;
+    if (/^\d{4}$/.test(hastaYear) && years.has(hastaYear)) return hastaYear;
+    if (years.has(currentYear)) return currentYear;
+    if (sortedYears.length > 0) return sortedYears[sortedYears.length - 1];
+
+    for (const key of monthly.keys()) {
+      const year = key.slice(0, 4);
+      if (/^\d{4}$/.test(year)) return year;
+    }
+    return currentYear;
+  }
+
   async function renderFilteredCharts() {
     const visibleRows = getVisibleRows();
     const statusCounts = Object.fromEntries(statuses.map((status) => [status, 0]));
@@ -472,14 +517,9 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
-    if (years.size === 0) {
-      years.add(String(new Date().getFullYear()));
-    }
-
-    const monthKeys = Array.from(years)
-      .sort()
-      .flatMap((year) => monthNames.map((_, index) => `${year}-${String(index + 1).padStart(2, "0")}`));
-    const labels = monthKeys.map((key) => `${monthNames[Number(key.slice(5, 7)) - 1]} ${key.slice(0, 4)}`);
+    const activeYear = getActiveChartYear(years, monthly);
+    const monthKeys = monthNames.map((_, index) => `${activeYear}-${String(index + 1).padStart(2, "0")}`);
+    const labels = monthNames;
     const importes = monthKeys.map((key) => Number(monthly.get(key)?.total || 0));
     const cantidades = monthKeys.map((key) => Number(monthly.get(key)?.cotizaciones || 0));
     const statusData = statuses.map((status) => statusCounts[status] || 0);
@@ -495,7 +535,8 @@ document.addEventListener("DOMContentLoaded", () => {
             data: importes,
             yAxisID: "y",
             backgroundColor: "#1565c0",
-            borderRadius: 6
+            borderRadius: 6,
+            maxBarThickness: 42
           },
           {
             type: "line",
@@ -514,17 +555,48 @@ document.addEventListener("DOMContentLoaded", () => {
         responsive: true,
         maintainAspectRatio: false,
         interaction: { mode: "index", intersect: false },
+        layout: { padding: { top: 8, right: 8, bottom: 0, left: 8 } },
+        plugins: {
+          title: {
+            display: true,
+            text: activeYear,
+            color: "#444",
+            font: { size: 13, weight: "normal" }
+          },
+          legend: {
+            position: "top",
+            labels: { boxWidth: 28, padding: 12 }
+          },
+          tooltip: {
+            callbacks: {
+              label: (context) => {
+                if (context.dataset.yAxisID === "y") {
+                  return ` ${context.dataset.label}: $${Number(context.raw || 0).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                }
+                return ` ${context.dataset.label}: ${context.raw || 0}`;
+              }
+            }
+          }
+        },
         scales: {
+          x: {
+            ticks: {
+              autoSkip: false,
+              maxRotation: 0,
+              minRotation: 0
+            }
+          },
           y: {
             beginAtZero: true,
-            title: { display: true, text: "Importe ($)" }
+            ticks: {
+              callback: (value) => `$${moneyCompact.format(value)}`
+            }
           },
           y1: {
             beginAtZero: true,
             position: "right",
             grid: { drawOnChartArea: false },
-            ticks: { precision: 0 },
-            title: { display: true, text: "Cotizaciones" }
+            ticks: { precision: 0 }
           }
         }
       }
