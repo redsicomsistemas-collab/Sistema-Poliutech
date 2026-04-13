@@ -1,0 +1,336 @@
+{% extends "base.html" %}
+{% block title %}Inventario{% endblock %}
+
+{% block content %}
+<style>
+  .inventory-status-dot {
+    display: inline-block;
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 50%;
+    margin-right: 0.35rem;
+  }
+  .inventory-orange {
+    color: #b45309;
+  }
+  .inventory-row-orange td {
+    background-color: #fff3cd !important;
+  }
+  .bg-orange,
+  .badge.bg-orange {
+    background-color: #f97316;
+    color: #fff;
+  }
+  .progress.inventory-progress {
+    min-width: 112px;
+    height: 0.72rem;
+    border-radius: 8px;
+    background-color: #e9ecef;
+  }
+</style>
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 my-4">
+  <div>
+    <h2 class="fw-bold text-primary mb-1">Inventario</h2>
+    <div class="text-muted">Materiales, entradas, salidas y Kardex.</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{{ url_for('inventario_export_xlsx') }}" class="btn btn-outline-success">Exportar Excel</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Materiales visibles</div>
+        <div class="display-6 fw-bold text-primary">{{ productos|length }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Stock bajo</div>
+        <div class="display-6 fw-bold {% if stock_bajo_count %}text-danger{% else %}text-success{% endif %}">{{ stock_bajo_count }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Valor filtrado</div>
+        <div class="display-6 fw-bold text-success">${{ "{:,.2f}".format(total_valor or 0) }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="alert alert-light border mb-4">
+  <div class="fw-bold mb-1">Semáforo de inventario</div>
+  <span class="badge bg-success me-2">100% a 75%</span>
+  <span class="badge bg-warning text-dark me-2">74.90% a 25%</span>
+  <span class="badge bg-orange me-2">24.90% a 15% · Punto de reorden</span>
+  <span class="badge bg-danger">Menos de 15%</span>
+</div>
+
+{% if current_user.is_authenticated and (current_user.rol or "")|upper == "ADMIN" %}
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-header bg-primary text-white fw-bold">Nuevo material</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('inventario_producto_crear') }}" class="row g-3">
+      <div class="col-md-2">
+        <label class="form-label">Código</label>
+        <input name="codigo" class="form-control text-uppercase" placeholder="MAT-001">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Material</label>
+        <input name="nombre" class="form-control" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Categoría</label>
+        <input name="categoria" class="form-control" placeholder="Pintura">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Unidad</label>
+        <input name="unidad" class="form-control" value="pieza">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Stock inicial</label>
+        <input type="number" step="any" name="stock_inicial" class="form-control" value="0">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Stock mínimo</label>
+        <input type="number" step="any" name="stock_minimo" class="form-control" value="0">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Stock máximo</label>
+        <input type="number" step="any" name="stock_maximo" class="form-control" value="0">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Costo unitario</label>
+        <input type="number" step="any" name="costo_unitario" class="form-control" value="0">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Proveedor</label>
+        <input name="proveedor" class="form-control">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Ubicación</label>
+        <input name="ubicacion" class="form-control" placeholder="Almacén / rack">
+      </div>
+      <div class="col-md-1 d-grid align-items-end">
+        <button class="btn btn-success mt-md-4">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-header bg-primary text-white fw-bold">Registrar movimiento</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('inventario_movimiento_crear') }}" class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label">Material</label>
+        <select name="producto_id" class="form-select" required>
+          <option value="">Selecciona...</option>
+          {% for p in productos %}
+          <option value="{{ p.id }}">{{ p.codigo or p.id }} · {{ p.nombre }} · Stock {{ "{:,.2f}".format(p.stock_actual or 0) }} {{ p.unidad }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Tipo</label>
+        <select name="tipo" id="inv-tipo" class="form-select" required>
+          <option value="ENTRADA">ENTRADA</option>
+          <option value="SALIDA">SALIDA</option>
+          {% if current_user.is_authenticated and (current_user.rol or "")|upper == "ADMIN" %}
+          <option value="AJUSTE">AJUSTE</option>
+          {% endif %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Motivo</label>
+        <select name="motivo" id="inv-motivo" class="form-select" required></select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Cantidad</label>
+        <input type="number" step="any" name="cantidad" class="form-control" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Costo unitario</label>
+        <input type="number" step="any" name="costo_unitario" class="form-control" value="0">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Proveedor</label>
+        <input name="proveedor" class="form-control">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Obra</label>
+        <input name="obra" class="form-control" list="obras-list">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Referencia</label>
+        <input name="referencia" class="form-control" placeholder="Factura / remisión">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Observaciones</label>
+        <input name="observaciones" class="form-control">
+      </div>
+      <div class="col-12 text-end">
+        <button class="btn btn-primary">Registrar movimiento</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<datalist id="obras-list">
+  {% for obra in obras %}
+  <option value="{{ obra.obra }}"></option>
+  {% endfor %}
+</datalist>
+
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-header bg-light">
+    <form method="get" action="{{ url_for('inventario_index') }}" class="row g-2 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label">Buscar</label>
+        <input name="q" class="form-control" value="{{ q }}" placeholder="Código, material, proveedor, ubicación">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Categoría</label>
+        <select name="categoria" class="form-select">
+          <option value="">Todas</option>
+          {% for cat in categorias %}
+          <option value="{{ cat }}" {% if categoria == cat %}selected{% endif %}>{{ cat }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Estado</label>
+        <select name="estado" class="form-select">
+          <option value="" {% if not estado %}selected{% endif %}>Activos</option>
+          <option value="reorden" {% if estado == 'reorden' %}selected{% endif %}>Punto de reorden</option>
+          <option value="bajo" {% if estado == 'bajo' %}selected{% endif %}>Stock bajo</option>
+          <option value="inactivo" {% if estado == 'inactivo' %}selected{% endif %}>Inactivos</option>
+        </select>
+      </div>
+      <div class="col-md-2 d-grid">
+        <button class="btn btn-outline-primary">Filtrar</button>
+      </div>
+    </form>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Código</th>
+            <th>Material</th>
+            <th>Categoría</th>
+            <th>Unidad</th>
+            <th>Stock</th>
+            <th>Mínimo</th>
+            <th>Máximo</th>
+            <th>Nivel</th>
+            <th>Costo</th>
+            <th>Valor</th>
+            <th>Proveedor</th>
+            <th>Ubicación</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in productos %}
+          {% set estado_inv = inventario_estado(p) %}
+          <tr class="{% if estado_inv.color == 'danger' %}table-danger{% elif estado_inv.color == 'orange' %}inventory-row-orange{% elif estado_inv.color == 'warning' %}table-warning{% elif estado_inv.color == 'success' %}table-success{% endif %}">
+            <td>{{ p.codigo or p.id }}</td>
+            <td class="text-start">{{ p.nombre }}</td>
+            <td>{{ p.categoria or '' }}</td>
+            <td>{{ p.unidad }}</td>
+            <td class="fw-bold">{{ "{:,.2f}".format(p.stock_actual or 0) }}</td>
+            <td>{{ "{:,.2f}".format(p.stock_minimo or 0) }}</td>
+            <td>{{ "{:,.2f}".format(p.stock_maximo or 0) }}</td>
+            <td>
+              <div class="d-flex align-items-center gap-2 justify-content-center">
+                <div class="progress inventory-progress">
+                  <div class="progress-bar bg-{{ estado_inv.color if estado_inv.color != 'orange' else 'orange' }}"
+                       style="width: {{ estado_inv.porcentaje }}%"></div>
+                </div>
+                <span class="badge bg-{{ estado_inv.color if estado_inv.color != 'orange' else 'orange' }}">
+                  {{ "{:.1f}".format(estado_inv.porcentaje) }}% · {{ estado_inv.texto }}
+                </span>
+              </div>
+            </td>
+            <td>${{ "{:,.2f}".format(p.costo_unitario or 0) }}</td>
+            <td>${{ "{:,.2f}".format((p.stock_actual or 0) * (p.costo_unitario or 0)) }}</td>
+            <td>{{ p.proveedor or '' }}</td>
+            <td>{{ p.ubicacion or '' }}</td>
+            <td>
+              <a href="{{ url_for('inventario_kardex', producto_id=p.id) }}" class="btn btn-sm btn-outline-primary">Kardex</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="13" class="text-muted py-4">Todavía no hay materiales en inventario.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm border-0">
+  <div class="card-header bg-light fw-bold">Movimientos recientes</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Material</th>
+            <th>Tipo</th>
+            <th>Motivo</th>
+            <th>Cantidad</th>
+            <th>Stock después</th>
+            <th>Obra</th>
+            <th>Responsable</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in recientes %}
+          <tr>
+            <td>{{ m.fecha.strftime('%d/%m/%Y %H:%M') if m.fecha else '' }}</td>
+            <td class="text-start">{{ m.producto.nombre if m.producto else '' }}</td>
+            <td><span class="badge bg-{{ 'success' if m.tipo == 'ENTRADA' else 'danger' if m.tipo == 'SALIDA' else 'warning text-dark' }}">{{ m.tipo }}</span></td>
+            <td>{{ m.motivo }}</td>
+            <td>{{ "{:,.2f}".format(m.cantidad or 0) }}</td>
+            <td>{{ "{:,.2f}".format(m.stock_despues or 0) }}</td>
+            <td>{{ m.obra or '' }}</td>
+            <td>{{ m.responsable or '' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="text-muted py-4">Sin movimientos registrados.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const motivos = {{ inventario_motivos|tojson }};
+  const tipo = document.getElementById('inv-tipo');
+  const motivo = document.getElementById('inv-motivo');
+
+  function renderMotivos() {
+    const items = motivos[tipo.value] || [];
+    motivo.innerHTML = items.map((item) => `<option value="${item}">${item}</option>`).join('');
+  }
+
+  tipo?.addEventListener('change', renderMotivos);
+  renderMotivos();
+})();
+</script>
+{% endblock %}

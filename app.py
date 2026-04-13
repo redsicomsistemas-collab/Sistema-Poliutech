@@ -1188,7 +1188,7 @@ from flask import (
     flash, jsonify, Response, abort, g, current_app
 )
 
-from sqlalchemy import text, or_, case
+from sqlalchemy import text, or_, and_, case
 
 # ReportLab (PDF)
 from reportlab.lib.pagesizes import A4
@@ -1202,9 +1202,11 @@ from reportlab.lib.enums import TA_JUSTIFY
 # Excel
 try:
     from openpyxl import Workbook
+    from openpyxl.utils import get_column_letter
     from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 except Exception:
     Workbook = None  # la app sigue arrancando aunque falte openpyxl
+    get_column_letter = None
 
 # Twilio + Scheduler
 from twilio.rest import Client as TwilioClient
@@ -1267,6 +1269,8 @@ from models import (
     Prospecto,
     ProspectoSeguimiento,
     ActivityLog,
+    InventarioProducto,
+    InventarioMovimiento,
 )
 
 # ---------------------------------------------------------
@@ -1630,6 +1634,17 @@ def ensure_schema():
         db.session.commit()
     except Exception as e:
         print("⚠️ ensure_schema(cotizacion extras):", e)
+
+    try:
+        inv_cols = _table_columns("inventario_producto")
+        for col, stmt in [
+            ("stock_maximo", "ALTER TABLE inventario_producto ADD COLUMN stock_maximo FLOAT DEFAULT 0.0"),
+        ]:
+            if col not in inv_cols:
+                db.session.execute(text(stmt))
+        db.session.commit()
+    except Exception as e:
+        print("⚠️ ensure_schema(inventario_producto):", e)
 
     try:
         dcols = _table_columns("cotizacion_detalle")
@@ -6342,6 +6357,394 @@ def admin_usuario_eliminar(user_id: int):
     db.session.commit()
     flash(f"Usuario '{nombre}' eliminado correctamente.", "success")
     return redirect(url_for("admin_usuarios"))
+
+
+# ---------------------------------------------------------
+# Inventario
+# ---------------------------------------------------------
+INVENTARIO_TIPOS = ("ENTRADA", "SALIDA", "AJUSTE")
+INVENTARIO_MOTIVOS = {
+    "ENTRADA": ("COMPRA", "DEVOLUCION", "AJUSTE POSITIVO"),
+    "SALIDA": ("OBRA", "CONSUMO INTERNO", "VENTA", "AJUSTE NEGATIVO"),
+    "AJUSTE": ("AJUSTE POSITIVO", "AJUSTE NEGATIVO", "CONTEO FISICO"),
+}
+
+
+def _inventario_stock_bajo_query():
+    return InventarioProducto.query.filter(
+        InventarioProducto.activo.is_(True),
+        or_(
+            and_(
+                InventarioProducto.stock_maximo > 0,
+                InventarioProducto.stock_actual < (InventarioProducto.stock_maximo * 0.15),
+            ),
+            and_(
+                or_(InventarioProducto.stock_maximo.is_(None), InventarioProducto.stock_maximo <= 0),
+                InventarioProducto.stock_actual <= InventarioProducto.stock_minimo,
+            ),
+        ),
+    )
+
+
+def _inventario_porcentaje(producto: InventarioProducto) -> float:
+    stock = float(producto.stock_actual or 0)
+    maximo = float(getattr(producto, "stock_maximo", 0) or 0)
+    if maximo <= 0:
+        maximo = max(stock, float(producto.stock_minimo or 0), 1.0)
+    return max(0.0, min(100.0, (stock / maximo) * 100.0))
+
+
+def _inventario_estado(producto: InventarioProducto) -> dict:
+    pct = _inventario_porcentaje(producto)
+    if pct >= 75:
+        return {"porcentaje": pct, "color": "success", "texto": "OK"}
+    if pct >= 25:
+        return {"porcentaje": pct, "color": "warning", "texto": "MEDIO"}
+    if pct >= 15:
+        return {"porcentaje": pct, "color": "orange", "texto": "REORDEN"}
+    return {"porcentaje": pct, "color": "danger", "texto": "BAJO"}
+
+
+def _inventario_registrar_movimiento(
+    producto: InventarioProducto,
+    tipo: str,
+    motivo: str,
+    cantidad: float,
+    costo_unitario: float = 0.0,
+    proveedor: str = "",
+    obra: str = "",
+    referencia: str = "",
+    observaciones: str = "",
+) -> InventarioMovimiento:
+    tipo = (tipo or "").strip().upper()
+    motivo = (motivo or "").strip().upper()
+    cantidad = fmt(abs(cantidad))
+    costo_unitario = fmt(costo_unitario)
+
+    if tipo not in INVENTARIO_TIPOS:
+        raise ValueError("Tipo de movimiento invalido.")
+    if cantidad <= 0:
+        raise ValueError("La cantidad debe ser mayor a cero.")
+    if motivo not in INVENTARIO_MOTIVOS.get(tipo, ()):
+        raise ValueError("Motivo de movimiento invalido.")
+    if tipo == "AJUSTE" and not is_admin():
+        raise PermissionError("Solo el administrador puede registrar ajustes.")
+
+    stock_antes = float(producto.stock_actual or 0)
+    if tipo == "ENTRADA":
+        delta = cantidad
+    elif tipo == "SALIDA":
+        delta = -cantidad
+    else:
+        delta = cantidad if "POSITIVO" in motivo else -cantidad
+
+    stock_despues = stock_antes + delta
+    if stock_despues < -0.0001:
+        raise ValueError(f"Stock insuficiente. Disponible: {stock_antes:g} {producto.unidad or ''}.")
+
+    mov = InventarioMovimiento(
+        producto_id=producto.id,
+        fecha=now_cdmx_naive(),
+        tipo=tipo,
+        motivo=motivo,
+        cantidad=cantidad,
+        costo_unitario=costo_unitario or float(producto.costo_unitario or 0),
+        stock_antes=fmt(stock_antes),
+        stock_despues=fmt(stock_despues),
+        proveedor=(proveedor or "").strip() or None,
+        obra=(obra or "").strip() or None,
+        referencia=(referencia or "").strip() or None,
+        responsable=responsable_actual() or None,
+        observaciones=(observaciones or "").strip() or None,
+        usuario_id=getattr(current_user, "id", None),
+    )
+    producto.stock_actual = fmt(stock_despues)
+    if float(getattr(producto, "stock_maximo", 0) or 0) <= 0 and stock_despues > 0:
+        producto.stock_maximo = fmt(max(stock_despues, float(producto.stock_minimo or 0)))
+    if tipo == "ENTRADA" and costo_unitario > 0:
+        producto.costo_unitario = costo_unitario
+    producto.actualizado_en = now_cdmx_naive()
+    db.session.add(mov)
+    return mov
+
+
+@app.route("/inventario")
+@login_required
+def inventario_index():
+    q = (request.args.get("q") or "").strip()
+    categoria = (request.args.get("categoria") or "").strip()
+    estado = (request.args.get("estado") or "").strip()
+
+    productos_q = InventarioProducto.query
+    if q:
+        like = f"%{q}%"
+        productos_q = productos_q.filter(or_(
+            InventarioProducto.codigo.ilike(like),
+            InventarioProducto.nombre.ilike(like),
+            InventarioProducto.proveedor.ilike(like),
+            InventarioProducto.ubicacion.ilike(like),
+        ))
+    if categoria:
+        productos_q = productos_q.filter(InventarioProducto.categoria == categoria)
+    if estado == "bajo":
+        productos_q = productos_q.filter(
+            InventarioProducto.activo.is_(True),
+            or_(
+                and_(
+                    InventarioProducto.stock_maximo > 0,
+                    InventarioProducto.stock_actual < (InventarioProducto.stock_maximo * 0.15),
+                ),
+                and_(
+                    or_(InventarioProducto.stock_maximo.is_(None), InventarioProducto.stock_maximo <= 0),
+                    InventarioProducto.stock_actual <= InventarioProducto.stock_minimo,
+                ),
+            )
+        )
+    elif estado == "reorden":
+        productos_q = productos_q.filter(
+            InventarioProducto.activo.is_(True),
+            InventarioProducto.stock_actual >= (InventarioProducto.stock_maximo * 0.15),
+            InventarioProducto.stock_actual < (InventarioProducto.stock_maximo * 0.25),
+        )
+    elif estado == "inactivo":
+        productos_q = productos_q.filter(InventarioProducto.activo.is_(False))
+    else:
+        productos_q = productos_q.filter(InventarioProducto.activo.is_(True))
+
+    productos = productos_q.order_by(InventarioProducto.nombre.asc()).all()
+    recientes = (
+        InventarioMovimiento.query
+        .join(InventarioProducto)
+        .order_by(InventarioMovimiento.fecha.desc(), InventarioMovimiento.id.desc())
+        .limit(12)
+        .all()
+    )
+    categorias = [
+        row[0] for row in db.session.query(InventarioProducto.categoria)
+        .filter(InventarioProducto.categoria.isnot(None), InventarioProducto.categoria != "")
+        .distinct()
+        .order_by(InventarioProducto.categoria.asc())
+        .all()
+    ]
+    obras = RegistroObra.query.order_by(RegistroObra.obra.asc()).limit(300).all()
+    total_valor = sum(float(p.stock_actual or 0) * float(p.costo_unitario or 0) for p in productos)
+
+    return render_template(
+        "inventario.html",
+        title="Inventario",
+        productos=productos,
+        recientes=recientes,
+        categorias=categorias,
+        obras=obras,
+        q=q,
+        categoria=categoria,
+        estado=estado,
+        total_valor=total_valor,
+        stock_bajo_count=_inventario_stock_bajo_query().count(),
+        inventario_motivos=INVENTARIO_MOTIVOS,
+        inventario_estado=_inventario_estado,
+    )
+
+
+@app.route("/inventario/productos/crear", methods=["POST"])
+@login_required
+def inventario_producto_crear():
+    if not is_admin():
+        abort(403)
+
+    f = request.form
+    codigo = (f.get("codigo") or "").strip().upper() or None
+    nombre = (f.get("nombre") or "").strip()
+    if not nombre:
+        flash("Captura el nombre del material.", "warning")
+        return redirect(url_for("inventario_index"))
+    if codigo and InventarioProducto.query.filter_by(codigo=codigo).first():
+        flash("Ya existe un material con ese codigo.", "danger")
+        return redirect(url_for("inventario_index"))
+
+    producto = InventarioProducto(
+        codigo=codigo,
+        nombre=nombre,
+        categoria=(f.get("categoria") or "").strip() or None,
+        unidad=(f.get("unidad") or "").strip() or "pieza",
+        stock_minimo=fmt(parse_float(f.get("stock_minimo"), 0)),
+        stock_maximo=fmt(parse_float(f.get("stock_maximo"), parse_float(f.get("stock_inicial"), 0))),
+        costo_unitario=fmt(parse_float(f.get("costo_unitario"), 0)),
+        proveedor=(f.get("proveedor") or "").strip() or None,
+        ubicacion=(f.get("ubicacion") or "").strip() or None,
+        activo=True,
+    )
+    db.session.add(producto)
+    db.session.flush()
+
+    stock_inicial = parse_float(f.get("stock_inicial"), 0)
+    if stock_inicial > 0:
+        _inventario_registrar_movimiento(
+            producto,
+            "ENTRADA",
+            "AJUSTE POSITIVO",
+            stock_inicial,
+            producto.costo_unitario or 0,
+            proveedor=producto.proveedor or "",
+            referencia="STOCK INICIAL",
+            observaciones="Alta inicial de inventario.",
+        )
+
+    db.session.commit()
+    flash("Material agregado al inventario.", "success")
+    return redirect(url_for("inventario_index"))
+
+
+@app.route("/inventario/productos/<int:producto_id>/actualizar", methods=["POST"])
+@login_required
+def inventario_producto_actualizar(producto_id: int):
+    if not is_admin():
+        abort(403)
+
+    producto = InventarioProducto.query.get_or_404(producto_id)
+    f = request.form
+    codigo = (f.get("codigo") or "").strip().upper() or None
+    if codigo and codigo != producto.codigo and InventarioProducto.query.filter_by(codigo=codigo).first():
+        flash("Ya existe otro material con ese codigo.", "danger")
+        return redirect(url_for("inventario_kardex", producto_id=producto.id))
+
+    producto.codigo = codigo
+    producto.nombre = (f.get("nombre") or producto.nombre).strip()
+    producto.categoria = (f.get("categoria") or "").strip() or None
+    producto.unidad = (f.get("unidad") or producto.unidad or "pieza").strip()
+    producto.stock_minimo = fmt(parse_float(f.get("stock_minimo"), producto.stock_minimo or 0))
+    producto.stock_maximo = fmt(parse_float(f.get("stock_maximo"), producto.stock_maximo or 0))
+    producto.costo_unitario = fmt(parse_float(f.get("costo_unitario"), producto.costo_unitario or 0))
+    producto.proveedor = (f.get("proveedor") or "").strip() or None
+    producto.ubicacion = (f.get("ubicacion") or "").strip() or None
+    producto.activo = (f.get("activo") or "1") == "1"
+    producto.actualizado_en = now_cdmx_naive()
+    db.session.commit()
+    flash("Material actualizado.", "success")
+    return redirect(url_for("inventario_kardex", producto_id=producto.id))
+
+
+@app.route("/inventario/movimientos/crear", methods=["POST"])
+@login_required
+def inventario_movimiento_crear():
+    producto = InventarioProducto.query.get_or_404(int(request.form.get("producto_id") or 0))
+    try:
+        _inventario_registrar_movimiento(
+            producto=producto,
+            tipo=request.form.get("tipo"),
+            motivo=request.form.get("motivo"),
+            cantidad=parse_float(request.form.get("cantidad"), 0),
+            costo_unitario=parse_float(request.form.get("costo_unitario"), producto.costo_unitario or 0),
+            proveedor=request.form.get("proveedor") or producto.proveedor or "",
+            obra=request.form.get("obra") or "",
+            referencia=request.form.get("referencia") or "",
+            observaciones=request.form.get("observaciones") or "",
+        )
+        db.session.commit()
+        flash("Movimiento registrado correctamente.", "success")
+    except PermissionError as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+    except ValueError as exc:
+        db.session.rollback()
+        flash(str(exc), "warning")
+    return redirect(request.referrer or url_for("inventario_index"))
+
+
+@app.route("/inventario/productos/<int:producto_id>/kardex")
+@login_required
+def inventario_kardex(producto_id: int):
+    producto = InventarioProducto.query.get_or_404(producto_id)
+    movimientos = (
+        InventarioMovimiento.query
+        .filter_by(producto_id=producto.id)
+        .order_by(InventarioMovimiento.fecha.desc(), InventarioMovimiento.id.desc())
+        .all()
+    )
+    obras = RegistroObra.query.order_by(RegistroObra.obra.asc()).limit(300).all()
+    return render_template(
+        "inventario_kardex.html",
+        title=f"Kardex {producto.nombre}",
+        producto=producto,
+        movimientos=movimientos,
+        obras=obras,
+        inventario_motivos=INVENTARIO_MOTIVOS,
+        inventario_estado=_inventario_estado,
+    )
+
+
+@app.route("/inventario/export.xlsx")
+@login_required
+def inventario_export_xlsx():
+    if Workbook is None:
+        abort(501, description="openpyxl no instalado en el servidor.")
+
+    productos = InventarioProducto.query.order_by(InventarioProducto.nombre.asc()).all()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Inventario"
+    headers = [
+        "Codigo", "Material", "Categoria", "Unidad", "Stock actual", "Stock minimo",
+        "Stock maximo", "% inventario", "Estado", "Costo unitario", "Valor", "Proveedor", "Ubicacion", "Activo",
+    ]
+    ws.append(headers)
+    fills_estado = {
+        "OK": PatternFill("solid", fgColor="D1E7DD"),
+        "MEDIO": PatternFill("solid", fgColor="FFF3CD"),
+        "REORDEN": PatternFill("solid", fgColor="FED7AA"),
+        "BAJO": PatternFill("solid", fgColor="F8D7DA"),
+    }
+    for p in productos:
+        stock = float(p.stock_actual or 0)
+        costo = float(p.costo_unitario or 0)
+        estado_inv = _inventario_estado(p)
+        ws.append([
+            p.codigo or "",
+            p.nombre or "",
+            p.categoria or "",
+            p.unidad or "",
+            stock,
+            float(p.stock_minimo or 0),
+            float(p.stock_maximo or 0),
+            estado_inv["porcentaje"] / 100.0,
+            estado_inv["texto"],
+            costo,
+            stock * costo,
+            p.proveedor or "",
+            p.ubicacion or "",
+            "SI" if p.activo else "NO",
+        ])
+        fill = fills_estado.get(estado_inv["texto"])
+        if fill:
+            for cell in ws[ws.max_row]:
+                cell.fill = fill
+
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="0D47A1")
+        cell.alignment = Alignment(horizontal="center")
+    for col in ("E", "F", "G"):
+        for cell in ws[col][1:]:
+            cell.number_format = '0.00'
+    for cell in ws["H"][1:]:
+        cell.number_format = '0.00%'
+    for col in ("J", "K"):
+        for cell in ws[col][1:]:
+            cell.number_format = '"$"#,##0.00'
+    widths = [16, 34, 18, 12, 14, 14, 14, 14, 14, 16, 16, 24, 20, 10]
+    for idx, width in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(idx)].width = width
+
+    bio = io.BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    stamp = now_cdmx_naive().strftime("%Y%m%d_%H%M%S")
+    return Response(
+        bio.getvalue(),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="inventario_{stamp}.xlsx"'}
+    )
+
 
 # Blueprints (Catálogos) — si existen en tu repo
 # ---------------------------------------------------------

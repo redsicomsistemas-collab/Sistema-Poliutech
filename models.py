@@ -263,6 +263,61 @@ class ActivityLog(db.Model):
         return f"<ActivityLog {self.fecha} {self.usuario} {self.metodo} {self.ruta}>"
 
 
+class InventarioProducto(db.Model):
+    __tablename__ = "inventario_producto"
+
+    id = db.Column(db.Integer, primary_key=True)
+    codigo = db.Column(db.String(60), unique=True, index=True)
+    nombre = db.Column(db.String(220), nullable=False, index=True)
+    categoria = db.Column(db.String(120))
+    unidad = db.Column(db.String(50), default="pieza", nullable=False)
+    stock_actual = db.Column(db.Float, default=0.0, nullable=False)
+    stock_minimo = db.Column(db.Float, default=0.0, nullable=False)
+    stock_maximo = db.Column(db.Float, default=0.0, nullable=False)
+    costo_unitario = db.Column(db.Float, default=0.0, nullable=False)
+    proveedor = db.Column(db.String(180))
+    ubicacion = db.Column(db.String(180))
+    activo = db.Column(db.Boolean, default=True, nullable=False)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    movimientos = db.relationship(
+        "InventarioMovimiento",
+        backref="producto",
+        cascade="all, delete-orphan",
+        order_by="InventarioMovimiento.fecha.desc(), InventarioMovimiento.id.desc()",
+    )
+
+    def __repr__(self):
+        return f"<InventarioProducto {self.codigo or self.id} {self.nombre}>"
+
+
+class InventarioMovimiento(db.Model):
+    __tablename__ = "inventario_movimiento"
+
+    id = db.Column(db.Integer, primary_key=True)
+    producto_id = db.Column(db.Integer, db.ForeignKey("inventario_producto.id"), nullable=False, index=True)
+    fecha = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    tipo = db.Column(db.String(20), nullable=False)  # ENTRADA, SALIDA, AJUSTE
+    motivo = db.Column(db.String(80), nullable=False)
+    cantidad = db.Column(db.Float, nullable=False)
+    costo_unitario = db.Column(db.Float, default=0.0, nullable=False)
+    stock_antes = db.Column(db.Float, default=0.0, nullable=False)
+    stock_despues = db.Column(db.Float, default=0.0, nullable=False)
+    proveedor = db.Column(db.String(180))
+    obra = db.Column(db.String(220))
+    referencia = db.Column(db.String(120))
+    responsable = db.Column(db.String(120))
+    observaciones = db.Column(db.Text)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    usuario = db.relationship("Usuario", backref=db.backref("inventario_movimientos", lazy=True))
+
+    def __repr__(self):
+        return f"<InventarioMovimiento producto={self.producto_id} {self.tipo} {self.cantidad}>"
+
+
 class APUSheet(db.Model):
     __tablename__ = "apu_sheet"
 
