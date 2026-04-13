@@ -95,8 +95,8 @@
       position: fixed;
       inset: 0;
       background:
-        radial-gradient(circle at 50% 62%, rgba(0, 102, 255, 0.22), transparent 26%),
-        radial-gradient(circle at 50% 100%, rgba(0, 42, 115, 0.5), transparent 38%),
+        radial-gradient(ellipse at 50% 58%, rgba(0, 76, 190, 0.18), transparent 30%),
+        radial-gradient(ellipse at 50% 100%, rgba(0, 34, 110, 0.72), transparent 46%),
         #000;
       display: none;
       overflow: hidden;
@@ -125,12 +125,12 @@
       inset: auto -15vw -8vh -15vw;
       height: 52vh;
       background:
-        linear-gradient(to right, rgba(0, 150, 255, 0.12) 1px, transparent 1px),
-        linear-gradient(to top, rgba(0, 150, 255, 0.15) 1px, transparent 1px);
-      background-size: 44px 44px;
-      transform: rotateX(68deg) translateZ(-120px);
+        linear-gradient(to right, rgba(0, 113, 255, 0.18) 1px, transparent 1px),
+        linear-gradient(to top, rgba(0, 113, 255, 0.22) 1px, transparent 1px);
+      background-size: 38px 38px;
+      transform: rotateX(72deg) translateZ(-160px);
       transform-origin: 50% 100%;
-      animation: marGridTravel 4.8s cubic-bezier(.2, .75, .18, 1) both;
+      animation: marGridTravel 6s cubic-bezier(.2, .75, .18, 1) both;
       opacity: 0;
       filter: drop-shadow(0 0 14px rgba(0, 145, 255, 0.42));
       z-index: 0;
@@ -150,16 +150,19 @@
     #mar-splash .startup-column {
       position: absolute;
       bottom: 28vh;
-      width: clamp(10px, 1.7vw, 24px);
+      width: clamp(7px, 1.1vw, 15px);
       height: var(--h);
-      border: 1px solid rgba(105, 188, 255, 0.75);
-      border-radius: 4px;
-      background: linear-gradient(180deg, rgba(123, 210, 255, 0.95), rgba(0, 69, 188, 0.34));
+      border: 1px solid rgba(70, 165, 255, 0.85);
+      border-radius: 2px;
+      background:
+        linear-gradient(90deg, rgba(160, 225, 255, 0.18), transparent 38%, rgba(180, 232, 255, 0.24)),
+        linear-gradient(180deg, rgba(104, 196, 255, 0.98), rgba(0, 44, 158, 0.28));
       box-shadow:
-        0 0 16px rgba(0, 119, 255, 0.65),
-        inset 0 0 12px rgba(210, 245, 255, 0.34);
-      transform: translate3d(var(--x), 55vh, var(--z)) rotateX(63deg);
-      animation: marColumnRise 4.2s cubic-bezier(.12, .74, .16, 1) both;
+        0 0 12px rgba(0, 108, 255, 0.74),
+        0 0 30px rgba(0, 75, 255, 0.28),
+        inset 0 0 10px rgba(210, 245, 255, 0.38);
+      transform: translate3d(var(--x), 58vh, var(--z)) rotateX(68deg);
+      animation: marColumnRise 5.3s cubic-bezier(.12, .74, .16, 1) both;
       animation-delay: var(--delay);
       opacity: 0;
       z-index: 2;
@@ -174,7 +177,7 @@
         radial-gradient(circle, rgba(255, 255, 255, 0.84) 0%, rgba(92, 190, 255, 0.28) 18%, transparent 62%);
       opacity: 0;
       transform: scale(0.12);
-      animation: marFlare 4.8s ease both;
+      animation: marFlare 6s ease both;
       z-index: 3;
       pointer-events: none;
     }
@@ -188,7 +191,7 @@
       opacity: 0;
       filter: drop-shadow(0 0 18px rgba(88, 184, 255, 0.82));
       transform: translateY(18px) scale(0.92);
-      animation: marLogoReveal 4.8s cubic-bezier(.16, .8, .24, 1) both;
+      animation: marLogoReveal 6s cubic-bezier(.16, .8, .24, 1) both;
       z-index: 4;
     }
 
@@ -202,7 +205,7 @@
       text-align: center;
       opacity: 0;
       text-shadow: 0 0 16px rgba(54, 167, 255, 0.72);
-      animation: marTitleReveal 4.8s ease both;
+      animation: marTitleReveal 6s ease both;
       z-index: 4;
     }
 
@@ -226,10 +229,10 @@
     }
 
     @keyframes marGridTravel {
-      0% { opacity: 0; background-position: 0 180px; filter: blur(2px) drop-shadow(0 0 8px rgba(0, 145, 255, 0.2)); }
-      22% { opacity: 1; }
-      76% { opacity: .82; background-position: 0 -40px; }
-      100% { opacity: 0; background-position: 0 -120px; filter: blur(4px) drop-shadow(0 0 22px rgba(0, 145, 255, 0.4)); }
+      0% { opacity: 0; background-position: 0 220px; filter: blur(2px) drop-shadow(0 0 8px rgba(0, 145, 255, 0.2)); }
+      16% { opacity: .88; }
+      72% { opacity: .78; background-position: 0 -70px; }
+      100% { opacity: 0; background-position: 0 -150px; filter: blur(4px) drop-shadow(0 0 22px rgba(0, 145, 255, 0.4)); }
     }
 
     @keyframes marMist {
@@ -246,21 +249,21 @@
     }
 
     @keyframes marFlare {
-      0%, 54% { opacity: 0; transform: scale(0.12); }
-      68% { opacity: .82; transform: scale(1); }
+      0%, 60% { opacity: 0; transform: scale(0.1); }
+      72% { opacity: .72; transform: scale(1); }
       100% { opacity: 0; transform: scale(1.3); }
     }
 
     @keyframes marLogoReveal {
-      0%, 46% { opacity: 0; transform: translateY(22px) scale(.9); filter: blur(2px) drop-shadow(0 0 4px rgba(88, 184, 255, 0.3)); }
-      66% { opacity: 1; transform: translateY(0) scale(1.03); filter: blur(0) drop-shadow(0 0 24px rgba(88, 184, 255, 0.9)); }
+      0%, 58% { opacity: 0; transform: translateY(24px) scale(.88); filter: blur(2px) drop-shadow(0 0 4px rgba(88, 184, 255, 0.3)); }
+      76% { opacity: 1; transform: translateY(0) scale(1.03); filter: blur(0) drop-shadow(0 0 24px rgba(88, 184, 255, 0.9)); }
       92% { opacity: 1; transform: translateY(0) scale(1); }
       100% { opacity: 0; transform: translateY(-8px) scale(.98); }
     }
 
     @keyframes marTitleReveal {
-      0%, 60% { opacity: 0; transform: translateY(12px); }
-      74%, 92% { opacity: 1; transform: translateY(0); }
+      0%, 68% { opacity: 0; transform: translateY(12px); }
+      80%, 92% { opacity: 1; transform: translateY(0); }
       100% { opacity: 0; transform: translateY(-6px); }
     }
 
@@ -336,14 +339,20 @@
     <div class="wrap">
       <div class="startup-grid"></div>
       <div class="startup-mist"></div>
-      <span class="startup-column" style="--x:-42vw; --z:-260px; --h:70px; --delay:.1s"></span>
-      <span class="startup-column" style="--x:-30vw; --z:-120px; --h:110px; --delay:.2s"></span>
-      <span class="startup-column" style="--x:-18vw; --z:-210px; --h:84px; --delay:.05s"></span>
-      <span class="startup-column" style="--x:-7vw; --z:-80px; --h:136px; --delay:.28s"></span>
-      <span class="startup-column" style="--x:7vw; --z:-180px; --h:92px; --delay:.16s"></span>
-      <span class="startup-column" style="--x:18vw; --z:-60px; --h:124px; --delay:.32s"></span>
-      <span class="startup-column" style="--x:31vw; --z:-230px; --h:78px; --delay:.12s"></span>
-      <span class="startup-column" style="--x:43vw; --z:-130px; --h:108px; --delay:.24s"></span>
+      <span class="startup-column" style="--x:-48vw; --z:-330px; --h:58px; --delay:.06s"></span>
+      <span class="startup-column" style="--x:-41vw; --z:-230px; --h:84px; --delay:.18s"></span>
+      <span class="startup-column" style="--x:-34vw; --z:-110px; --h:124px; --delay:.28s"></span>
+      <span class="startup-column" style="--x:-27vw; --z:-285px; --h:74px; --delay:.02s"></span>
+      <span class="startup-column" style="--x:-20vw; --z:-165px; --h:102px; --delay:.22s"></span>
+      <span class="startup-column" style="--x:-12vw; --z:-70px; --h:150px; --delay:.34s"></span>
+      <span class="startup-column" style="--x:-4vw; --z:-245px; --h:92px; --delay:.12s"></span>
+      <span class="startup-column" style="--x:4vw; --z:-125px; --h:138px; --delay:.3s"></span>
+      <span class="startup-column" style="--x:12vw; --z:-315px; --h:66px; --delay:.08s"></span>
+      <span class="startup-column" style="--x:20vw; --z:-190px; --h:114px; --delay:.2s"></span>
+      <span class="startup-column" style="--x:28vw; --z:-80px; --h:144px; --delay:.38s"></span>
+      <span class="startup-column" style="--x:36vw; --z:-260px; --h:78px; --delay:.14s"></span>
+      <span class="startup-column" style="--x:44vw; --z:-145px; --h:108px; --delay:.26s"></span>
+      <span class="startup-column" style="--x:51vw; --z:-340px; --h:62px; --delay:.04s"></span>
       <div class="startup-flare"></div>
       <img class="startup-logo" src="{{ url_for('static', filename='logo.png') }}" alt="Poliutech">
       <div class="startup-title">Sistema M.A.R. Poliutech</div>
@@ -466,7 +475,7 @@
     document.getElementById('mar-splash-skip')?.addEventListener('click', closeSplash);
 
     // Cierre del splash visual. El audio existente puede continuar si el navegador lo permite.
-    setTimeout(closeSplash, 5200);
+    setTimeout(closeSplash, 6400);
   })();
   </script>
 <!-- ====== Tooltips globales Bootstrap ====== -->
