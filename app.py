@@ -1620,6 +1620,7 @@ def ensure_schema():
             ("total", "ALTER TABLE cotizacion ADD COLUMN total FLOAT DEFAULT 0.0"),
             ("notas", "ALTER TABLE cotizacion ADD COLUMN notas VARCHAR(3000)"),
             ("last_whatsapp_at", "ALTER TABLE cotizacion ADD COLUMN last_whatsapp_at TIMESTAMP NULL"),
+            ("ciudad_trabajo", "ALTER TABLE cotizacion ADD COLUMN ciudad_trabajo VARCHAR(120)"),
         ]:
             if col not in cols:
                 try:
@@ -4422,6 +4423,7 @@ def crear_cotizacion():
 
     nombre_cliente = (f.get("cliente") or f.get("cliente_nombre") or "").strip()
     empresa = (f.get("empresa") or "").strip()
+    ciudad_trabajo = (f.get("ciudad_trabajo") or "").strip().upper() or None
 
     # === responsable_final ===
     # USER: siempre su nombre (primer nombre)
@@ -4479,7 +4481,8 @@ def crear_cotizacion():
         estatus=(f.get("estatus") or "PENDIENTE").upper(),
         notas=(f.get("notas") or "").strip() or None,
         last_whatsapp_at=None,
-        responsable=responsable_final
+        responsable=responsable_final,
+        ciudad_trabajo=ciudad_trabajo,
     )
     db.session.add(cot)
     db.session.flush()
@@ -4668,6 +4671,7 @@ def actualizar_cotizacion(cot_id: int):
     c.estatus = (f.get("estatus") or c.estatus).upper()
     c.notas = (f.get("notas") or "").strip()
     c.responsable = (responsable_final or c.responsable)
+    c.ciudad_trabajo = (f.get("ciudad_trabajo") or "").strip().upper() or None
     iva_porc = parse_float(f.get("iva_porc"), c.iva_porc or 16.0)
 
     # --- Zona (descuento) ---
@@ -5835,6 +5839,7 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
     cliente_empresa = cli.empresa if cli else ""
     cliente_correo = cli.correo if cli else ""
     cliente_telefono = cli.telefono if cli else ""
+    ciudad_trabajo = (getattr(c, "ciudad_trabajo", "") or "").strip()
 
     meta_data = [
         [
@@ -5851,7 +5856,7 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
         ],
         [
             Paragraph(f"<b>Teléfono:</b> {cliente_telefono}", styles["Encabezado"]),
-            Paragraph("", styles["Encabezado"]),
+            Paragraph(f"<b>Ciudad del trabajo:</b> {escape(ciudad_trabajo)}", styles["Encabezado"]),
         ],
     ]
     meta_tbl = Table(meta_data, colWidths=[95*mm, 95*mm], hAlign="LEFT")

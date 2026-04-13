@@ -17,6 +17,7 @@
           <div class="col-md-6 mb-2"><label class="fw-bold">Empresa:</label><div>{{ c.cliente.empresa if c.cliente else "—" }}</div></div>
           <div class="col-md-6 mb-2"><label class="fw-bold">Correo:</label><div>{{ c.cliente.correo if c.cliente else "—" }}</div></div>
           <div class="col-md-6 mb-2"><label class="fw-bold">Teléfono:</label><div>{{ c.cliente.telefono if c.cliente else "—" }}</div></div>
+          <div class="col-md-6 mb-2"><label class="fw-bold">Ciudad del trabajo:</label><div>{{ c.ciudad_trabajo or "—" }}</div></div>
         </div>
         <div class="mt-2"><label class="fw-bold">Representante:</label><div>{{ c.responsable or "—" }}</div></div>
       </div>
