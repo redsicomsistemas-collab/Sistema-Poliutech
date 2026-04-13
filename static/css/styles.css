@@ -227,3 +227,32 @@ canvas {
   overflow-wrap: anywhere;
   text-align: left;
 }
+
+/* Dashboard: las graficas principales necesitan usar todo el espacio del panel. */
+.dashboard-charts-row {
+  max-width: none !important;
+  width: 100% !important;
+}
+
+.dashboard-monthly-chart {
+  position: relative !important;
+  width: 100% !important;
+  height: 520px !important;
+  min-height: 520px !important;
+}
+
+.dashboard-status-chart {
+  position: relative !important;
+  width: 100% !important;
+  height: 330px !important;
+  min-height: 330px !important;
+}
+
+.dashboard-charts-row #chartMensual,
+.dashboard-charts-row #chartEstatus {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-height: none !important;
+  margin: 0 !important;
+}
