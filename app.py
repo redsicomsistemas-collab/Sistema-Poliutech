@@ -5856,7 +5856,7 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
         ],
         [
             Paragraph(f"<b>Teléfono:</b> {cliente_telefono}", styles["Encabezado"]),
-            Paragraph(f"<b>Ciudad del trabajo:</b> {escape(ciudad_trabajo)}", styles["Encabezado"]),
+            Paragraph(f"<b>Ciudad:</b> {escape(ciudad_trabajo)}", styles["Encabezado"]),
         ],
     ]
     meta_tbl = Table(meta_data, colWidths=[95*mm, 95*mm], hAlign="LEFT")
