@@ -237,15 +237,15 @@ canvas {
 .dashboard-monthly-chart {
   position: relative !important;
   width: 100% !important;
-  height: 520px !important;
-  min-height: 520px !important;
+  height: 315px !important;
+  min-height: 315px !important;
 }
 
 .dashboard-status-chart {
   position: relative !important;
   width: 100% !important;
-  height: 330px !important;
-  min-height: 330px !important;
+  height: 315px !important;
+  min-height: 315px !important;
 }
 
 .dashboard-charts-row #chartMensual,
