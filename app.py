@@ -6083,32 +6083,41 @@ def api_cotizaciones_search():
 @app.route("/api/dashboard/metrics")
 @login_required
 def api_dashboard_metrics():
-    # Filtrado para USER
-    base = db.session.query(
-        db.func.strftime("%Y-%m", Cotizacion.fecha).label("ym"),
-        db.func.count(Cotizacion.id),
-        db.func.coalesce(db.func.sum(Cotizacion.total), 0)
+    desde = (request.args.get("desde") or "").strip()
+    hasta = (request.args.get("hasta") or "").strip()
+    estatus = (request.args.get("estatus") or "").strip()
+    cliente = (request.args.get("cliente") or "").strip()
+
+    try:
+        q = _build_dashboard_cotizaciones_query(
+            desde=desde,
+            hasta=hasta,
+            estatus=estatus,
+            cliente=cliente,
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    rows = (
+        q.with_entities(
+            db.func.strftime("%Y-%m", Cotizacion.fecha).label("ym"),
+            db.func.count(Cotizacion.id),
+            db.func.coalesce(db.func.sum(Cotizacion.total), 0),
+        )
+        .filter(Cotizacion.fecha.isnot(None))
+        .group_by("ym")
+        .order_by("ym")
+        .all()
     )
-    if not is_admin():
-        base = base.filter(Cotizacion.responsable == responsable_actual())
+    series = [{"mes": ym, "cotizaciones": int(c), "total": float(t)} for ym, c, t in rows if ym]
 
-    rows = base.group_by("ym").order_by("ym").all()
-    series = [{"mes": ym, "cotizaciones": int(c), "total": float(t)} for ym, c, t in rows]
-
-    if is_admin():
-        kpis = {
-            "total_cotizaciones": Cotizacion.query.count(),
-            "total_importe": float(db.session.query(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar() or 0),
-            "total_catalogo": Concepto.query.count(),
-        }
-    else:
-        ra = responsable_actual()
-        kpis = {
-            "total_cotizaciones": Cotizacion.query.filter(Cotizacion.responsable == ra).count(),
-            "total_importe": float((db.session.query(db.func.coalesce(db.func.sum(Cotizacion.total), 0))
-                                    .filter(Cotizacion.responsable == ra).scalar() or 0)),
-            "total_catalogo": Concepto.query.count(),
-        }
+    kpis = {
+        "total_cotizaciones": q.count(),
+        "total_importe": float(
+            q.with_entities(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar() or 0
+        ),
+        "total_catalogo": Concepto.query.count(),
+    }
 
     return jsonify({"series": series, "kpis": kpis})
 

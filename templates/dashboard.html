@@ -142,23 +142,12 @@
 
 <!-- 📊 GRÁFICAS -->
 <div class="row mt-4">
-  <div class="col-md-4">
+  <div class="col-md-8">
     <div class="card shadow-sm h-100">
       <div class="card-body" style="height: 340px;">
-        <h5 class="card-title text-primary">Importe Total por Mes</h5>
+        <h5 class="card-title text-primary">Resumen Mensual</h5>
         <div style="position: relative; height: 250px;">
-          <canvas id="chartImporte"></canvas>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-md-4">
-    <div class="card shadow-sm h-100">
-      <div class="card-body" style="height: 340px;">
-        <h5 class="card-title text-success">Cotizaciones por Mes</h5>
-        <div style="position: relative; height: 250px;">
-          <canvas id="chartCantidad"></canvas>
+          <canvas id="chartMensual"></canvas>
         </div>
       </div>
     </div>
@@ -360,8 +349,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const conceptosSummaryEls = document.querySelectorAll('[data-summary="conceptos-total"]');
   const statuses = {{ valid_estatus|tojson }};
   const chartColors = ["#1565c0", "#f9a825", "#00897b", "#6d4c41", "#546e7a", "#2e7d32", "#c62828"];
-  let chartImporteInstance = null;
-  let chartCantidadInstance = null;
+  const monthNames = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+  let chartMensualInstance = null;
   let chartEstatusInstance = null;
 
   // ✅ Selección masiva + borrado (solo admin)
@@ -415,69 +404,129 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   window.refreshDashboardSummary = refreshSummaryCards;
 
-  function renderFilteredCharts() {
-    const visibleRows = getVisibleRows();
+  function buildVisibleMonthlyData(visibleRows) {
     const monthly = new Map();
-    const statusCounts = Object.fromEntries(statuses.map((status) => [status, 0]));
+    const years = new Set();
 
     visibleRows.forEach((tr) => {
       const fecha = (tr.dataset.fecha || "").trim();
-      const month = fecha ? fecha.slice(0, 7) : "Sin fecha";
+      const month = fecha ? fecha.slice(0, 7) : "";
+      const year = fecha ? fecha.slice(0, 4) : "";
       const total = Number.parseFloat(tr.dataset.total || "0") || 0;
-      const rowStatus = (tr.dataset.estatus || "").trim().toUpperCase();
 
+      if (!month) return;
       if (!monthly.has(month)) {
         monthly.set(month, { total: 0, cotizaciones: 0 });
       }
       const monthData = monthly.get(month);
       monthData.total += total;
       monthData.cotizaciones += 1;
+      if (/^\d{4}$/.test(year)) {
+        years.add(year);
+      }
+    });
+
+    return { monthly, years };
+  }
+
+  async function getDashboardMonthlyData(visibleRows) {
+    const params = buildFilterParams();
+    const query = params.toString();
+
+    try {
+      const response = await fetch(`/api/dashboard/metrics${query ? `?${query}` : ""}`);
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "No se pudo cargar la grafica mensual.");
+      }
+
+      const monthly = new Map();
+      const years = new Set();
+      (data.series || []).forEach((item) => {
+        const month = String(item.mes || "");
+        const year = month.slice(0, 4);
+        if (!/^\d{4}-\d{2}$/.test(month)) return;
+        monthly.set(month, {
+          total: Number(item.total || 0),
+          cotizaciones: Number(item.cotizaciones || 0),
+        });
+        years.add(year);
+      });
+      return { monthly, years };
+    } catch (err) {
+      console.error("Error cargando grafica mensual del dashboard", err);
+      return buildVisibleMonthlyData(visibleRows);
+    }
+  }
+
+  async function renderFilteredCharts() {
+    const visibleRows = getVisibleRows();
+    const statusCounts = Object.fromEntries(statuses.map((status) => [status, 0]));
+    const { monthly, years } = await getDashboardMonthlyData(visibleRows);
+
+    visibleRows.forEach((tr) => {
+      const rowStatus = (tr.dataset.estatus || "").trim().toUpperCase();
 
       if (Object.prototype.hasOwnProperty.call(statusCounts, rowStatus)) {
         statusCounts[rowStatus] += 1;
       }
     });
 
-    const labels = Array.from(monthly.keys()).sort();
-    const importes = labels.map((label) => Number(monthly.get(label)?.total || 0));
-    const cantidades = labels.map((label) => Number(monthly.get(label)?.cotizaciones || 0));
+    if (years.size === 0) {
+      years.add(String(new Date().getFullYear()));
+    }
+
+    const monthKeys = Array.from(years)
+      .sort()
+      .flatMap((year) => monthNames.map((_, index) => `${year}-${String(index + 1).padStart(2, "0")}`));
+    const labels = monthKeys.map((key) => `${monthNames[Number(key.slice(5, 7)) - 1]} ${key.slice(0, 4)}`);
+    const importes = monthKeys.map((key) => Number(monthly.get(key)?.total || 0));
+    const cantidades = monthKeys.map((key) => Number(monthly.get(key)?.cotizaciones || 0));
     const statusData = statuses.map((status) => statusCounts[status] || 0);
 
-    if (chartImporteInstance) chartImporteInstance.destroy();
-    chartImporteInstance = new Chart(document.getElementById("chartImporte"), {
-      type: "bar",
+    if (chartMensualInstance) chartMensualInstance.destroy();
+    chartMensualInstance = new Chart(document.getElementById("chartMensual"), {
       data: {
         labels,
-        datasets: [{
-          label: "Importe Total ($)",
-          data: importes,
-          backgroundColor: "#0d47a1",
-          borderRadius: 6
-        }]
+        datasets: [
+          {
+            type: "bar",
+            label: "Importe Total ($)",
+            data: importes,
+            yAxisID: "y",
+            backgroundColor: "#1565c0",
+            borderRadius: 6
+          },
+          {
+            type: "line",
+            label: "Cotizaciones",
+            data: cantidades,
+            yAxisID: "y1",
+            borderColor: "#43a047",
+            backgroundColor: "#43a047",
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            tension: 0.25
+          }
+        ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        scales: { y: { beginAtZero: true } }
-      }
-    });
-
-    if (chartCantidadInstance) chartCantidadInstance.destroy();
-    chartCantidadInstance = new Chart(document.getElementById("chartCantidad"), {
-      type: "bar",
-      data: {
-        labels,
-        datasets: [{
-          label: "Cotizaciones",
-          data: cantidades,
-          backgroundColor: "#43a047",
-          borderRadius: 6
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: { y: { beginAtZero: true } }
+        interaction: { mode: "index", intersect: false },
+        scales: {
+          y: {
+            beginAtZero: true,
+            title: { display: true, text: "Importe ($)" }
+          },
+          y1: {
+            beginAtZero: true,
+            position: "right",
+            grid: { drawOnChartArea: false },
+            ticks: { precision: 0 },
+            title: { display: true, text: "Cotizaciones" }
+          }
+        }
       }
     });
 
