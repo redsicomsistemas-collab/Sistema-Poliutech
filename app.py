@@ -6124,13 +6124,28 @@ def api_dashboard_metrics():
 @app.route("/api/dashboard/status_breakdown")
 @login_required
 def api_dashboard_status_breakdown():
-    q = db.session.query(Cotizacion.estatus, db.func.count(Cotizacion.id))
-    if not is_admin():
-        q = q.filter(Cotizacion.responsable == responsable_actual())
+    desde = (request.args.get("desde") or "").strip()
+    hasta = (request.args.get("hasta") or "").strip()
+    estatus = (request.args.get("estatus") or "").strip()
+    cliente = (request.args.get("cliente") or "").strip()
 
-    rows = q.group_by(Cotizacion.estatus).all()
+    try:
+        q = _build_dashboard_cotizaciones_query(
+            desde=desde,
+            hasta=hasta,
+            estatus=estatus,
+            cliente=cliente,
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    rows = (
+        q.with_entities(Cotizacion.estatus, db.func.count(Cotizacion.id))
+        .group_by(Cotizacion.estatus)
+        .all()
+    )
     categorias = VALID_ESTATUS
-    conteos_map = {estatus: cnt for estatus, cnt in rows}
+    conteos_map = {(estatus or "").strip().upper(): cnt for estatus, cnt in rows}
     conteos = [int(conteos_map.get(cat, 0)) for cat in categorias]
     total = sum(conteos)
     porcentajes = [round((c * 100.0 / total), 2) if total > 0 else 0 for c in conteos]
