@@ -857,7 +857,27 @@ def _voice_log_command(user: Usuario, preview: dict, status: str, cotizacion: Op
             pass
 
 
-def _voice_preview_payload_for_mobile(command_raw: str, user: Usuario, client_override: str = "", notes: str = "") -> dict:
+def _voice_parse_conditions(conditions_raw: str) -> list[str]:
+    raw = str(conditions_raw or "").strip()
+    if not raw:
+        return []
+    normalized = re.sub(
+        r"\b(?:otra condicion es que|otra condición es que|condicion es que|condición es que)\b",
+        "|",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    parts = [part.strip(" ,.-") for part in normalized.split("|") if part.strip(" ,.-")]
+    return parts
+
+
+def _voice_preview_payload_for_mobile(
+    command_raw: str,
+    user: Usuario,
+    client_override: str = "",
+    notes: str = "",
+    conditions_raw: str = "",
+) -> dict:
     command_text = _voice_normalize_text(command_raw)
     if not command_text:
         raise ValueError("No se recibió ningún comando de voz.")
@@ -865,6 +885,7 @@ def _voice_preview_payload_for_mobile(command_raw: str, user: Usuario, client_ov
     client_name = (client_override or "").strip() or _voice_extract_client(command_text)
     segments = _voice_split_segments(command_raw)
     items = [_voice_build_item_payload(segment, client_name, idx) for idx, segment in enumerate(segments, start=1)]
+    conditions = _voice_parse_conditions(conditions_raw)
     subtotal = fmt(sum(float(item.get("subtotal") or 0) for item in items))
     iva = fmt(subtotal * 0.16)
     total = fmt(subtotal + iva)
@@ -887,6 +908,8 @@ def _voice_preview_payload_for_mobile(command_raw: str, user: Usuario, client_ov
             "iva": iva,
             "total": total,
         },
+        "condiciones": conditions,
+        "condiciones_raw": (conditions_raw or "").strip(),
         "notas": (notes or "").strip(),
         "comando_original": command_raw.strip(),
         "warnings": warnings,
@@ -915,6 +938,8 @@ def _create_mobile_voice_quote(preview: dict, user: Usuario) -> Cotizacion:
     notes_parts = []
     if preview.get("notas"):
         notes_parts.append(str(preview["notas"]).strip())
+    for condition in preview.get("condiciones") or []:
+        notes_parts.append(str(condition).strip())
     notes_parts.append(f"Comando de voz: {preview.get('comando_original', '').strip()}")
     for idx, item in enumerate(preview.get("items") or [], start=1):
         notes_parts.append(f"Partida {idx}: {item.get('origen_segmento', '')}".strip())
@@ -4518,6 +4543,7 @@ def api_mobile_voice_quote():
     command_raw = str(payload.get("comando") or payload.get("transcript") or "").strip()
     client_override = str(payload.get("cliente") or "").strip()
     notes = str(payload.get("notas") or "").strip()
+    conditions_raw = str(payload.get("condiciones") or payload.get("condiciones_raw") or "").strip()
     confirmar = bool(payload.get("confirmar"))
     if not command_raw:
         return _mobile_json_error("Dicta o escribe un comando antes de continuar.", 400)
@@ -4528,6 +4554,7 @@ def api_mobile_voice_quote():
             user=g.mobile_user,
             client_override=client_override,
             notes=notes,
+            conditions_raw=conditions_raw,
         )
     except ValueError as exc:
         return _mobile_json_error(str(exc), 400)
