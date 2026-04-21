@@ -630,20 +630,127 @@ def _voice_extract_client(command_text: str) -> str:
     for pattern in patterns:
         match = re.search(pattern, command_text, flags=re.IGNORECASE)
         if match:
-            client = re.split(r"\b(?:con|de|medida|medidas|color|precio)\b", match.group(1), maxsplit=1)[0]
-            return client.strip(" ,.-").title()
+            client = re.split(
+                r"\b(?:"
+                r"concepto|descripcion|descripción|cantidad|cant(?:idad)?|precio(?:\s+unitario)?|"
+                r"empresa|razon\s+social|razón\s+social|correo|telefono|teléfono|celular|movil|móvil|"
+                r"responsable|contacto|atencion|atención|direccion|dirección|domicilio|ciudad|municipio|"
+                r"sistema|color|acabado|condicion|condición"
+                r")\b",
+                match.group(1),
+                maxsplit=1,
+                flags=re.IGNORECASE,
+            )[0]
+            client = re.split(r"\b(?:con|medida|medidas)\b", client, maxsplit=1, flags=re.IGNORECASE)[0]
+            return _voice_clean_field(client).title()
+    return ""
+
+
+def _voice_clean_field(value: str) -> str:
+    cleaned = re.sub(r"\s+", " ", str(value or "").strip())
+    return cleaned.strip(" ,.-")
+
+
+def _voice_extract_company(command_text: str) -> str:
+    patterns = [
+        r"(?:empresa|razon social|razón social)\s+([a-z0-9áéíóúñ.&,\-/ ]+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, command_text, flags=re.IGNORECASE)
+        if match:
+            value = re.split(
+                r"\b(?:correo|telefono|teléfono|direccion|dirección|ciudad|responsable|concepto|cantidad|precio)\b",
+                match.group(1),
+                maxsplit=1,
+                flags=re.IGNORECASE,
+            )[0]
+            return _voice_clean_field(value).title()
+    return ""
+
+
+def _voice_extract_email(command_text: str) -> str:
+    match = re.search(r"\b([A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})\b", command_text, flags=re.IGNORECASE)
+    return match.group(1).strip() if match else ""
+
+
+def _voice_extract_phone(command_text: str) -> str:
+    explicit = re.search(
+        r"(?:telefono|teléfono|celular|movil|móvil|whatsapp)\s+([0-9\-\+\(\)\s]{8,})",
+        command_text,
+        flags=re.IGNORECASE,
+    )
+    candidate = explicit.group(1) if explicit else ""
+    if not candidate:
+        any_phone = re.search(r"\b(?:\+?\d[\d\-\(\)\s]{8,}\d)\b", command_text)
+        candidate = any_phone.group(0) if any_phone else ""
+    digits = re.sub(r"\D", "", candidate)
+    if len(digits) < 8:
+        return ""
+    return digits
+
+
+def _voice_extract_address(command_text: str) -> str:
+    patterns = [
+        r"(?:direccion|dirección|domicilio)\s+([a-z0-9áéíóúñ#.,\-/ ]+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, command_text, flags=re.IGNORECASE)
+        if match:
+            value = re.split(
+                r"\b(?:ciudad|correo|telefono|teléfono|responsable|concepto|cantidad|precio)\b",
+                match.group(1),
+                maxsplit=1,
+                flags=re.IGNORECASE,
+            )[0]
+            return _voice_clean_field(value).title()
+    return ""
+
+
+def _voice_extract_city(command_text: str) -> str:
+    patterns = [
+        r"(?:ciudad|municipio)\s+([a-z0-9áéíóúñ.\- ]+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, command_text, flags=re.IGNORECASE)
+        if match:
+            value = re.split(
+                r"\b(?:correo|telefono|teléfono|responsable|direccion|dirección|concepto|cantidad|precio)\b",
+                match.group(1),
+                maxsplit=1,
+                flags=re.IGNORECASE,
+            )[0]
+            return _voice_clean_field(value).title()
+    return ""
+
+
+def _voice_extract_contact_responsible(command_text: str) -> str:
+    patterns = [
+        r"(?:responsable|contacto|atencion|atención)\s+([a-z0-9áéíóúñ.\- ]+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, command_text, flags=re.IGNORECASE)
+        if match:
+            value = re.split(
+                r"\b(?:correo|telefono|teléfono|direccion|dirección|ciudad|concepto|cantidad|precio)\b",
+                match.group(1),
+                maxsplit=1,
+                flags=re.IGNORECASE,
+            )[0]
+            return _voice_clean_field(value).title()
     return ""
 
 
 def _voice_strip_client_phrase(command_text: str) -> str:
-    patterns = [
-        r"(?:para cliente|cliente|a nombre de)\s+[a-z0-9áéíóúñ .-]+",
-        r"para\s+[a-z0-9áéíóúñ .-]+$",
-    ]
-    cleaned = command_text
-    for pattern in patterns:
-        cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
-    return re.sub(r"\s+", " ", cleaned).strip(" ,.-")
+    cleaned = str(command_text or "")
+    cleaned = re.sub(
+        r"(?i)\b(?:para cliente|cliente|a nombre de)\s+([a-z0-9áéíóúñ .-]+?)"
+        r"(?=\b(?:concepto|descripcion|descripción|cantidad|precio|empresa|correo|telefono|teléfono|"
+        r"responsable|direccion|dirección|ciudad|sistema|color|acabado|condicion|condición)\b|$)",
+        " ",
+        cleaned,
+    )
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned.strip(" ,.-")
 
 
 def _voice_extract_dimensions(command_text: str) -> tuple[Optional[float], Optional[float]]:
@@ -661,11 +768,11 @@ def _voice_extract_dimensions(command_text: str) -> tuple[Optional[float], Optio
     return width, height
 
 
-def _voice_extract_quantity(command_text: str) -> float:
+def _voice_extract_quantity(command_text: str) -> Optional[float]:
     match = re.search(r"^\s*(\d+(?:[\.,]\d+)?)\s*(?:piezas?|pieza|pzas?|pz)?\b", command_text)
     if match:
         quantity = _voice_parse_number(match.group(1), 1.0)
-        return quantity if quantity > 0 else 1.0
+        return quantity if quantity > 0 else None
     first_word = command_text.split(" ", 1)[0].strip()
     word_quantity = _voice_parse_number_word(first_word)
     if word_quantity is not None:
@@ -673,7 +780,7 @@ def _voice_extract_quantity(command_text: str) -> float:
     match = re.search(r"\b(\d+(?:[\.,]\d+)?)\s*(?:piezas?|pieza|pzas?|pz)\b", command_text)
     if match:
         quantity = _voice_parse_number(match.group(1), 1.0)
-        return quantity if quantity > 0 else 1.0
+        return quantity if quantity > 0 else None
     match = re.search(
         r"\b(\d+(?:[\.,]\d+)?)\s*(?:hectareas?|hectáreas?|ha|m2|mt2|metros?\s+cuadrados?|ml|metros?\s+lineales?)\b",
         command_text,
@@ -681,12 +788,8 @@ def _voice_extract_quantity(command_text: str) -> float:
     )
     if match:
         quantity = _voice_parse_number(match.group(1), 1.0)
-        return quantity if quantity > 0 else 1.0
-    match = re.search(r"\b(\d+(?:[\.,]\d+)?)\b", command_text)
-    if match:
-        quantity = _voice_parse_number(match.group(1), 1.0)
-        return quantity if quantity > 0 else 1.0
-    return 1.0
+        return quantity if quantity > 0 else None
+    return None
 
 
 def _voice_extract_price(command_text: str) -> Optional[float]:
@@ -714,6 +817,20 @@ def _voice_extract_unit(command_text: str) -> str:
         return "ml"
     if re.search(r"\bpiezas?\b|\bpzas?\b|\bpz\b", command_text):
         return "pza"
+    return ""
+
+
+def _voice_extract_system(command_text: str) -> str:
+    patterns = [
+        r"(?:sistema)\s+([a-z0-9áéíóúñ.\-/ ]+)",
+        r"\b(sfrm|cementicio|intumescente|monokote|cafco|promat|vermiculita)\b",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, command_text, flags=re.IGNORECASE)
+        if match:
+            value = match.group(1)
+            value = re.split(r"\b(?:precio|cantidad|descripcion|descripción|correo|telefono|teléfono|direccion|dirección|ciudad)\b", value, maxsplit=1)[0]
+            return _voice_clean_field(value).title()
     return ""
 
 
@@ -790,6 +907,7 @@ def _voice_build_item_payload(segment_raw: str, client_name: str, index: int) ->
     quantity = _voice_extract_quantity(segment_text)
     explicit_price = _voice_extract_price(segment_text)
     explicit_unit = _voice_extract_unit(segment_text)
+    explicit_system = _voice_extract_system(segment_text)
     finish = _voice_extract_color_or_finish(segment_text)
     search_text = _voice_build_search_text(segment_text, client_name)
     concept = _voice_match_concept(search_text)
@@ -797,21 +915,28 @@ def _voice_build_item_payload(segment_raw: str, client_name: str, index: int) ->
     concept_name = (concept.nombre_concepto if concept else search_text or segment_raw).strip()
     if not concept_name:
         concept_name = segment_raw.strip() or f"Concepto por voz {index}"
-    unit = explicit_unit or (concept.unidad or "").strip() or "pza"
+    unit = explicit_unit or (concept.unidad or "").strip() or ""
     unit_price = explicit_price if explicit_price is not None else float(getattr(concept, "precio_unitario", 0) or 0)
+    if explicit_price is None and unit_price <= 0:
+        unit_price = 0.0
+    system = explicit_system or (getattr(concept, "sistema", "") or "").strip()
     area = fmt(width * height) if width and height else 0.0
     effective_quantity = quantity
-    if area > 0 and unit.lower() in {"m2", "mt2", "metro cuadrado", "metros cuadrados"}:
+    if area > 0 and quantity is not None and unit.lower() in {"m2", "mt2", "metro cuadrado", "metros cuadrados"}:
         effective_quantity = fmt(quantity * area)
-    subtotal = fmt(effective_quantity * unit_price)
+    subtotal = fmt((effective_quantity or 0) * unit_price) if effective_quantity is not None and unit_price > 0 else 0.0
 
     warnings = []
     if not concept:
         warnings.append(f"Partida {index}: no encontré un concepto exacto en catálogo; usaré el texto dictado.")
+    if quantity is None:
+        warnings.append(f"Partida {index}: la cantidad no se detectó y quedó en blanco.")
+    if not unit:
+        warnings.append(f"Partida {index}: la unidad no se detectó y quedó en blanco.")
     if unit_price <= 0:
         warnings.append(f"Partida {index}: el precio unitario quedó en 0.")
 
-    description_parts = [segment_raw.strip()]
+    description_parts = []
     if area > 0:
         description_parts.append(
             f"Medidas detectadas: {fmt(width)} x {fmt(height)} m ({area} m2 por pieza)."
@@ -823,10 +948,11 @@ def _voice_build_item_payload(segment_raw: str, client_name: str, index: int) ->
         "id": concept.id if concept else None,
         "nombre": concept_name,
         "unidad": unit,
-        "cantidad": fmt(effective_quantity),
-        "cantidad_capturada": fmt(quantity),
-        "precio_unitario": fmt(unit_price),
-        "subtotal": subtotal,
+        "cantidad": fmt(effective_quantity) if effective_quantity is not None else "",
+        "cantidad_capturada": fmt(quantity) if quantity is not None else "",
+        "precio_unitario": fmt(unit_price) if unit_price > 0 else "",
+        "sistema": system,
+        "subtotal": subtotal if subtotal > 0 else "",
         "ancho": fmt(width) if width else 0.0,
         "alto": fmt(height) if height else 0.0,
         "area_por_pieza": area,
@@ -883,6 +1009,12 @@ def _voice_preview_payload_for_mobile(
         raise ValueError("No se recibió ningún comando de voz.")
 
     client_name = (client_override or "").strip() or _voice_extract_client(command_text)
+    company = _voice_extract_company(command_text)
+    email = _voice_extract_email(command_text)
+    phone = _voice_extract_phone(command_text)
+    address = _voice_extract_address(command_text)
+    city = _voice_extract_city(command_text)
+    contact_responsible = _voice_extract_contact_responsible(command_text)
     segments = _voice_split_segments(command_raw)
     items = [_voice_build_item_payload(segment, client_name, idx) for idx, segment in enumerate(segments, start=1)]
     conditions = _voice_parse_conditions(conditions_raw)
@@ -900,6 +1032,15 @@ def _voice_preview_payload_for_mobile(
     preview = {
         "cliente": client_name,
         "responsable": _mobile_user_responsable(user),
+        "datos_encabezado": {
+            "cliente": client_name,
+            "empresa": company,
+            "correo": email,
+            "telefono": phone,
+            "responsable_contacto": contact_responsible,
+            "direccion": address,
+            "ciudad": city,
+        },
         "items": items,
         "concepto_detectado": items[0] if items else {},
         "resumen": {
@@ -921,6 +1062,7 @@ def _voice_preview_payload_for_mobile(
 def _create_mobile_voice_quote(preview: dict, user: Usuario) -> Cotizacion:
     cliente_nombre = (preview.get("cliente") or "").strip()
     responsible = _mobile_user_responsable(user)
+    header_data = preview.get("datos_encabezado") or {}
     cliente = None
     if cliente_nombre:
         query = Cliente.query.filter(db.func.lower(Cliente.nombre_cliente) == cliente_nombre.lower())
@@ -930,19 +1072,31 @@ def _create_mobile_voice_quote(preview: dict, user: Usuario) -> Cotizacion:
         if not cliente:
             cliente = Cliente(
                 nombre_cliente=cliente_nombre,
+                empresa=(header_data.get("empresa") or "").strip() or None,
                 responsable=responsible,
+                correo=(header_data.get("correo") or "").strip() or None,
+                telefono=(header_data.get("telefono") or "").strip() or None,
+                direccion=(header_data.get("direccion") or "").strip() or None,
             )
             db.session.add(cliente)
             db.session.flush()
+        else:
+            if (header_data.get("empresa") or "").strip():
+                cliente.empresa = (header_data.get("empresa") or "").strip()
+            if (header_data.get("correo") or "").strip():
+                cliente.correo = (header_data.get("correo") or "").strip()
+            if (header_data.get("telefono") or "").strip():
+                cliente.telefono = (header_data.get("telefono") or "").strip()
+            if (header_data.get("direccion") or "").strip():
+                cliente.direccion = (header_data.get("direccion") or "").strip()
 
     notes_parts = []
     if preview.get("notas"):
         notes_parts.append(str(preview["notas"]).strip())
     for condition in preview.get("condiciones") or []:
         notes_parts.append(str(condition).strip())
-    notes_parts.append(f"Comando de voz: {preview.get('comando_original', '').strip()}")
-    for idx, item in enumerate(preview.get("items") or [], start=1):
-        notes_parts.append(f"Partida {idx}: {item.get('origen_segmento', '')}".strip())
+    if (header_data.get("responsable_contacto") or "").strip():
+        notes_parts.append(f"Responsable contacto: {(header_data.get('responsable_contacto') or '').strip()}")
 
     subtotal = fmt(sum(fmt(item.get("subtotal")) for item in (preview.get("items") or [])))
     iva = fmt(subtotal * 0.16)
@@ -955,6 +1109,7 @@ def _create_mobile_voice_quote(preview: dict, user: Usuario) -> Cotizacion:
         estatus="PENDIENTE",
         notas="\n".join(part for part in notes_parts if part).strip() or None,
         responsable=responsible,
+        ciudad_trabajo=(header_data.get("ciudad") or "").strip().upper() or None,
     )
     cot.subtotal = subtotal
     cot.descuento_total = 0.0
@@ -973,8 +1128,9 @@ def _create_mobile_voice_quote(preview: dict, user: Usuario) -> Cotizacion:
         if not concept:
             concept = Concepto(
                 nombre_concepto=concept_name,
-                unidad=(item.get("unidad") or "pza").strip(),
+                unidad=(item.get("unidad") or "").strip() or None,
                 precio_unitario=unit_price,
+                sistema=(item.get("sistema") or "").strip() or None,
                 descripcion=(item.get("descripcion") or "").strip() or None,
             )
             db.session.add(concept)
@@ -984,9 +1140,10 @@ def _create_mobile_voice_quote(preview: dict, user: Usuario) -> Cotizacion:
             cotizacion_id=cot.id,
             concepto_id=concept.id if concept else None,
             nombre_concepto=concept_name,
-            unidad=(item.get("unidad") or "pza").strip(),
+            unidad=(item.get("unidad") or "").strip(),
             cantidad=quantity,
             precio_unitario=unit_price,
+            sistema=(item.get("sistema") or "").strip() or None,
             descripcion=(item.get("descripcion") or "").strip(),
             subtotal=item_subtotal,
             origen="voz",
