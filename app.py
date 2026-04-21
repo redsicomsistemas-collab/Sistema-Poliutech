@@ -1022,6 +1022,154 @@ def _voice_parse_conditions(conditions_raw: str) -> list[str]:
     return parts
 
 
+VOICE_GUIDED_HEADER_LABELS = [
+    ("cliente", "cliente"),
+    ("empresa", "empresa"),
+    ("correo", "correo"),
+    ("telefono", "telefono"),
+    ("responsable", "responsable"),
+    ("direccion", "direccion"),
+    ("ciudad", "ciudad"),
+]
+
+VOICE_GUIDED_ITEM_LABELS = [
+    ("concepto", "concepto"),
+    ("otro concepto", "concepto"),
+    ("unidad", "unidad"),
+    ("cantidad", "cantidad"),
+    ("precio", "precio"),
+    ("sistema", "sistema"),
+    ("descripcion", "descripcion"),
+]
+
+
+def _voice_is_guided_script(command_raw: str) -> bool:
+    text = str(command_raw or "")
+    labels = ["CLIENTE", "EMPRESA", "CORREO", "CONCEPTO", "OTRO CONCEPTO", "CANTIDAD", "PRECIO"]
+    matches = sum(1 for label in labels if re.search(rf"\b{re.escape(label)}\s*:?", text, flags=re.IGNORECASE))
+    return matches >= 4
+
+
+def _voice_extract_labeled_sections(text: str, labels: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    if not text:
+        return []
+    pattern = "|".join(
+        rf"(?P<label_{idx}>{re.escape(label)})\s*:?"
+        for idx, (label, _) in enumerate(labels)
+    )
+    matches = list(re.finditer(pattern, text, flags=re.IGNORECASE))
+    sections: list[tuple[str, str]] = []
+    for idx, match in enumerate(matches):
+        canonical = None
+        for group_idx, (_, key) in enumerate(labels):
+            if match.group(f"label_{group_idx}"):
+                canonical = key
+                break
+        if canonical is None:
+            continue
+        start = match.end()
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
+        value = text[start:end].strip(" \r\n\t:-")
+        sections.append((canonical, value))
+    return sections
+
+
+def _voice_parse_guided_quantity(value: str) -> Optional[float]:
+    raw = _voice_clean_field(value)
+    if not raw:
+        return None
+    number_match = re.search(r"\d+(?:[\.,]\d+)?", raw)
+    if number_match:
+        quantity = _voice_parse_number(number_match.group(0), 0.0)
+        return quantity if quantity > 0 else None
+    for token in _voice_normalize_text(raw).split():
+        parsed = _voice_parse_number_word(token)
+        if parsed is not None and parsed > 0:
+            return parsed
+    return None
+
+
+def _voice_parse_guided_price(value: str) -> Optional[float]:
+    raw = _voice_clean_field(value)
+    if not raw:
+        return None
+    number_match = re.search(r"\d+(?:[\.,]\d+)?", raw)
+    if not number_match:
+        return None
+    price = _voice_parse_number(number_match.group(0), 0.0)
+    return price if price > 0 else None
+
+
+def _voice_build_guided_item_payload(item_fields: dict, index: int) -> dict:
+    concept_name = _voice_clean_field(item_fields.get("concepto") or "")
+    unit = _voice_clean_field(item_fields.get("unidad") or "")
+    quantity_value = _voice_parse_guided_quantity(item_fields.get("cantidad") or "")
+    price_value = _voice_parse_guided_price(item_fields.get("precio") or "")
+    system = _voice_clean_field(item_fields.get("sistema") or "")
+    description = _voice_clean_field(item_fields.get("descripcion") or "")
+    subtotal = fmt((quantity_value or 0) * (price_value or 0)) if quantity_value and price_value else 0.0
+
+    warnings = []
+    if not concept_name:
+        warnings.append(f"Partida {index}: el concepto no se detectó y quedó en blanco.")
+    if not unit:
+        warnings.append(f"Partida {index}: la unidad no se detectó y quedó en blanco.")
+    if quantity_value is None:
+        warnings.append(f"Partida {index}: la cantidad no se detectó y quedó en blanco.")
+    if price_value is None:
+        warnings.append(f"Partida {index}: el precio unitario no se detectó y quedó en blanco.")
+
+    return {
+        "id": None,
+        "nombre": concept_name,
+        "unidad": unit,
+        "cantidad": fmt(quantity_value) if quantity_value is not None else "",
+        "cantidad_capturada": fmt(quantity_value) if quantity_value is not None else "",
+        "precio_unitario": fmt(price_value) if price_value is not None else "",
+        "sistema": system,
+        "subtotal": subtotal if subtotal > 0 else "",
+        "ancho": 0.0,
+        "alto": 0.0,
+        "area_por_pieza": 0.0,
+        "acabado": "",
+        "descripcion": description,
+        "origen_segmento": concept_name,
+        "warnings": warnings,
+    }
+
+
+def _voice_parse_guided_script(command_raw: str) -> dict:
+    text = str(command_raw or "").replace("\r", "\n")
+    header_sections = _voice_extract_labeled_sections(text, VOICE_GUIDED_HEADER_LABELS)
+    header_data = {key: _voice_clean_field(value) for key, value in header_sections}
+
+    item_sections = _voice_extract_labeled_sections(text, VOICE_GUIDED_ITEM_LABELS)
+    items = []
+    current_item: dict[str, str] = {}
+    for key, value in item_sections:
+        if key == "concepto":
+            if current_item:
+                items.append(_voice_build_guided_item_payload(current_item, len(items) + 1))
+            current_item = {"concepto": value}
+        else:
+            if not current_item:
+                current_item = {}
+            current_item[key] = value
+    if current_item:
+        items.append(_voice_build_guided_item_payload(current_item, len(items) + 1))
+
+    return {
+        "cliente": header_data.get("cliente", ""),
+        "empresa": header_data.get("empresa", ""),
+        "correo": header_data.get("correo", ""),
+        "telefono": header_data.get("telefono", ""),
+        "responsable_contacto": header_data.get("responsable", ""),
+        "direccion": header_data.get("direccion", ""),
+        "ciudad": header_data.get("ciudad", ""),
+        "items": items,
+    }
+
+
 def _voice_preview_payload_for_mobile(
     command_raw: str,
     user: Usuario,
@@ -1033,15 +1181,26 @@ def _voice_preview_payload_for_mobile(
     if not command_text:
         raise ValueError("No se recibió ningún comando de voz.")
 
-    client_name = (client_override or "").strip() or _voice_extract_client(command_text)
-    company = _voice_extract_company(command_text)
-    email = _voice_extract_email(command_text)
-    phone = _voice_extract_phone(command_text)
-    address = _voice_extract_address(command_text)
-    city = _voice_extract_city(command_text)
-    contact_responsible = _voice_extract_contact_responsible(command_text)
-    segments = _voice_split_segments(command_raw)
-    items = [_voice_build_item_payload(segment, client_name, idx) for idx, segment in enumerate(segments, start=1)]
+    if _voice_is_guided_script(command_raw):
+        guided = _voice_parse_guided_script(command_raw)
+        client_name = (client_override or "").strip() or guided.get("cliente", "")
+        company = guided.get("empresa", "")
+        email = guided.get("correo", "")
+        phone = guided.get("telefono", "")
+        address = guided.get("direccion", "")
+        city = guided.get("ciudad", "")
+        contact_responsible = guided.get("responsable_contacto", "")
+        items = guided.get("items", [])
+    else:
+        client_name = (client_override or "").strip() or _voice_extract_client(command_text)
+        company = _voice_extract_company(command_text)
+        email = _voice_extract_email(command_text)
+        phone = _voice_extract_phone(command_text)
+        address = _voice_extract_address(command_text)
+        city = _voice_extract_city(command_text)
+        contact_responsible = _voice_extract_contact_responsible(command_text)
+        segments = _voice_split_segments(command_raw)
+        items = [_voice_build_item_payload(segment, client_name, idx) for idx, segment in enumerate(segments, start=1)]
     conditions = _voice_parse_conditions(conditions_raw)
     subtotal = fmt(sum(float(item.get("subtotal") or 0) for item in items))
     iva = fmt(subtotal * 0.16)
