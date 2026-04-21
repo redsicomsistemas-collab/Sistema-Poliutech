@@ -1050,22 +1050,41 @@ def _voice_is_guided_script(command_raw: str) -> bool:
     return matches >= 4
 
 
-def _voice_extract_labeled_sections(text: str, labels: list[tuple[str, str]]) -> list[tuple[str, str]]:
+def _voice_extract_labeled_sections(
+    text: str,
+    labels: list[tuple[str, str]],
+    stop_labels: Optional[list[tuple[str, str]]] = None,
+) -> list[tuple[str, str]]:
     if not text:
         return []
+    combined = []
+    seen = set()
+    for label, key in (labels + (stop_labels or [])):
+        norm = (label.lower(), key)
+        if norm in seen:
+            continue
+        seen.add(norm)
+        combined.append((label, key))
+    combined.sort(key=lambda item: len(item[0]), reverse=True)
     pattern = "|".join(
         rf"(?P<label_{idx}>{re.escape(label)})\s*:?"
-        for idx, (label, _) in enumerate(labels)
+        for idx, (label, _) in enumerate(combined)
     )
     matches = list(re.finditer(pattern, text, flags=re.IGNORECASE))
     sections: list[tuple[str, str]] = []
     for idx, match in enumerate(matches):
         canonical = None
-        for group_idx, (_, key) in enumerate(labels):
+        source_key = None
+        for group_idx, (_, key) in enumerate(combined):
             if match.group(f"label_{group_idx}"):
                 canonical = key
+                source_key = group_idx
                 break
-        if canonical is None:
+        if canonical is None or source_key is None:
+            continue
+        matched_label = combined[source_key][0].lower()
+        allowed = any(matched_label == label.lower() for label, _ in labels)
+        if not allowed:
             continue
         start = match.end()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
@@ -1140,10 +1159,18 @@ def _voice_build_guided_item_payload(item_fields: dict, index: int) -> dict:
 
 def _voice_parse_guided_script(command_raw: str) -> dict:
     text = str(command_raw or "").replace("\r", "\n")
-    header_sections = _voice_extract_labeled_sections(text, VOICE_GUIDED_HEADER_LABELS)
+    header_sections = _voice_extract_labeled_sections(
+        text,
+        VOICE_GUIDED_HEADER_LABELS,
+        stop_labels=VOICE_GUIDED_ITEM_LABELS,
+    )
     header_data = {key: _voice_clean_field(value) for key, value in header_sections}
 
-    item_sections = _voice_extract_labeled_sections(text, VOICE_GUIDED_ITEM_LABELS)
+    item_sections = _voice_extract_labeled_sections(
+        text,
+        VOICE_GUIDED_ITEM_LABELS,
+        stop_labels=VOICE_GUIDED_HEADER_LABELS,
+    )
     items = []
     current_item: dict[str, str] = {}
     for key, value in item_sections:
