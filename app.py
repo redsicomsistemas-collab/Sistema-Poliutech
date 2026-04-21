@@ -566,6 +566,413 @@ def _mobile_quote_pdf_url(cot_id: int) -> str:
     return url
 
 
+VOICE_NUMBER_WORDS = {
+    "un": 1,
+    "uno": 1,
+    "una": 1,
+    "primer": 1,
+    "primero": 1,
+    "dos": 2,
+    "tres": 3,
+    "cuatro": 4,
+    "cinco": 5,
+    "seis": 6,
+    "siete": 7,
+    "ocho": 8,
+    "nueve": 9,
+    "diez": 10,
+    "once": 11,
+    "doce": 12,
+    "trece": 13,
+    "catorce": 14,
+    "quince": 15,
+    "veinte": 20,
+}
+VOICE_STOPWORDS = {
+    "cotiza", "cotizar", "cotizacion", "cotízame", "cotizame", "quiero", "necesito",
+    "agrega", "agregar", "para", "del", "de", "la", "el", "los", "las", "un", "una",
+    "por", "con", "color", "acabado", "cliente", "nombre", "favor", "favor,", "metros",
+    "metro", "piezas", "pieza", "pza", "pz", "m2", "mt2", "x", "mas", "ademas",
+    "cotiza:", "cotizar:", "precio", "unitario", "medida", "medidas", "ancho", "alto",
+}
+
+
+def _voice_normalize_text(value: str) -> str:
+    raw = str(value or "").strip().lower()
+    raw = unicodedata.normalize("NFKD", raw)
+    raw = "".join(ch for ch in raw if not unicodedata.combining(ch))
+    raw = raw.replace("\n", " ")
+    raw = re.sub(r"[^\w\s\.,x/-]", " ", raw)
+    raw = re.sub(r"\s+", " ", raw)
+    return raw.strip()
+
+
+def _voice_parse_number(value, default: float = 0.0) -> float:
+    if value is None:
+        return default
+    try:
+        return float(str(value).replace(",", ".").strip())
+    except Exception:
+        return default
+
+
+def _voice_parse_number_word(value: str) -> Optional[float]:
+    token = _voice_normalize_text(value).strip()
+    if token in VOICE_NUMBER_WORDS:
+        return float(VOICE_NUMBER_WORDS[token])
+    return None
+
+
+def _voice_extract_client(command_text: str) -> str:
+    patterns = [
+        r"(?:cliente|para cliente|a nombre de)\s+([a-z0-9áéíóúñ .-]+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, command_text, flags=re.IGNORECASE)
+        if match:
+            client = re.split(r"\b(?:con|de|medida|medidas|color|precio)\b", match.group(1), maxsplit=1)[0]
+            return client.strip(" ,.-").title()
+    return ""
+
+
+def _voice_strip_client_phrase(command_text: str) -> str:
+    patterns = [
+        r"(?:para cliente|cliente|a nombre de)\s+[a-z0-9áéíóúñ .-]+",
+        r"para\s+[a-z0-9áéíóúñ .-]+$",
+    ]
+    cleaned = command_text
+    for pattern in patterns:
+        cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", cleaned).strip(" ,.-")
+
+
+def _voice_extract_dimensions(command_text: str) -> tuple[Optional[float], Optional[float]]:
+    match = re.search(
+        r"(\d+(?:[\.,]\d+)?)\s*(?:m|mt|mts|metros)?\s*(?:x|por)\s*(\d+(?:[\.,]\d+)?)\s*(?:m|mt|mts|metros)?",
+        command_text,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None, None
+    width = _voice_parse_number(match.group(1))
+    height = _voice_parse_number(match.group(2))
+    if width <= 0 or height <= 0:
+        return None, None
+    return width, height
+
+
+def _voice_extract_quantity(command_text: str) -> float:
+    match = re.search(r"^\s*(\d+(?:[\.,]\d+)?)\s*(?:piezas?|pieza|pzas?|pz)?\b", command_text)
+    if match:
+        quantity = _voice_parse_number(match.group(1), 1.0)
+        return quantity if quantity > 0 else 1.0
+    first_word = command_text.split(" ", 1)[0].strip()
+    word_quantity = _voice_parse_number_word(first_word)
+    if word_quantity is not None:
+        return word_quantity
+    match = re.search(r"\b(\d+(?:[\.,]\d+)?)\s*(?:piezas?|pieza|pzas?|pz)\b", command_text)
+    if match:
+        quantity = _voice_parse_number(match.group(1), 1.0)
+        return quantity if quantity > 0 else 1.0
+    match = re.search(
+        r"\b(\d+(?:[\.,]\d+)?)\s*(?:hectareas?|hectáreas?|ha|m2|mt2|metros?\s+cuadrados?|ml|metros?\s+lineales?)\b",
+        command_text,
+        flags=re.IGNORECASE,
+    )
+    if match:
+        quantity = _voice_parse_number(match.group(1), 1.0)
+        return quantity if quantity > 0 else 1.0
+    match = re.search(r"\b(\d+(?:[\.,]\d+)?)\b", command_text)
+    if match:
+        quantity = _voice_parse_number(match.group(1), 1.0)
+        return quantity if quantity > 0 else 1.0
+    return 1.0
+
+
+def _voice_extract_price(command_text: str) -> Optional[float]:
+    patterns = [
+        r"(?:precio(?: unitario)?|a|en)\s+\$?\s*(\d+(?:[\.,]\d+)?)",
+        r"(?:cada\s+uno|cada\s+una|c/u|cu)\s+\$?\s*(\d+(?:[\.,]\d+)?)",
+        r"(\d+(?:[\.,]\d+)?)\s*(?:pesos|mxn)\b",
+        r"\$+\s*(\d+(?:[\.,]\d+)?)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, command_text, flags=re.IGNORECASE)
+        if match:
+            price = _voice_parse_number(match.group(1))
+            if price > 0:
+                return price
+    return None
+
+
+def _voice_extract_unit(command_text: str) -> str:
+    if re.search(r"\bhectareas?\b|\bhectáreas?\b|\bha\b", command_text):
+        return "ha"
+    if re.search(r"\bm2\b|\bmetro(?:s)? cuadrados?\b|\bmt2\b", command_text):
+        return "m2"
+    if re.search(r"\bmetro(?:s)? lineales?\b|\bml\b", command_text):
+        return "ml"
+    if re.search(r"\bpiezas?\b|\bpzas?\b|\bpz\b", command_text):
+        return "pza"
+    return ""
+
+
+def _voice_extract_color_or_finish(command_text: str) -> str:
+    patterns = [
+        r"\bcolor\s+([a-z0-9\s-]+)",
+        r"\bacabado\s+([a-z0-9\s-]+)",
+        r"\ben\s+(blanco|negro|gris|natural|bronce|mate|brillante)\b",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, command_text, flags=re.IGNORECASE)
+        if match:
+            return match.group(1).strip(" ,.-").title()
+    return ""
+
+
+def _voice_build_search_text(command_text: str, client_name: str) -> str:
+    text = command_text
+    for piece in [client_name, "cliente", "para cliente", "a nombre de"]:
+        if piece:
+            text = re.sub(re.escape(piece), " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\d+(?:[\.,]\d+)?", " ", text)
+    text = re.sub(
+        r"\b(?:x|por|color|acabado|precio|medida|medidas|de|del|la|el|los|las|con|en|incluye|incluyan|incluido|incluida|pesos|mxn|cada|uno|una)\b",
+        " ",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def _voice_match_concept(search_text: str) -> Optional[Concepto]:
+    tokens = [
+        token for token in _voice_normalize_text(search_text).split()
+        if len(token) > 2 and token not in VOICE_STOPWORDS and not token.isdigit()
+    ]
+    if not tokens:
+        return None
+
+    best_score = 0
+    best_concept = None
+    for concept in Concepto.query.all():
+        name = _voice_normalize_text(concept.nombre_concepto or "")
+        if not name:
+            continue
+        score = sum(4 for token in tokens if token in name)
+        if tokens and all(token in name for token in tokens):
+            score += 3
+        if score > best_score:
+            best_score = score
+            best_concept = concept
+    return best_concept if best_score >= 4 else None
+
+
+def _voice_split_segments(command_text: str) -> list[str]:
+    base = _voice_strip_client_phrase(command_text)
+    base = re.sub(r"\b(?:en otro concepto|otro concepto|siguiente concepto)\b", " | ", base, flags=re.IGNORECASE)
+    base = re.sub(r"\s+(?:ademas|más|mas)\s+", " | ", base, flags=re.IGNORECASE)
+    base = re.sub(
+        r"\s+y\s+(?=(?:\d+(?:[\.,]\d+)?|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\b)",
+        " | ",
+        base,
+        flags=re.IGNORECASE,
+    )
+    base = base.replace(";", " | ").replace(",", " | ")
+    items = [part.strip(" ,.-") for part in base.split("|") if part.strip(" ,.-")]
+    return items or [command_text.strip()]
+
+
+def _voice_build_item_payload(segment_raw: str, client_name: str, index: int) -> dict:
+    segment_text = _voice_normalize_text(segment_raw)
+    width, height = _voice_extract_dimensions(segment_text)
+    quantity = _voice_extract_quantity(segment_text)
+    explicit_price = _voice_extract_price(segment_text)
+    explicit_unit = _voice_extract_unit(segment_text)
+    finish = _voice_extract_color_or_finish(segment_text)
+    search_text = _voice_build_search_text(segment_text, client_name)
+    concept = _voice_match_concept(search_text)
+
+    concept_name = (concept.nombre_concepto if concept else search_text or segment_raw).strip()
+    if not concept_name:
+        concept_name = segment_raw.strip() or f"Concepto por voz {index}"
+    unit = explicit_unit or (concept.unidad or "").strip() or "pza"
+    unit_price = explicit_price if explicit_price is not None else float(getattr(concept, "precio_unitario", 0) or 0)
+    area = fmt(width * height) if width and height else 0.0
+    effective_quantity = quantity
+    if area > 0 and unit.lower() in {"m2", "mt2", "metro cuadrado", "metros cuadrados"}:
+        effective_quantity = fmt(quantity * area)
+    subtotal = fmt(effective_quantity * unit_price)
+
+    warnings = []
+    if not concept:
+        warnings.append(f"Partida {index}: no encontré un concepto exacto en catálogo; usaré el texto dictado.")
+    if unit_price <= 0:
+        warnings.append(f"Partida {index}: el precio unitario quedó en 0.")
+
+    description_parts = [segment_raw.strip()]
+    if area > 0:
+        description_parts.append(
+            f"Medidas detectadas: {fmt(width)} x {fmt(height)} m ({area} m2 por pieza)."
+        )
+    if finish:
+        description_parts.append(f"Acabado/color: {finish}.")
+
+    return {
+        "id": concept.id if concept else None,
+        "nombre": concept_name,
+        "unidad": unit,
+        "cantidad": fmt(effective_quantity),
+        "cantidad_capturada": fmt(quantity),
+        "precio_unitario": fmt(unit_price),
+        "subtotal": subtotal,
+        "ancho": fmt(width) if width else 0.0,
+        "alto": fmt(height) if height else 0.0,
+        "area_por_pieza": area,
+        "acabado": finish,
+        "descripcion": "\n".join(part for part in description_parts if part).strip(),
+        "origen_segmento": segment_raw.strip(),
+        "warnings": warnings,
+    }
+
+
+def _voice_log_command(user: Usuario, preview: dict, status: str, cotizacion: Optional[Cotizacion] = None) -> None:
+    try:
+        row = VoiceCommandLog(
+            usuario_id=getattr(user, "id", None),
+            cotizacion_id=getattr(cotizacion, "id", None) if cotizacion else None,
+            cliente=(preview.get("cliente") or "").strip() or None,
+            comando_raw=(preview.get("comando_original") or "").strip(),
+            comando_normalizado=_voice_normalize_text(preview.get("comando_original") or ""),
+            preview_json=json.dumps(preview, ensure_ascii=False),
+            status=status,
+        )
+        db.session.add(row)
+        db.session.commit()
+    except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+
+
+def _voice_preview_payload_for_mobile(command_raw: str, user: Usuario, client_override: str = "", notes: str = "") -> dict:
+    command_text = _voice_normalize_text(command_raw)
+    if not command_text:
+        raise ValueError("No se recibió ningún comando de voz.")
+
+    client_name = (client_override or "").strip() or _voice_extract_client(command_text)
+    segments = _voice_split_segments(command_raw)
+    items = [_voice_build_item_payload(segment, client_name, idx) for idx, segment in enumerate(segments, start=1)]
+    subtotal = fmt(sum(float(item.get("subtotal") or 0) for item in items))
+    iva = fmt(subtotal * 0.16)
+    total = fmt(subtotal + iva)
+    warnings = []
+    if not client_name:
+        warnings.append("No se detectó el cliente. Puedes escribirlo antes de guardar.")
+    if len(items) > 1:
+        warnings.append(f"Se detectaron {len(items)} partidas dentro del mismo comando.")
+    for item in items:
+        warnings.extend(item.get("warnings") or [])
+
+    preview = {
+        "cliente": client_name,
+        "responsable": _mobile_user_responsable(user),
+        "items": items,
+        "concepto_detectado": items[0] if items else {},
+        "resumen": {
+            "partidas": len(items),
+            "subtotal": subtotal,
+            "iva": iva,
+            "total": total,
+        },
+        "notas": (notes or "").strip(),
+        "comando_original": command_raw.strip(),
+        "warnings": warnings,
+    }
+    _voice_log_command(user, preview, status="PREVIEW")
+    return preview
+
+
+def _create_mobile_voice_quote(preview: dict, user: Usuario) -> Cotizacion:
+    cliente_nombre = (preview.get("cliente") or "").strip()
+    responsible = _mobile_user_responsable(user)
+    cliente = None
+    if cliente_nombre:
+        query = Cliente.query.filter(db.func.lower(Cliente.nombre_cliente) == cliente_nombre.lower())
+        if not _mobile_user_is_admin(user):
+            query = query.filter(Cliente.responsable == responsible)
+        cliente = query.first()
+        if not cliente:
+            cliente = Cliente(
+                nombre_cliente=cliente_nombre,
+                responsable=responsible,
+            )
+            db.session.add(cliente)
+            db.session.flush()
+
+    notes_parts = []
+    if preview.get("notas"):
+        notes_parts.append(str(preview["notas"]).strip())
+    notes_parts.append(f"Comando de voz: {preview.get('comando_original', '').strip()}")
+    for idx, item in enumerate(preview.get("items") or [], start=1):
+        notes_parts.append(f"Partida {idx}: {item.get('origen_segmento', '')}".strip())
+
+    subtotal = fmt(sum(fmt(item.get("subtotal")) for item in (preview.get("items") or [])))
+    iva = fmt(subtotal * 0.16)
+    total = fmt(subtotal + iva)
+
+    cot = Cotizacion(
+        folio=generar_folio(),
+        fecha=now_cdmx_naive(),
+        cliente_id=cliente.id if cliente else None,
+        estatus="PENDIENTE",
+        notas="\n".join(part for part in notes_parts if part).strip() or None,
+        responsable=responsible,
+    )
+    cot.subtotal = subtotal
+    cot.descuento_total = 0.0
+    cot.iva_porc = 16.0
+    cot.iva_monto = iva
+    cot.total = total
+    db.session.add(cot)
+    db.session.flush()
+
+    for item in preview.get("items") or []:
+        unit_price = fmt(item.get("precio_unitario"))
+        quantity = fmt(item.get("cantidad"))
+        item_subtotal = fmt(item.get("subtotal"))
+        concept_name = (item.get("nombre") or "Concepto por voz").strip()
+        concept = Concepto.query.filter(db.func.lower(Concepto.nombre_concepto) == concept_name.lower()).first()
+        if not concept:
+            concept = Concepto(
+                nombre_concepto=concept_name,
+                unidad=(item.get("unidad") or "pza").strip(),
+                precio_unitario=unit_price,
+                descripcion=(item.get("descripcion") or "").strip() or None,
+            )
+            db.session.add(concept)
+            db.session.flush()
+
+        det = CotizacionDetalle(**_safe_detalle_kwargs(
+            cotizacion_id=cot.id,
+            concepto_id=concept.id if concept else None,
+            nombre_concepto=concept_name,
+            unidad=(item.get("unidad") or "pza").strip(),
+            cantidad=quantity,
+            precio_unitario=unit_price,
+            descripcion=(item.get("descripcion") or "").strip(),
+            subtotal=item_subtotal,
+            origen="voz",
+        ))
+        db.session.add(det)
+    db.session.commit()
+    _voice_log_command(user, preview, status="CREATED", cotizacion=cot)
+    _send_quote_created_notification(cot)
+    return cot
+
+
 def _firebase_is_configured() -> bool:
     return PUSH_NOTIFICATIONS_ENABLED and firebase_admin is not None and bool(FIREBASE_CREDENTIALS_FILE or FIREBASE_CREDENTIALS_JSON)
 
@@ -1263,6 +1670,7 @@ from models import (
     Cotizacion,
     CotizacionDetalle,
     CotizacionSeguimiento,
+    VoiceCommandLog,
     Usuario,
     MobileDevice,
     RegistroObra,
@@ -4101,6 +4509,57 @@ def api_mobile_quotes():
             "pdf_url": _mobile_quote_pdf_url(cot.id),
         })
     return jsonify({"ok": True, "items": items, "valid_estatus": VALID_ESTATUS})
+
+
+@app.route("/api/mobile/cotizaciones/voz", methods=["POST"])
+@require_mobile_auth
+def api_mobile_voice_quote():
+    payload = request.get_json(silent=True) or {}
+    command_raw = str(payload.get("comando") or payload.get("transcript") or "").strip()
+    client_override = str(payload.get("cliente") or "").strip()
+    notes = str(payload.get("notas") or "").strip()
+    confirmar = bool(payload.get("confirmar"))
+    if not command_raw:
+        return _mobile_json_error("Dicta o escribe un comando antes de continuar.", 400)
+
+    try:
+        preview = _voice_preview_payload_for_mobile(
+            command_raw=command_raw,
+            user=g.mobile_user,
+            client_override=client_override,
+            notes=notes,
+        )
+    except ValueError as exc:
+        return _mobile_json_error(str(exc), 400)
+    except Exception as exc:
+        try:
+            logger.exception("Error interpretando cotización por voz")
+        except Exception:
+            pass
+        return _mobile_json_error(f"No se pudo interpretar el comando: {exc}", 500)
+
+    if not confirmar:
+        return jsonify({
+            "ok": True,
+            "modo": "preview",
+            "preview": preview,
+        })
+
+    cot = _create_mobile_voice_quote(preview, g.mobile_user)
+    return jsonify({
+        "ok": True,
+        "modo": "created",
+        "preview": preview,
+        "cotizacion": {
+            "id": cot.id,
+            "folio": cot.folio or "",
+            "estatus": cot.estatus or "",
+            "total": float(cot.total or 0),
+            "cliente": cot.cliente.nombre_cliente if cot.cliente else "",
+            "pdf_url": _mobile_quote_pdf_url(cot.id),
+        },
+        "mensaje": f"Cotización {cot.folio} creada desde comando de voz.",
+    }), 201
 
 
 @app.route("/api/mobile/cotizaciones/<int:cot_id>/estatus", methods=["POST"])
