@@ -782,6 +782,22 @@ def _voice_extract_quantity(command_text: str) -> Optional[float]:
         quantity = _voice_parse_number(match.group(1), 1.0)
         return quantity if quantity > 0 else None
     match = re.search(
+        r"\bcantidad(?:\s+de)?\s+(\d+(?:[\.,]\d+)?)\b",
+        command_text,
+        flags=re.IGNORECASE,
+    )
+    if match:
+        quantity = _voice_parse_number(match.group(1), 1.0)
+        return quantity if quantity > 0 else None
+    match = re.search(
+        r"\bcantidad(?:\s+de)?\s+(un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|veinte)\b",
+        command_text,
+        flags=re.IGNORECASE,
+    )
+    if match:
+        quantity = _voice_parse_number_word(match.group(1))
+        return quantity if quantity and quantity > 0 else None
+    match = re.search(
         r"\b(\d+(?:[\.,]\d+)?)\s*(?:hectareas?|hectáreas?|ha|m2|mt2|metros?\s+cuadrados?|ml|metros?\s+lineales?)\b",
         command_text,
         flags=re.IGNORECASE,
@@ -789,6 +805,15 @@ def _voice_extract_quantity(command_text: str) -> Optional[float]:
     if match:
         quantity = _voice_parse_number(match.group(1), 1.0)
         return quantity if quantity > 0 else None
+    match = re.search(
+        r"\b(un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|veinte)\s*"
+        r"(?:hectareas?|hectáreas?|ha|m2|mt2|metros?\s+cuadrados?|ml|metros?\s+lineales?)\b",
+        command_text,
+        flags=re.IGNORECASE,
+    )
+    if match:
+        quantity = _voice_parse_number_word(match.group(1))
+        return quantity if quantity and quantity > 0 else None
     return None
 
 
@@ -912,9 +937,9 @@ def _voice_build_item_payload(segment_raw: str, client_name: str, index: int) ->
     search_text = _voice_build_search_text(segment_text, client_name)
     concept = _voice_match_concept(search_text)
 
-    concept_name = (concept.nombre_concepto if concept else search_text or segment_raw).strip()
+    concept_name = (segment_raw or "").strip()
     if not concept_name:
-        concept_name = segment_raw.strip() or f"Concepto por voz {index}"
+        concept_name = (search_text or "").strip() or f"Concepto por voz {index}"
     unit = explicit_unit or (concept.unidad or "").strip() or ""
     unit_price = explicit_price if explicit_price is not None else float(getattr(concept, "precio_unitario", 0) or 0)
     if explicit_price is None and unit_price <= 0:
