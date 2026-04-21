@@ -124,6 +124,26 @@ class CotizacionSeguimiento(db.Model):
         return f"<CotizacionSeguimiento cotizacion={self.cotizacion_id} autor={self.autor}>"
 
 
+class VoiceCommandLog(db.Model):
+    __tablename__ = "voice_command_log"
+
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True, index=True)
+    cotizacion_id = db.Column(db.Integer, db.ForeignKey("cotizacion.id"), nullable=True, index=True)
+    cliente = db.Column(db.String(160))
+    comando_raw = db.Column(db.Text, nullable=False)
+    comando_normalizado = db.Column(db.Text)
+    preview_json = db.Column(db.Text)
+    status = db.Column(db.String(30), nullable=False, default="PREVIEW")
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    usuario = db.relationship("Usuario", backref=db.backref("voice_logs", lazy=True))
+    cotizacion = db.relationship("Cotizacion", backref=db.backref("voice_logs", lazy=True))
+
+    def __repr__(self):
+        return f"<VoiceCommandLog {self.id} user={self.usuario_id} status={self.status}>"
+
+
 class Usuario(UserMixin, db.Model):
     __tablename__ = "usuario"
     id = db.Column(db.Integer, primary_key=True)
