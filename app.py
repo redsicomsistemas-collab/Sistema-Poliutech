@@ -940,7 +940,7 @@ def _voice_build_item_payload(segment_raw: str, client_name: str, index: int) ->
     concept_name = (segment_raw or "").strip()
     if not concept_name:
         concept_name = (search_text or "").strip() or f"Concepto por voz {index}"
-    unit = explicit_unit or (concept.unidad or "").strip() or ""
+    unit = explicit_unit or (getattr(concept, "unidad", "") or "").strip() or ""
     unit_price = explicit_price if explicit_price is not None else float(getattr(concept, "precio_unitario", 0) or 0)
     if explicit_price is None and unit_price <= 0:
         unit_price = 0.0
