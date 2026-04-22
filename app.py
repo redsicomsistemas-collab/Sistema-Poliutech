@@ -1023,8 +1023,6 @@ VOICE_GUIDED_ITEM_LABELS = [
     ("precio", "precio"),
     ("sistema", "sistema"),
     ("tema", "sistema"),
-    ("descripcion", "descripcion"),
-    ("descripción", "descripcion"),
 ]
 
 
@@ -1150,7 +1148,6 @@ def _voice_strip_guided_label_echo(value: str, field_name: str) -> str:
         "cantidad": ["cantidad"],
         "precio": ["precio"],
         "sistema": ["sistema", "tema"],
-        "descripcion": ["descripcion", "descripción"],
     }
     changed = True
     while changed:
