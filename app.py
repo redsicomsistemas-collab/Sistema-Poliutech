@@ -1010,7 +1010,6 @@ VOICE_GUIDED_HEADER_LABELS = [
     ("empresa", "empresa"),
     ("correo", "correo"),
     ("telefono", "telefono"),
-    ("responsable", "responsable"),
     ("ciudad", "ciudad"),
 ]
 
@@ -1247,14 +1246,14 @@ def _voice_parse_guided_script(command_raw: str) -> dict:
     current_item: dict[str, str] = {}
     for key, value in item_sections:
         if key == "concepto":
-            if current_item:
+            if current_item.get("concepto"):
                 items.append(_voice_build_guided_item_payload(current_item, len(items) + 1))
             current_item = {"concepto": value}
         else:
             if not current_item:
-                current_item = {}
+                continue
             current_item[key] = value
-    if current_item:
+    if current_item.get("concepto"):
         items.append(_voice_build_guided_item_payload(current_item, len(items) + 1))
 
     return {
@@ -1262,7 +1261,7 @@ def _voice_parse_guided_script(command_raw: str) -> dict:
         "empresa": header_data.get("empresa", ""),
         "correo": _voice_parse_guided_email(header_data.get("correo", "")),
         "telefono": header_data.get("telefono", ""),
-        "responsable_contacto": header_data.get("responsable", ""),
+        "responsable_contacto": "",
         "ciudad": header_data.get("ciudad", ""),
         "items": items,
     }
