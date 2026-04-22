@@ -1101,13 +1101,103 @@ def _voice_parse_guided_price(value: str) -> Optional[float]:
     return price if price > 0 else None
 
 
+def _voice_parse_guided_email(value: str) -> str:
+    raw = _voice_clean_field(value).lower()
+    if not raw:
+        return ""
+    raw = re.split(
+        r"\b(?:telefono|teléfono|responsable|ciudad|concepto|otro concepto|unidad|cantidad|precio|sistema|descripcion|descripción)\b",
+        raw,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0]
+    normalized = f" {raw} "
+    replacements = {
+        " arroba ": "@",
+        " arrova ": "@",
+        " punto com ": ".com",
+        " punto mx ": ".mx",
+        " punto net ": ".net",
+        " punto org ": ".org",
+        " punto ": ".",
+        " guion bajo ": "_",
+        " guion medio ": "-",
+    }
+    for source, target in replacements.items():
+        normalized = normalized.replace(source, target)
+    normalized = normalized.replace(" ", "").strip()
+    normalized = normalized.strip(".,;:-")
+    match = re.search(r"[^@\s]+@[^@\s]+\.[^@\s]+", normalized)
+    if match:
+        return match.group(0)
+    return ""
+
+
+def _voice_split_guided_unit_and_quantity(unit_raw: str) -> tuple[str, Optional[float]]:
+    raw = _voice_clean_field(unit_raw)
+    if not raw:
+        return "", None
+    quantity = None
+    number_match = re.search(r"(\d+(?:[\.,]\d+)?)", raw)
+    if number_match:
+        quantity = _voice_parse_number(number_match.group(1), 0.0)
+        quantity = quantity if quantity > 0 else None
+        raw = re.sub(r"\d+(?:[\.,]\d+)?", " ", raw)
+        raw = re.sub(r"\s+", " ", raw).strip(" ,.-")
+    normalized = _voice_normalize_text(raw)
+    if normalized in {"metro lineal", "metros lineales", "lineal", "lineales", "ml"}:
+        raw = "ml"
+    elif normalized in {"metro cuadrado", "metros cuadrados", "m2", "mt2"}:
+        raw = "m2"
+    elif normalized in {"hectarea", "hectareas", "hectárea", "hectáreas", "ha"}:
+        raw = "ha"
+    elif normalized in {"pieza", "piezas", "pza", "pz"}:
+        raw = "pza"
+    return raw, quantity
+
+
+def _voice_split_guided_system_and_tail(system_raw: str) -> tuple[str, str]:
+    raw = _voice_clean_field(system_raw)
+    if not raw:
+        return "", ""
+    brand_aliases = {
+        "comex": "Comex",
+        "ppg": "PPG",
+        "sherwin": "Sherwin",
+        "sika": "Sika",
+        "promat": "Promat",
+        "cafco": "Cafco",
+        "monokote": "Monokote",
+        "nullifire": "Nullifire",
+        "international": "International",
+    }
+    for alias, canonical in brand_aliases.items():
+        match = re.match(rf"^{re.escape(alias)}\b[\s:,-]*(.*)$", raw, flags=re.IGNORECASE)
+        if match:
+            return canonical, _voice_clean_field(match.group(1))
+    return raw, ""
+
+
 def _voice_build_guided_item_payload(item_fields: dict, index: int) -> dict:
     concept_name = _voice_clean_field(item_fields.get("concepto") or "")
-    unit = _voice_clean_field(item_fields.get("unidad") or "")
+    unit, quantity_from_unit = _voice_split_guided_unit_and_quantity(item_fields.get("unidad") or "")
     quantity_value = _voice_parse_guided_quantity(item_fields.get("cantidad") or "")
     price_value = _voice_parse_guided_price(item_fields.get("precio") or "")
-    system = _voice_clean_field(item_fields.get("sistema") or "")
+    system, system_tail = _voice_split_guided_system_and_tail(item_fields.get("sistema") or "")
     description = _voice_clean_field(item_fields.get("descripcion") or "")
+    if quantity_value is None and quantity_from_unit is not None:
+        quantity_value = quantity_from_unit
+    if system_tail:
+        if description:
+            description = f"{system_tail}. {description}"
+        else:
+            description = system_tail
+    if not concept_name and description:
+        concept_name = description
+        description = ""
+    if not concept_name and system:
+        concept_name = system
+        system = ""
     subtotal = fmt((quantity_value or 0) * (price_value or 0)) if quantity_value and price_value else 0.0
 
     warnings = []
@@ -1170,7 +1260,7 @@ def _voice_parse_guided_script(command_raw: str) -> dict:
     return {
         "cliente": header_data.get("cliente", ""),
         "empresa": header_data.get("empresa", ""),
-        "correo": header_data.get("correo", ""),
+        "correo": _voice_parse_guided_email(header_data.get("correo", "")),
         "telefono": header_data.get("telefono", ""),
         "responsable_contacto": header_data.get("responsable", ""),
         "ciudad": header_data.get("ciudad", ""),
