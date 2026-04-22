@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os, io, csv, sys, math, re, json, traceback, unicodedata, smtplib, zipfile, logging
 import mimetypes
+import requests
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from typing import Iterable, Optional, List
@@ -52,11 +53,21 @@ PROSPECT_STATUS_OPTIONS = [
 PROVIDER_NUMBERS_JSON = Path(__file__).resolve().parent / "provider_numbers.json"
 PROVIDER_NUMBERS_XLSX = Path.home() / "Downloads" / "NUMEROS DE PROVEEDOR POLIUTECH.xlsx"
 REGISTRO_OBRAS_JSON = Path(__file__).resolve().parent / "registro_obras.json"
+OPENAI_API_KEY = (os.getenv("OPENAI_API_KEY") or "").strip()
+OPENAI_TRANSCRIBE_MODEL = (os.getenv("OPENAI_TRANSCRIBE_MODEL") or "gpt-4o-mini-transcribe").strip()
 XLSX_NS = {
     "a": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
     "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
     "p": "http://schemas.openxmlformats.org/package/2006/relationships",
 }
+
+VOICE_TRANSCRIPTION_PROMPT = (
+    "Transcribe audio en espanol de Mexico para captura de cotizaciones. "
+    "Conserva y favorece estas etiquetas cuando se escuchen: CLIENTE, EMPRESA, CORREO, TELEFONO, CIUDAD, "
+    "CONCEPTO, OTRO CONCEPTO, UNIDAD, CANTIDAD, PRECIO, SISTEMA. "
+    "No inventes datos. Si el hablante dice arroba, punto com, metro cuadrado o metros cuadrados, "
+    "transcribelos de forma util y legible."
+)
 
 
 
@@ -1003,6 +1014,45 @@ def _voice_parse_conditions(conditions_raw: str) -> list[str]:
     )
     parts = [part.strip(" ,.-") for part in normalized.split("|") if part.strip(" ,.-")]
     return parts
+
+
+def _voice_transcribe_audio_bytes(audio_bytes: bytes, filename: str = "voz.m4a", mime_type: str = "audio/mp4") -> str:
+    if not OPENAI_API_KEY:
+        raise RuntimeError("Falta configurar OPENAI_API_KEY en el servidor.")
+    if not audio_bytes:
+        raise ValueError("El audio llegó vacío.")
+    if len(audio_bytes) > 25 * 1024 * 1024:
+        raise ValueError("El audio supera el límite de 25 MB.")
+
+    safe_name = Path(filename or "voz.m4a").name or "voz.m4a"
+    guessed_type = mime_type or mimetypes.guess_type(safe_name)[0] or "application/octet-stream"
+    response = requests.post(
+        "https://api.openai.com/v1/audio/transcriptions",
+        headers={
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+        },
+        data={
+            "model": OPENAI_TRANSCRIBE_MODEL,
+            "language": "es",
+            "prompt": VOICE_TRANSCRIPTION_PROMPT,
+        },
+        files={
+            "file": (safe_name, audio_bytes, guessed_type),
+        },
+        timeout=120,
+    )
+    if response.status_code >= 400:
+        detail = ""
+        try:
+            detail = response.json().get("error", {}).get("message", "")
+        except Exception:
+            detail = response.text[:300]
+        raise RuntimeError(detail or f"OpenAI devolvió HTTP {response.status_code}.")
+    payload = response.json()
+    transcript = str(payload.get("text") or "").strip()
+    if not transcript:
+        raise RuntimeError("La transcripción llegó vacía.")
+    return transcript
 
 
 VOICE_GUIDED_HEADER_LABELS = [
@@ -5129,6 +5179,39 @@ def api_mobile_voice_quote():
         },
         "mensaje": f"Cotización {cot.folio} creada desde comando de voz.",
     }), 201
+
+
+@app.route("/api/mobile/cotizaciones/voz/transcribir", methods=["POST"])
+@require_mobile_auth
+def api_mobile_voice_transcribe():
+    uploaded = request.files.get("audio")
+    target = (request.form.get("target") or request.args.get("target") or "comando").strip().lower()
+    if not uploaded or not (uploaded.filename or "").strip():
+        return _mobile_json_error("Adjunta un archivo de audio antes de transcribir.", 400)
+
+    try:
+        audio_bytes = uploaded.read()
+        transcript = _voice_transcribe_audio_bytes(
+            audio_bytes=audio_bytes,
+            filename=uploaded.filename or "voz.m4a",
+            mime_type=uploaded.mimetype or mimetypes.guess_type(uploaded.filename or "")[0] or "application/octet-stream",
+        )
+    except ValueError as exc:
+        return _mobile_json_error(str(exc), 400)
+    except RuntimeError as exc:
+        return _mobile_json_error(str(exc), 503)
+    except Exception as exc:
+        try:
+            logger.exception("Error transcribiendo audio de voz")
+        except Exception:
+            pass
+        return _mobile_json_error(f"No se pudo transcribir el audio: {exc}", 500)
+
+    return jsonify({
+        "ok": True,
+        "target": target,
+        "transcript": transcript,
+    })
 
 
 @app.route("/api/mobile/cotizaciones/<int:cot_id>/estatus", methods=["POST"])
