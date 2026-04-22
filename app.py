@@ -1209,6 +1209,61 @@ def _voice_split_guided_system_and_tail(system_raw: str) -> tuple[str, str]:
     return raw, ""
 
 
+def _voice_rescue_unlabeled_first_item(command_raw: str, city_value: str) -> tuple[str, dict[str, str]]:
+    text = str(command_raw or "")
+    if not text:
+        return city_value, {}
+    match = re.search(r"\bciudad\b\s*:?\s*(.+)$", text, flags=re.IGNORECASE)
+    if not match:
+        return city_value, {}
+    tail = _voice_clean_field(match.group(1))
+    if not tail:
+        return city_value, {}
+
+    next_field = re.search(
+        r"\b(?:otro concepto|concepto|cantidad|precio|sistema|tema|descripcion|descripción)\b\s*:?",
+        tail,
+        flags=re.IGNORECASE,
+    )
+    prelude = tail[:next_field.start()] if next_field else tail
+    prelude = _voice_strip_guided_label_echo(prelude, "ciudad")
+    current_city = _voice_strip_guided_label_echo(city_value, "ciudad")
+    if current_city:
+        city_pattern = rf"^\s*{re.escape(current_city)}\b"
+        stripped = re.sub(city_pattern, "", prelude, count=1, flags=re.IGNORECASE)
+        if stripped != prelude:
+            prelude = _voice_clean_field(stripped)
+    tokens = prelude.split()
+    rescued_city = current_city
+    if not rescued_city and tokens:
+        rescued_city = tokens[0].title()
+        prelude = _voice_clean_field(" ".join(tokens[1:]))
+    elif rescued_city and len(tokens) > 1 and _voice_normalize_text(prelude).startswith(_voice_normalize_text(rescued_city)):
+        stripped = prelude[len(rescued_city):]
+        prelude = _voice_clean_field(stripped)
+
+    if not prelude:
+        return rescued_city, {}
+
+    concept_raw = prelude
+    unit_raw = ""
+    unit_match = re.search(
+        r"\b(metro cuadrado|metros cuadrados|m2|mt2|metro lineal|metros lineales|lineal|lineales|ml|pieza|piezas|pza|pz|hectarea|hectareas|hectárea|hectáreas|ha)\b(?:\s+\1\b)?\s*$",
+        prelude,
+        flags=re.IGNORECASE,
+    )
+    if unit_match:
+        unit_raw = _voice_clean_field(unit_match.group(0))
+        concept_raw = _voice_clean_field(prelude[:unit_match.start()])
+
+    item = {}
+    if concept_raw:
+        item["concepto"] = concept_raw
+    if unit_raw:
+        item["unidad"] = unit_raw
+    return rescued_city, item
+
+
 def _voice_build_guided_item_payload(item_fields: dict, index: int) -> dict:
     concept_name = _voice_strip_guided_label_echo(item_fields.get("concepto") or "", "concepto")
     unit, quantity_from_unit = _voice_split_guided_unit_and_quantity(item_fields.get("unidad") or "")
@@ -1291,6 +1346,11 @@ def _voice_parse_guided_script(command_raw: str) -> dict:
     )
     items = []
     current_item: dict[str, str] = {}
+    rescued_city, rescued_item = _voice_rescue_unlabeled_first_item(text, header_data.get("ciudad", ""))
+    if rescued_city:
+        header_data["ciudad"] = rescued_city
+    if rescued_item and (not item_sections or item_sections[0][0] != "concepto"):
+        current_item.update(rescued_item)
     for key, value in item_sections:
         if key == "concepto":
             if current_item.get("concepto"):
