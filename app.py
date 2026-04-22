@@ -1008,8 +1008,10 @@ def _voice_parse_conditions(conditions_raw: str) -> list[str]:
 VOICE_GUIDED_HEADER_LABELS = [
     ("cliente", "cliente"),
     ("empresa", "empresa"),
+    ("esa", "empresa"),
     ("correo", "correo"),
     ("telefono", "telefono"),
+    ("teléfono", "telefono"),
     ("ciudad", "ciudad"),
 ]
 
@@ -1020,7 +1022,9 @@ VOICE_GUIDED_ITEM_LABELS = [
     ("cantidad", "cantidad"),
     ("precio", "precio"),
     ("sistema", "sistema"),
+    ("tema", "sistema"),
     ("descripcion", "descripcion"),
+    ("descripción", "descripcion"),
 ]
 
 
@@ -1132,8 +1136,36 @@ def _voice_parse_guided_email(value: str) -> str:
     return ""
 
 
+def _voice_strip_guided_label_echo(value: str, field_name: str) -> str:
+    raw = _voice_clean_field(value)
+    if not raw:
+        return ""
+    aliases = {
+        "empresa": ["empresa", "esa"],
+        "correo": ["correo"],
+        "telefono": ["telefono", "teléfono"],
+        "ciudad": ["ciudad"],
+        "concepto": ["concepto", "otro concepto"],
+        "unidad": ["unidad"],
+        "cantidad": ["cantidad"],
+        "precio": ["precio"],
+        "sistema": ["sistema", "tema"],
+        "descripcion": ["descripcion", "descripción"],
+    }
+    changed = True
+    while changed:
+        changed = False
+        for alias in aliases.get(field_name, [field_name]):
+            updated = re.sub(rf"^\s*{re.escape(alias)}\s*:?\s*", "", raw, flags=re.IGNORECASE)
+            updated = _voice_clean_field(updated)
+            if updated != raw:
+                raw = updated
+                changed = True
+    return raw
+
+
 def _voice_split_guided_unit_and_quantity(unit_raw: str) -> tuple[str, Optional[float]]:
-    raw = _voice_clean_field(unit_raw)
+    raw = _voice_strip_guided_label_echo(unit_raw, "unidad")
     if not raw:
         return "", None
     quantity = None
@@ -1178,12 +1210,12 @@ def _voice_split_guided_system_and_tail(system_raw: str) -> tuple[str, str]:
 
 
 def _voice_build_guided_item_payload(item_fields: dict, index: int) -> dict:
-    concept_name = _voice_clean_field(item_fields.get("concepto") or "")
+    concept_name = _voice_strip_guided_label_echo(item_fields.get("concepto") or "", "concepto")
     unit, quantity_from_unit = _voice_split_guided_unit_and_quantity(item_fields.get("unidad") or "")
-    quantity_value = _voice_parse_guided_quantity(item_fields.get("cantidad") or "")
-    price_value = _voice_parse_guided_price(item_fields.get("precio") or "")
-    system, system_tail = _voice_split_guided_system_and_tail(item_fields.get("sistema") or "")
-    description = _voice_clean_field(item_fields.get("descripcion") or "")
+    quantity_value = _voice_parse_guided_quantity(_voice_strip_guided_label_echo(item_fields.get("cantidad") or "", "cantidad"))
+    price_value = _voice_parse_guided_price(_voice_strip_guided_label_echo(item_fields.get("precio") or "", "precio"))
+    system, system_tail = _voice_split_guided_system_and_tail(_voice_strip_guided_label_echo(item_fields.get("sistema") or "", "sistema"))
+    description = _voice_strip_guided_label_echo(item_fields.get("descripcion") or "", "descripcion")
     if quantity_value is None and quantity_from_unit is not None:
         quantity_value = quantity_from_unit
     if system_tail:
@@ -1236,6 +1268,21 @@ def _voice_parse_guided_script(command_raw: str) -> dict:
         stop_labels=VOICE_GUIDED_ITEM_LABELS,
     )
     header_data = {key: _voice_clean_field(value) for key, value in header_sections}
+    combined_labels = sorted(
+        {label for label, _ in (VOICE_GUIDED_HEADER_LABELS + VOICE_GUIDED_ITEM_LABELS)},
+        key=len,
+        reverse=True,
+    )
+    if combined_labels:
+        first_match = re.search(
+            "|".join(rf"\b{re.escape(label)}\b\s*:?" for label in combined_labels),
+            text,
+            flags=re.IGNORECASE,
+        )
+        if first_match:
+            prefix = _voice_clean_field(text[:first_match.start()])
+            if prefix and not header_data.get("cliente"):
+                header_data["cliente"] = prefix
 
     item_sections = _voice_extract_labeled_sections(
         text,
@@ -1257,12 +1304,12 @@ def _voice_parse_guided_script(command_raw: str) -> dict:
         items.append(_voice_build_guided_item_payload(current_item, len(items) + 1))
 
     return {
-        "cliente": header_data.get("cliente", ""),
-        "empresa": header_data.get("empresa", ""),
+        "cliente": _voice_strip_guided_label_echo(header_data.get("cliente", ""), "cliente"),
+        "empresa": _voice_strip_guided_label_echo(header_data.get("empresa", ""), "empresa"),
         "correo": _voice_parse_guided_email(header_data.get("correo", "")),
-        "telefono": header_data.get("telefono", ""),
+        "telefono": _voice_strip_guided_label_echo(header_data.get("telefono", ""), "telefono"),
         "responsable_contacto": "",
-        "ciudad": header_data.get("ciudad", ""),
+        "ciudad": _voice_strip_guided_label_echo(header_data.get("ciudad", ""), "ciudad"),
         "items": items,
     }
 
