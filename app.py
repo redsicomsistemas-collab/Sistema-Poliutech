@@ -634,7 +634,7 @@ def _voice_extract_client(command_text: str) -> str:
                 r"\b(?:"
                 r"concepto|descripcion|descripción|cantidad|cant(?:idad)?|precio(?:\s+unitario)?|"
                 r"empresa|razon\s+social|razón\s+social|correo|telefono|teléfono|celular|movil|móvil|"
-                r"responsable|contacto|atencion|atención|direccion|dirección|domicilio|ciudad|municipio|"
+                r"responsable|contacto|atencion|atención|ciudad|municipio|"
                 r"sistema|color|acabado|condicion|condición"
                 r")\b",
                 match.group(1),
@@ -659,7 +659,7 @@ def _voice_extract_company(command_text: str) -> str:
         match = re.search(pattern, command_text, flags=re.IGNORECASE)
         if match:
             value = re.split(
-                r"\b(?:correo|telefono|teléfono|direccion|dirección|ciudad|responsable|concepto|cantidad|precio)\b",
+                r"\b(?:correo|telefono|teléfono|ciudad|responsable|concepto|cantidad|precio)\b",
                 match.group(1),
                 maxsplit=1,
                 flags=re.IGNORECASE,
@@ -689,23 +689,6 @@ def _voice_extract_phone(command_text: str) -> str:
     return digits
 
 
-def _voice_extract_address(command_text: str) -> str:
-    patterns = [
-        r"(?:direccion|dirección|domicilio)\s+([a-z0-9áéíóúñ#.,\-/ ]+)",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, command_text, flags=re.IGNORECASE)
-        if match:
-            value = re.split(
-                r"\b(?:ciudad|correo|telefono|teléfono|responsable|concepto|cantidad|precio)\b",
-                match.group(1),
-                maxsplit=1,
-                flags=re.IGNORECASE,
-            )[0]
-            return _voice_clean_field(value).title()
-    return ""
-
-
 def _voice_extract_city(command_text: str) -> str:
     patterns = [
         r"(?:ciudad|municipio)\s+([a-z0-9áéíóúñ.\- ]+)",
@@ -714,7 +697,7 @@ def _voice_extract_city(command_text: str) -> str:
         match = re.search(pattern, command_text, flags=re.IGNORECASE)
         if match:
             value = re.split(
-                r"\b(?:correo|telefono|teléfono|responsable|direccion|dirección|concepto|cantidad|precio)\b",
+                r"\b(?:correo|telefono|teléfono|responsable|concepto|cantidad|precio)\b",
                 match.group(1),
                 maxsplit=1,
                 flags=re.IGNORECASE,
@@ -731,7 +714,7 @@ def _voice_extract_contact_responsible(command_text: str) -> str:
         match = re.search(pattern, command_text, flags=re.IGNORECASE)
         if match:
             value = re.split(
-                r"\b(?:correo|telefono|teléfono|direccion|dirección|ciudad|concepto|cantidad|precio)\b",
+                r"\b(?:correo|telefono|teléfono|ciudad|concepto|cantidad|precio)\b",
                 match.group(1),
                 maxsplit=1,
                 flags=re.IGNORECASE,
@@ -745,7 +728,7 @@ def _voice_strip_client_phrase(command_text: str) -> str:
     cleaned = re.sub(
         r"(?i)\b(?:para cliente|cliente|a nombre de)\s+([a-z0-9áéíóúñ .-]+?)"
         r"(?=\b(?:concepto|descripcion|descripción|cantidad|precio|empresa|correo|telefono|teléfono|"
-        r"responsable|direccion|dirección|ciudad|sistema|color|acabado|condicion|condición)\b|$)",
+        r"responsable|ciudad|sistema|color|acabado|condicion|condición)\b|$)",
         " ",
         cleaned,
     )
@@ -1028,7 +1011,6 @@ VOICE_GUIDED_HEADER_LABELS = [
     ("correo", "correo"),
     ("telefono", "telefono"),
     ("responsable", "responsable"),
-    ("direccion", "direccion"),
     ("ciudad", "ciudad"),
 ]
 
@@ -1191,7 +1173,6 @@ def _voice_parse_guided_script(command_raw: str) -> dict:
         "correo": header_data.get("correo", ""),
         "telefono": header_data.get("telefono", ""),
         "responsable_contacto": header_data.get("responsable", ""),
-        "direccion": header_data.get("direccion", ""),
         "ciudad": header_data.get("ciudad", ""),
         "items": items,
     }
@@ -1214,7 +1195,7 @@ def _voice_preview_payload_for_mobile(
         company = guided.get("empresa", "")
         email = guided.get("correo", "")
         phone = guided.get("telefono", "")
-        address = guided.get("direccion", "")
+        address = ""
         city = guided.get("ciudad", "")
         contact_responsible = guided.get("responsable_contacto", "")
         items = guided.get("items", [])
@@ -1223,7 +1204,7 @@ def _voice_preview_payload_for_mobile(
         company = _voice_extract_company(command_text)
         email = _voice_extract_email(command_text)
         phone = _voice_extract_phone(command_text)
-        address = _voice_extract_address(command_text)
+        address = ""
         city = _voice_extract_city(command_text)
         contact_responsible = _voice_extract_contact_responsible(command_text)
         segments = _voice_split_segments(command_raw)
