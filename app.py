@@ -622,7 +622,28 @@ def _voice_parse_number(value, default: float = 0.0) -> float:
     if value is None:
         return default
     try:
-        return float(str(value).replace(",", ".").strip())
+        raw = str(value).strip()
+        if not raw:
+            return default
+        raw = re.sub(r"[^\d,.\-]", "", raw)
+        if not raw:
+            return default
+        if "," in raw and "." in raw:
+            if raw.rfind(",") > raw.rfind("."):
+                raw = raw.replace(".", "").replace(",", ".")
+            else:
+                raw = raw.replace(",", "")
+        elif "," in raw:
+            parts = raw.split(",")
+            if len(parts) == 2 and len(parts[1]) == 3 and len(parts[0]) >= 1:
+                raw = "".join(parts)
+            else:
+                raw = raw.replace(",", ".")
+        elif "." in raw:
+            parts = raw.split(".")
+            if len(parts) == 2 and len(parts[1]) == 3 and len(parts[0]) >= 1:
+                raw = "".join(parts)
+        return float(raw)
     except Exception:
         return default
 
