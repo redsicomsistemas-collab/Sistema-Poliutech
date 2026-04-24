@@ -4085,6 +4085,67 @@ def cotizador():
     return render_template("cotizador.html", title="Nuevo - Sistema MAR")
 
 
+@app.route("/cotizador/voz/transcribir", methods=["POST"])
+@login_required
+def cotizador_voice_transcribe():
+    uploaded = request.files.get("audio")
+    target = (request.form.get("target") or "comando").strip().lower()
+    if not uploaded or not (uploaded.filename or "").strip():
+        return jsonify({"ok": False, "error": "Adjunta un archivo de audio antes de transcribir."}), 400
+
+    try:
+        audio_bytes = uploaded.read()
+        transcript = _voice_transcribe_audio_bytes(
+            audio_bytes=audio_bytes,
+            filename=uploaded.filename or "voz.webm",
+            mime_type=uploaded.mimetype or mimetypes.guess_type(uploaded.filename or "")[0] or "application/octet-stream",
+        )
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except RuntimeError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 503
+    except Exception as exc:
+        try:
+            logger.exception("Error transcribiendo audio del cotizador web")
+        except Exception:
+            pass
+        return jsonify({"ok": False, "error": f"No se pudo transcribir el audio: {exc}"}), 500
+
+    return jsonify({"ok": True, "target": target, "transcript": transcript})
+
+
+@app.route("/cotizador/voz/preview", methods=["POST"])
+@login_required
+def cotizador_voice_preview():
+    payload = request.get_json(silent=True) or {}
+    command_raw = str(payload.get("comando") or payload.get("transcript") or "").strip()
+    client_override = str(payload.get("cliente") or "").strip()
+    notes = str(payload.get("notas") or "").strip()
+    conditions_raw = str(payload.get("condiciones") or payload.get("condiciones_raw") or "").strip()
+    if not command_raw:
+        return jsonify({"ok": False, "error": "Dicta o escribe un comando antes de continuar."}), 400
+
+    try:
+        user_obj = current_user._get_current_object() if hasattr(current_user, "_get_current_object") else current_user
+        preview = _voice_preview_payload_for_mobile(
+            command_raw=command_raw,
+            user=user_obj,
+            client_override=client_override,
+            notes=notes,
+            conditions_raw=conditions_raw,
+        )
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        try:
+            logger.exception("Error interpretando voz en cotizador web")
+        except Exception:
+            pass
+        return jsonify({"ok": False, "error": f"No se pudo interpretar el comando: {exc}"}), 500
+
+    return jsonify({"ok": True, "preview": preview})
+
+
 @app.route("/altas", methods=["GET", "POST"])
 @login_required
 def altas_proveedores():
