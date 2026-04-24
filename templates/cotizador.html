@@ -1,9 +1,48 @@
 {% extends "base.html" %}
 {% block content %}
 
-<h2 class="mb-4 fw-bold text-primary">💰 Cotizador de Poliutech</h2>
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+  <h2 class="mb-0 fw-bold text-primary">💰 Cotizador de Poliutech</h2>
+  <button type="button" id="btn-open-voice-web" class="btn btn-outline-primary fw-semibold">🎙 Voz</button>
+</div>
 
 <form id="frm-cotizacion" method="POST" action="{{ url_for('crear_cotizacion') }}">
+  <section class="panel mb-4 d-none" id="voice-web-panel">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+      <h5 class="mb-0 text-secondary">Captura por voz</h5>
+      <div class="d-flex gap-2">
+        <button type="button" id="btn-voice-web-hide" class="btn btn-sm btn-outline-secondary">Ocultar</button>
+        <button type="button" id="btn-voice-web-clear" class="btn btn-sm btn-outline-danger">Vaciar</button>
+      </div>
+    </div>
+
+    <div id="voice-web-status" class="alert alert-secondary d-none align-items-center gap-2 py-2 mb-3">
+      <span id="voice-web-dot" class="rounded-circle bg-danger d-inline-block" style="width:12px;height:12px;"></span>
+      <div id="voice-web-spinner" class="spinner-border spinner-border-sm text-primary d-none" role="status"></div>
+      <span id="voice-web-status-text" class="fw-semibold">Listo para grabar.</span>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-lg-8">
+        <label for="voice_command_input" class="form-label fw-semibold">Comando de voz</label>
+        <textarea id="voice_command_input" class="form-control" rows="6" placeholder="CLIENTE:&#10;EMPRESA:&#10;CORREO:&#10;TELEFONO:&#10;CIUDAD:&#10;&#10;CONCEPTO:&#10;UNIDAD:&#10;CANTIDAD:&#10;PRECIO:&#10;SISTEMA:&#10;&#10;OTRO CONCEPTO:&#10;UNIDAD:&#10;CANTIDAD:&#10;PRECIO:&#10;SISTEMA:"></textarea>
+      </div>
+      <div class="col-lg-4">
+        <label for="voice_conditions_input" class="form-label fw-semibold">Condiciones por voz</label>
+        <textarea id="voice_conditions_input" class="form-control" rows="6" placeholder="OTRA CONDICION ES QUE..."></textarea>
+      </div>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2 mt-3">
+      <button type="button" id="btn-voice-record-command" class="btn btn-outline-primary">Grabar comando</button>
+      <button type="button" id="btn-voice-record-conditions" class="btn btn-outline-primary">Grabar condiciones</button>
+      <button type="button" id="btn-voice-preview-web" class="btn btn-primary">Previsualizar voz</button>
+      <button type="button" id="btn-voice-apply-web" class="btn btn-success">Aplicar al cotizador</button>
+    </div>
+
+    <div id="voice-web-preview" class="small text-muted mt-3"></div>
+  </section>
+
   <!-- DATOS DEL CLIENTE -->
   <section class="panel mb-4">
     <h5 class="mb-3 text-secondary">Datos del Cliente</h5>

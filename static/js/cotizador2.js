@@ -32,7 +32,7 @@ function bindRowEvents(tr){
   const cantidad = tr.querySelector(".item-cantidad");
   const precio = tr.querySelector(".item-precio");
   const sistema = tr.querySelector(".item-sistema");
-  const desc = tr.querySelector('input[name="item_descripcion[]"]');
+  const desc = tr.querySelector('textarea[name="item_descripcion[]"]');
   const subtotalEl = tr.querySelector(".item-subtotal");
   const sug = tr.querySelector(".item-suggest");
 
@@ -162,6 +162,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
     tbody.appendChild(tr);
     bindRowEvents(tr);
     recalcTotals();
+    return tr;
   }
   if (btnAdd) btnAdd.addEventListener("click", addRow);
   addRow();
@@ -207,5 +208,254 @@ document.addEventListener("DOMContentLoaded", ()=>{
       }
     });
   }
+
+  // ============================================================
+  // 🔹 VOZ EN COTIZADOR WEB
+  // ============================================================
+  (function setupVoiceWeb(){
+    const openBtn = document.getElementById("btn-open-voice-web");
+    const panel = document.getElementById("voice-web-panel");
+    const hideBtn = document.getElementById("btn-voice-web-hide");
+    const clearBtn = document.getElementById("btn-voice-web-clear");
+    const recordCommandBtn = document.getElementById("btn-voice-record-command");
+    const recordConditionsBtn = document.getElementById("btn-voice-record-conditions");
+    const previewBtn = document.getElementById("btn-voice-preview-web");
+    const applyBtn = document.getElementById("btn-voice-apply-web");
+    const commandInput = document.getElementById("voice_command_input");
+    const conditionsInput = document.getElementById("voice_conditions_input");
+    const previewBox = document.getElementById("voice-web-preview");
+    const statusBox = document.getElementById("voice-web-status");
+    const statusText = document.getElementById("voice-web-status-text");
+    const statusDot = document.getElementById("voice-web-dot");
+    const statusSpinner = document.getElementById("voice-web-spinner");
+    if(!openBtn || !panel || !recordCommandBtn || !previewBtn || !applyBtn || !commandInput) return;
+
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let activeTarget = "comando";
+    let lastPreview = null;
+    let wakeLock = null;
+
+    function setStatus(message, mode){
+      statusBox.classList.remove("d-none");
+      statusBox.classList.remove("alert-secondary", "alert-danger", "alert-success", "alert-warning");
+      statusSpinner.classList.add("d-none");
+      statusDot.classList.add("d-none");
+      if(mode === "recording"){
+        statusBox.classList.add("alert-danger");
+        statusDot.classList.remove("d-none");
+        statusDot.animate(
+          [{ opacity: 1, transform: "scale(1)" }, { opacity: 0.35, transform: "scale(1.25)" }],
+          { duration: 650, iterations: Infinity, direction: "alternate" }
+        );
+      } else if(mode === "busy"){
+        statusBox.classList.add("alert-warning");
+        statusSpinner.classList.remove("d-none");
+      } else if(mode === "success"){
+        statusBox.classList.add("alert-success");
+      } else if(mode === "error"){
+        statusBox.classList.add("alert-danger");
+      } else {
+        statusBox.classList.add("alert-secondary");
+      }
+      statusText.textContent = message;
+    }
+
+    function clearStatus(){
+      statusBox.classList.add("d-none");
+      statusDot.getAnimations().forEach(anim => anim.cancel());
+      statusSpinner.classList.add("d-none");
+      statusDot.classList.add("d-none");
+    }
+
+    async function acquireWakeLock(){
+      try {
+        if("wakeLock" in navigator && navigator.wakeLock?.request){
+          wakeLock = await navigator.wakeLock.request("screen");
+        }
+      } catch(_e){}
+    }
+
+    async function releaseWakeLock(){
+      try {
+        if(wakeLock){
+          await wakeLock.release();
+        }
+      } catch(_e){}
+      wakeLock = null;
+    }
+
+    function resetVoicePanel(){
+      commandInput.value = "";
+      if(conditionsInput) conditionsInput.value = "";
+      previewBox.innerHTML = "";
+      lastPreview = null;
+      clearStatus();
+    }
+
+    async function startRecording(target){
+      if(!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined"){
+        setStatus("Este navegador no soporta grabación de audio.", "error");
+        return;
+      }
+      if(mediaRecorder){
+        stopRecording();
+        return;
+      }
+      activeTarget = target;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunks = [];
+      mediaRecorder = new MediaRecorder(stream);
+      mediaRecorder.ondataavailable = (event) => {
+        if(event.data && event.data.size > 0){
+          audioChunks.push(event.data);
+        }
+      };
+      mediaRecorder.onstop = async () => {
+        const blob = new Blob(audioChunks, { type: mediaRecorder?.mimeType || "audio/webm" });
+        stream.getTracks().forEach(track => track.stop());
+        mediaRecorder = null;
+        await releaseWakeLock();
+        await uploadAudio(blob, activeTarget);
+      };
+      await acquireWakeLock();
+      mediaRecorder.start();
+      setStatus(target === "condiciones" ? "Grabando condiciones..." : "Grabando comando...", "recording");
+      recordCommandBtn.textContent = target === "comando" ? "Terminar comando" : "Grabar comando";
+      if(recordConditionsBtn) recordConditionsBtn.textContent = target === "condiciones" ? "Terminar condiciones" : "Grabar condiciones";
+    }
+
+    function stopRecording(){
+      if(!mediaRecorder) return;
+      mediaRecorder.stop();
+      setStatus("Subiendo audio...", "busy");
+      recordCommandBtn.textContent = "Grabar comando";
+      if(recordConditionsBtn) recordConditionsBtn.textContent = "Grabar condiciones";
+    }
+
+    async function uploadAudio(blob, target){
+      const fd = new FormData();
+      fd.append("target", target);
+      fd.append("audio", blob, `${target}.webm`);
+      setStatus("Transcribiendo audio...", "busy");
+      const res = await fetch("/cotizador/voz/transcribir", { method: "POST", body: fd });
+      const data = await res.json();
+      if(!res.ok || !data.ok){
+        setStatus(data.error || "No se pudo transcribir el audio.", "error");
+        return;
+      }
+      const transcript = String(data.transcript || "").trim();
+      if(target === "condiciones"){
+        conditionsInput.value = [conditionsInput.value.trim(), transcript].filter(Boolean).join(" ").trim();
+      } else {
+        commandInput.value = [commandInput.value.trim(), transcript].filter(Boolean).join(" ").trim();
+      }
+      setStatus("Audio transcrito correctamente.", "success");
+    }
+
+    function money(n){
+      return (Number(n)||0).toLocaleString("es-MX", { style:"currency", currency:"MXN" });
+    }
+
+    function renderVoicePreview(preview){
+      const header = preview.datos_encabezado || {};
+      const items = Array.isArray(preview.items) ? preview.items : [];
+      const warnings = Array.isArray(preview.warnings) ? preview.warnings : [];
+      previewBox.innerHTML = `
+        <div class="border rounded p-3 bg-light">
+          <div><strong>Cliente:</strong> ${preview.cliente || "En blanco"}</div>
+          <div><strong>Empresa:</strong> ${header.empresa || "En blanco"}</div>
+          <div><strong>Correo:</strong> ${header.correo || "En blanco"}</div>
+          <div><strong>Teléfono:</strong> ${header.telefono || "En blanco"}</div>
+          <div><strong>Ciudad:</strong> ${header.ciudad || "En blanco"}</div>
+          <div class="mt-2"><strong>Partidas:</strong> ${items.length}</div>
+          <div><strong>Total:</strong> ${money(preview?.resumen?.total || 0)}</div>
+          ${items.length ? `<hr><div>${items.map((item, idx)=>`
+            <div class="mb-2">
+              <strong>${idx + 1}. ${item.nombre || "Sin concepto"}</strong><br>
+              Unidad: ${item.unidad || "En blanco"} | Cantidad: ${item.cantidad || "En blanco"} | PU: ${item.precio_unitario || "En blanco"} | Sistema: ${item.sistema || "En blanco"}
+            </div>
+          `).join("")}</div>` : ""}
+          ${warnings.length ? `<hr><div class="text-danger">${warnings.map(w=>`<div>- ${w}</div>`).join("")}</div>` : ""}
+        </div>
+      `;
+    }
+
+    function applyPreviewToForm(preview){
+      const header = preview.datos_encabezado || {};
+      const items = Array.isArray(preview.items) ? preview.items : [];
+      document.getElementById("cliente_input").value = preview.cliente || "";
+      document.getElementById("empresa").value = header.empresa || "";
+      document.getElementById("correo").value = header.correo || "";
+      document.getElementById("telefono").value = header.telefono || "";
+      document.getElementById("ciudad_trabajo").value = (header.ciudad || "").toUpperCase();
+      if(Array.isArray(preview.condiciones) && preview.condiciones.length){
+        document.getElementById("notas").value = preview.condiciones.join("\n");
+      }
+
+      tbody.innerHTML = "";
+      if(!items.length){
+        addRow();
+      } else {
+        items.forEach(item => {
+          const tr = addRow();
+          tr.querySelector(".item-nombre").value = item.nombre || "";
+          tr.querySelector(".item-unidad").value = item.unidad || "";
+          tr.querySelector(".item-cantidad").value = item.cantidad || "";
+          tr.querySelector(".item-precio").value = item.precio_unitario || "";
+          tr.querySelector(".item-sistema").value = item.sistema || "";
+          const descField = tr.querySelector('textarea[name="item_descripcion[]"]');
+          if(descField) descField.value = item.descripcion || "";
+        });
+      }
+      recalcTotals();
+      setStatus("La captura por voz se aplicó al cotizador.", "success");
+    }
+
+    async function previewVoice(){
+      const comando = commandInput.value.trim();
+      if(!comando){
+        setStatus("Graba o pega un comando antes de previsualizar.", "error");
+        return;
+      }
+      setStatus("Interpretando comando...", "busy");
+      const res = await fetch("/cotizador/voz/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          comando,
+          condiciones: conditionsInput ? conditionsInput.value.trim() : "",
+          cliente: document.getElementById("cliente_input").value.trim(),
+          notas: document.getElementById("notas").value.trim()
+        })
+      });
+      const data = await res.json();
+      if(!res.ok || !data.ok){
+        setStatus(data.error || "No se pudo interpretar la voz.", "error");
+        return;
+      }
+      lastPreview = data.preview;
+      renderVoicePreview(lastPreview);
+      setStatus("Previsualización lista.", "success");
+    }
+
+    openBtn.addEventListener("click", ()=>{
+      panel.classList.remove("d-none");
+      panel.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    if(hideBtn) hideBtn.addEventListener("click", ()=> panel.classList.add("d-none"));
+    if(clearBtn) clearBtn.addEventListener("click", resetVoicePanel);
+    recordCommandBtn.addEventListener("click", ()=> mediaRecorder ? stopRecording() : startRecording("comando"));
+    if(recordConditionsBtn) recordConditionsBtn.addEventListener("click", ()=> mediaRecorder ? stopRecording() : startRecording("condiciones"));
+    previewBtn.addEventListener("click", previewVoice);
+    applyBtn.addEventListener("click", async ()=>{
+      if(!lastPreview){
+        await previewVoice();
+      }
+      if(lastPreview){
+        applyPreviewToForm(lastPreview);
+      }
+    });
+  })();
 
 });
