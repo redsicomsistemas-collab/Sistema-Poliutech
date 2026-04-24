@@ -3,7 +3,13 @@
 
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
   <h2 class="mb-0 fw-bold text-primary">💰 Cotizador de Poliutech</h2>
-  <button type="button" id="btn-open-voice-web" class="btn btn-outline-primary fw-semibold">🎙 Voz</button>
+  <button type="button" id="btn-open-voice-web" class="voice-launch-btn">
+    <span class="voice-launch-icon">🎙</span>
+    <span class="voice-launch-text">
+      <strong>Voz</strong>
+      <small>Captura inteligente</small>
+    </span>
+  </button>
 </div>
 
 <form id="frm-cotizacion" method="POST" action="{{ url_for('crear_cotizacion') }}">
