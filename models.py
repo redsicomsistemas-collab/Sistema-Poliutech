@@ -494,6 +494,7 @@ class PUPartidaInsumo(db.Model):
     cantidad = db.Column(db.Float, default=0.0)
     costo_unitario = db.Column(db.Float, default=0.0)
     importe = db.Column(db.Float, default=0.0)
+    gravable = db.Column(db.Boolean, default=True, nullable=False)
     creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

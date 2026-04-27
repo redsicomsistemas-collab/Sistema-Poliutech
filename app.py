@@ -2790,6 +2790,7 @@ def ensure_schema():
             ("cantidad", "ALTER TABLE pu_partida_insumo ADD COLUMN cantidad FLOAT DEFAULT 0.0"),
             ("costo_unitario", "ALTER TABLE pu_partida_insumo ADD COLUMN costo_unitario FLOAT DEFAULT 0.0"),
             ("importe", "ALTER TABLE pu_partida_insumo ADD COLUMN importe FLOAT DEFAULT 0.0"),
+            ("gravable", "ALTER TABLE pu_partida_insumo ADD COLUMN gravable BOOLEAN DEFAULT 1 NOT NULL"),
             ("creado_en", "ALTER TABLE pu_partida_insumo ADD COLUMN creado_en TIMESTAMP"),
             ("actualizado_en", "ALTER TABLE pu_partida_insumo ADD COLUMN actualizado_en TIMESTAMP"),
         ]:

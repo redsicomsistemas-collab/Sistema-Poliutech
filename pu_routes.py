@@ -239,6 +239,7 @@ def insumo_nuevo(partida_id: int):
         unidad=(request.form.get("unidad") or "").strip() or None,
         cantidad=_float(request.form.get("cantidad")),
         costo_unitario=_float(request.form.get("costo_unitario")),
+        gravable=True,
     )
     insumo.importe = round(insumo.cantidad * insumo.costo_unitario, 2)
     db.session.add(insumo)
