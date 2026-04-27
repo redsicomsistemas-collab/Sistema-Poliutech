@@ -5,7 +5,7 @@
 <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 mb-4">
   <div>
     <h2 class="fw-bold text-primary mb-1">{{ obra.nombre }}</h2>
-    <div class="text-muted">{{ obra.cliente or 'Sin cliente' }} · {{ obra.ubicacion or 'Sin ubicación' }} · {{ obra.moneda }}</div>
+    <div class="text-muted">{{ obra.cliente or 'Sin cliente' }} · {{ obra.ubicacion or 'Sin ubicación' }} · {{ obra.moneda }} · {{ "{:,.2f}".format(obra.m2_proyecto or 0) }} m2</div>
   </div>
   <div class="d-flex gap-2">
     <a href="{{ url_for('pu.obras_index') }}" class="btn btn-outline-secondary">Obras</a>
@@ -28,8 +28,9 @@
         <form method="post" action="{{ url_for('pu.obra_actualizar', obra_id=obra.id) }}" class="row g-3">
           <div class="col-md-6"><label class="form-label">Obra</label><input name="nombre" class="form-control" value="{{ obra.nombre }}"></div>
           <div class="col-md-6"><label class="form-label">Cliente</label><input name="cliente" class="form-control" value="{{ obra.cliente or '' }}"></div>
-          <div class="col-md-8"><label class="form-label">Ubicación</label><input name="ubicacion" class="form-control" value="{{ obra.ubicacion or '' }}"></div>
-          <div class="col-md-4"><label class="form-label">Moneda</label><input name="moneda" class="form-control" value="{{ obra.moneda }}"></div>
+          <div class="col-md-5"><label class="form-label">Ubicación</label><input name="ubicacion" class="form-control" value="{{ obra.ubicacion or '' }}"></div>
+          <div class="col-md-3"><label class="form-label">Moneda</label><input name="moneda" class="form-control" value="{{ obra.moneda }}"></div>
+          <div class="col-md-4"><label class="form-label">M2 proyecto</label><input type="number" step="any" name="m2_proyecto" class="form-control" value="{{ obra.m2_proyecto or 0 }}"></div>
           <div class="col-12"><label class="form-label">Descripción</label><textarea name="descripcion" class="form-control" rows="2">{{ obra.descripcion or '' }}</textarea></div>
           <div class="col-12 text-end"><button class="btn btn-primary">Guardar</button></div>
         </form>
@@ -61,7 +62,7 @@
       <div class="col-md-2"><label class="form-label">Clave</label><input name="clave" class="form-control"></div>
       <div class="col-md-4"><label class="form-label">Descripción</label><input name="descripcion" class="form-control" required></div>
       <div class="col-md-2"><label class="form-label">Unidad</label><input name="unidad" class="form-control" value="m2"></div>
-      <div class="col-md-2"><label class="form-label">Cantidad</label><input type="number" step="any" name="cantidad" class="form-control" value="1"></div>
+      <div class="col-md-2"><label class="form-label">M2 / Cantidad</label><input type="number" step="any" name="cantidad" class="form-control" value="{{ obra.m2_proyecto or 1 }}"></div>
       <div class="col-12 text-end"><button class="btn btn-success">Agregar partida</button></div>
     </form>
   </div>
@@ -89,23 +90,40 @@
       <div class="col-md"><div class="border rounded p-2 small">PU<br><b>${{ "{:,.2f}".format(m.precio_unitario or 0) }}</b></div></div>
       <div class="col-md"><div class="border rounded p-2 small">Importe<br><b>${{ "{:,.2f}".format(m.importe or 0) }}</b></div></div>
     </div>
+    <div class="alert alert-light border small">
+      Base de calculo para rendimiento: <b>{{ "{:,.2f}".format(partida.cantidad or obra.m2_proyecto or 0) }} {{ partida.unidad }}</b>.
+      Si capturas <b>Rendimiento (m2)</b>, el sistema calcula: <b>m2 / rendimiento = cantidad exacta</b> y luego redondea hacia arriba para costear.
+    </div>
     <div class="table-responsive mb-3">
       <table class="table table-sm table-bordered align-middle">
-        <thead class="table-light"><tr><th>Tipo</th><th>Código</th><th>Descripción</th><th>Unidad</th><th class="text-end">Cantidad</th><th class="text-end">Costo unitario</th><th class="text-end">Importe</th><th></th></tr></thead>
+        <thead class="table-light"><tr><th>Tipo</th><th>Código</th><th>Descripción</th><th>Unidad</th><th>Presentación</th><th class="text-end">Rend. m2</th><th class="text-end">Cant. exacta</th><th class="text-end">Cant. cobro</th><th class="text-end">Costo unitario</th><th class="text-end">Importe</th><th></th><th></th></tr></thead>
         <tbody>
           {% for insumo in partida.insumos %}
+          <form id="insumo-form-{{ insumo.id }}" method="post" action="{{ url_for('pu.insumo_actualizar', insumo_id=insumo.id) }}"></form>
           <tr>
-            <td>{{ tipos_recurso.get(insumo.tipo, insumo.tipo) }}</td>
-            <td>{{ insumo.codigo or '' }}</td>
-            <td>{{ insumo.descripcion }}</td>
-            <td>{{ insumo.unidad or '' }}</td>
-            <td class="text-end">{{ "{:,.4f}".format(insumo.cantidad or 0) }}</td>
-            <td class="text-end">${{ "{:,.2f}".format(insumo.costo_unitario or 0) }}</td>
+            <td>
+              <select name="tipo" form="insumo-form-{{ insumo.id }}" class="form-select form-select-sm">
+                {% for key, label in tipos_recurso.items() %}
+                <option value="{{ key }}" {% if insumo.tipo == key %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td><input name="codigo" form="insumo-form-{{ insumo.id }}" class="form-control form-control-sm" value="{{ insumo.codigo or '' }}"></td>
+            <td><input name="descripcion" form="insumo-form-{{ insumo.id }}" class="form-control form-control-sm" value="{{ insumo.descripcion }}"></td>
+            <td><input name="unidad" form="insumo-form-{{ insumo.id }}" class="form-control form-control-sm" value="{{ insumo.unidad or '' }}"></td>
+            <td><input name="presentacion" form="insumo-form-{{ insumo.id }}" class="form-control form-control-sm" value="{{ insumo.presentacion or '' }}"></td>
+            <td><input type="number" step="any" name="rendimiento_m2" form="insumo-form-{{ insumo.id }}" class="form-control form-control-sm text-end" value="{{ insumo.rendimiento_m2 or 0 }}"></td>
+            <td class="text-end">{{ "{:,.4f}".format(insumo.cantidad_exacta or 0) }}</td>
+            <td>
+              <input type="number" step="any" name="cantidad" form="insumo-form-{{ insumo.id }}" class="form-control form-control-sm text-end" value="{{ insumo.cantidad or 0 }}" {% if insumo.rendimiento_m2 %}readonly{% endif %}>
+            </td>
+            <td><input type="number" step="any" name="costo_unitario" form="insumo-form-{{ insumo.id }}" class="form-control form-control-sm text-end" value="{{ insumo.costo_unitario or 0 }}"></td>
             <td class="text-end">${{ "{:,.2f}".format(insumo.importe or 0) }}</td>
+            <td class="text-end"><button form="insumo-form-{{ insumo.id }}" class="btn btn-outline-primary btn-sm">Guardar</button></td>
             <td class="text-end"><form method="post" action="{{ url_for('pu.insumo_eliminar', insumo_id=insumo.id) }}"><button class="btn btn-outline-danger btn-sm">X</button></form></td>
           </tr>
           {% else %}
-          <tr><td colspan="8" class="text-center text-muted">Sin insumos.</td></tr>
+          <tr><td colspan="12" class="text-center text-muted">Sin insumos.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -113,9 +131,11 @@
     <form method="post" action="{{ url_for('pu.insumo_nuevo', partida_id=partida.id) }}" class="row g-2">
       <div class="col-md-2"><select name="tipo" class="form-select">{% for key, label in tipos_recurso.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
       <div class="col-md-1"><input name="codigo" class="form-control" placeholder="Código"></div>
-      <div class="col-md-3"><input name="descripcion" class="form-control" placeholder="Insumo" required></div>
+      <div class="col-md-2"><input name="descripcion" class="form-control" placeholder="Insumo" required></div>
       <div class="col-md-1"><input name="unidad" class="form-control" placeholder="Unidad"></div>
-      <div class="col-md-2"><input type="number" step="any" name="cantidad" class="form-control" placeholder="Cantidad"></div>
+      <div class="col-md-2"><input name="presentacion" class="form-control" placeholder="Presentación"></div>
+      <div class="col-md-1"><input type="number" step="any" name="rendimiento_m2" class="form-control" placeholder="Rend."></div>
+      <div class="col-md-1"><input type="number" step="any" name="cantidad" class="form-control" placeholder="Cant. manual"></div>
       <div class="col-md-2"><input type="number" step="any" name="costo_unitario" class="form-control" placeholder="Costo unitario"></div>
       <div class="col-md-1"><button class="btn btn-success w-100">+</button></div>
     </form>

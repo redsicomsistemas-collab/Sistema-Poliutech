@@ -30,6 +30,10 @@
         <label class="form-label">Moneda</label>
         <input name="moneda" class="form-control" value="MXN">
       </div>
+      <div class="col-md-3">
+        <label class="form-label">M2 proyecto</label>
+        <input type="number" step="any" name="m2_proyecto" class="form-control" value="0">
+      </div>
       <div class="col-12">
         <label class="form-label">Descripción</label>
         <textarea name="descripcion" class="form-control" rows="2"></textarea>
@@ -49,6 +53,7 @@
       <div class="card-body">
         <h5 class="fw-bold mb-1">{{ obra.nombre }}</h5>
         <div class="text-muted small mb-3">{{ obra.cliente or 'Sin cliente' }} · {{ obra.ubicacion or 'Sin ubicación' }}</div>
+        <div class="small mb-3">M2 proyecto: <b>{{ "{:,.2f}".format(obra.m2_proyecto or 0) }}</b></div>
         <div class="row text-center g-2 mb-3">
           <div class="col-4">
             <div class="border rounded p-2">
