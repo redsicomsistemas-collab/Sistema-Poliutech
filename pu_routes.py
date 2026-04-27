@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import login_required
 
@@ -43,12 +45,32 @@ def _sobrecosto_pct(sob: PUSobrecosto) -> float:
     )
 
 
+def _base_m2_partida(partida: PUPartida) -> float:
+    cantidad_partida = _float(partida.cantidad)
+    if cantidad_partida > 0:
+        return cantidad_partida
+    return _float(partida.obra.m2_proyecto)
+
+
+def _normalizar_insumo(partida: PUPartida, insumo: PUPartidaInsumo) -> None:
+    rendimiento = _float(insumo.rendimiento_m2)
+    if rendimiento > 0:
+        base_m2 = _base_m2_partida(partida)
+        exacta = base_m2 / rendimiento if base_m2 > 0 else 0.0
+        insumo.cantidad_exacta = round(exacta, 4)
+        insumo.cantidad = float(math.ceil(exacta)) if exacta > 0 else 0.0
+    else:
+        insumo.cantidad_exacta = _float(insumo.cantidad)
+        insumo.cantidad = _float(insumo.cantidad)
+    insumo.importe = round(_float(insumo.cantidad) * _float(insumo.costo_unitario), 2)
+
+
 def _recalcular_partida(partida: PUPartida, sob: PUSobrecosto | None = None) -> dict:
     sob = sob or _ensure_sobrecosto(partida.obra)
     totales = {key: 0.0 for key in TIPOS_RECURSO}
 
     for insumo in partida.insumos:
-        insumo.importe = round(_float(insumo.cantidad) * _float(insumo.costo_unitario), 2)
+        _normalizar_insumo(partida, insumo)
         if insumo.tipo in totales:
             totales[insumo.tipo] += insumo.importe
 
@@ -114,6 +136,7 @@ def obra_nueva():
         ubicacion=(request.form.get("ubicacion") or "").strip() or None,
         descripcion=(request.form.get("descripcion") or "").strip() or None,
         moneda=(request.form.get("moneda") or "MXN").strip() or "MXN",
+        m2_proyecto=_float(request.form.get("m2_proyecto")),
     )
     db.session.add(obra)
     db.session.flush()
@@ -153,6 +176,9 @@ def obra_actualizar(obra_id: int):
     obra.ubicacion = (request.form.get("ubicacion") or "").strip() or None
     obra.descripcion = (request.form.get("descripcion") or "").strip() or None
     obra.moneda = (request.form.get("moneda") or "MXN").strip() or "MXN"
+    obra.m2_proyecto = _float(request.form.get("m2_proyecto"))
+    for partida in obra.partidas:
+        _recalcular_partida(partida)
     db.session.commit()
     flash("Datos generales actualizados.", "success")
     return redirect(url_for("pu.obra_detalle", obra_id=obra.id))
@@ -237,15 +263,40 @@ def insumo_nuevo(partida_id: int):
         codigo=(request.form.get("codigo") or "").strip() or None,
         descripcion=descripcion,
         unidad=(request.form.get("unidad") or "").strip() or None,
+        presentacion=(request.form.get("presentacion") or "").strip() or None,
+        rendimiento_m2=_float(request.form.get("rendimiento_m2")),
         cantidad=_float(request.form.get("cantidad")),
         costo_unitario=_float(request.form.get("costo_unitario")),
         gravable=True,
     )
-    insumo.importe = round(insumo.cantidad * insumo.costo_unitario, 2)
+    _normalizar_insumo(partida, insumo)
     db.session.add(insumo)
     _recalcular_partida(partida)
     db.session.commit()
     flash("Insumo agregado.", "success")
+    return redirect(url_for("pu.obra_detalle", obra_id=partida.obra_id))
+
+
+@pu_bp.route("/insumos/<int:insumo_id>/actualizar", methods=["POST"])
+@login_required
+def insumo_actualizar(insumo_id: int):
+    insumo = PUPartidaInsumo.query.get_or_404(insumo_id)
+    partida = insumo.partida
+    insumo.tipo = (request.form.get("tipo") or insumo.tipo or "material").strip()
+    insumo.codigo = (request.form.get("codigo") or "").strip() or None
+    insumo.descripcion = (request.form.get("descripcion") or "").strip() or insumo.descripcion
+    insumo.unidad = (request.form.get("unidad") or "").strip() or None
+    insumo.presentacion = (request.form.get("presentacion") or "").strip() or None
+    insumo.rendimiento_m2 = _float(request.form.get("rendimiento_m2"))
+    insumo.costo_unitario = _float(request.form.get("costo_unitario"))
+    if _float(insumo.rendimiento_m2) > 0:
+        insumo.cantidad = _float(insumo.cantidad)
+    else:
+        insumo.cantidad = _float(request.form.get("cantidad"))
+    _normalizar_insumo(partida, insumo)
+    _recalcular_partida(partida)
+    db.session.commit()
+    flash("Insumo actualizado.", "success")
     return redirect(url_for("pu.obra_detalle", obra_id=partida.obra_id))
 
 

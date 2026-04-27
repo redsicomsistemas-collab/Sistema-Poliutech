@@ -2716,6 +2716,7 @@ def ensure_schema():
             ("ubicacion", "ALTER TABLE pu_obra ADD COLUMN ubicacion VARCHAR(220)"),
             ("descripcion", "ALTER TABLE pu_obra ADD COLUMN descripcion TEXT"),
             ("moneda", "ALTER TABLE pu_obra ADD COLUMN moneda VARCHAR(20) DEFAULT 'MXN'"),
+            ("m2_proyecto", "ALTER TABLE pu_obra ADD COLUMN m2_proyecto FLOAT DEFAULT 0.0"),
             ("creado_en", "ALTER TABLE pu_obra ADD COLUMN creado_en TIMESTAMP"),
             ("actualizado_en", "ALTER TABLE pu_obra ADD COLUMN actualizado_en TIMESTAMP"),
         ]:
@@ -2787,6 +2788,9 @@ def ensure_schema():
             ("codigo", "ALTER TABLE pu_partida_insumo ADD COLUMN codigo VARCHAR(60)"),
             ("descripcion", "ALTER TABLE pu_partida_insumo ADD COLUMN descripcion VARCHAR(400)"),
             ("unidad", "ALTER TABLE pu_partida_insumo ADD COLUMN unidad VARCHAR(50)"),
+            ("presentacion", "ALTER TABLE pu_partida_insumo ADD COLUMN presentacion VARCHAR(120)"),
+            ("rendimiento_m2", "ALTER TABLE pu_partida_insumo ADD COLUMN rendimiento_m2 FLOAT DEFAULT 0.0"),
+            ("cantidad_exacta", "ALTER TABLE pu_partida_insumo ADD COLUMN cantidad_exacta FLOAT DEFAULT 0.0"),
             ("cantidad", "ALTER TABLE pu_partida_insumo ADD COLUMN cantidad FLOAT DEFAULT 0.0"),
             ("costo_unitario", "ALTER TABLE pu_partida_insumo ADD COLUMN costo_unitario FLOAT DEFAULT 0.0"),
             ("importe", "ALTER TABLE pu_partida_insumo ADD COLUMN importe FLOAT DEFAULT 0.0"),

@@ -416,6 +416,7 @@ class PUObra(db.Model):
     ubicacion = db.Column(db.String(220))
     descripcion = db.Column(db.Text)
     moneda = db.Column(db.String(20), default="MXN", nullable=False)
+    m2_proyecto = db.Column(db.Float, default=0.0)
     creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -491,6 +492,9 @@ class PUPartidaInsumo(db.Model):
     codigo = db.Column(db.String(60))
     descripcion = db.Column(db.String(400), nullable=False)
     unidad = db.Column(db.String(50), default="")
+    presentacion = db.Column(db.String(120))
+    rendimiento_m2 = db.Column(db.Float, default=0.0)
+    cantidad_exacta = db.Column(db.Float, default=0.0)
     cantidad = db.Column(db.Float, default=0.0)
     costo_unitario = db.Column(db.Float, default=0.0)
     importe = db.Column(db.Float, default=0.0)
