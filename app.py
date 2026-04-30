@@ -578,6 +578,13 @@ def _mobile_quote_pdf_url(cot_id: int) -> str:
     return url
 
 
+def _mobile_order_pdf_url(orden_id: int) -> str:
+    url = url_for("api_mobile_orden_compra_pdf", orden_id=orden_id, _external=True)
+    if url.startswith("http://"):
+        return "https://" + url[len("http://"):]
+    return url
+
+
 VOICE_NUMBER_WORDS = {
     "un": 1,
     "uno": 1,
@@ -5408,6 +5415,89 @@ def api_mobile_quote_pdf(cot_id: int):
     if not _mobile_user_can_access_quote(g.mobile_user, cot):
         return _mobile_json_error("No autorizado para esta cotización.", 403)
     return _build_cotizacion_pdf_response(cot)
+
+
+def _mobile_order_payload(orden: OrdenCompra) -> dict:
+    return {
+        "id": orden.id,
+        "folio": orden.folio or "",
+        "proveedor": orden.proveedor or "",
+        "numero_cliente_proveedor": orden.numero_cliente_proveedor or "",
+        "fecha": orden.fecha.isoformat() if orden.fecha else "",
+        "fecha_entrega": orden.fecha_entrega.isoformat() if orden.fecha_entrega else "",
+        "forma_pago": orden.forma_pago or "CONTADO",
+        "estatus": orden.estatus or "",
+        "subtotal": float(orden.subtotal or 0),
+        "descuento_porc": float(orden.descuento_total or 0),
+        "iva_porc": float(orden.iva_porc or 0),
+        "iva_monto": float(orden.iva_monto or 0),
+        "total": float(orden.total or 0),
+        "factura_folio": orden.factura_folio or "",
+        "factura_monto": float(orden.factura_monto or 0),
+        "pago_referencia": orden.pago_referencia or "",
+        "pago_monto": float(orden.pago_monto or 0),
+        "responsable": orden.responsable or "",
+        "pdf_url": _mobile_order_pdf_url(orden.id),
+    }
+
+
+@app.route("/api/mobile/ordenes-compra", methods=["GET"])
+@require_mobile_auth
+def api_mobile_ordenes_compra():
+    estatus = (request.args.get("estatus") or "").strip().upper()
+    query = OrdenCompra.query
+    if estatus:
+        query = query.filter(OrdenCompra.estatus == estatus)
+    items = [_mobile_order_payload(orden) for orden in query.order_by(OrdenCompra.fecha.desc(), OrdenCompra.id.desc()).limit(200).all()]
+    return jsonify({"ok": True, "items": items, "estatus_options": ORDEN_COMPRA_ESTATUS})
+
+
+@app.route("/api/mobile/ordenes-compra", methods=["POST"])
+@require_mobile_auth
+def api_mobile_orden_compra_crear():
+    payload = request.get_json(silent=True) or {}
+    proveedor = str(payload.get("proveedor") or "").strip()
+    descripcion = str(payload.get("descripcion") or "").strip()
+    cantidad = parse_float(payload.get("cantidad"), 0)
+    precio = parse_float(payload.get("precio_unitario"), 0)
+    if not proveedor or not descripcion or cantidad <= 0:
+        return _mobile_json_error("Captura proveedor, descripción y cantidad mayor a cero.", 400)
+
+    orden = OrdenCompra(
+        folio=_orden_compra_next_folio(),
+        proveedor=proveedor,
+        numero_cliente_proveedor=str(payload.get("numero_cliente_proveedor") or "").strip() or None,
+        contacto=str(payload.get("contacto") or "").strip() or None,
+        telefono=str(payload.get("telefono") or "").strip() or None,
+        correo=str(payload.get("correo") or "").strip() or None,
+        fecha=now_cdmx_naive(),
+        fecha_entrega=_parse_date_or_none(str(payload.get("fecha_entrega") or "")),
+        forma_pago=str(payload.get("forma_pago") or "CONTADO").strip().upper(),
+        estatus="BORRADOR",
+        descuento_total=fmt(parse_float(payload.get("descuento_porc"), 0)),
+        iva_porc=fmt(parse_float(payload.get("iva_porc"), 16.0)),
+        condiciones=str(payload.get("condiciones") or "").strip() or None,
+        notas=str(payload.get("notas") or "").strip() or None,
+        responsable=_mobile_user_responsable(g.mobile_user) or None,
+        usuario_id=getattr(g.mobile_user, "id", None),
+    )
+    orden.partidas.append(OrdenCompraPartida(
+        descripcion=descripcion,
+        unidad=str(payload.get("unidad") or "pieza").strip() or "pieza",
+        cantidad=fmt(cantidad),
+        cantidad_recibida=0.0,
+        precio_unitario=fmt(precio),
+    ))
+    db.session.add(orden)
+    _orden_compra_recalcular(orden)
+    db.session.commit()
+    return jsonify({"ok": True, "orden": _mobile_order_payload(orden), "mensaje": f"Orden {orden.folio} creada."}), 201
+
+
+@app.route("/api/mobile/ordenes-compra/<int:orden_id>/pdf", methods=["GET"])
+@require_mobile_auth
+def api_mobile_orden_compra_pdf(orden_id: int):
+    return orden_compra_pdf.__wrapped__(orden_id)
 
 
 @app.route("/api/mobile/registro-obras", methods=["POST"])
