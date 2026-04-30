@@ -9,7 +9,7 @@
   </div>
   <div class="d-flex gap-2 flex-wrap">
     <a href="{{ url_for('ordenes_compra_index') }}" class="btn btn-outline-secondary">Volver</a>
-    <a href="{{ url_for('orden_compra_pdf', orden_id=orden.id) }}" target="_blank" class="btn btn-danger">PDF proveedor</a>
+    <a href="{{ url_for('orden_compra_pdf', orden_id=orden.id) }}" target="_blank" class="btn btn-danger">Generar Orden de Compra</a>
   </div>
 </div>
 
@@ -19,6 +19,7 @@
       <div class="card-body">
         <div class="text-muted small">Proveedor</div>
         <div class="h5 mb-1">{{ orden.proveedor }}</div>
+        <div class="text-muted small">No. cliente con proveedor: {{ orden.numero_cliente_proveedor or "-" }}</div>
         <div class="text-muted small">{{ orden.contacto or "" }} {{ orden.telefono or "" }}</div>
         <div class="text-muted small">{{ orden.correo or "" }}</div>
       </div>
@@ -29,6 +30,7 @@
       <div class="card-body">
         <div class="text-muted small">Estatus</div>
         <div class="h4 mb-1"><span class="badge bg-secondary">{{ orden.estatus }}</span></div>
+        <div class="text-muted small">Forma de pago: {{ orden.forma_pago or "CONTADO" }}</div>
         <div class="text-muted small">Entrega: {{ orden.fecha_entrega.strftime("%d/%m/%Y") if orden.fecha_entrega else "Sin fecha" }}</div>
       </div>
     </div>
@@ -38,9 +40,109 @@
       <div class="card-body">
         <div class="text-muted small">Total</div>
         <div class="display-6 fw-bold text-success">${{ "{:,.2f}".format(orden.total or 0) }}</div>
-        <div class="text-muted small">Subtotal ${{ "{:,.2f}".format(orden.subtotal or 0) }} · IVA ${{ "{:,.2f}".format(orden.iva_monto or 0) }}</div>
+        <div class="text-muted small">Subtotal ${{ "{:,.2f}".format(orden.subtotal or 0) }} · Desc. ${{ "{:,.2f}".format(orden.descuento_total or 0) }} · IVA ${{ "{:,.2f}".format(orden.iva_monto or 0) }}</div>
       </div>
     </div>
+  </div>
+</div>
+
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-header bg-light fw-bold">Editar orden</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('orden_compra_actualizar', orden_id=orden.id) }}" id="oc-edit-form">
+      <div class="row g-3">
+        <div class="col-md-3">
+          <label class="form-label">Proveedor</label>
+          <input name="proveedor" class="form-control" value="{{ orden.proveedor }}" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">No. cliente con proveedor</label>
+          <input name="numero_cliente_proveedor" class="form-control" value="{{ orden.numero_cliente_proveedor or '' }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Contacto</label>
+          <input name="contacto" class="form-control" value="{{ orden.contacto or '' }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Telefono</label>
+          <input name="telefono" class="form-control" value="{{ orden.telefono or '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Correo</label>
+          <input type="email" name="correo" class="form-control" value="{{ orden.correo or '' }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Entrega estimada</label>
+          <input type="date" name="fecha_entrega" class="form-control" value="{{ orden.fecha_entrega.strftime('%Y-%m-%d') if orden.fecha_entrega else '' }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Forma de pago</label>
+          <select name="forma_pago" class="form-select">
+            <option value="CONTADO" {% if (orden.forma_pago or 'CONTADO') == 'CONTADO' %}selected{% endif %}>Contado</option>
+            <option value="CREDITO" {% if orden.forma_pago == 'CREDITO' %}selected{% endif %}>Credito</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Descuento</label>
+          <input type="number" step="any" name="descuento_total" class="form-control" value="{{ orden.descuento_total or 0 }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">IVA %</label>
+          <input type="number" step="any" name="iva_porc" class="form-control" value="{{ orden.iva_porc or 16 }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Condiciones</label>
+          <input name="condiciones" class="form-control" value="{{ orden.condiciones or '' }}">
+        </div>
+        <div class="col-md-12">
+          <label class="form-label">Notas</label>
+          <input name="notas" class="form-control" value="{{ orden.notas or '' }}">
+        </div>
+      </div>
+
+      <div class="table-responsive mt-4">
+        <table class="table table-sm align-middle" id="oc-edit-items-table">
+          <thead class="table-light">
+            <tr>
+              <th style="min-width:240px">Material inventario</th>
+              <th style="min-width:260px">Descripcion</th>
+              <th>Unidad</th>
+              <th>Cantidad</th>
+              <th>Recibido</th>
+              <th>Precio</th>
+              <th>Obs.</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for partida in orden.partidas %}
+            <tr>
+              <td>
+                <input type="hidden" name="partida_id[]" value="{{ partida.id }}">
+                <select name="producto_id[]" class="form-select form-select-sm js-edit-product">
+                  <option value="">Manual / sin inventario</option>
+                  {% for p in productos %}
+                  <option value="{{ p.id }}" data-nombre="{{ p.nombre }}" data-unidad="{{ p.unidad }}" data-costo="{{ p.costo_unitario or 0 }}" {% if partida.inventario_producto_id == p.id %}selected{% endif %}>{{ p.codigo or p.id }} - {{ p.nombre }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td><input name="descripcion[]" class="form-control form-control-sm js-edit-desc" value="{{ partida.descripcion }}"></td>
+              <td><input name="unidad[]" class="form-control form-control-sm js-edit-unidad" value="{{ partida.unidad }}"></td>
+              <td><input type="number" step="any" name="cantidad[]" class="form-control form-control-sm" value="{{ partida.cantidad or 0 }}" min="{{ partida.cantidad_recibida or 0 }}"></td>
+              <td class="text-muted">{{ "{:,.2f}".format(partida.cantidad_recibida or 0) }}</td>
+              <td><input type="number" step="any" name="precio_unitario[]" class="form-control form-control-sm js-edit-precio" value="{{ partida.precio_unitario or 0 }}"></td>
+              <td><input name="observaciones[]" class="form-control form-control-sm" value="{{ partida.observaciones or '' }}"></td>
+              <td><button type="button" class="btn btn-sm btn-outline-danger js-edit-remove" {% if partida.cantidad_recibida %}disabled{% endif %}>Quitar</button></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="d-flex justify-content-between gap-2">
+        <button type="button" class="btn btn-outline-primary" id="oc-edit-add-row">Agregar partida</button>
+        <button class="btn btn-success">Guardar cambios</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -127,7 +229,7 @@
     <div class="card shadow-sm border-0 mb-4">
       <div class="card-header bg-light fw-bold">Actualizar control</div>
       <div class="card-body">
-        <form method="post" action="{{ url_for('orden_compra_estatus', orden_id=orden.id) }}" class="row g-3">
+        <form method="post" action="{{ url_for('orden_compra_estatus', orden_id=orden.id) }}" enctype="multipart/form-data" class="row g-3">
           <div class="col-12">
             <label class="form-label">Estatus</label>
             <select name="estatus" class="form-select">
@@ -141,8 +243,30 @@
             <input name="factura_folio" class="form-control" value="{{ orden.factura_folio or '' }}">
           </div>
           <div class="col-12">
+            <label class="form-label">Monto factura</label>
+            <input type="number" step="any" name="factura_monto" class="form-control" value="{{ orden.factura_monto or 0 }}">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Documento factura</label>
+            <input type="file" name="factura_archivo" class="form-control" accept=".pdf,image/*">
+            {% if orden.factura_archivo %}
+            <a class="small d-inline-block mt-1" href="{{ url_for('static', filename=orden.factura_archivo) }}" target="_blank">Ver documento cargado</a>
+            {% endif %}
+          </div>
+          <div class="col-12">
             <label class="form-label">Referencia de pago</label>
             <input name="pago_referencia" class="form-control" value="{{ orden.pago_referencia or '' }}">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Monto pagado</label>
+            <input type="number" step="any" name="pago_monto" class="form-control" value="{{ orden.pago_monto or 0 }}">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Comprobante de pago</label>
+            <input type="file" name="pago_archivo" class="form-control" accept=".pdf,image/*">
+            {% if orden.pago_archivo %}
+            <a class="small d-inline-block mt-1" href="{{ url_for('static', filename=orden.pago_archivo) }}" target="_blank">Ver comprobante cargado</a>
+            {% endif %}
           </div>
           <div class="col-12 d-grid">
             <button class="btn btn-primary">Guardar control</button>
@@ -161,4 +285,40 @@
     </div>
   </div>
 </div>
+<script>
+  const editTableBody = document.querySelector("#oc-edit-items-table tbody");
+  const editAddBtn = document.querySelector("#oc-edit-add-row");
+
+  function wireEditRow(row) {
+    const select = row.querySelector(".js-edit-product");
+    select.addEventListener("change", () => {
+      const option = select.selectedOptions[0];
+      if (!option || !option.value) return;
+      row.querySelector(".js-edit-desc").value = option.dataset.nombre || "";
+      row.querySelector(".js-edit-unidad").value = option.dataset.unidad || "pieza";
+      row.querySelector(".js-edit-precio").value = option.dataset.costo || "0";
+    });
+    const removeBtn = row.querySelector(".js-edit-remove");
+    removeBtn.addEventListener("click", () => {
+      if (editTableBody.querySelectorAll("tr").length > 1) row.remove();
+    });
+  }
+
+  editTableBody.querySelectorAll("tr").forEach(wireEditRow);
+  editAddBtn.addEventListener("click", () => {
+    const source = editTableBody.querySelector("tr");
+    const clone = source.cloneNode(true);
+    clone.querySelector('input[name="partida_id[]"]').value = "";
+    clone.querySelectorAll("input").forEach((input) => {
+      if (input.name === "unidad[]") input.value = "pieza";
+      else if (input.name !== "partida_id[]") input.value = "";
+    });
+    clone.querySelector(".js-edit-product").value = "";
+    clone.querySelector(".js-edit-remove").disabled = false;
+    const recibidoCell = clone.querySelector("td:nth-child(5)");
+    if (recibidoCell) recibidoCell.textContent = "0.00";
+    editTableBody.appendChild(clone);
+    wireEditRow(clone);
+  });
+</script>
 {% endblock %}

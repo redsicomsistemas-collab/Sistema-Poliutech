@@ -50,9 +50,13 @@
   <div class="card-body">
     <form method="post" action="{{ url_for('orden_compra_crear') }}" id="oc-form">
       <div class="row g-3">
-        <div class="col-md-4">
+        <div class="col-md-3">
           <label class="form-label">Proveedor</label>
           <input name="proveedor" class="form-control" list="proveedores-list" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">No. cliente con proveedor</label>
+          <input name="numero_cliente_proveedor" class="form-control">
         </div>
         <div class="col-md-2">
           <label class="form-label">Contacto</label>
@@ -71,14 +75,25 @@
           <input type="date" name="fecha_entrega" class="form-control">
         </div>
         <div class="col-md-2">
+          <label class="form-label">Forma de pago</label>
+          <select name="forma_pago" class="form-select">
+            <option value="CONTADO">Contado</option>
+            <option value="CREDITO">Credito</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Descuento</label>
+          <input type="number" step="any" name="descuento_total" class="form-control" value="0">
+        </div>
+        <div class="col-md-2">
           <label class="form-label">IVA %</label>
           <input type="number" step="any" name="iva_porc" class="form-control" value="16">
         </div>
-        <div class="col-md-5">
+        <div class="col-md-4">
           <label class="form-label">Condiciones</label>
           <input name="condiciones" class="form-control" placeholder="Credito, tiempo de entrega, moneda">
         </div>
-        <div class="col-md-5">
+        <div class="col-md-4">
           <label class="form-label">Notas</label>
           <input name="notas" class="form-control">
         </div>
@@ -181,7 +196,7 @@
             <td>{{ orden.responsable or "" }}</td>
             <td>
               <a class="btn btn-sm btn-outline-primary" href="{{ url_for('orden_compra_detalle', orden_id=orden.id) }}">Ver</a>
-              <a class="btn btn-sm btn-outline-danger" href="{{ url_for('orden_compra_pdf', orden_id=orden.id) }}" target="_blank">PDF</a>
+              <a class="btn btn-sm btn-outline-danger" href="{{ url_for('orden_compra_pdf', orden_id=orden.id) }}" target="_blank">Generar Orden de Compra</a>
             </td>
           </tr>
           {% else %}
