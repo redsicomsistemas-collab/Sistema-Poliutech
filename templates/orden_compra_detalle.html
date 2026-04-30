@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}{{ orden.folio }}{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 my-4">
+  <div>
+    <h2 class="fw-bold text-primary mb-1">Orden {{ orden.folio }}</h2>
+    <div class="text-muted">{{ orden.proveedor }} · {{ orden.fecha.strftime("%d/%m/%Y") if orden.fecha else "" }}</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{{ url_for('ordenes_compra_index') }}" class="btn btn-outline-secondary">Volver</a>
+    <a href="{{ url_for('orden_compra_pdf', orden_id=orden.id) }}" target="_blank" class="btn btn-danger">PDF proveedor</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Proveedor</div>
+        <div class="h5 mb-1">{{ orden.proveedor }}</div>
+        <div class="text-muted small">{{ orden.contacto or "" }} {{ orden.telefono or "" }}</div>
+        <div class="text-muted small">{{ orden.correo or "" }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Estatus</div>
+        <div class="h4 mb-1"><span class="badge bg-secondary">{{ orden.estatus }}</span></div>
+        <div class="text-muted small">Entrega: {{ orden.fecha_entrega.strftime("%d/%m/%Y") if orden.fecha_entrega else "Sin fecha" }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Total</div>
+        <div class="display-6 fw-bold text-success">${{ "{:,.2f}".format(orden.total or 0) }}</div>
+        <div class="text-muted small">Subtotal ${{ "{:,.2f}".format(orden.subtotal or 0) }} · IVA ${{ "{:,.2f}".format(orden.iva_monto or 0) }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-header bg-primary text-white fw-bold">Recepcion de mercancia</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('orden_compra_recibir', orden_id=orden.id) }}">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Codigo</th>
+              <th>Descripcion</th>
+              <th>Unidad</th>
+              <th>Pedido</th>
+              <th>Recibido</th>
+              <th>Pendiente</th>
+              <th>Recibir ahora</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in orden.partidas %}
+            {% set pendiente = (p.cantidad or 0) - (p.cantidad_recibida or 0) %}
+            <tr>
+              <td>{{ p.codigo or "-" }}</td>
+              <td>
+                <div class="fw-semibold">{{ p.descripcion }}</div>
+                {% if not p.producto %}
+                <div class="small text-warning">Sin enlace a inventario: no generara movimiento Kardex.</div>
+                {% endif %}
+              </td>
+              <td>{{ p.unidad }}</td>
+              <td>{{ "{:,.2f}".format(p.cantidad or 0) }}</td>
+              <td>{{ "{:,.2f}".format(p.cantidad_recibida or 0) }}</td>
+              <td class="{% if pendiente > 0 %}fw-bold text-danger{% else %}text-success{% endif %}">{{ "{:,.2f}".format(pendiente if pendiente > 0 else 0) }}</td>
+              <td>
+                <input type="number" step="any" min="0" max="{{ pendiente if pendiente > 0 else 0 }}" name="recibir_{{ p.id }}" class="form-control form-control-sm" {% if pendiente <= 0 %}disabled{% endif %}>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="text-end">
+        <button class="btn btn-success" {% if orden.estatus == "CANCELADA" %}disabled{% endif %}>Registrar recepcion</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-8">
+    <div class="card shadow-sm border-0">
+      <div class="card-header bg-light fw-bold">Partidas</div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Codigo</th>
+                <th>Descripcion</th>
+                <th>Cantidad</th>
+                <th>Precio</th>
+                <th>Importe</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in orden.partidas %}
+              <tr>
+                <td>{{ p.codigo or "-" }}</td>
+                <td>{{ p.descripcion }}</td>
+                <td>{{ "{:,.2f}".format(p.cantidad or 0) }} {{ p.unidad }}</td>
+                <td>${{ "{:,.2f}".format(p.precio_unitario or 0) }}</td>
+                <td class="fw-bold">${{ "{:,.2f}".format(p.subtotal or 0) }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card shadow-sm border-0 mb-4">
+      <div class="card-header bg-light fw-bold">Actualizar control</div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('orden_compra_estatus', orden_id=orden.id) }}" class="row g-3">
+          <div class="col-12">
+            <label class="form-label">Estatus</label>
+            <select name="estatus" class="form-select">
+              {% for item in estatus_options %}
+              <option value="{{ item }}" {% if orden.estatus == item %}selected{% endif %}>{{ item }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Factura proveedor</label>
+            <input name="factura_folio" class="form-control" value="{{ orden.factura_folio or '' }}">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Referencia de pago</label>
+            <input name="pago_referencia" class="form-control" value="{{ orden.pago_referencia or '' }}">
+          </div>
+          <div class="col-12 d-grid">
+            <button class="btn btn-primary">Guardar control</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <div class="card shadow-sm border-0">
+      <div class="card-header bg-light fw-bold">Notas</div>
+      <div class="card-body">
+        <div class="small text-muted mb-2">Condiciones</div>
+        <div class="mb-3">{{ orden.condiciones or "-" }}</div>
+        <div class="small text-muted mb-2">Notas internas</div>
+        <div>{{ orden.notas or "-" }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

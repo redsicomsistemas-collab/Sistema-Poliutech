@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% block title %}Ordenes de compra{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 my-4">
+  <div>
+    <h2 class="fw-bold text-primary mb-1">Ordenes de compra</h2>
+    <div class="text-muted">Control de pedidos a proveedores, recepciones y pendientes.</div>
+  </div>
+  <a href="{{ url_for('ordenes_compra_export_xlsx') }}" class="btn btn-outline-success">Exportar Excel</a>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Ordenes visibles</div>
+        <div class="display-6 fw-bold text-primary">{{ ordenes|length }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Enviadas</div>
+        <div class="display-6 fw-bold text-info">{{ status_counts.get("ENVIADA", 0) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Por recibir</div>
+        <div class="display-6 fw-bold text-warning">{{ status_counts.get("PARCIALMENTE RECIBIDA", 0) + status_counts.get("BORRADOR", 0) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Pendiente pago</div>
+        <div class="display-6 fw-bold text-danger">{{ status_counts.get("FACTURADA", 0) }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-header bg-primary text-white fw-bold">Nueva orden de compra</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('orden_compra_crear') }}" id="oc-form">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Proveedor</label>
+          <input name="proveedor" class="form-control" list="proveedores-list" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Contacto</label>
+          <input name="contacto" class="form-control">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Telefono</label>
+          <input name="telefono" class="form-control">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Correo</label>
+          <input type="email" name="correo" class="form-control">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Entrega estimada</label>
+          <input type="date" name="fecha_entrega" class="form-control">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">IVA %</label>
+          <input type="number" step="any" name="iva_porc" class="form-control" value="16">
+        </div>
+        <div class="col-md-5">
+          <label class="form-label">Condiciones</label>
+          <input name="condiciones" class="form-control" placeholder="Credito, tiempo de entrega, moneda">
+        </div>
+        <div class="col-md-5">
+          <label class="form-label">Notas</label>
+          <input name="notas" class="form-control">
+        </div>
+      </div>
+
+      <datalist id="proveedores-list">
+        {% for item in proveedor_options %}
+        <option value="{{ item }}"></option>
+        {% endfor %}
+      </datalist>
+
+      <div class="table-responsive mt-4">
+        <table class="table table-sm align-middle" id="oc-items-table">
+          <thead class="table-light">
+            <tr>
+              <th style="min-width:240px">Material inventario</th>
+              <th style="min-width:260px">Descripcion</th>
+              <th>Unidad</th>
+              <th>Cantidad</th>
+              <th>Precio</th>
+              <th>Obs.</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <select name="producto_id[]" class="form-select form-select-sm js-product">
+                  <option value="">Manual / sin inventario</option>
+                  {% for p in productos %}
+                  <option value="{{ p.id }}" data-nombre="{{ p.nombre }}" data-unidad="{{ p.unidad }}" data-costo="{{ p.costo_unitario or 0 }}" data-codigo="{{ p.codigo or '' }}">{{ p.codigo or p.id }} - {{ p.nombre }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td><input name="descripcion[]" class="form-control form-control-sm js-desc"></td>
+              <td><input name="unidad[]" class="form-control form-control-sm js-unidad" value="pieza"></td>
+              <td><input type="number" step="any" name="cantidad[]" class="form-control form-control-sm" required></td>
+              <td><input type="number" step="any" name="precio_unitario[]" class="form-control form-control-sm js-precio" value="0"></td>
+              <td><input name="observaciones[]" class="form-control form-control-sm"></td>
+              <td><button type="button" class="btn btn-sm btn-outline-danger js-remove">Quitar</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="d-flex justify-content-between gap-2">
+        <button type="button" class="btn btn-outline-primary" id="oc-add-row">Agregar partida</button>
+        <button class="btn btn-success">Crear orden</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card shadow-sm border-0">
+  <div class="card-header bg-light">
+    <form method="get" action="{{ url_for('ordenes_compra_index') }}" class="row g-2 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label">Buscar</label>
+        <input name="q" class="form-control" value="{{ q }}" placeholder="Folio, proveedor o notas">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Estatus</label>
+        <select name="estatus" class="form-select">
+          <option value="">Todos</option>
+          {% for item in estatus_options %}
+          <option value="{{ item }}" {% if estatus == item %}selected{% endif %}>{{ item }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Proveedor</label>
+        <input name="proveedor" class="form-control" value="{{ proveedor }}" list="proveedores-list">
+      </div>
+      <div class="col-md-2 d-grid">
+        <button class="btn btn-outline-primary">Filtrar</button>
+      </div>
+    </form>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Folio</th>
+            <th>Fecha</th>
+            <th>Proveedor</th>
+            <th>Estatus</th>
+            <th>Total</th>
+            <th>Responsable</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for orden in ordenes %}
+          <tr>
+            <td class="fw-bold">{{ orden.folio }}</td>
+            <td>{{ orden.fecha.strftime("%d/%m/%Y") if orden.fecha else "" }}</td>
+            <td>{{ orden.proveedor }}</td>
+            <td><span class="badge bg-secondary">{{ orden.estatus }}</span></td>
+            <td class="fw-bold">${{ "{:,.2f}".format(orden.total or 0) }}</td>
+            <td>{{ orden.responsable or "" }}</td>
+            <td>
+              <a class="btn btn-sm btn-outline-primary" href="{{ url_for('orden_compra_detalle', orden_id=orden.id) }}">Ver</a>
+              <a class="btn btn-sm btn-outline-danger" href="{{ url_for('orden_compra_pdf', orden_id=orden.id) }}" target="_blank">PDF</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="7" class="text-center text-muted py-4">No hay ordenes de compra con estos filtros.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  const tableBody = document.querySelector("#oc-items-table tbody");
+  const addBtn = document.querySelector("#oc-add-row");
+
+  function wireRow(row) {
+    const select = row.querySelector(".js-product");
+    select.addEventListener("change", () => {
+      const option = select.selectedOptions[0];
+      if (!option || !option.value) return;
+      row.querySelector(".js-desc").value = option.dataset.nombre || "";
+      row.querySelector(".js-unidad").value = option.dataset.unidad || "pieza";
+      row.querySelector(".js-precio").value = option.dataset.costo || "0";
+    });
+    row.querySelector(".js-remove").addEventListener("click", () => {
+      if (tableBody.querySelectorAll("tr").length > 1) row.remove();
+    });
+  }
+
+  tableBody.querySelectorAll("tr").forEach(wireRow);
+  addBtn.addEventListener("click", () => {
+    const clone = tableBody.querySelector("tr").cloneNode(true);
+    clone.querySelectorAll("input").forEach((input) => {
+      input.value = input.name === "unidad[]" ? "pieza" : "";
+    });
+    clone.querySelector(".js-product").value = "";
+    tableBody.appendChild(clone);
+    wireRow(clone);
+  });
+</script>
+{% endblock %}
