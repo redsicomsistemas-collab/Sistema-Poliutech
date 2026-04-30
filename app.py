@@ -7656,8 +7656,10 @@ def _orden_compra_recalcular(orden: OrdenCompra) -> None:
         partida.subtotal = fmt(partida.cantidad * partida.precio_unitario)
         subtotal += partida.subtotal
     orden.subtotal = fmt(subtotal)
-    orden.descuento_total = fmt(max(0.0, parse_float(getattr(orden, "descuento_total", 0), 0)))
-    base_iva = max(0.0, orden.subtotal - orden.descuento_total)
+    descuento_porc = min(100.0, max(0.0, parse_float(getattr(orden, "descuento_total", 0), 0)))
+    orden.descuento_total = fmt(descuento_porc)
+    descuento_monto = fmt(orden.subtotal * (descuento_porc / 100.0))
+    base_iva = max(0.0, orden.subtotal - descuento_monto)
     orden.iva_porc = fmt(orden.iva_porc if orden.iva_porc is not None else 16.0)
     orden.iva_monto = fmt(base_iva * (orden.iva_porc / 100.0))
     orden.total = fmt(base_iva + orden.iva_monto)
@@ -8006,7 +8008,7 @@ def ordenes_compra_export_xlsx():
     ws.title = "Ordenes de compra"
     ws.append([
         "Folio", "Fecha", "Proveedor", "Numero cliente proveedor", "Forma pago",
-        "Estatus", "Subtotal", "Descuento", "IVA", "Total", "Fecha entrega",
+        "Estatus", "Subtotal", "Descuento %", "IVA", "Total", "Fecha entrega",
         "Factura", "Pago", "Responsable",
     ])
     for orden in ordenes:
@@ -8030,9 +8032,11 @@ def ordenes_compra_export_xlsx():
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor="0D47A1")
         cell.alignment = Alignment(horizontal="center")
-    for col in ("G", "H", "I", "J"):
+    for col in ("G", "I", "J"):
         for cell in ws[col][1:]:
             cell.number_format = '"$"#,##0.00'
+    for cell in ws["H"][1:]:
+        cell.number_format = '0.00'
     for idx, width in enumerate([18, 14, 34, 24, 14, 24, 16, 16, 16, 16, 16, 18, 20, 18], start=1):
         ws.column_dimensions[get_column_letter(idx)].width = width
 
@@ -8144,7 +8148,7 @@ def orden_compra_pdf(orden_id: int):
     elems.append(Spacer(1, 8))
     totals = [
         ["Subtotal", f"${float(orden.subtotal or 0):,.2f}"],
-        ["Descuento", f"${float(orden.descuento_total or 0):,.2f}"],
+        [f"Descuento {float(orden.descuento_total or 0):g}%", f"-${float(orden.subtotal or 0) * float(orden.descuento_total or 0) / 100.0:,.2f}"],
         [f"IVA {float(orden.iva_porc or 0):g}%", f"${float(orden.iva_monto or 0):,.2f}"],
         ["Total", f"${float(orden.total or 0):,.2f}"],
     ]
