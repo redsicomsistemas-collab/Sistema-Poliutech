@@ -18,6 +18,7 @@ from email.utils import getaddresses
 from html import escape
 import xml.etree.ElementTree as ET
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+from werkzeug.utils import secure_filename
 try:
     import firebase_admin
     from firebase_admin import credentials as firebase_credentials
@@ -2697,8 +2698,15 @@ def ensure_schema():
     try:
         oc_cols = _table_columns("orden_compra")
         for col, stmt in [
+            ("numero_cliente_proveedor", "ALTER TABLE orden_compra ADD COLUMN numero_cliente_proveedor VARCHAR(80)"),
+            ("forma_pago", "ALTER TABLE orden_compra ADD COLUMN forma_pago VARCHAR(20) DEFAULT 'CONTADO'"),
+            ("descuento_total", "ALTER TABLE orden_compra ADD COLUMN descuento_total FLOAT DEFAULT 0.0"),
             ("factura_folio", "ALTER TABLE orden_compra ADD COLUMN factura_folio VARCHAR(80)"),
+            ("factura_monto", "ALTER TABLE orden_compra ADD COLUMN factura_monto FLOAT DEFAULT 0.0"),
+            ("factura_archivo", "ALTER TABLE orden_compra ADD COLUMN factura_archivo VARCHAR(260)"),
             ("pago_referencia", "ALTER TABLE orden_compra ADD COLUMN pago_referencia VARCHAR(120)"),
+            ("pago_monto", "ALTER TABLE orden_compra ADD COLUMN pago_monto FLOAT DEFAULT 0.0"),
+            ("pago_archivo", "ALTER TABLE orden_compra ADD COLUMN pago_archivo VARCHAR(260)"),
             ("condiciones", "ALTER TABLE orden_compra ADD COLUMN condiciones TEXT"),
         ]:
             if col not in oc_cols:
@@ -7608,6 +7616,7 @@ ORDEN_COMPRA_ESTATUS = (
     "FACTURADA",
     "PAGADA",
 )
+ORDEN_COMPRA_UPLOAD_EXTS = {"pdf", "png", "jpg", "jpeg", "webp"}
 
 
 def _parse_date_or_none(raw: str):
@@ -7647,9 +7656,11 @@ def _orden_compra_recalcular(orden: OrdenCompra) -> None:
         partida.subtotal = fmt(partida.cantidad * partida.precio_unitario)
         subtotal += partida.subtotal
     orden.subtotal = fmt(subtotal)
+    orden.descuento_total = fmt(max(0.0, parse_float(getattr(orden, "descuento_total", 0), 0)))
+    base_iva = max(0.0, orden.subtotal - orden.descuento_total)
     orden.iva_porc = fmt(orden.iva_porc if orden.iva_porc is not None else 16.0)
-    orden.iva_monto = fmt(orden.subtotal * (orden.iva_porc / 100.0))
-    orden.total = fmt(orden.subtotal + orden.iva_monto)
+    orden.iva_monto = fmt(base_iva * (orden.iva_porc / 100.0))
+    orden.total = fmt(base_iva + orden.iva_monto)
     orden.actualizado_en = now_cdmx_naive()
 
 
@@ -7673,6 +7684,25 @@ def _provider_options_for_orders() -> list[str]:
         elif razon:
             values.append(razon)
     return sorted(set(values), key=str.lower)
+
+
+def _orden_compra_guardar_archivo(uploaded, orden: OrdenCompra, prefijo: str) -> str | None:
+    if not uploaded or not (uploaded.filename or "").strip():
+        return None
+    filename = secure_filename(uploaded.filename or "")
+    if not filename or "." not in filename:
+        raise ValueError("El archivo debe ser PDF o imagen.")
+    ext = filename.rsplit(".", 1)[-1].lower()
+    if ext not in ORDEN_COMPRA_UPLOAD_EXTS:
+        raise ValueError("Solo se permiten archivos PDF o imagen.")
+
+    upload_dir = Path(app.static_folder or "static") / "uploads" / "ordenes_compra"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    stamp = now_cdmx_naive().strftime("%Y%m%d%H%M%S")
+    folio = secure_filename(orden.folio or f"oc_{orden.id}")
+    saved_name = f"{folio}_{prefijo}_{stamp}.{ext}"
+    uploaded.save(upload_dir / saved_name)
+    return f"uploads/ordenes_compra/{saved_name}"
 
 
 @app.route("/ordenes-compra")
@@ -7726,12 +7756,15 @@ def orden_compra_crear():
     orden = OrdenCompra(
         folio=_orden_compra_next_folio(),
         proveedor=proveedor,
+        numero_cliente_proveedor=(f.get("numero_cliente_proveedor") or "").strip() or None,
         contacto=(f.get("contacto") or "").strip() or None,
         telefono=(f.get("telefono") or "").strip() or None,
         correo=(f.get("correo") or "").strip() or None,
         fecha=now_cdmx_naive(),
         fecha_entrega=_parse_date_or_none(f.get("fecha_entrega")),
+        forma_pago=(f.get("forma_pago") or "CONTADO").strip().upper(),
         estatus="BORRADOR",
+        descuento_total=fmt(parse_float(f.get("descuento_total"), 0)),
         iva_porc=fmt(parse_float(f.get("iva_porc"), 16.0)),
         condiciones=(f.get("condiciones") or "").strip() or None,
         notas=(f.get("notas") or "").strip() or None,
@@ -7792,12 +7825,103 @@ def orden_compra_crear():
 @login_required
 def orden_compra_detalle(orden_id: int):
     orden = OrdenCompra.query.get_or_404(orden_id)
+    productos = InventarioProducto.query.filter_by(activo=True).order_by(InventarioProducto.nombre.asc()).all()
     return render_template(
         "orden_compra_detalle.html",
         title=f"Orden {orden.folio}",
         orden=orden,
+        productos=productos,
         estatus_options=ORDEN_COMPRA_ESTATUS,
     )
+
+
+@app.route("/ordenes-compra/<int:orden_id>/actualizar", methods=["POST"])
+@login_required
+def orden_compra_actualizar(orden_id: int):
+    orden = OrdenCompra.query.get_or_404(orden_id)
+    f = request.form
+    proveedor = (f.get("proveedor") or "").strip()
+    if not proveedor:
+        flash("Captura el proveedor de la orden.", "warning")
+        return redirect(url_for("orden_compra_detalle", orden_id=orden.id))
+
+    orden.proveedor = proveedor
+    orden.numero_cliente_proveedor = (f.get("numero_cliente_proveedor") or "").strip() or None
+    orden.contacto = (f.get("contacto") or "").strip() or None
+    orden.telefono = (f.get("telefono") or "").strip() or None
+    orden.correo = (f.get("correo") or "").strip() or None
+    orden.fecha_entrega = _parse_date_or_none(f.get("fecha_entrega"))
+    orden.forma_pago = (f.get("forma_pago") or "CONTADO").strip().upper()
+    orden.descuento_total = fmt(parse_float(f.get("descuento_total"), 0))
+    orden.iva_porc = fmt(parse_float(f.get("iva_porc"), 16.0))
+    orden.condiciones = (f.get("condiciones") or "").strip() or None
+    orden.notas = (f.get("notas") or "").strip() or None
+
+    producto_ids = f.getlist("producto_id[]")
+    partida_ids = f.getlist("partida_id[]")
+    descripciones = f.getlist("descripcion[]")
+    unidades = f.getlist("unidad[]")
+    cantidades = f.getlist("cantidad[]")
+    precios = f.getlist("precio_unitario[]")
+    observaciones = f.getlist("observaciones[]")
+
+    total_rows = max(len(producto_ids), len(descripciones), len(cantidades), len(precios), len(partida_ids))
+    partidas_por_id = {str(p.id): p for p in orden.partidas}
+    partidas_validas: set[int] = set()
+
+    for idx in range(total_rows):
+        partida_id = partida_ids[idx] if idx < len(partida_ids) else ""
+        partida = partidas_por_id.get(partida_id)
+        producto = None
+        producto_id = producto_ids[idx] if idx < len(producto_ids) else ""
+        if producto_id:
+            producto = InventarioProducto.query.get(int(producto_id))
+
+        descripcion = (descripciones[idx] if idx < len(descripciones) else "").strip()
+        unidad = (unidades[idx] if idx < len(unidades) else "").strip()
+        cantidad = parse_float(cantidades[idx] if idx < len(cantidades) else 0, 0)
+        precio = parse_float(precios[idx] if idx < len(precios) else 0, 0)
+        observacion = (observaciones[idx] if idx < len(observaciones) else "").strip()
+
+        if producto:
+            descripcion = descripcion or producto.nombre
+            unidad = unidad or producto.unidad or "pieza"
+            if precio <= 0:
+                precio = float(producto.costo_unitario or 0)
+        if not descripcion or cantidad <= 0:
+            continue
+
+        if partida and float(partida.cantidad_recibida or 0) > cantidad:
+            cantidad = float(partida.cantidad_recibida or 0)
+
+        if not partida:
+            partida = OrdenCompraPartida(orden=orden, cantidad_recibida=0.0)
+            db.session.add(partida)
+            db.session.flush()
+
+        partida.inventario_producto_id = producto.id if producto else None
+        partida.codigo = producto.codigo if producto else None
+        partida.descripcion = descripcion
+        partida.unidad = unidad or "pieza"
+        partida.cantidad = fmt(cantidad)
+        partida.precio_unitario = fmt(precio)
+        partida.observaciones = observacion or None
+        if partida.id:
+            partidas_validas.add(partida.id)
+
+    for partida in list(orden.partidas):
+        if partida.id not in partidas_validas and float(partida.cantidad_recibida or 0) <= 0:
+            db.session.delete(partida)
+
+    if not partidas_validas:
+        flash("La orden debe conservar al menos una partida.", "warning")
+        return redirect(url_for("orden_compra_detalle", orden_id=orden.id))
+
+    _orden_compra_recalcular(orden)
+    _orden_compra_actualizar_estatus_recepcion(orden)
+    db.session.commit()
+    flash("Orden de compra actualizada.", "success")
+    return redirect(url_for("orden_compra_detalle", orden_id=orden.id))
 
 
 @app.route("/ordenes-compra/<int:orden_id>/estatus", methods=["POST"])
@@ -7810,7 +7934,19 @@ def orden_compra_estatus(orden_id: int):
         return redirect(url_for("orden_compra_detalle", orden_id=orden.id))
     orden.estatus = nuevo
     orden.factura_folio = (request.form.get("factura_folio") or orden.factura_folio or "").strip() or None
+    orden.factura_monto = fmt(parse_float(request.form.get("factura_monto"), orden.factura_monto or 0))
     orden.pago_referencia = (request.form.get("pago_referencia") or orden.pago_referencia or "").strip() or None
+    orden.pago_monto = fmt(parse_float(request.form.get("pago_monto"), orden.pago_monto or 0))
+    try:
+        factura_archivo = _orden_compra_guardar_archivo(request.files.get("factura_archivo"), orden, "factura")
+        pago_archivo = _orden_compra_guardar_archivo(request.files.get("pago_archivo"), orden, "pago")
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for("orden_compra_detalle", orden_id=orden.id))
+    if factura_archivo:
+        orden.factura_archivo = factura_archivo
+    if pago_archivo:
+        orden.pago_archivo = pago_archivo
     orden.actualizado_en = now_cdmx_naive()
     db.session.commit()
     flash("Estatus actualizado.", "success")
@@ -7869,16 +8005,20 @@ def ordenes_compra_export_xlsx():
     ws = wb.active
     ws.title = "Ordenes de compra"
     ws.append([
-        "Folio", "Fecha", "Proveedor", "Estatus", "Subtotal", "IVA", "Total",
-        "Fecha entrega", "Factura", "Pago", "Responsable",
+        "Folio", "Fecha", "Proveedor", "Numero cliente proveedor", "Forma pago",
+        "Estatus", "Subtotal", "Descuento", "IVA", "Total", "Fecha entrega",
+        "Factura", "Pago", "Responsable",
     ])
     for orden in ordenes:
         ws.append([
             orden.folio or "",
             orden.fecha.strftime("%d/%m/%Y") if orden.fecha else "",
             orden.proveedor or "",
+            orden.numero_cliente_proveedor or "",
+            orden.forma_pago or "",
             orden.estatus or "",
             float(orden.subtotal or 0),
+            float(orden.descuento_total or 0),
             float(orden.iva_monto or 0),
             float(orden.total or 0),
             orden.fecha_entrega.strftime("%d/%m/%Y") if orden.fecha_entrega else "",
@@ -7890,10 +8030,10 @@ def ordenes_compra_export_xlsx():
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor="0D47A1")
         cell.alignment = Alignment(horizontal="center")
-    for col in ("E", "F", "G"):
+    for col in ("G", "H", "I", "J"):
         for cell in ws[col][1:]:
             cell.number_format = '"$"#,##0.00'
-    for idx, width in enumerate([18, 14, 34, 24, 16, 16, 16, 16, 18, 20, 18], start=1):
+    for idx, width in enumerate([18, 14, 34, 24, 14, 24, 16, 16, 16, 16, 16, 18, 20, 18], start=1):
         ws.column_dimensions[get_column_letter(idx)].width = width
 
     bio = io.BytesIO()
@@ -7960,6 +8100,10 @@ def orden_compra_pdf(orden_id: int):
             Paragraph(f"<b>Fecha:</b> {orden.fecha.strftime('%d/%m/%Y') if orden.fecha else ''}", styles["OCSmall"]),
         ],
         [
+            Paragraph(f"<b>Numero cliente con proveedor:</b> {escape(orden.numero_cliente_proveedor or '-')}", styles["OCSmall"]),
+            Paragraph(f"<b>Forma de pago:</b> {escape(orden.forma_pago or 'CONTADO')}", styles["OCSmall"]),
+        ],
+        [
             Paragraph(f"<b>Contacto:</b> {escape(orden.contacto or '-')}", styles["OCSmall"]),
             Paragraph(f"<b>Entrega estimada:</b> {orden.fecha_entrega.strftime('%d/%m/%Y') if orden.fecha_entrega else '-'}", styles["OCSmall"]),
         ],
@@ -8000,6 +8144,7 @@ def orden_compra_pdf(orden_id: int):
     elems.append(Spacer(1, 8))
     totals = [
         ["Subtotal", f"${float(orden.subtotal or 0):,.2f}"],
+        ["Descuento", f"${float(orden.descuento_total or 0):,.2f}"],
         [f"IVA {float(orden.iva_porc or 0):g}%", f"${float(orden.iva_monto or 0):,.2f}"],
         ["Total", f"${float(orden.total or 0):,.2f}"],
     ]
