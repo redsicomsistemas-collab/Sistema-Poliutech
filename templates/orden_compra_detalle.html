@@ -40,7 +40,7 @@
       <div class="card-body">
         <div class="text-muted small">Total</div>
         <div class="display-6 fw-bold text-success">${{ "{:,.2f}".format(orden.total or 0) }}</div>
-        <div class="text-muted small">Subtotal ${{ "{:,.2f}".format(orden.subtotal or 0) }} · Desc. ${{ "{:,.2f}".format(orden.descuento_total or 0) }} · IVA ${{ "{:,.2f}".format(orden.iva_monto or 0) }}</div>
+        <div class="text-muted small">Subtotal ${{ "{:,.2f}".format(orden.subtotal or 0) }} · Desc. {{ "{:,.2f}".format(orden.descuento_total or 0) }}% · IVA ${{ "{:,.2f}".format(orden.iva_monto or 0) }}</div>
       </div>
     </div>
   </div>
@@ -83,8 +83,8 @@
           </select>
         </div>
         <div class="col-md-2">
-          <label class="form-label">Descuento</label>
-          <input type="number" step="any" name="descuento_total" class="form-control" value="{{ orden.descuento_total or 0 }}">
+          <label class="form-label">Descuento %</label>
+          <input type="number" step="any" min="0" max="100" name="descuento_total" class="form-control" value="{{ orden.descuento_total or 0 }}">
         </div>
         <div class="col-md-2">
           <label class="form-label">IVA %</label>
