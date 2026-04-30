@@ -2317,6 +2317,8 @@ from models import (
     ActivityLog,
     InventarioProducto,
     InventarioMovimiento,
+    OrdenCompra,
+    OrdenCompraPartida,
 )
 
 # ---------------------------------------------------------
@@ -2691,6 +2693,19 @@ def ensure_schema():
         db.session.commit()
     except Exception as e:
         print("⚠️ ensure_schema(inventario_producto):", e)
+
+    try:
+        oc_cols = _table_columns("orden_compra")
+        for col, stmt in [
+            ("factura_folio", "ALTER TABLE orden_compra ADD COLUMN factura_folio VARCHAR(80)"),
+            ("pago_referencia", "ALTER TABLE orden_compra ADD COLUMN pago_referencia VARCHAR(120)"),
+            ("condiciones", "ALTER TABLE orden_compra ADD COLUMN condiciones TEXT"),
+        ]:
+            if col not in oc_cols:
+                db.session.execute(text(stmt))
+        db.session.commit()
+    except Exception as e:
+        print("⚠️ ensure_schema(orden_compra):", e)
 
     try:
         dcols = _table_columns("cotizacion_detalle")
@@ -7579,6 +7594,439 @@ def admin_usuario_eliminar(user_id: int):
     db.session.commit()
     flash(f"Usuario '{nombre}' eliminado correctamente.", "success")
     return redirect(url_for("admin_usuarios"))
+
+
+# ---------------------------------------------------------
+# Ordenes de compra
+# ---------------------------------------------------------
+ORDEN_COMPRA_ESTATUS = (
+    "BORRADOR",
+    "ENVIADA",
+    "PARCIALMENTE RECIBIDA",
+    "RECIBIDA COMPLETA",
+    "CANCELADA",
+    "FACTURADA",
+    "PAGADA",
+)
+
+
+def _parse_date_or_none(raw: str):
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def _orden_compra_next_folio() -> str:
+    year = now_cdmx_naive().year
+    prefix = f"OC-{year}-"
+    latest = (
+        OrdenCompra.query
+        .filter(OrdenCompra.folio.like(f"{prefix}%"))
+        .order_by(OrdenCompra.id.desc())
+        .first()
+    )
+    if latest and latest.folio:
+        try:
+            seq = int(latest.folio.rsplit("-", 1)[-1]) + 1
+        except Exception:
+            seq = latest.id + 1
+    else:
+        seq = 1
+    return f"{prefix}{seq:04d}"
+
+
+def _orden_compra_recalcular(orden: OrdenCompra) -> None:
+    subtotal = 0.0
+    for partida in orden.partidas:
+        partida.cantidad = fmt(partida.cantidad or 0)
+        partida.precio_unitario = fmt(partida.precio_unitario or 0)
+        partida.subtotal = fmt(partida.cantidad * partida.precio_unitario)
+        subtotal += partida.subtotal
+    orden.subtotal = fmt(subtotal)
+    orden.iva_porc = fmt(orden.iva_porc if orden.iva_porc is not None else 16.0)
+    orden.iva_monto = fmt(orden.subtotal * (orden.iva_porc / 100.0))
+    orden.total = fmt(orden.subtotal + orden.iva_monto)
+    orden.actualizado_en = now_cdmx_naive()
+
+
+def _orden_compra_actualizar_estatus_recepcion(orden: OrdenCompra) -> None:
+    if orden.estatus in {"CANCELADA", "FACTURADA", "PAGADA"}:
+        return
+    total_pedido = sum(float(p.cantidad or 0) for p in orden.partidas)
+    total_recibido = sum(float(p.cantidad_recibida or 0) for p in orden.partidas)
+    if total_pedido <= 0 or total_recibido <= 0:
+        return
+    orden.estatus = "RECIBIDA COMPLETA" if total_recibido + 0.0001 >= total_pedido else "PARCIALMENTE RECIBIDA"
+
+
+def _provider_options_for_orders() -> list[str]:
+    values = []
+    for row in _load_provider_numbers():
+        empresa = (row.get("empresa") or "").strip()
+        razon = (row.get("razon_social_poliutech") or "").strip()
+        if empresa:
+            values.append(empresa)
+        elif razon:
+            values.append(razon)
+    return sorted(set(values), key=str.lower)
+
+
+@app.route("/ordenes-compra")
+@login_required
+def ordenes_compra_index():
+    q = (request.args.get("q") or "").strip()
+    estatus = (request.args.get("estatus") or "").strip().upper()
+    proveedor = (request.args.get("proveedor") or "").strip()
+
+    query = OrdenCompra.query
+    if q:
+        like = f"%{q}%"
+        query = query.filter(or_(
+            OrdenCompra.folio.ilike(like),
+            OrdenCompra.proveedor.ilike(like),
+            OrdenCompra.notas.ilike(like),
+        ))
+    if estatus:
+        query = query.filter(OrdenCompra.estatus == estatus)
+    if proveedor:
+        query = query.filter(OrdenCompra.proveedor == proveedor)
+
+    ordenes = query.order_by(OrdenCompra.fecha.desc(), OrdenCompra.id.desc()).all()
+    productos = InventarioProducto.query.filter_by(activo=True).order_by(InventarioProducto.nombre.asc()).all()
+    proveedor_options = _provider_options_for_orders()
+    status_counts = {status: OrdenCompra.query.filter_by(estatus=status).count() for status in ORDEN_COMPRA_ESTATUS}
+
+    return render_template(
+        "ordenes_compra.html",
+        title="Ordenes de compra",
+        ordenes=ordenes,
+        productos=productos,
+        proveedor_options=proveedor_options,
+        estatus_options=ORDEN_COMPRA_ESTATUS,
+        status_counts=status_counts,
+        q=q,
+        estatus=estatus,
+        proveedor=proveedor,
+    )
+
+
+@app.route("/ordenes-compra/crear", methods=["POST"])
+@login_required
+def orden_compra_crear():
+    f = request.form
+    proveedor = (f.get("proveedor") or "").strip()
+    if not proveedor:
+        flash("Captura el proveedor de la orden.", "warning")
+        return redirect(url_for("ordenes_compra_index"))
+
+    orden = OrdenCompra(
+        folio=_orden_compra_next_folio(),
+        proveedor=proveedor,
+        contacto=(f.get("contacto") or "").strip() or None,
+        telefono=(f.get("telefono") or "").strip() or None,
+        correo=(f.get("correo") or "").strip() or None,
+        fecha=now_cdmx_naive(),
+        fecha_entrega=_parse_date_or_none(f.get("fecha_entrega")),
+        estatus="BORRADOR",
+        iva_porc=fmt(parse_float(f.get("iva_porc"), 16.0)),
+        condiciones=(f.get("condiciones") or "").strip() or None,
+        notas=(f.get("notas") or "").strip() or None,
+        responsable=responsable_actual() or None,
+        usuario_id=getattr(current_user, "id", None),
+    )
+    db.session.add(orden)
+
+    producto_ids = f.getlist("producto_id[]")
+    descripciones = f.getlist("descripcion[]")
+    unidades = f.getlist("unidad[]")
+    cantidades = f.getlist("cantidad[]")
+    precios = f.getlist("precio_unitario[]")
+    observaciones = f.getlist("observaciones[]")
+
+    total_rows = max(len(producto_ids), len(descripciones), len(cantidades), len(precios))
+    for idx in range(total_rows):
+        producto = None
+        producto_id = producto_ids[idx] if idx < len(producto_ids) else ""
+        if producto_id:
+            producto = InventarioProducto.query.get(int(producto_id))
+
+        descripcion = (descripciones[idx] if idx < len(descripciones) else "").strip()
+        unidad = (unidades[idx] if idx < len(unidades) else "").strip()
+        cantidad = parse_float(cantidades[idx] if idx < len(cantidades) else 0, 0)
+        precio = parse_float(precios[idx] if idx < len(precios) else 0, 0)
+        if producto:
+            descripcion = descripcion or producto.nombre
+            unidad = unidad or producto.unidad or "pieza"
+            if precio <= 0:
+                precio = float(producto.costo_unitario or 0)
+        if not descripcion or cantidad <= 0:
+            continue
+
+        orden.partidas.append(OrdenCompraPartida(
+            inventario_producto_id=producto.id if producto else None,
+            codigo=(producto.codigo if producto else None),
+            descripcion=descripcion,
+            unidad=unidad or "pieza",
+            cantidad=fmt(cantidad),
+            cantidad_recibida=0.0,
+            precio_unitario=fmt(precio),
+            observaciones=(observaciones[idx] if idx < len(observaciones) else "").strip() or None,
+        ))
+
+    if not orden.partidas:
+        db.session.rollback()
+        flash("Agrega al menos una partida con cantidad mayor a cero.", "warning")
+        return redirect(url_for("ordenes_compra_index"))
+
+    _orden_compra_recalcular(orden)
+    db.session.commit()
+    flash(f"Orden {orden.folio} creada.", "success")
+    return redirect(url_for("orden_compra_detalle", orden_id=orden.id))
+
+
+@app.route("/ordenes-compra/<int:orden_id>")
+@login_required
+def orden_compra_detalle(orden_id: int):
+    orden = OrdenCompra.query.get_or_404(orden_id)
+    return render_template(
+        "orden_compra_detalle.html",
+        title=f"Orden {orden.folio}",
+        orden=orden,
+        estatus_options=ORDEN_COMPRA_ESTATUS,
+    )
+
+
+@app.route("/ordenes-compra/<int:orden_id>/estatus", methods=["POST"])
+@login_required
+def orden_compra_estatus(orden_id: int):
+    orden = OrdenCompra.query.get_or_404(orden_id)
+    nuevo = (request.form.get("estatus") or "").strip().upper()
+    if nuevo not in ORDEN_COMPRA_ESTATUS:
+        flash("Estatus invalido.", "warning")
+        return redirect(url_for("orden_compra_detalle", orden_id=orden.id))
+    orden.estatus = nuevo
+    orden.factura_folio = (request.form.get("factura_folio") or orden.factura_folio or "").strip() or None
+    orden.pago_referencia = (request.form.get("pago_referencia") or orden.pago_referencia or "").strip() or None
+    orden.actualizado_en = now_cdmx_naive()
+    db.session.commit()
+    flash("Estatus actualizado.", "success")
+    return redirect(url_for("orden_compra_detalle", orden_id=orden.id))
+
+
+@app.route("/ordenes-compra/<int:orden_id>/recibir", methods=["POST"])
+@login_required
+def orden_compra_recibir(orden_id: int):
+    orden = OrdenCompra.query.get_or_404(orden_id)
+    if orden.estatus == "CANCELADA":
+        flash("No se puede recibir una orden cancelada.", "warning")
+        return redirect(url_for("orden_compra_detalle", orden_id=orden.id))
+
+    recibidas = 0
+    for partida in orden.partidas:
+        cantidad = parse_float(request.form.get(f"recibir_{partida.id}"), 0)
+        if cantidad <= 0:
+            continue
+        pendiente = max(0.0, float(partida.cantidad or 0) - float(partida.cantidad_recibida or 0))
+        cantidad = min(cantidad, pendiente)
+        if cantidad <= 0:
+            continue
+        partida.cantidad_recibida = fmt(float(partida.cantidad_recibida or 0) + cantidad)
+        recibidas += 1
+        if partida.producto:
+            _inventario_registrar_movimiento(
+                producto=partida.producto,
+                tipo="ENTRADA",
+                motivo="COMPRA",
+                cantidad=cantidad,
+                costo_unitario=partida.precio_unitario or partida.producto.costo_unitario or 0,
+                proveedor=orden.proveedor,
+                referencia=orden.folio or "",
+                observaciones=f"Recepcion de orden de compra {orden.folio}.",
+            )
+
+    if not recibidas:
+        flash("Captura una cantidad a recibir.", "warning")
+        return redirect(url_for("orden_compra_detalle", orden_id=orden.id))
+
+    _orden_compra_actualizar_estatus_recepcion(orden)
+    db.session.commit()
+    flash("Recepcion registrada y Kardex actualizado.", "success")
+    return redirect(url_for("orden_compra_detalle", orden_id=orden.id))
+
+
+@app.route("/ordenes-compra/export.xlsx")
+@login_required
+def ordenes_compra_export_xlsx():
+    if Workbook is None:
+        abort(501, description="openpyxl no instalado en el servidor.")
+
+    ordenes = OrdenCompra.query.order_by(OrdenCompra.fecha.desc(), OrdenCompra.id.desc()).all()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Ordenes de compra"
+    ws.append([
+        "Folio", "Fecha", "Proveedor", "Estatus", "Subtotal", "IVA", "Total",
+        "Fecha entrega", "Factura", "Pago", "Responsable",
+    ])
+    for orden in ordenes:
+        ws.append([
+            orden.folio or "",
+            orden.fecha.strftime("%d/%m/%Y") if orden.fecha else "",
+            orden.proveedor or "",
+            orden.estatus or "",
+            float(orden.subtotal or 0),
+            float(orden.iva_monto or 0),
+            float(orden.total or 0),
+            orden.fecha_entrega.strftime("%d/%m/%Y") if orden.fecha_entrega else "",
+            orden.factura_folio or "",
+            orden.pago_referencia or "",
+            orden.responsable or "",
+        ])
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="0D47A1")
+        cell.alignment = Alignment(horizontal="center")
+    for col in ("E", "F", "G"):
+        for cell in ws[col][1:]:
+            cell.number_format = '"$"#,##0.00'
+    for idx, width in enumerate([18, 14, 34, 24, 16, 16, 16, 16, 18, 20, 18], start=1):
+        ws.column_dimensions[get_column_letter(idx)].width = width
+
+    bio = io.BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    stamp = now_cdmx_naive().strftime("%Y%m%d_%H%M%S")
+    return Response(
+        bio.getvalue(),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="ordenes_compra_{stamp}.xlsx"'},
+    )
+
+
+@app.route("/ordenes-compra/<int:orden_id>/pdf")
+@login_required
+def orden_compra_pdf(orden_id: int):
+    orden = OrdenCompra.query.get_or_404(orden_id)
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=12 * mm,
+        rightMargin=12 * mm,
+        topMargin=26 * mm,
+        bottomMargin=35 * mm,
+    )
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="OCCell", fontName="Helvetica", fontSize=8, leading=10, splitLongWords=False))
+    styles.add(ParagraphStyle(name="OCSmall", fontName="Helvetica", fontSize=8.5, leading=11, splitLongWords=False))
+
+    def encabezado(canv, doc_):
+        canv.saveState()
+        canv.setFillColor(colors.HexColor("#0d47a1"))
+        canv.rect(0, A4[1] - 40, A4[0], 40, stroke=0, fill=1)
+        logo_path = os.path.join(app.static_folder or "static", "logo.png")
+        if os.path.exists(logo_path):
+            try:
+                img = ImageReader(logo_path)
+                iw, ih = img.getSize()
+                max_w = 22 * mm
+                scale = max_w / iw
+                canv.drawImage(img, 12, A4[1] - (ih * scale) - 8, width=max_w, height=ih * scale, mask="auto")
+            except Exception:
+                pass
+        canv.setFont("Helvetica-Bold", 14)
+        canv.setFillColor(colors.white)
+        canv.drawRightString(A4[0] - 12, A4[1] - 18, "ORDEN DE COMPRA")
+        canv.setFont("Helvetica", 10)
+        canv.drawRightString(A4[0] - 12, A4[1] - 31, orden.folio or "")
+        canv.restoreState()
+
+    def footer(canv, doc_):
+        canv.saveState()
+        canv.setFont("Helvetica", 8)
+        canv.setFillColor(colors.HexColor("#333333"))
+        canv.drawCentredString(A4[0] / 2, 24, "POLIUTECH - Recubrimientos Especializados")
+        canv.drawCentredString(A4[0] / 2, 14, "Tel: 55 5938 6530 / 55 5938 0536 - info@poliutech.com - www.poliutech.com")
+        canv.restoreState()
+
+    elems = []
+    meta = [
+        [
+            Paragraph(f"<b>Proveedor:</b> {escape(orden.proveedor or '')}", styles["OCSmall"]),
+            Paragraph(f"<b>Fecha:</b> {orden.fecha.strftime('%d/%m/%Y') if orden.fecha else ''}", styles["OCSmall"]),
+        ],
+        [
+            Paragraph(f"<b>Contacto:</b> {escape(orden.contacto or '-')}", styles["OCSmall"]),
+            Paragraph(f"<b>Entrega estimada:</b> {orden.fecha_entrega.strftime('%d/%m/%Y') if orden.fecha_entrega else '-'}", styles["OCSmall"]),
+        ],
+        [
+            Paragraph(f"<b>Correo:</b> {escape(orden.correo or '-')}", styles["OCSmall"]),
+            Paragraph(f"<b>Estatus:</b> {escape(orden.estatus or '')}", styles["OCSmall"]),
+        ],
+    ]
+    meta_tbl = Table(meta, colWidths=[118 * mm, 62 * mm])
+    meta_tbl.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    elems.append(meta_tbl)
+    elems.append(Spacer(1, 8))
+
+    data = [["Codigo", "Descripcion", "Unidad", "Cantidad", "Recibida", "P. Unit.", "Importe"]]
+    for partida in orden.partidas:
+        data.append([
+            Paragraph(escape(partida.codigo or ""), styles["OCCell"]),
+            Paragraph(escape(partida.descripcion or ""), styles["OCCell"]),
+            partida.unidad or "",
+            f"{float(partida.cantidad or 0):,.2f}",
+            f"{float(partida.cantidad_recibida or 0):,.2f}",
+            f"${float(partida.precio_unitario or 0):,.2f}",
+            f"${float(partida.subtotal or 0):,.2f}",
+        ])
+    tbl = Table(data, colWidths=[20 * mm, 66 * mm, 18 * mm, 20 * mm, 20 * mm, 24 * mm, 24 * mm], repeatRows=1)
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0d47a1")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+    ]))
+    elems.append(tbl)
+    elems.append(Spacer(1, 8))
+    totals = [
+        ["Subtotal", f"${float(orden.subtotal or 0):,.2f}"],
+        [f"IVA {float(orden.iva_porc or 0):g}%", f"${float(orden.iva_monto or 0):,.2f}"],
+        ["Total", f"${float(orden.total or 0):,.2f}"],
+    ]
+    totals_tbl = Table(totals, colWidths=[32 * mm, 32 * mm], hAlign="RIGHT")
+    totals_tbl.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+        ("LINEABOVE", (0, -1), (-1, -1), 0.5, colors.HexColor("#0d47a1")),
+    ]))
+    elems.append(totals_tbl)
+    if orden.condiciones or orden.notas:
+        elems.append(Spacer(1, 8))
+        elems.append(Paragraph(f"<b>Condiciones:</b> {escape(orden.condiciones or '-')}", styles["OCSmall"]))
+        elems.append(Paragraph(f"<b>Notas:</b> {escape(orden.notas or '-')}", styles["OCSmall"]))
+
+    doc.build(
+        elems,
+        onFirstPage=lambda canv, d: (draw_watermark(canv, app), encabezado(canv, d), footer(canv, d)),
+        onLaterPages=lambda canv, d: (draw_watermark(canv, app), encabezado(canv, d), footer(canv, d)),
+    )
+    buf.seek(0)
+    filename = orden.folio or "orden_compra"
+    return Response(
+        buf.getvalue(),
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}.pdf"'},
+    )
 
 
 # ---------------------------------------------------------

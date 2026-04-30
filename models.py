@@ -338,6 +338,64 @@ class InventarioMovimiento(db.Model):
         return f"<InventarioMovimiento producto={self.producto_id} {self.tipo} {self.cantidad}>"
 
 
+class OrdenCompra(db.Model):
+    __tablename__ = "orden_compra"
+
+    id = db.Column(db.Integer, primary_key=True)
+    folio = db.Column(db.String(40), unique=True, index=True)
+    proveedor = db.Column(db.String(180), nullable=False, index=True)
+    contacto = db.Column(db.String(160))
+    telefono = db.Column(db.String(60))
+    correo = db.Column(db.String(160))
+    fecha = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    fecha_entrega = db.Column(db.DateTime)
+    estatus = db.Column(db.String(30), default="BORRADOR", nullable=False, index=True)
+    subtotal = db.Column(db.Float, default=0.0, nullable=False)
+    iva_porc = db.Column(db.Float, default=16.0, nullable=False)
+    iva_monto = db.Column(db.Float, default=0.0, nullable=False)
+    total = db.Column(db.Float, default=0.0, nullable=False)
+    factura_folio = db.Column(db.String(80))
+    pago_referencia = db.Column(db.String(120))
+    condiciones = db.Column(db.Text)
+    notas = db.Column(db.Text)
+    responsable = db.Column(db.String(120))
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    partidas = db.relationship(
+        "OrdenCompraPartida",
+        backref="orden",
+        cascade="all, delete-orphan",
+        order_by="OrdenCompraPartida.id.asc()",
+    )
+    usuario = db.relationship("Usuario", backref=db.backref("ordenes_compra", lazy=True))
+
+    def __repr__(self):
+        return f"<OrdenCompra {self.folio or self.id} {self.proveedor}>"
+
+
+class OrdenCompraPartida(db.Model):
+    __tablename__ = "orden_compra_partida"
+
+    id = db.Column(db.Integer, primary_key=True)
+    orden_id = db.Column(db.Integer, db.ForeignKey("orden_compra.id"), nullable=False, index=True)
+    inventario_producto_id = db.Column(db.Integer, db.ForeignKey("inventario_producto.id"), nullable=True, index=True)
+    codigo = db.Column(db.String(60))
+    descripcion = db.Column(db.String(320), nullable=False)
+    unidad = db.Column(db.String(50), default="pieza", nullable=False)
+    cantidad = db.Column(db.Float, default=0.0, nullable=False)
+    cantidad_recibida = db.Column(db.Float, default=0.0, nullable=False)
+    precio_unitario = db.Column(db.Float, default=0.0, nullable=False)
+    subtotal = db.Column(db.Float, default=0.0, nullable=False)
+    observaciones = db.Column(db.Text)
+
+    producto = db.relationship("InventarioProducto")
+
+    def __repr__(self):
+        return f"<OrdenCompraPartida orden={self.orden_id} {self.descripcion}>"
+
+
 class APUSheet(db.Model):
     __tablename__ = "apu_sheet"
 
