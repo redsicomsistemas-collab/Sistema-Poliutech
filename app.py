@@ -353,18 +353,16 @@ def _registro_obra_email_body() -> str:
 
 
 def _send_registro_obra_email(row: dict) -> None:
-    recipient = (row.get("correo") or "").strip()
-    if not recipient:
+    recipients = _parse_email_list(row.get("correo"))
+    if not recipients:
         raise ValueError("El registro no tiene correo destino.")
-    if not re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", recipient):
-        raise ValueError("El correo destino no es válido.")
     if not REGISTRO_MAIL_ATTACHMENT.exists():
         raise FileNotFoundError(f"No se encontró el adjunto requerido: {REGISTRO_MAIL_ATTACHMENT.name}")
 
     msg = EmailMessage()
     msg["Subject"] = "Te visitamos recientemente"
     msg["From"] = f"Poliutech <{REGISTRO_MAIL_FROM}>"
-    msg["To"] = recipient
+    msg["To"] = ", ".join(recipients)
     msg.set_content(_registro_obra_email_body())
 
     attachment_bytes = REGISTRO_MAIL_ATTACHMENT.read_bytes()
@@ -378,7 +376,7 @@ def _send_registro_obra_email(row: dict) -> None:
     with smtplib.SMTP(REGISTRO_MAIL_HOST, REGISTRO_MAIL_PORT, timeout=30) as smtp:
         smtp.ehlo()
         smtp.login(REGISTRO_MAIL_USERNAME, REGISTRO_MAIL_PASSWORD)
-        smtp.send_message(msg, to_addrs=[recipient])
+        smtp.send_message(msg, to_addrs=recipients)
 
 
 def _save_registro_obras(rows: list[dict]) -> None:
@@ -4928,8 +4926,10 @@ def registro_obras():
             if send_email and not row["correo"]:
                 flash("Debes capturar un correo si activas ENVIAR CORREO.", "danger")
                 return redirect(url_for("registro_obras"))
-            if row["correo"] and not re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", row["correo"]):
-                flash(f"El correo '{row['correo']}' no es valido.", "danger")
+            try:
+                _parse_email_list(row["correo"])
+            except ValueError as e:
+                flash(str(e), "danger")
                 return redirect(url_for("registro_obras"))
             if not is_admin():
                 row["responsable"] = responsable_actual() or row["responsable"]
@@ -4965,8 +4965,10 @@ def registro_obras():
                 }, numeric_row_id)
                 if not any([row["obra"], row["ubicacion"], row["encargado"], row["puesto"], row["telefono"], row["correo"], row["responsable"]]):
                     continue
-                if row["correo"] and not re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", row["correo"]):
-                    flash(f"El correo '{row['correo']}' no es valido.", "danger")
+                try:
+                    _parse_email_list(row["correo"])
+                except ValueError as e:
+                    flash(str(e), "danger")
                     return redirect(url_for("registro_obras"))
                 if not is_admin():
                     row["responsable"] = responsable_actual() or row["responsable"]
@@ -4996,8 +4998,10 @@ def registro_obras():
             accepted_rows = []
             skipped_duplicates = 0
             for imported in imported_rows:
-                if imported["correo"] and not re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", imported["correo"]):
-                    flash(f"El correo '{imported['correo']}' no es valido en el archivo importado.", "danger")
+                try:
+                    _parse_email_list(imported["correo"])
+                except ValueError as e:
+                    flash(f"{e} en el archivo importado.", "danger")
                     return redirect(url_for("registro_obras"))
                 if not is_admin():
                     imported["responsable"] = responsable_actual() or imported["responsable"]
@@ -5432,8 +5436,10 @@ def api_mobile_registro_obras_create():
         return _mobile_json_error("El campo 'obra' es obligatorio.", 400)
     if send_email and not row["correo"]:
         return _mobile_json_error("Debes capturar un correo si activas ENVIAR CORREO.", 400)
-    if row["correo"] and not re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", row["correo"]):
-        return _mobile_json_error("Correo inválido.", 400)
+    try:
+        _parse_email_list(row["correo"])
+    except ValueError as e:
+        return _mobile_json_error(str(e), 400)
     if not _mobile_user_is_admin(user):
         row["responsable"] = _mobile_user_responsable(user)
 
@@ -5480,8 +5486,10 @@ def api_mobile_registro_obras_update(item_id: int):
         return _mobile_json_error("El campo 'obra' es obligatorio.", 400)
     if send_email and not updated["correo"]:
         return _mobile_json_error("Debes capturar un correo si activas ENVIAR CORREO.", 400)
-    if updated["correo"] and not re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", updated["correo"]):
-        return _mobile_json_error("Correo inválido.", 400)
+    try:
+        _parse_email_list(updated["correo"])
+    except ValueError as e:
+        return _mobile_json_error(str(e), 400)
     if not _mobile_user_is_admin(user):
         updated["responsable"] = _mobile_user_responsable(user)
 
@@ -6535,7 +6543,7 @@ def _parse_email_list(raw: str | list[str] | tuple[str, ...] | None) -> list[str
     return emails
 
 
-def _send_cotizacion_email(c: Cotizacion, recipient: str, cc: list[str] | None = None, bcc: list[str] | None = None) -> None:
+def _send_cotizacion_email(c: Cotizacion, recipients: list[str], cc: list[str] | None = None, bcc: list[str] | None = None) -> None:
     cc = cc or []
     bcc = bcc or []
     pdf_response = export_cotizacion_pdf(c.id)
@@ -6545,7 +6553,7 @@ def _send_cotizacion_email(c: Cotizacion, recipient: str, cc: list[str] | None =
     msg = EmailMessage()
     msg["Subject"] = f"Cotización {c.folio}"
     msg["From"] = SMTP_FROM
-    msg["To"] = recipient
+    msg["To"] = ", ".join(recipients)
     if cc:
         msg["Cc"] = ", ".join(cc)
     msg.set_content(_email_body_cotizacion(c) + _email_signature_text())
@@ -6577,7 +6585,7 @@ def _send_cotizacion_email(c: Cotizacion, recipient: str, cc: list[str] | None =
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
         smtp.ehlo()
         smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-        smtp.send_message(msg, to_addrs=[recipient, *cc, *bcc])
+        smtp.send_message(msg, to_addrs=[*recipients, *cc, *bcc])
 
 
 @app.route("/api/cotizaciones/<int:cot_id>/send-email", methods=["POST"])
@@ -6596,20 +6604,21 @@ def api_send_cotizacion_email(cot_id: int):
     if not recipient:
         return jsonify({"ok": False, "error": "La cotización no tiene un correo destino."}), 400
 
-    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", recipient):
-        return jsonify({"ok": False, "error": "El correo destino no es válido."}), 400
-
     try:
+        recipients = _parse_email_list(recipient)
+        if not recipients:
+            return jsonify({"ok": False, "error": "La cotización no tiene un correo destino."}), 400
         cc = _parse_email_list(cc_raw)
         bcc = _parse_email_list(bcc_raw)
-        _send_cotizacion_email(c, recipient, cc=cc, bcc=bcc)
+        _send_cotizacion_email(c, recipients, cc=cc, bcc=bcc)
+        to_display = ", ".join(recipients)
         return jsonify({
             "ok": True,
             "folio": c.folio,
-            "to": recipient,
+            "to": to_display,
             "cc": cc,
             "bcc_count": len(bcc),
-            "message": f"Cotización {c.folio} enviada a {recipient}."
+            "message": f"Cotización {c.folio} enviada a {to_display}."
         })
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400

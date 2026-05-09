@@ -42,7 +42,7 @@
         </div>
         <div class="col-lg-3 col-md-6">
           <label class="form-label small fw-bold text-secondary mb-1">Correo</label>
-          <input type="email" name="correo" class="form-control">
+          <input type="email" name="correo" class="form-control" multiple placeholder="correo1@dominio.com, correo2@dominio.com">
         </div>
         <div class="col-lg-2 col-md-4">
           <label class="form-label small fw-bold text-secondary mb-1">Responsable de obra</label>
@@ -132,7 +132,7 @@
                 <td><input type="text" name="encargado[]" class="form-control registro-input" value="{{ row.encargado }}" readonly></td>
                 <td><input type="text" name="puesto[]" class="form-control registro-input" value="{{ row.puesto }}" readonly></td>
                 <td><input type="text" name="telefono[]" class="form-control registro-input" value="{{ row.telefono }}" readonly></td>
-                <td><input type="email" name="correo[]" class="form-control registro-input" value="{{ row.correo }}" readonly></td>
+                <td><input type="email" name="correo[]" class="form-control registro-input" value="{{ row.correo }}" multiple readonly></td>
                 <td><input type="text" name="responsable[]" class="form-control registro-input" value="{{ row.responsable }}" {% if current_user.is_authenticated and (current_user.rol or "")|upper != "ADMIN" %}readonly{% else %}readonly{% endif %}></td>
                 <td class="text-center">
                   <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>

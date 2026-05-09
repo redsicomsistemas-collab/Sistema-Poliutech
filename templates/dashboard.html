@@ -952,7 +952,7 @@ document.addEventListener("DOMContentLoaded", () => {
       icon: "question",
       title: `Enviar cotización ${folio}`,
       html: `
-        <input id="swal-email-to" type="email" class="swal2-input" placeholder="Destino" value="${defaultEmail}">
+        <input id="swal-email-to" type="email" class="swal2-input" placeholder="Destino(s), separados por comas" value="${defaultEmail}" multiple>
         <input id="swal-email-cc" type="text" class="swal2-input" placeholder="CC (separa con comas)">
         <input id="swal-email-bcc" type="text" class="swal2-input" placeholder="CCO (separa con comas)">
       `,
