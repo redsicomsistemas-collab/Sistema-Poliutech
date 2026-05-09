@@ -20,7 +20,13 @@ function rowTemplate(){
       <td><input type="text" class="form-control form-control-sm item-sistema" name="item_sistema[]" placeholder="Sistema"></td>
       <td class="text-end"><span class="item-subtotal">$0.00</span></td>
       <td><textarea class="form-control form-control-sm quote-textarea" name="item_descripcion[]" rows="2"></textarea></td>
-      <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger btn-del">×</button></td>
+      <td class="text-center">
+        <div class="quote-row-actions">
+          <button type="button" class="btn btn-sm btn-outline-secondary btn-move-up" title="Subir">↑</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary btn-move-down" title="Bajar">↓</button>
+          <button type="button" class="btn btn-sm btn-outline-danger btn-del" title="Eliminar">×</button>
+        </div>
+      </td>
     </tr>
   `;
 }
@@ -69,9 +75,34 @@ function bindRowEvents(tr){
   }
   [cantidad, precio].forEach(i=> i.addEventListener("input", ()=>{ recalcRow(); recalcTotals(); }));
 
-  tr.querySelector(".btn-del").addEventListener("click", ()=>{ tr.remove(); recalcTotals(); });
+  tr.querySelector(".btn-move-up").addEventListener("click", ()=>{
+    const prev = tr.previousElementSibling;
+    if(prev){
+      tr.parentNode.insertBefore(tr, prev);
+      updateMoveButtons();
+    }
+  });
+  tr.querySelector(".btn-move-down").addEventListener("click", ()=>{
+    const next = tr.nextElementSibling;
+    if(next){
+      tr.parentNode.insertBefore(next, tr);
+      updateMoveButtons();
+    }
+  });
+  tr.querySelector(".btn-del").addEventListener("click", ()=>{ tr.remove(); recalcTotals(); updateMoveButtons(); });
 
   recalcRow();
+  updateMoveButtons();
+}
+
+function updateMoveButtons(){
+  const rows = Array.from(document.querySelectorAll("#items-body tr"));
+  rows.forEach((tr, idx)=>{
+    const up = tr.querySelector(".btn-move-up");
+    const down = tr.querySelector(".btn-move-down");
+    if(up) up.disabled = idx === 0;
+    if(down) down.disabled = idx === rows.length - 1;
+  });
 }
 
 function recalcTotals(){

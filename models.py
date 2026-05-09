@@ -71,7 +71,8 @@ class Cotizacion(db.Model):
     detalles = db.relationship(
         "CotizacionDetalle",
         backref="cotizacion",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        order_by=lambda: CotizacionDetalle.id.asc(),
     )
     seguimientos = db.relationship(
         "CotizacionSeguimiento",

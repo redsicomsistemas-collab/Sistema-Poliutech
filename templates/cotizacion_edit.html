@@ -36,7 +36,13 @@
             <div class="col-md-2"><label class="form-label">Precio unitario</label><input type="number" step="any" name="item_precio[]" class="form-control item-edit-precio" value="{{ d.precio_unitario }}"></div>
             <div class="col-md-2"><label class="form-label">Sistema</label><input type="text" name="item_sistema[]" class="form-control item-edit-sistema" value="{{ d.sistema }}"></div>
             <div class="col-md-1"><label class="form-label">Descripción</label><textarea name="item_descripcion[]" class="form-control item-edit-descripcion quote-textarea" rows="3">{{ d.descripcion }}</textarea></div>
-            <div class="col-md-1 text-end"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.item-edit-row').remove()">🗑</button></div>
+            <div class="col-md-1 text-end">
+              <div class="quote-row-actions">
+                <button type="button" class="btn btn-outline-secondary btn-sm btn-edit-up" title="Subir" onclick="moverRenglon(this, -1)">↑</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm btn-edit-down" title="Bajar" onclick="moverRenglon(this, 1)">↓</button>
+                <button type="button" class="btn btn-outline-danger btn-sm" title="Eliminar" onclick="this.closest('.item-edit-row').remove(); actualizarBotonesOrden()">🗑</button>
+              </div>
+            </div>
           </div>
           {% endfor %}
         </div>
@@ -96,9 +102,39 @@ function agregarRenglon() {
     <div class="col-md-2"><input type="number" step="any" name="item_precio[]" class="form-control item-edit-precio" placeholder="Precio"></div>
     <div class="col-md-2"><input type="text" name="item_sistema[]" class="form-control item-edit-sistema" placeholder="Sistema"></div>
     <div class="col-md-1"><textarea name="item_descripcion[]" class="form-control item-edit-descripcion quote-textarea" rows="3" placeholder="Descripción"></textarea></div>
-    <div class="col-md-1 text-end"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.item-edit-row').remove()">🗑</button></div>
+    <div class="col-md-1 text-end">
+      <div class="quote-row-actions">
+        <button type="button" class="btn btn-outline-secondary btn-sm btn-edit-up" title="Subir" onclick="moverRenglon(this, -1)">↑</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm btn-edit-down" title="Bajar" onclick="moverRenglon(this, 1)">↓</button>
+        <button type="button" class="btn btn-outline-danger btn-sm" title="Eliminar" onclick="this.closest('.item-edit-row').remove(); actualizarBotonesOrden()">🗑</button>
+      </div>
+    </div>
   </div>`;
   document.getElementById('items').insertAdjacentHTML('beforeend', html);
+  actualizarBotonesOrden();
 }
+
+function moverRenglon(btn, direccion) {
+  const row = btn.closest('.item-edit-row');
+  if (!row) return;
+  if (direccion < 0 && row.previousElementSibling) {
+    row.parentNode.insertBefore(row, row.previousElementSibling);
+  } else if (direccion > 0 && row.nextElementSibling) {
+    row.parentNode.insertBefore(row.nextElementSibling, row);
+  }
+  actualizarBotonesOrden();
+}
+
+function actualizarBotonesOrden() {
+  const rows = Array.from(document.querySelectorAll('#items .item-edit-row'));
+  rows.forEach((row, idx) => {
+    const up = row.querySelector('.btn-edit-up');
+    const down = row.querySelector('.btn-edit-down');
+    if (up) up.disabled = idx === 0;
+    if (down) down.disabled = idx === rows.length - 1;
+  });
+}
+
+document.addEventListener('DOMContentLoaded', actualizarBotonesOrden);
 </script>
 {% endblock %}

@@ -222,6 +222,14 @@ canvas {
   overflow-wrap: anywhere;
 }
 
+.quote-row-actions {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
 .quote-concept-display {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
