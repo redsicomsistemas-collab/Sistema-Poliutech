@@ -7001,6 +7001,7 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
     )
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="Encabezado", fontName="Helvetica", fontSize=9, leading=12, spaceAfter=4, splitLongWords=False))
+    styles.add(ParagraphStyle(name="EncabezadoCorreo", parent=styles["Encabezado"], splitLongWords=True, wordWrap="CJK"))
     styles.add(ParagraphStyle(name="NormalCell", fontName="Helvetica", fontSize=8, leading=10, splitLongWords=False))
     styles.add(ParagraphStyle(name="NormalRight", fontName="Helvetica", fontSize=8, leading=10, alignment=2, splitLongWords=False))
     styles.add(ParagraphStyle(name="NormalCenter", fontName="Helvetica", fontSize=8, leading=10, alignment=1, splitLongWords=False))
@@ -7085,6 +7086,11 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
     cliente_correo = cli.correo if cli else ""
     cliente_telefono = cli.telefono if cli else ""
     ciudad_trabajo = (getattr(c, "ciudad_trabajo", "") or "").strip()
+    try:
+        correo_lineas = _parse_email_list(cliente_correo)
+    except ValueError:
+        correo_lineas = [part.strip() for part in str(cliente_correo or "").split(",") if part.strip()]
+    correo_pdf = "<br/>".join(escape(correo) for correo in correo_lineas) if correo_lineas else ""
 
     meta_data = [
         [
@@ -7097,7 +7103,7 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
         ],
         [
             Paragraph(f"<b>Empresa:</b> {cliente_empresa}", styles["Encabezado"]),
-            Paragraph(f"<b>Correo:</b> {cliente_correo}", styles["Encabezado"]),
+            Paragraph(f"<b>Correo:</b> {correo_pdf}", styles["EncabezadoCorreo"]),
         ],
         [
             Paragraph(f"<b>Teléfono:</b> {cliente_telefono}", styles["Encabezado"]),
