@@ -204,8 +204,32 @@ class RegistroObra(db.Model):
     creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
+    seguimientos = db.relationship(
+        "RegistroObraSeguimiento",
+        backref="registro_obra",
+        cascade="all, delete-orphan",
+        order_by="RegistroObraSeguimiento.fecha_seguimiento.desc()"
+    )
+
     def __repr__(self):
         return f"<RegistroObra {self.id} {self.obra}>"
+
+
+class RegistroObraSeguimiento(db.Model):
+    __tablename__ = "registro_obra_seguimiento"
+
+    id = db.Column(db.Integer, primary_key=True)
+    registro_obra_id = db.Column(db.Integer, db.ForeignKey("registro_obra.id"), nullable=False, index=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
+    autor = db.Column(db.String(120), nullable=False)
+    comentario = db.Column(db.Text, nullable=False)
+    fecha_seguimiento = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    usuario = db.relationship("Usuario", backref=db.backref("seguimientos_registro_obra", lazy=True))
+
+    def __repr__(self):
+        return f"<RegistroObraSeguimiento registro_obra={self.registro_obra_id} autor={self.autor}>"
 
 
 class Prospecto(db.Model):

@@ -230,8 +230,12 @@ def _load_provider_numbers() -> list[dict]:
 
 def _normalize_registro_obra_row(row: Optional[dict], idx: int) -> dict:
     row = row or {}
+    try:
+        row_id = int(row.get("id") or 0)
+    except Exception:
+        row_id = 0
     return {
-        "id": idx,
+        "id": row_id,
         "numero": str(row.get("numero", "")).strip(),
         "obra": str(row.get("obra", "")).strip(),
         "ubicacion": str(row.get("ubicacion", "")).strip(),
@@ -279,7 +283,7 @@ def _registro_obra_duplicate_key(row: dict) -> tuple[str, str, str, str, str]:
 
 def _registro_obra_to_row(item: "RegistroObra", idx: Optional[int] = None) -> dict:
     position = idx if idx is not None else (item.id or 0)
-    return _normalize_registro_obra_row({
+    row = _normalize_registro_obra_row({
         "numero": item.numero,
         "obra": item.obra,
         "ubicacion": item.ubicacion,
@@ -289,6 +293,10 @@ def _registro_obra_to_row(item: "RegistroObra", idx: Optional[int] = None) -> di
         "correo": item.correo,
         "responsable": item.responsable,
     }, position)
+    row["id"] = item.id
+    row["numero"] = str(position)
+    row["seguimiento_count"] = len(item.seguimientos or [])
+    return row
 
 
 def _load_registro_obras() -> list[dict]:
@@ -380,19 +388,31 @@ def _send_registro_obra_email(row: dict) -> None:
 
 
 def _save_registro_obras(rows: list[dict]) -> None:
-    db.session.query(RegistroObra).delete()
+    existing = {item.id: item for item in RegistroObra.query.all()}
+    seen_ids: set[int] = set()
     for idx, raw_row in enumerate(rows, start=1):
         row = _normalize_registro_obra_row(raw_row, idx)
-        db.session.add(RegistroObra(
-            numero=idx,
-            obra=row.get("obra", ""),
-            ubicacion=row.get("ubicacion", ""),
-            encargado=row.get("encargado", ""),
-            puesto=row.get("puesto", ""),
-            telefono=row.get("telefono", ""),
-            correo=row.get("correo", ""),
-            responsable=row.get("responsable", ""),
-        ))
+        row_id = row.get("id")
+        item = existing.get(row_id) if isinstance(row_id, int) and row_id > 0 else None
+        if item is None:
+            item = RegistroObra()
+            db.session.add(item)
+            db.session.flush()
+        seen_ids.add(item.id)
+        item.numero = idx
+        item.obra = row.get("obra", "")
+        item.ubicacion = row.get("ubicacion", "")
+        item.encargado = row.get("encargado", "")
+        item.puesto = row.get("puesto", "")
+        item.telefono = row.get("telefono", "")
+        item.correo = row.get("correo", "")
+        item.responsable = row.get("responsable", "")
+        raw_row["id"] = item.id
+        raw_row["numero"] = str(idx)
+
+    for item_id, item in existing.items():
+        if item_id not in seen_ids:
+            db.session.delete(item)
 
 
 def _migrate_registro_obras_from_json() -> None:
@@ -2311,6 +2331,7 @@ from models import (
     Usuario,
     MobileDevice,
     RegistroObra,
+    RegistroObraSeguimiento,
     Prospecto,
     ProspectoSeguimiento,
     ActivityLog,
@@ -2949,6 +2970,23 @@ def require_prospecto_owner_or_admin(prospecto: Prospecto) -> None:
 
 
 def require_prospecto_followup_author_or_admin(seg: ProspectoSeguimiento) -> None:
+    if is_admin():
+        return
+    current_user_id = getattr(current_user, "id", None)
+    if current_user_id and seg.usuario_id == current_user_id:
+        return
+    abort(403)
+
+
+def require_registro_obra_owner_or_admin(registro: RegistroObra) -> None:
+    if is_admin():
+        return
+    ra = responsable_actual()
+    if not ra or (registro.responsable or "").strip().lower() != ra.strip().lower():
+        abort(403)
+
+
+def require_registro_obra_followup_author_or_admin(seg: RegistroObraSeguimiento) -> None:
     if is_admin():
         return
     current_user_id = getattr(current_user, "id", None)
@@ -4954,6 +4992,7 @@ def registro_obras():
             for idx, row_id in enumerate(row_ids):
                 numeric_row_id = int(row_id or idx + 1)
                 row = _normalize_registro_obra_row({
+                    "id": numeric_row_id,
                     "numero": "",
                     "obra": obras[idx] if idx < len(obras) else "",
                     "ubicacion": ubicaciones[idx] if idx < len(ubicaciones) else "",
@@ -5027,7 +5066,6 @@ def registro_obras():
             flash("Registros eliminados.", "success")
 
         for idx, row in enumerate(rows, start=1):
-            row["id"] = idx
             row["numero"] = str(idx)
         _save_registro_obras(rows)
         for row in rows:
@@ -5059,6 +5097,77 @@ def registro_obras():
         default_responsable=responsable_actual() or "",
         default_numero=str(len(rows) + 1),
     )
+
+
+@app.route("/registro-obras/<int:registro_id>/seguimiento")
+@login_required
+def registro_obra_seguimiento(registro_id: int):
+    registro = RegistroObra.query.get_or_404(registro_id)
+    require_registro_obra_owner_or_admin(registro)
+    return render_template(
+        "registro_obra_seguimiento.html",
+        registro=registro,
+        seguimientos=registro.seguimientos,
+        title=f"Seguimiento obra {registro.obra}",
+    )
+
+
+@app.route("/registro-obras/<int:registro_id>/seguimiento", methods=["POST"])
+@login_required
+def crear_registro_obra_seguimiento(registro_id: int):
+    registro = RegistroObra.query.get_or_404(registro_id)
+    require_registro_obra_owner_or_admin(registro)
+    comentario = (request.form.get("comentario") or "").strip()
+
+    if not comentario:
+        flash("Escribe un comentario de seguimiento.", "warning")
+        return redirect(url_for("registro_obra_seguimiento", registro_id=registro.id))
+
+    seg = RegistroObraSeguimiento(
+        registro_obra_id=registro.id,
+        usuario_id=getattr(current_user, "id", None),
+        autor=(getattr(current_user, "nombre", None) or responsable_actual() or "Sistema").strip(),
+        comentario=comentario,
+        fecha_seguimiento=now_cdmx_naive(),
+        actualizado_en=now_cdmx_naive(),
+    )
+    db.session.add(seg)
+    db.session.commit()
+    flash("Seguimiento de obra guardado correctamente.", "success")
+    return redirect(url_for("registro_obra_seguimiento", registro_id=registro.id, _anchor=f"seguimiento-{seg.id}"))
+
+
+@app.route("/registro-obras/<int:registro_id>/seguimiento/<int:seg_id>/editar", methods=["POST"])
+@login_required
+def editar_registro_obra_seguimiento(registro_id: int, seg_id: int):
+    registro = RegistroObra.query.get_or_404(registro_id)
+    require_registro_obra_owner_or_admin(registro)
+    seg = RegistroObraSeguimiento.query.filter_by(id=seg_id, registro_obra_id=registro.id).first_or_404()
+    require_registro_obra_followup_author_or_admin(seg)
+
+    comentario = (request.form.get("comentario") or "").strip()
+    if not comentario:
+        flash("El comentario no puede quedar vacío.", "warning")
+        return redirect(url_for("registro_obra_seguimiento", registro_id=registro.id))
+
+    seg.comentario = comentario
+    seg.actualizado_en = now_cdmx_naive()
+    db.session.commit()
+    flash("Seguimiento actualizado.", "success")
+    return redirect(url_for("registro_obra_seguimiento", registro_id=registro.id, _anchor=f"seguimiento-{seg.id}"))
+
+
+@app.route("/registro-obras/<int:registro_id>/seguimiento/<int:seg_id>/eliminar", methods=["POST"])
+@login_required
+def eliminar_registro_obra_seguimiento(registro_id: int, seg_id: int):
+    registro = RegistroObra.query.get_or_404(registro_id)
+    require_registro_obra_owner_or_admin(registro)
+    seg = RegistroObraSeguimiento.query.filter_by(id=seg_id, registro_obra_id=registro.id).first_or_404()
+    require_registro_obra_followup_author_or_admin(seg)
+    db.session.delete(seg)
+    db.session.commit()
+    flash("Seguimiento eliminado.", "success")
+    return redirect(url_for("registro_obra_seguimiento", registro_id=registro.id))
 
 
 @app.route("/registro-obras/export.xlsx")
@@ -5444,7 +5553,6 @@ def api_mobile_registro_obras_create():
         row["responsable"] = _mobile_user_responsable(user)
 
     row["numero"] = str(len(rows) + 1)
-    row["id"] = len(rows) + 1
     rows.append(row)
     _save_registro_obras(rows)
     _sync_cliente_from_registro_obra(row)
@@ -5473,6 +5581,7 @@ def api_mobile_registro_obras_update(item_id: int):
     payload = request.get_json(silent=True) or {}
     send_email = bool(payload.get("send_email"))
     updated = _normalize_registro_obra_row({
+        "id": target.get("id"),
         "numero": target.get("numero"),
         "obra": payload.get("obra"),
         "ubicacion": payload.get("ubicacion"),
@@ -5495,7 +5604,6 @@ def api_mobile_registro_obras_update(item_id: int):
 
     target.update(updated)
     for idx, row in enumerate(rows, start=1):
-        row["id"] = idx
         row["numero"] = str(idx)
     _save_registro_obras(rows)
     _sync_cliente_from_registro_obra(target)
@@ -5533,7 +5641,6 @@ def api_mobile_registro_obras_bulk_delete():
         kept.append(row)
 
     for idx, row in enumerate(kept, start=1):
-        row["id"] = idx
         row["numero"] = str(idx)
     _save_registro_obras(kept)
     db.session.commit()

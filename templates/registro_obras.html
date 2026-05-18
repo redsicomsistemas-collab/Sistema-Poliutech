@@ -116,7 +116,7 @@
                 <th style="min-width: 150px;">TELEFONO</th>
                 <th style="min-width: 220px;">CORREO</th>
                 <th style="min-width: 160px;">RESPONSABLE DE OBRA</th>
-                <th style="width: 140px;">Accion</th>
+                <th style="width: 210px;">Accion</th>
               </tr>
             </thead>
             <tbody>
@@ -135,7 +135,12 @@
                 <td><input type="email" name="correo[]" class="form-control registro-input" value="{{ row.correo }}" multiple readonly></td>
                 <td><input type="text" name="responsable[]" class="form-control registro-input" value="{{ row.responsable }}" {% if current_user.is_authenticated and (current_user.rol or "")|upper != "ADMIN" %}readonly{% else %}readonly{% endif %}></td>
                 <td class="text-center">
-                  <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>
+                  <div class="d-flex justify-content-center gap-2 flex-wrap">
+                    <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>
+                    <a href="{{ url_for('registro_obra_seguimiento', registro_id=row.id) }}" class="btn btn-outline-secondary btn-sm">
+                      Seguimiento ({{ row.seguimiento_count or 0 }})
+                    </a>
+                  </div>
                 </td>
               </tr>
               {% endfor %}
