@@ -17,6 +17,7 @@ def exportar_cotizacion(cot_id: int):
     subtotal = float(cot.subtotal or sum(float(it.importe or 0) for it in items))
     descuento = float(cot.descuento_total or 0)
     subtotal_desc = max(0.0, subtotal - descuento)
+    descuento_porc = (descuento / subtotal * 100.0) if subtotal > 0 else 0.0
 
     # PDF via reportlab (fallback placeholder if not installed)
     try:
@@ -49,7 +50,7 @@ def exportar_cotizacion(cot_id: int):
         c.drawRightString(520, y, f"Subtotal: {subtotal:,.2f}")
         if descuento > 0.0001:
             y -= 16
-            c.drawRightString(520, y, f"Descuento: -{descuento:,.2f}")
+            c.drawRightString(520, y, f"Descuento ({descuento_porc:g}%): -{descuento:,.2f}")
             y -= 16
             c.drawRightString(520, y, f"Subtotal c/ desc.: {subtotal_desc:,.2f}")
         y -= 16

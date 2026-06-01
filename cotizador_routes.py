@@ -29,7 +29,8 @@ def guardar():
         cantidad = _to_float(it.get("cantidad"), 0.0)
         precio = _to_float(it.get("precio_unitario"), 0.0)
         subtotal += _to_float(it.get("importe"), cantidad * precio)
-    descuento_total = min(max(_to_float(header.get("descuento_total"), 0.0), 0.0), subtotal)
+    descuento_porc = min(max(_to_float(header.get("descuento_total"), 0.0), 0.0), 100.0)
+    descuento_total = subtotal * (descuento_porc / 100.0)
     iva_porc = _to_float(header.get("iva_porc"), 16.0)
     subtotal_desc = subtotal - descuento_total
     iva_monto = subtotal_desc * (iva_porc / 100.0)

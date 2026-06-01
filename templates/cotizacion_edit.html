@@ -65,8 +65,8 @@
             </select>
           </div>
           <div class="col-md-4">
-            <label class="form-label fw-bold">Descuento ($)</label>
-            <input type="number" step="0.01" min="0" name="descuento_total" class="form-control text-end" value="{{ '%.2f'|format(c.descuento_total or 0) }}">
+            <label class="form-label fw-bold">Descuento %</label>
+            <input type="number" step="0.01" min="0" max="100" name="descuento_total" class="form-control text-end" value="{{ '%.2f'|format(descuento_porc_actual or 0) }}">
           </div>
           <div class="col-md-4">
             <label class="form-label fw-bold">Estatus actual</label>

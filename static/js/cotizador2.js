@@ -129,10 +129,11 @@ function recalcTotals(){
   const descPorc = ZONA_PORC[zona] || 0;
   const descuentoField = document.getElementById("descuento_total");
   if (descuentoField && !descuentoEditadoManualmente) {
-    descuentoField.value = (subtotal * (descPorc / 100)).toFixed(2);
+    descuentoField.value = descPorc.toFixed(2);
   }
-  const descuentoCapturado = Number(descuentoField ? descuentoField.value : 0) || 0;
-  const descuento = Math.min(Math.max(descuentoCapturado, 0), subtotal);
+  const descuentoPorcCapturado = Number(descuentoField ? descuentoField.value : 0) || 0;
+  const descuentoPorcAplicado = Math.min(Math.max(descuentoPorcCapturado, 0), 100);
+  const descuento = subtotal * (descuentoPorcAplicado / 100);
   const subtotalDesc = subtotal - descuento;
 
   const ivaPorc = Number(document.getElementById("iva_porc").value)||0;

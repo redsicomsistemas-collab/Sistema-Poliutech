@@ -5887,16 +5887,17 @@ def crear_cotizacion():
         ))
         db.session.add(det)
 
-    # --- aplicar descuento antes de IVA ---
-    descuento_capturado = parse_float(f.get("descuento_total"), subtotal * (desc_porc / 100.0))
-    descuento_total = min(max(descuento_capturado, 0.0), subtotal)
+    # --- aplicar descuento porcentual antes de IVA ---
+    descuento_porc_capturado = parse_float(f.get("descuento_total"), desc_porc)
+    descuento_porc_aplicado = min(max(descuento_porc_capturado, 0.0), 100.0)
+    descuento_total = subtotal * (descuento_porc_aplicado / 100.0)
     subtotal_desc = subtotal - descuento_total
     iva_monto = subtotal_desc * (iva_porc / 100.0)
     total = subtotal_desc + iva_monto
 
     # --- trazabilidad de zona en Condiciones Comerciales (notas) ---
     if zona:
-        zona_line = f"Zona: {zona} ({int(desc_porc)}% descuento sugerido)"
+        zona_line = f"Zona: {zona} ({descuento_porc_aplicado:g}% descuento)"
         notas = (cot.notas or "").strip()
         # elimina cualquier línea previa de Zona:
         notas_lines = [ln for ln in notas.splitlines() if ln.strip() and not ln.strip().lower().startswith("zona:")]
@@ -5961,7 +5962,10 @@ def editar_cotizacion(cot_id: int):
     except Exception:
         zona_actual = ""
     notas_adicionales, _ = _split_notas_y_zona(c.notas or "")
-    return render_template("cotizacion_edit.html", c=c, zona_actual=zona_actual, notas_adicionales=notas_adicionales, title=f"Editar {c.folio}")
+    descuento_porc_actual = 0.0
+    if float(c.subtotal or 0) > 0:
+        descuento_porc_actual = (float(c.descuento_total or 0) / float(c.subtotal or 0)) * 100.0
+    return render_template("cotizacion_edit.html", c=c, zona_actual=zona_actual, notas_adicionales=notas_adicionales, descuento_porc_actual=descuento_porc_actual, title=f"Editar {c.folio}")
 
 @app.route("/cotizaciones/<int:cot_id>/actualizar", methods=["POST"])
 @login_required
@@ -6093,14 +6097,15 @@ def actualizar_cotizacion(cot_id: int):
         db.session.add(det)
 
     # === TOTALES ===
-    descuento_capturado = parse_float(f.get("descuento_total"), subtotal * (desc_porc / 100.0))
-    descuento_total = min(max(descuento_capturado, 0.0), subtotal)
+    descuento_porc_capturado = parse_float(f.get("descuento_total"), desc_porc)
+    descuento_porc_aplicado = min(max(descuento_porc_capturado, 0.0), 100.0)
+    descuento_total = subtotal * (descuento_porc_aplicado / 100.0)
     subtotal_desc = subtotal - descuento_total
     iva_monto = subtotal_desc * (iva_porc / 100.0)
     total = subtotal_desc + iva_monto
 
     if zona:
-        zona_line = f"Zona: {zona} ({int(desc_porc)}% descuento sugerido)"
+        zona_line = f"Zona: {zona} ({descuento_porc_aplicado:g}% descuento)"
         notas = (c.notas or "").strip()
         notas_lines = [ln for ln in notas.splitlines() if ln.strip() and not ln.strip().lower().startswith("zona:")]
         notas_lines.append(zona_line)
@@ -7291,10 +7296,11 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
     subtotal = float(c.subtotal or 0)
     descuento = float(c.descuento_total or 0)
     subtotal_desc = subtotal - descuento
+    descuento_porc_pdf = (descuento / subtotal * 100.0) if subtotal > 0 else 0.0
 
     tot_data = [["Subtotal:", money(subtotal)]]
     if descuento and descuento > 0.0001:
-        tot_data.append(["Descuento:", "-" + money(descuento)])
+        tot_data.append([f"Descuento ({descuento_porc_pdf:g}%):", "-" + money(descuento)])
         tot_data.append(["Subtotal c/ desc.:", money(subtotal_desc)])
     tot_data.extend([
         [f"IVA ({c.iva_porc:.2f}%):", money(c.iva_monto)],
