@@ -5887,15 +5887,16 @@ def crear_cotizacion():
         ))
         db.session.add(det)
 
-    # --- aplicar descuento por zona sobre subtotal ---
-    descuento_total = subtotal * (desc_porc / 100.0)
+    # --- aplicar descuento antes de IVA ---
+    descuento_capturado = parse_float(f.get("descuento_total"), subtotal * (desc_porc / 100.0))
+    descuento_total = min(max(descuento_capturado, 0.0), subtotal)
     subtotal_desc = subtotal - descuento_total
     iva_monto = subtotal_desc * (iva_porc / 100.0)
     total = subtotal_desc + iva_monto
 
     # --- trazabilidad de zona en Condiciones Comerciales (notas) ---
-    if zona and desc_porc > 0:
-        zona_line = f"Zona: {zona} ({int(desc_porc)}% descuento)"
+    if zona:
+        zona_line = f"Zona: {zona} ({int(desc_porc)}% descuento sugerido)"
         notas = (cot.notas or "").strip()
         # elimina cualquier línea previa de Zona:
         notas_lines = [ln for ln in notas.splitlines() if ln.strip() and not ln.strip().lower().startswith("zona:")]
@@ -6092,13 +6093,14 @@ def actualizar_cotizacion(cot_id: int):
         db.session.add(det)
 
     # === TOTALES ===
-    descuento_total = subtotal * (desc_porc / 100.0)
+    descuento_capturado = parse_float(f.get("descuento_total"), subtotal * (desc_porc / 100.0))
+    descuento_total = min(max(descuento_capturado, 0.0), subtotal)
     subtotal_desc = subtotal - descuento_total
     iva_monto = subtotal_desc * (iva_porc / 100.0)
     total = subtotal_desc + iva_monto
 
-    if zona and desc_porc > 0:
-        zona_line = f"Zona: {zona} ({int(desc_porc)}% descuento)"
+    if zona:
+        zona_line = f"Zona: {zona} ({int(desc_porc)}% descuento sugerido)"
         notas = (c.notas or "").strip()
         notas_lines = [ln for ln in notas.splitlines() if ln.strip() and not ln.strip().lower().startswith("zona:")]
         notas_lines.append(zona_line)

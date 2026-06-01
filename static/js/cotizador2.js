@@ -105,6 +105,8 @@ function updateMoveButtons(){
   });
 }
 
+let descuentoEditadoManualmente = false;
+
 function recalcTotals(){
   const rows = document.querySelectorAll("#items-body tr");
   let subtotal = 0;
@@ -125,7 +127,12 @@ function recalcTotals(){
     "Frontera": 8,
   };
   const descPorc = ZONA_PORC[zona] || 0;
-  const descuento = subtotal * (descPorc / 100);
+  const descuentoField = document.getElementById("descuento_total");
+  if (descuentoField && !descuentoEditadoManualmente) {
+    descuentoField.value = (subtotal * (descPorc / 100)).toFixed(2);
+  }
+  const descuentoCapturado = Number(descuentoField ? descuentoField.value : 0) || 0;
+  const descuento = Math.min(Math.max(descuentoCapturado, 0), subtotal);
   const subtotalDesc = subtotal - descuento;
 
   const ivaPorc = Number(document.getElementById("iva_porc").value)||0;
@@ -133,9 +140,7 @@ function recalcTotals(){
   const total = subtotalDesc + iva;
 
   document.getElementById("ui-subtotal").textContent = "$"+fmt(subtotal);
-  const uiDesc = document.getElementById("ui-descuento");
   const uiSubDesc = document.getElementById("ui-subtotal-desc");
-  if (uiDesc) uiDesc.textContent = "-$"+fmt(descuento);
   if (uiSubDesc) uiSubDesc.textContent = "$"+fmt(subtotalDesc);
   document.getElementById("ui-iva").textContent = "$"+fmt(iva);
   document.getElementById("ui-total").textContent = "$"+fmt(total);
@@ -202,7 +207,18 @@ document.addEventListener("DOMContentLoaded", ()=>{
   if (ivaField) ivaField.addEventListener("input", recalcTotals);
 
   const zonaField = document.getElementById("zona");
-  if (zonaField) zonaField.addEventListener("change", recalcTotals);
+  if (zonaField) zonaField.addEventListener("change", ()=>{
+    descuentoEditadoManualmente = false;
+    recalcTotals();
+  });
+
+  const descuentoField = document.getElementById("descuento_total");
+  if (descuentoField) {
+    descuentoField.addEventListener("input", ()=>{
+      descuentoEditadoManualmente = true;
+      recalcTotals();
+    });
+  }
 
   // ============================================================
   // 🔹 ENVÍO + ABRIR PDF NUEVA PESTAÑA

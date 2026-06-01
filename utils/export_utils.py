@@ -14,6 +14,9 @@ def exportar_cotizacion(cot_id: int):
     xlsx_name = f"cotizacion_{cot_id}.xlsx"
     pdf_path = os.path.join(out_dir, pdf_name)
     xlsx_path = os.path.join(out_dir, xlsx_name)
+    subtotal = float(cot.subtotal or sum(float(it.importe or 0) for it in items))
+    descuento = float(cot.descuento_total or 0)
+    subtotal_desc = max(0.0, subtotal - descuento)
 
     # PDF via reportlab (fallback placeholder if not installed)
     try:
@@ -43,7 +46,16 @@ def exportar_cotizacion(cot_id: int):
             c.drawRightString(520, y, f"{it.importe:,.2f}")
             y -= 14
         y -= 10; c.setFont("Helvetica-Bold", 12)
-        c.drawRightString(520, y, f"TOTAL: {cot.total:,.2f}")
+        c.drawRightString(520, y, f"Subtotal: {subtotal:,.2f}")
+        if descuento > 0.0001:
+            y -= 16
+            c.drawRightString(520, y, f"Descuento: -{descuento:,.2f}")
+            y -= 16
+            c.drawRightString(520, y, f"Subtotal c/ desc.: {subtotal_desc:,.2f}")
+        y -= 16
+        c.drawRightString(520, y, f"IVA ({float(cot.iva_porc or 0):,.2f}%): {float(cot.iva_monto or 0):,.2f}")
+        y -= 16
+        c.drawRightString(520, y, f"TOTAL: {float(cot.total or 0):,.2f}")
         c.save()
     except Exception:
         with open(pdf_path, "wb") as f:
