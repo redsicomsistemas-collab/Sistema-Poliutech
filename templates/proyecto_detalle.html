@@ -4,13 +4,39 @@
 <div class="d-flex justify-content-between align-items-center mt-4 mb-3 flex-wrap gap-2">
   <div>
     <h2 class="mb-1 fw-bold text-primary">{{ proyecto }}</h2>
-    <div class="text-muted">
-      {{ cotizaciones|length }} cotizaciones - ${{ "{:,.2f}".format(total_importe or 0) }}
-    </div>
+    <div class="text-muted">Cotizaciones de este proyecto.</div>
   </div>
   <div class="d-flex gap-2">
     <a href="{{ url_for('proyectos') }}" class="btn btn-outline-secondary">Volver a proyectos</a>
     <a href="{{ url_for('cotizador') }}" class="btn btn-success fw-bold">Nueva cotizacion</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card border-primary shadow-sm h-100">
+      <div class="card-body">
+        <h6 class="text-primary mb-1">Cotizaciones</h6>
+        <h3 class="fw-bold mb-0">{{ cotizaciones|length }}</h3>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-success shadow-sm h-100">
+      <div class="card-body">
+        <h6 class="text-success mb-1">Total del proyecto</h6>
+        <h3 class="fw-bold mb-0">${{ "{:,.2f}".format(total_importe or 0) }}</h3>
+        <div class="small text-muted mt-1">{{ cotizaciones|length }} cotizaciones sumadas</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-info shadow-sm h-100">
+      <div class="card-body">
+        <h6 class="text-info mb-1">Promedio por cotizacion</h6>
+        <h3 class="fw-bold mb-0">${{ "{:,.2f}".format(promedio_importe or 0) }}</h3>
+      </div>
+    </div>
   </div>
 </div>
 

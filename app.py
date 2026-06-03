@@ -3051,13 +3051,26 @@ def _project_label_expr():
         "Sin proyecto",
     )
 
+def _project_key_expr():
+    return db.func.coalesce(
+        db.func.nullif(db.func.lower(db.func.trim(Cotizacion.proyecto)), ""),
+        "sin proyecto",
+    )
+
+def _project_display_expr():
+    return db.func.coalesce(
+        db.func.nullif(db.func.min(db.func.nullif(db.func.trim(Cotizacion.proyecto), "")), ""),
+        "Sin proyecto",
+    )
+
 def _known_project_names(limit: int = 100) -> list[str]:
-    expr = _project_label_expr()
+    key_expr = _project_key_expr()
+    name_expr = _project_display_expr()
     rows = (
         _cotizaciones_base_query()
-        .with_entities(expr.label("proyecto"))
-        .group_by(expr)
-        .order_by(expr.asc())
+        .with_entities(key_expr.label("key"), name_expr.label("proyecto"))
+        .group_by(key_expr)
+        .order_by(name_expr.asc())
         .limit(limit)
         .all()
     )
@@ -4183,20 +4196,32 @@ def cotizador():
 @app.route("/proyectos")
 @login_required
 def proyectos():
-    expr = _project_label_expr()
+    key_expr = _project_key_expr()
+    name_expr = _project_display_expr()
     rows = (
         _cotizaciones_base_query()
         .with_entities(
-            expr.label("nombre"),
+            key_expr.label("key"),
+            name_expr.label("nombre"),
             db.func.count(Cotizacion.id).label("cotizaciones"),
             db.func.coalesce(db.func.sum(Cotizacion.total), 0).label("total"),
             db.func.max(Cotizacion.fecha).label("ultima_fecha"),
         )
-        .group_by(expr)
+        .group_by(key_expr)
         .order_by(db.func.max(Cotizacion.fecha).desc())
         .all()
     )
-    return render_template("proyectos.html", proyectos=rows, title="Proyectos - Sistema MAR")
+    total_proyectos = len(rows)
+    total_cotizaciones = sum(int(r.cotizaciones or 0) for r in rows)
+    total_importe = sum(float(r.total or 0) for r in rows)
+    return render_template(
+        "proyectos.html",
+        proyectos=rows,
+        total_proyectos=total_proyectos,
+        total_cotizaciones=total_cotizaciones,
+        total_importe=total_importe,
+        title="Proyectos - Sistema MAR",
+    )
 
 
 @app.route("/proyectos/detalle")
@@ -4211,11 +4236,13 @@ def proyecto_detalle():
 
     cotizaciones = q.order_by(Cotizacion.fecha.desc()).all()
     total_importe = sum(float(c.total or 0) for c in cotizaciones)
+    promedio_importe = total_importe / len(cotizaciones) if cotizaciones else 0.0
     return render_template(
         "proyecto_detalle.html",
         proyecto=nombre,
         cotizaciones=cotizaciones,
         total_importe=total_importe,
+        promedio_importe=promedio_importe,
         valid_estatus=VALID_ESTATUS,
         title=f"Proyecto {nombre} - Sistema MAR",
     )
