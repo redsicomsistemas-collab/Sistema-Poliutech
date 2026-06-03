@@ -83,7 +83,17 @@
     </div>
 
     <div class="row g-3 mt-2">
-      <div class="col-md-8">
+      <div class="col-md-4">
+        <label for="proyecto" class="form-label fw-semibold">Proyecto</label>
+        <input type="text" id="proyecto" name="proyecto" class="form-control"
+               placeholder="Nombre del proyecto" list="proyectos_list" autocomplete="off">
+        <datalist id="proyectos_list">
+          {% for proyecto in proyectos or [] %}
+          <option value="{{ proyecto }}"></option>
+          {% endfor %}
+        </datalist>
+      </div>
+      <div class="col-md-4">
         <label for="direccion" class="form-label fw-semibold">Dirección</label>
         <input type="text" id="direccion" name="direccion" class="form-control">
       </div>

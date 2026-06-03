@@ -436,6 +436,8 @@ document.addEventListener("DOMContentLoaded", ()=>{
       document.getElementById("empresa").value = header.empresa || "";
       document.getElementById("correo").value = header.correo || "";
       document.getElementById("telefono").value = header.telefono || "";
+      const proyectoInput = document.getElementById("proyecto");
+      if(proyectoInput) proyectoInput.value = header.proyecto || preview.proyecto || "";
       document.getElementById("ciudad_trabajo").value = (header.ciudad || "").toUpperCase();
       if(Array.isArray(preview.condiciones) && preview.condiciones.length){
         document.getElementById("notas").value = preview.condiciones.join("\n");

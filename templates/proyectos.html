@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mt-4 mb-3 flex-wrap gap-2">
+  <div>
+    <h2 class="mb-1 fw-bold text-primary">Proyectos</h2>
+    <div class="text-muted">Cotizaciones agrupadas por proyecto.</div>
+  </div>
+  <a href="{{ url_for('cotizador') }}" class="btn btn-success fw-bold">Nueva cotizacion</a>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-bordered align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Proyecto</th>
+            <th class="text-center">Cotizaciones</th>
+            <th class="text-end">Importe total</th>
+            <th>Ultima cotizacion</th>
+            <th class="text-center">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in proyectos %}
+          <tr>
+            <td class="fw-semibold">{{ p.nombre }}</td>
+            <td class="text-center">{{ p.cotizaciones }}</td>
+            <td class="text-end">${{ "{:,.2f}".format(p.total or 0) }}</td>
+            <td>{{ p.ultima_fecha.strftime('%Y-%m-%d %H:%M') if p.ultima_fecha else '-' }}</td>
+            <td class="text-center">
+              <a href="{{ url_for('proyecto_detalle', proyecto=p.nombre) }}" class="btn btn-outline-primary btn-sm">Ver cotizaciones</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5" class="text-center text-muted py-4">Todavia no hay cotizaciones registradas.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

@@ -63,6 +63,7 @@ class Cotizacion(db.Model):
     notas = db.Column(db.String(3000))
     last_whatsapp_at = db.Column(db.DateTime, nullable=True)
     responsable = db.Column(db.String(120))  # sustituye a “representante”
+    proyecto = db.Column(db.String(200))
     ciudad_trabajo = db.Column(db.String(120))
     area_total = db.Column(db.Float, default=0.0)
     memoria_tecnica = db.Column(db.Text)

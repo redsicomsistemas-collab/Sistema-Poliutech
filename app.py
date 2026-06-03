@@ -1512,6 +1512,7 @@ def _voice_preview_payload_for_mobile(
             "empresa": company,
             "correo": email,
             "telefono": phone,
+            "proyecto": "",
             "responsable_contacto": contact_responsible,
             "direccion": address,
             "ciudad": city,
@@ -1584,6 +1585,7 @@ def _create_mobile_voice_quote(preview: dict, user: Usuario) -> Cotizacion:
         estatus="PENDIENTE",
         notas="\n".join(part for part in notes_parts if part).strip() or None,
         responsable=responsible,
+        proyecto=(header_data.get("proyecto") or preview.get("proyecto") or "").strip() or None,
         ciudad_trabajo=(header_data.get("ciudad") or "").strip().upper() or None,
     )
     cot.subtotal = subtotal
@@ -2692,6 +2694,7 @@ def ensure_schema():
             ("total", "ALTER TABLE cotizacion ADD COLUMN total FLOAT DEFAULT 0.0"),
             ("notas", "ALTER TABLE cotizacion ADD COLUMN notas VARCHAR(3000)"),
             ("last_whatsapp_at", "ALTER TABLE cotizacion ADD COLUMN last_whatsapp_at TIMESTAMP NULL"),
+            ("proyecto", "ALTER TABLE cotizacion ADD COLUMN proyecto VARCHAR(200)"),
             ("ciudad_trabajo", "ALTER TABLE cotizacion ADD COLUMN ciudad_trabajo VARCHAR(120)"),
         ]:
             if col not in cols:
@@ -3031,9 +3034,35 @@ def _build_dashboard_cotizaciones_query(
         q = q.filter(or_(
             db.func.lower(db.func.coalesce(Cliente.nombre_cliente, "")).like(pattern),
             db.func.lower(db.func.coalesce(Cliente.empresa, "")).like(pattern),
+            db.func.lower(db.func.coalesce(Cotizacion.proyecto, "")).like(pattern),
         ))
 
     return q
+
+def _cotizaciones_base_query():
+    q = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
+    if not is_admin():
+        q = q.filter(Cotizacion.responsable == responsable_actual())
+    return q
+
+def _project_label_expr():
+    return db.func.coalesce(
+        db.func.nullif(db.func.trim(Cotizacion.proyecto), ""),
+        "Sin proyecto",
+    )
+
+def _known_project_names(limit: int = 100) -> list[str]:
+    expr = _project_label_expr()
+    rows = (
+        _cotizaciones_base_query()
+        .with_entities(expr.label("proyecto"))
+        .group_by(expr)
+        .order_by(expr.asc())
+        .limit(limit)
+        .all()
+    )
+    return [r.proyecto for r in rows if r.proyecto and r.proyecto != "Sin proyecto"]
+
 def generar_folio() -> str:
     prefix = "PTCH-"
     maxn = 0
@@ -3860,6 +3889,7 @@ def _normalize_import_payload(payload: dict) -> dict:
         "fecha": parse_datetime_flexible(payload.get("fecha")) or now_cdmx_naive(),
         "estatus": (payload.get("estatus") or "PENDIENTE").strip().upper(),
         "responsable": (payload.get("responsable") or "").strip() or None,
+        "proyecto": (payload.get("proyecto") or payload.get("obra") or "").strip() or None,
         "cliente": cliente,
         "zona": (payload.get("zona") or "").strip(),
         "iva_porc": parse_float(payload.get("iva_porc"), 16.0),
@@ -3948,6 +3978,7 @@ def import_external_quote_payload(payload: dict, source_label: Optional[str] = N
         notas=notas,
         last_whatsapp_at=None,
         responsable=responsable_final,
+        proyecto=normalized["proyecto"],
     )
     db.session.add(cot)
     db.session.flush()
@@ -4146,7 +4177,48 @@ def index():
 @app.route("/cotizador")
 @login_required
 def cotizador():
-    return render_template("cotizador.html", title="Nuevo - Sistema MAR")
+    return render_template("cotizador.html", title="Nuevo - Sistema MAR", proyectos=_known_project_names())
+
+
+@app.route("/proyectos")
+@login_required
+def proyectos():
+    expr = _project_label_expr()
+    rows = (
+        _cotizaciones_base_query()
+        .with_entities(
+            expr.label("nombre"),
+            db.func.count(Cotizacion.id).label("cotizaciones"),
+            db.func.coalesce(db.func.sum(Cotizacion.total), 0).label("total"),
+            db.func.max(Cotizacion.fecha).label("ultima_fecha"),
+        )
+        .group_by(expr)
+        .order_by(db.func.max(Cotizacion.fecha).desc())
+        .all()
+    )
+    return render_template("proyectos.html", proyectos=rows, title="Proyectos - Sistema MAR")
+
+
+@app.route("/proyectos/detalle")
+@login_required
+def proyecto_detalle():
+    nombre = (request.args.get("proyecto") or "Sin proyecto").strip() or "Sin proyecto"
+    q = _cotizaciones_base_query()
+    if nombre == "Sin proyecto":
+        q = q.filter(or_(Cotizacion.proyecto.is_(None), db.func.trim(Cotizacion.proyecto) == ""))
+    else:
+        q = q.filter(db.func.lower(db.func.trim(Cotizacion.proyecto)) == nombre.lower())
+
+    cotizaciones = q.order_by(Cotizacion.fecha.desc()).all()
+    total_importe = sum(float(c.total or 0) for c in cotizaciones)
+    return render_template(
+        "proyecto_detalle.html",
+        proyecto=nombre,
+        cotizaciones=cotizaciones,
+        total_importe=total_importe,
+        valid_estatus=VALID_ESTATUS,
+        title=f"Proyecto {nombre} - Sistema MAR",
+    )
 
 
 @app.route("/cotizador/voz/transcribir", methods=["POST"])
@@ -5293,6 +5365,7 @@ def api_mobile_pending_quotes():
             "estatus": cot.estatus or "",
             "total": cot.total or 0,
             "responsable": cot.responsable or "",
+            "proyecto": cot.proyecto or "",
             "cliente": cot.cliente.nombre_cliente if cot.cliente else "",
             "pdf_url": _mobile_quote_pdf_url(cot.id),
         })
@@ -5345,6 +5418,7 @@ def api_mobile_quotes():
             "estatus": cot.estatus or "",
             "total": cot.total or 0,
             "responsable": cot.responsable or "",
+            "proyecto": cot.proyecto or "",
             "cliente": cot.cliente.nombre_cliente if cot.cliente else "",
             "pdf_url": _mobile_quote_pdf_url(cot.id),
         })
@@ -5774,6 +5848,7 @@ def crear_cotizacion():
 
     nombre_cliente = (f.get("cliente") or f.get("cliente_nombre") or "").strip()
     empresa = (f.get("empresa") or "").strip()
+    proyecto = (f.get("proyecto") or "").strip() or None
     ciudad_trabajo = (f.get("ciudad_trabajo") or "").strip().upper() or None
 
     # === responsable_final ===
@@ -5833,6 +5908,7 @@ def crear_cotizacion():
         notas=(f.get("notas") or "").strip() or None,
         last_whatsapp_at=None,
         responsable=responsable_final,
+        proyecto=proyecto,
         ciudad_trabajo=ciudad_trabajo,
     )
     db.session.add(cot)
@@ -5965,7 +6041,7 @@ def editar_cotizacion(cot_id: int):
     descuento_porc_actual = 0.0
     if float(c.subtotal or 0) > 0:
         descuento_porc_actual = (float(c.descuento_total or 0) / float(c.subtotal or 0)) * 100.0
-    return render_template("cotizacion_edit.html", c=c, zona_actual=zona_actual, notas_adicionales=notas_adicionales, descuento_porc_actual=descuento_porc_actual, title=f"Editar {c.folio}")
+    return render_template("cotizacion_edit.html", c=c, zona_actual=zona_actual, notas_adicionales=notas_adicionales, descuento_porc_actual=descuento_porc_actual, proyectos=_known_project_names(), title=f"Editar {c.folio}")
 
 @app.route("/cotizaciones/<int:cot_id>/actualizar", methods=["POST"])
 @login_required
@@ -6027,6 +6103,7 @@ def actualizar_cotizacion(cot_id: int):
     c.estatus = (f.get("estatus") or c.estatus).upper()
     c.notas = (f.get("notas") or "").strip()
     c.responsable = (responsable_final or c.responsable)
+    c.proyecto = (f.get("proyecto") or "").strip() or None
     c.ciudad_trabajo = (f.get("ciudad_trabajo") or "").strip().upper() or None
     iva_porc = parse_float(f.get("iva_porc"), c.iva_porc or 16.0)
 
@@ -7424,6 +7501,7 @@ def api_cotizaciones_search():
             "empresa": c.cliente.empresa if c.cliente else "",
             "fecha": c.fecha.strftime("%Y-%m-%d %H:%M"),
             "estatus": c.estatus,
+            "proyecto": c.proyecto or "",
             "total": round(c.total or 0, 2),
             "export_csv": url_for("export_cotizacion_csv", cot_id=c.id),
             "export_pdf": url_for("export_cotizacion_pdf", cot_id=c.id),
