@@ -1,170 +1,80 @@
 {% extends "base.html" %}
 {% block title %}Finanzas{% endblock %}
 
-{% block content %}
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 my-4">
-  <div>
-    <h2 class="fw-bold text-primary mb-1">Finanzas</h2>
-    <div class="text-muted">Creditos, cuentas por cobrar, cuentas por pagar, pagos y vencimientos.</div>
-  </div>
-  <a href="{{ url_for('finanzas_export_xlsx') }}" class="btn btn-outline-success">Exportar Excel</a>
-</div>
-
-<div class="row g-3 mb-4">
-  <div class="col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small">Por cobrar</div>
-        <div class="h3 fw-bold text-success mb-0">${{ "{:,.2f}".format(por_cobrar or 0) }}</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small">Por pagar</div>
-        <div class="h3 fw-bold text-danger mb-0">${{ "{:,.2f}".format(por_pagar or 0) }}</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small">Vencido</div>
-        <div class="h3 fw-bold text-warning mb-0">${{ "{:,.2f}".format(vencido or 0) }}</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small">Compras por pagar</div>
-        <div class="h3 fw-bold text-primary mb-0">${{ "{:,.2f}".format(compras_por_pagar or 0) }}</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="row g-3 mb-4">
-  <div class="col-md-6">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-header bg-primary text-white fw-bold">Nuevo movimiento</div>
-      <div class="card-body">
-        <form method="post" action="{{ url_for('finanzas_crear') }}" class="row g-3">
-          <div class="col-md-6">
-            <label class="form-label">Tipo</label>
-            <select name="categoria" class="form-select" required>
-              {% for item in categorias %}
-              <option value="{{ item }}">{{ finanzas_category_label(item) }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="col-md-6">
-            <label class="form-label">Contraparte</label>
-            <input name="contraparte" class="form-control" placeholder="Cliente, proveedor o banco" required>
-          </div>
-          <div class="col-md-8">
-            <label class="form-label">Concepto</label>
-            <input name="concepto" class="form-control" placeholder="Factura, anticipo, credito, estimacion" required>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Monto</label>
-            <input type="number" step="any" min="0" name="monto" class="form-control" required>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Fecha</label>
-            <input type="date" name="fecha" class="form-control">
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Dias credito</label>
-            <input type="number" min="0" step="1" name="dias_credito" class="form-control" value="0">
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Vencimiento</label>
-            <input type="date" name="fecha_vencimiento" class="form-control">
-          </div>
-          <div class="col-md-5">
-            <label class="form-label">Proyecto</label>
-            <input name="proyecto" class="form-control">
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Referencia</label>
-            <input name="referencia" class="form-control" placeholder="Factura, OC, transferencia">
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">Moneda</label>
-            <input name="moneda" class="form-control" value="MXN">
-          </div>
-          <div class="col-12">
-            <label class="form-label">Notas</label>
-            <textarea name="notas" class="form-control" rows="2"></textarea>
-          </div>
-          <div class="col-12 d-grid d-md-flex justify-content-md-end">
-            <button class="btn btn-success">Guardar movimiento</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-md-6">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-header bg-light fw-bold">Flujo registrado</div>
-      <div class="card-body">
-        <div class="row g-3">
-          <div class="col-md-6">
-            <div class="border rounded p-3 h-100">
-              <div class="text-muted small">Pagos recibidos</div>
-              <div class="h4 fw-bold text-success mb-0">${{ "{:,.2f}".format(recibido or 0) }}</div>
-            </div>
-          </div>
-          <div class="col-md-6">
-            <div class="border rounded p-3 h-100">
-              <div class="text-muted small">Pagos realizados</div>
-              <div class="h4 fw-bold text-danger mb-0">${{ "{:,.2f}".format(pagado or 0) }}</div>
-            </div>
-          </div>
-          <div class="col-12">
-            <div class="alert alert-info mb-0">
-              Las ordenes de compra facturadas o recibidas se muestran como referencia en "Compras por pagar"; los movimientos financieros se controlan aqui con saldos y vencimientos propios.
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="card shadow-sm border-0">
-  <div class="card-header bg-light">
-    <form method="get" action="{{ url_for('finanzas_index') }}" class="row g-2 align-items-end">
-      <div class="col-md-4">
-        <label class="form-label">Buscar</label>
-        <input name="q" class="form-control" value="{{ q }}" placeholder="Folio, contraparte, proyecto o referencia">
-      </div>
+{% macro captura_financiera(tab_id, categoria_default, titulo, contraparte_label, concepto_placeholder, mostrar_tipo=False, mostrar_credito=True) %}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-primary text-white fw-bold">{{ titulo }}</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('finanzas_crear') }}" class="row g-3">
+      <input type="hidden" name="tab" value="{{ tab_id }}">
+      {% if mostrar_tipo %}
       <div class="col-md-3">
         <label class="form-label">Tipo</label>
-        <select name="categoria" class="form-select">
-          <option value="">Todos</option>
-          {% for item in categorias %}
-          <option value="{{ item }}" {% if categoria == item %}selected{% endif %}>{{ finanzas_category_label(item) }}</option>
-          {% endfor %}
+        <select name="categoria" class="form-select" required>
+          {% if tab_id == "creditos" %}
+          <option value="CREDITO_OTORGADO">Credito otorgado</option>
+          <option value="CREDITO_RECIBIDO">Credito recibido</option>
+          {% else %}
+          <option value="PAGO_RECIBIDO">Pago recibido</option>
+          <option value="PAGO_REALIZADO">Pago realizado</option>
+          {% endif %}
         </select>
+      </div>
+      {% else %}
+      <input type="hidden" name="categoria" value="{{ categoria_default }}">
+      {% endif %}
+      <div class="col-md-3">
+        <label class="form-label">{{ contraparte_label }}</label>
+        <input name="contraparte" class="form-control" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Concepto</label>
+        <input name="concepto" class="form-control" placeholder="{{ concepto_placeholder }}" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Monto</label>
+        <input type="number" step="any" min="0" name="monto" class="form-control" required>
       </div>
       <div class="col-md-3">
-        <label class="form-label">Estatus</label>
-        <select name="estatus" class="form-select">
-          <option value="">Todos</option>
-          {% for item in estatus_options %}
-          <option value="{{ item }}" {% if estatus == item %}selected{% endif %}>{{ item }}</option>
-          {% endfor %}
-        </select>
+        <label class="form-label">Fecha</label>
+        <input type="date" name="fecha" class="form-control">
       </div>
-      <div class="col-md-2 d-grid">
-        <button class="btn btn-outline-primary">Filtrar</button>
+      {% if mostrar_credito %}
+      <div class="col-md-2">
+        <label class="form-label">Dias credito</label>
+        <input type="number" min="0" step="1" name="dias_credito" class="form-control" value="0">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Vencimiento</label>
+        <input type="date" name="fecha_vencimiento" class="form-control">
+      </div>
+      {% endif %}
+      <div class="col-md-3">
+        <label class="form-label">Proyecto</label>
+        <input name="proyecto" class="form-control">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Referencia</label>
+        <input name="referencia" class="form-control" placeholder="Factura, OC o transferencia">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Moneda</label>
+        <input name="moneda" class="form-control" value="MXN">
+      </div>
+      <div class="col-md-7">
+        <label class="form-label">Notas</label>
+        <input name="notas" class="form-control">
+      </div>
+      <div class="col-md-3 d-grid align-self-end">
+        <button class="btn btn-success">Guardar</button>
       </div>
     </form>
   </div>
+</div>
+{% endmacro %}
+
+{% macro tabla_financiera(items, titulo_vacio) %}
+<div class="card border-0 shadow-sm">
   <div class="card-body p-0">
     <div class="table-responsive">
       <table class="table table-hover align-middle mb-0">
@@ -183,7 +93,7 @@
           </tr>
         </thead>
         <tbody>
-          {% for mov in movimientos %}
+          {% for mov in items %}
           {% set estatus_real = finanzas_estatus_real(mov) %}
           <tr>
             <td class="fw-bold">{{ mov.folio }}</td>
@@ -233,12 +143,125 @@
           </tr>
           {% else %}
           <tr>
-            <td colspan="10" class="text-center text-muted py-4">No hay movimientos financieros con estos filtros.</td>
+            <td colspan="10" class="text-center text-muted py-4">{{ titulo_vacio }}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
+  </div>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 my-4">
+  <div>
+    <h2 class="fw-bold text-primary mb-1">Finanzas</h2>
+    <div class="text-muted">Control separado de cobros, pagos, creditos y vencimientos.</div>
+  </div>
+  <a href="{{ url_for('finanzas_export_xlsx') }}" class="btn btn-outline-success">Exportar Excel</a>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Por cobrar</div>
+        <div class="h3 fw-bold text-success mb-0">${{ "{:,.2f}".format(por_cobrar or 0) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Por pagar</div>
+        <div class="h3 fw-bold text-danger mb-0">${{ "{:,.2f}".format(por_pagar or 0) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Vencido</div>
+        <div class="h3 fw-bold text-warning mb-0">${{ "{:,.2f}".format(vencido or 0) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Compras por pagar</div>
+        <div class="h3 fw-bold text-primary mb-0">${{ "{:,.2f}".format(compras_por_pagar or 0) }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm border-0 mb-3">
+  <div class="card-header bg-light">
+    <form method="get" action="{{ url_for('finanzas_index') }}" class="row g-2 align-items-end">
+      <input type="hidden" name="tab" value="{{ active_tab }}">
+      <div class="col-md-8">
+        <label class="form-label">Buscar</label>
+        <input name="q" class="form-control" value="{{ q }}" placeholder="Folio, contraparte, proyecto, concepto o referencia">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Estatus</label>
+        <select name="estatus" class="form-select">
+          <option value="">Todos</option>
+          {% for item in estatus_options %}
+          <option value="{{ item }}" {% if estatus == item %}selected{% endif %}>{{ item }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-1 d-grid">
+        <button class="btn btn-outline-primary">Filtrar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<ul class="nav nav-tabs mb-3" id="finanzasTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link {% if active_tab == 'por-cobrar' %}active{% endif %}" id="por-cobrar-tab" data-bs-toggle="tab" data-bs-target="#por-cobrar" type="button" role="tab">Por cobrar</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link {% if active_tab == 'por-pagar' %}active{% endif %}" id="por-pagar-tab" data-bs-toggle="tab" data-bs-target="#por-pagar" type="button" role="tab">Por pagar</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link {% if active_tab == 'creditos' %}active{% endif %}" id="creditos-tab" data-bs-toggle="tab" data-bs-target="#creditos" type="button" role="tab">Creditos</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link {% if active_tab == 'pagos' %}active{% endif %}" id="pagos-tab" data-bs-toggle="tab" data-bs-target="#pagos" type="button" role="tab">Pagos</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link {% if active_tab == 'vencimientos' %}active{% endif %}" id="vencimientos-tab" data-bs-toggle="tab" data-bs-target="#vencimientos" type="button" role="tab">Vencimientos</button>
+  </li>
+</ul>
+
+<div class="tab-content" id="finanzasTabsContent">
+  <div class="tab-pane fade {% if active_tab == 'por-cobrar' %}show active{% endif %}" id="por-cobrar" role="tabpanel" aria-labelledby="por-cobrar-tab">
+    {{ captura_financiera("por-cobrar", "CUENTA_POR_COBRAR", "Nuevo cobro por hacer", "Cliente", "Factura, estimacion, anticipo por cobrar") }}
+    {{ tabla_financiera(movimientos_por_cobrar, "No hay cobros por hacer con estos filtros.") }}
+  </div>
+
+  <div class="tab-pane fade {% if active_tab == 'por-pagar' %}show active{% endif %}" id="por-pagar" role="tabpanel" aria-labelledby="por-pagar-tab">
+    {{ captura_financiera("por-pagar", "CUENTA_POR_PAGAR", "Nuevo cobro por pagar", "Proveedor / acreedor", "Factura proveedor, renta, servicio, material") }}
+    {{ tabla_financiera(movimientos_por_pagar, "No hay cobros por pagar con estos filtros.") }}
+  </div>
+
+  <div class="tab-pane fade {% if active_tab == 'creditos' %}show active{% endif %}" id="creditos" role="tabpanel" aria-labelledby="creditos-tab">
+    {{ captura_financiera("creditos", "", "Nuevo credito", "Cliente / proveedor / banco", "Linea de credito, prestamo, financiamiento", True, True) }}
+    {{ tabla_financiera(movimientos_creditos, "No hay creditos con estos filtros.") }}
+  </div>
+
+  <div class="tab-pane fade {% if active_tab == 'pagos' %}show active{% endif %}" id="pagos" role="tabpanel" aria-labelledby="pagos-tab">
+    {{ captura_financiera("pagos", "", "Nuevo pago", "Cliente / proveedor", "Transferencia, deposito, pago de factura", True, False) }}
+    {{ tabla_financiera(movimientos_pagos, "No hay pagos con estos filtros.") }}
+  </div>
+
+  <div class="tab-pane fade {% if active_tab == 'vencimientos' %}show active{% endif %}" id="vencimientos" role="tabpanel" aria-labelledby="vencimientos-tab">
+    {{ tabla_financiera(movimientos_vencimientos, "No hay vencimientos pendientes con estos filtros.") }}
   </div>
 </div>
 
@@ -324,4 +347,17 @@
   </div>
 </div>
 {% endfor %}
+
+<script>
+document.querySelectorAll('#finanzasTabs button[data-bs-toggle="tab"]').forEach((button) => {
+  button.addEventListener('shown.bs.tab', (event) => {
+    const target = event.target.getAttribute('data-bs-target') || '';
+    const tab = target.replace('#', '');
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', tab);
+    window.history.replaceState({}, '', url);
+    document.querySelector('input[name="tab"]')?.setAttribute('value', tab);
+  });
+});
+</script>
 {% endblock %}

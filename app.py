@@ -7932,12 +7932,22 @@ def _finanzas_fecha_input(fecha) -> str:
     return fecha.strftime("%Y-%m-%d") if fecha else ""
 
 
+def _finanzas_redirect():
+    tab = (request.form.get("tab") or request.args.get("tab") or "por-cobrar").strip()
+    if tab not in {"por-cobrar", "por-pagar", "creditos", "pagos", "vencimientos"}:
+        tab = "por-cobrar"
+    return redirect(request.referrer or url_for("finanzas_index", tab=tab))
+
+
 @app.route("/finanzas")
 @login_required
 def finanzas_index():
     q = (request.args.get("q") or "").strip()
     categoria = (request.args.get("categoria") or "").strip().upper()
     estatus = (request.args.get("estatus") or "").strip().upper()
+    active_tab = (request.args.get("tab") or "por-cobrar").strip()
+    if active_tab not in {"por-cobrar", "por-pagar", "creditos", "pagos", "vencimientos"}:
+        active_tab = "por-cobrar"
 
     query = MovimientoFinanciero.query
     if q:
@@ -7967,6 +7977,14 @@ def finanzas_index():
         MovimientoFinanciero.fecha.desc(),
         MovimientoFinanciero.id.desc(),
     ).all()
+    movimientos_por_cobrar = [m for m in movimientos if m.categoria == "CUENTA_POR_COBRAR"]
+    movimientos_por_pagar = [m for m in movimientos if m.categoria == "CUENTA_POR_PAGAR"]
+    movimientos_creditos = [m for m in movimientos if m.categoria in {"CREDITO_OTORGADO", "CREDITO_RECIBIDO"}]
+    movimientos_pagos = [m for m in movimientos if m.categoria in {"PAGO_RECIBIDO", "PAGO_REALIZADO"}]
+    movimientos_vencimientos = [
+        m for m in movimientos
+        if m.fecha_vencimiento and _finanzas_estatus_real(m) not in {"PAGADO", "CANCELADO"}
+    ]
 
     activos = [
         m for m in MovimientoFinanciero.query.all()
@@ -7986,11 +8004,17 @@ def finanzas_index():
         "finanzas.html",
         title="Finanzas",
         movimientos=movimientos,
+        movimientos_por_cobrar=movimientos_por_cobrar,
+        movimientos_por_pagar=movimientos_por_pagar,
+        movimientos_creditos=movimientos_creditos,
+        movimientos_pagos=movimientos_pagos,
+        movimientos_vencimientos=movimientos_vencimientos,
         categorias=FINANZAS_CATEGORIAS,
         estatus_options=FINANZAS_ESTATUS,
         q=q,
         categoria=categoria,
         estatus=estatus,
+        active_tab=active_tab,
         por_cobrar=por_cobrar,
         por_pagar=por_pagar,
         vencido=vencido,
@@ -8014,10 +8038,10 @@ def finanzas_crear():
     monto = fmt(parse_float(f.get("monto"), 0))
     if categoria not in FINANZAS_CATEGORIAS:
         flash("Selecciona un tipo financiero valido.", "warning")
-        return redirect(url_for("finanzas_index"))
+        return _finanzas_redirect()
     if not contraparte or not concepto or monto <= 0:
         flash("Captura contraparte, concepto y monto mayor a cero.", "warning")
-        return redirect(url_for("finanzas_index"))
+        return _finanzas_redirect()
 
     fecha = _parse_date_or_none(f.get("fecha")) or now_cdmx_naive()
     dias_credito = max(0, int(parse_float(f.get("dias_credito"), 0)))
@@ -8048,7 +8072,7 @@ def finanzas_crear():
     db.session.add(mov)
     db.session.commit()
     flash(f"Movimiento {mov.folio} registrado.", "success")
-    return redirect(url_for("finanzas_index"))
+    return _finanzas_redirect()
 
 
 @app.route("/finanzas/<int:mov_id>/actualizar", methods=["POST"])
@@ -8065,13 +8089,13 @@ def finanzas_actualizar(mov_id: int):
 
     if categoria not in FINANZAS_CATEGORIAS:
         flash("Selecciona un tipo financiero valido.", "warning")
-        return redirect(url_for("finanzas_index"))
+        return _finanzas_redirect()
     if estatus not in FINANZAS_ESTATUS:
         flash("Selecciona un estatus financiero valido.", "warning")
-        return redirect(url_for("finanzas_index"))
+        return _finanzas_redirect()
     if not contraparte or not concepto or monto <= 0:
         flash("Captura contraparte, concepto y monto mayor a cero.", "warning")
-        return redirect(url_for("finanzas_index"))
+        return _finanzas_redirect()
 
     fecha = _parse_date_or_none(f.get("fecha")) or mov.fecha or now_cdmx_naive()
     dias_credito = max(0, int(parse_float(f.get("dias_credito"), 0)))
@@ -8104,7 +8128,7 @@ def finanzas_actualizar(mov_id: int):
     mov.actualizado_en = now_cdmx_naive()
     db.session.commit()
     flash(f"Movimiento {mov.folio} actualizado.", "success")
-    return redirect(url_for("finanzas_index"))
+    return _finanzas_redirect()
 
 
 @app.route("/finanzas/<int:mov_id>/eliminar", methods=["POST"])
@@ -8115,7 +8139,7 @@ def finanzas_eliminar(mov_id: int):
     db.session.delete(mov)
     db.session.commit()
     flash(f"Movimiento {folio} eliminado.", "success")
-    return redirect(url_for("finanzas_index"))
+    return _finanzas_redirect()
 
 
 @app.route("/finanzas/<int:mov_id>/abono", methods=["POST"])
@@ -8125,7 +8149,7 @@ def finanzas_abono(mov_id: int):
     abono = fmt(parse_float(request.form.get("abono"), 0))
     if abono <= 0:
         flash("Captura un abono mayor a cero.", "warning")
-        return redirect(url_for("finanzas_index"))
+        return _finanzas_redirect()
     mov.saldo = fmt(max(0.0, float(mov.saldo or 0) - abono))
     mov.estatus = "PAGADO" if mov.saldo <= 0 else "PARCIAL"
     nota = (request.form.get("nota_abono") or "").strip()
@@ -8137,7 +8161,7 @@ def finanzas_abono(mov_id: int):
     mov.actualizado_en = now_cdmx_naive()
     db.session.commit()
     flash("Abono registrado.", "success")
-    return redirect(url_for("finanzas_index"))
+    return _finanzas_redirect()
 
 
 @app.route("/finanzas/<int:mov_id>/estatus", methods=["POST"])
@@ -8147,7 +8171,7 @@ def finanzas_estatus(mov_id: int):
     estatus = (request.form.get("estatus") or "").strip().upper()
     if estatus not in FINANZAS_ESTATUS:
         flash("Estatus invalido.", "warning")
-        return redirect(url_for("finanzas_index"))
+        return _finanzas_redirect()
     mov.estatus = estatus
     if estatus == "PAGADO":
         mov.saldo = 0.0
@@ -8156,7 +8180,7 @@ def finanzas_estatus(mov_id: int):
     mov.actualizado_en = now_cdmx_naive()
     db.session.commit()
     flash("Estatus financiero actualizado.", "success")
-    return redirect(url_for("finanzas_index"))
+    return _finanzas_redirect()
 
 
 @app.route("/finanzas/export.xlsx")
