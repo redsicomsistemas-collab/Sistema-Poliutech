@@ -2342,6 +2342,7 @@ from models import (
     OrdenCompra,
     OrdenCompraPartida,
     MovimientoFinanciero,
+    MovimientoFinancieroPago,
 )
 
 # ---------------------------------------------------------
@@ -7865,20 +7866,13 @@ def _parse_date_or_none(raw: str):
         return None
 
 
-FINANZAS_CATEGORIAS = (
-    "CUENTA_POR_COBRAR",
-    "CUENTA_POR_PAGAR",
-    "CREDITO_OTORGADO",
-    "CREDITO_RECIBIDO",
-    "PAGO_RECIBIDO",
-    "PAGO_REALIZADO",
-)
+FINANZAS_CATEGORIA_CREDITO = "CREDITO_RECIBIDO"
 FINANZAS_ESTATUS = ("PENDIENTE", "PARCIAL", "PAGADO", "VENCIDO", "CANCELADO")
 
 
 def _finanzas_next_folio() -> str:
     year = now_cdmx_naive().year
-    prefix = f"FIN-{year}-"
+    prefix = f"CRED-{year}-"
     latest = (
         MovimientoFinanciero.query
         .filter(MovimientoFinanciero.folio.like(f"{prefix}%"))
@@ -7918,38 +7912,64 @@ def _finanzas_badge_class(estatus: str) -> str:
 
 
 def _finanzas_category_label(categoria: str) -> str:
-    return {
-        "CUENTA_POR_COBRAR": "Por cobrar",
-        "CUENTA_POR_PAGAR": "Por pagar",
-        "CREDITO_OTORGADO": "Credito otorgado",
-        "CREDITO_RECIBIDO": "Credito recibido",
-        "PAGO_RECIBIDO": "Pago recibido",
-        "PAGO_REALIZADO": "Pago realizado",
-    }.get((categoria or "").upper(), categoria or "")
+    return "Credito recibido" if (categoria or "").upper() == FINANZAS_CATEGORIA_CREDITO else (categoria or "")
 
 
 def _finanzas_fecha_input(fecha) -> str:
     return fecha.strftime("%Y-%m-%d") if fecha else ""
 
 
+def _finanzas_dias_restantes(mov: MovimientoFinanciero):
+    if not mov.fecha_vencimiento:
+        return None
+    return (mov.fecha_vencimiento.date() - now_cdmx_naive().date()).days
+
+
+def _finanzas_pagado(mov: MovimientoFinanciero) -> float:
+    return max(0.0, float(mov.monto or 0) - float(mov.saldo or 0))
+
+
+def _finanzas_porcentaje_pagado(mov: MovimientoFinanciero) -> float:
+    monto = float(mov.monto or 0)
+    if monto <= 0:
+        return 0.0
+    return min(100.0, max(0.0, (_finanzas_pagado(mov) / monto) * 100.0))
+
+
+def _finanzas_porcentaje_tiempo(mov: MovimientoFinanciero) -> float:
+    if not mov.fecha or not mov.fecha_vencimiento:
+        return 0.0
+    inicio = mov.fecha.date()
+    fin = mov.fecha_vencimiento.date()
+    total = max(1, (fin - inicio).days)
+    transcurridos = (now_cdmx_naive().date() - inicio).days
+    return min(100.0, max(0.0, (transcurridos / total) * 100.0))
+
+
+def _finanzas_tiempo_estado(mov: MovimientoFinanciero) -> dict:
+    dias = _finanzas_dias_restantes(mov)
+    if dias is None:
+        return {"texto": "Sin vencimiento", "clase": "secondary", "detalle": ""}
+    if dias < 0:
+        return {"texto": "Vencido", "clase": "danger", "detalle": f"Hace {abs(dias)} dias"}
+    if dias <= 7:
+        return {"texto": "Urgente", "clase": "danger", "detalle": f"{dias} dias restantes"}
+    if dias <= 30:
+        return {"texto": "Por vencer", "clase": "warning", "detalle": f"{dias} dias restantes"}
+    return {"texto": "A tiempo", "clase": "success", "detalle": f"{dias} dias restantes"}
+
+
 def _finanzas_redirect():
-    tab = (request.form.get("tab") or request.args.get("tab") or "por-cobrar").strip()
-    if tab not in {"por-cobrar", "por-pagar", "creditos", "pagos", "vencimientos"}:
-        tab = "por-cobrar"
-    return redirect(request.referrer or url_for("finanzas_index", tab=tab))
+    return redirect(request.referrer or url_for("finanzas_index"))
 
 
 @app.route("/finanzas")
 @login_required
 def finanzas_index():
     q = (request.args.get("q") or "").strip()
-    categoria = (request.args.get("categoria") or "").strip().upper()
     estatus = (request.args.get("estatus") or "").strip().upper()
-    active_tab = (request.args.get("tab") or "por-cobrar").strip()
-    if active_tab not in {"por-cobrar", "por-pagar", "creditos", "pagos", "vencimientos"}:
-        active_tab = "por-cobrar"
 
-    query = MovimientoFinanciero.query
+    query = MovimientoFinanciero.query.filter(MovimientoFinanciero.categoria == FINANZAS_CATEGORIA_CREDITO)
     if q:
         like = f"%{q}%"
         query = query.filter(or_(
@@ -7959,8 +7979,6 @@ def finanzas_index():
             MovimientoFinanciero.proyecto.ilike(like),
             MovimientoFinanciero.referencia.ilike(like),
         ))
-    if categoria:
-        query = query.filter(MovimientoFinanciero.categoria == categoria)
     if estatus:
         if estatus == "VENCIDO":
             query = query.filter(
@@ -7977,54 +7995,51 @@ def finanzas_index():
         MovimientoFinanciero.fecha.desc(),
         MovimientoFinanciero.id.desc(),
     ).all()
-    movimientos_por_cobrar = [m for m in movimientos if m.categoria == "CUENTA_POR_COBRAR"]
-    movimientos_por_pagar = [m for m in movimientos if m.categoria == "CUENTA_POR_PAGAR"]
-    movimientos_creditos = [m for m in movimientos if m.categoria in {"CREDITO_OTORGADO", "CREDITO_RECIBIDO"}]
-    movimientos_pagos = [m for m in movimientos if m.categoria in {"PAGO_RECIBIDO", "PAGO_REALIZADO"}]
-    movimientos_vencimientos = [
-        m for m in movimientos
-        if m.fecha_vencimiento and _finanzas_estatus_real(m) not in {"PAGADO", "CANCELADO"}
-    ]
 
     activos = [
-        m for m in MovimientoFinanciero.query.all()
+        m for m in MovimientoFinanciero.query.filter_by(categoria=FINANZAS_CATEGORIA_CREDITO).all()
         if _finanzas_estatus_real(m) not in {"PAGADO", "CANCELADO"}
     ]
-    por_cobrar = sum(float(m.saldo or 0) for m in activos if m.categoria in {"CUENTA_POR_COBRAR", "CREDITO_OTORGADO"})
-    por_pagar = sum(float(m.saldo or 0) for m in activos if m.categoria in {"CUENTA_POR_PAGAR", "CREDITO_RECIBIDO"})
+    saldo_total = sum(float(m.saldo or 0) for m in activos)
+    monto_total = sum(float(m.monto or 0) for m in MovimientoFinanciero.query.filter_by(categoria=FINANZAS_CATEGORIA_CREDITO).all())
+    pagado_total = sum(_finanzas_pagado(m) for m in MovimientoFinanciero.query.filter_by(categoria=FINANZAS_CATEGORIA_CREDITO).all())
     vencido = sum(float(m.saldo or 0) for m in activos if _finanzas_estatus_real(m) == "VENCIDO")
-    recibido = sum(float(m.monto or 0) for m in MovimientoFinanciero.query.filter_by(categoria="PAGO_RECIBIDO").all())
-    pagado = sum(float(m.monto or 0) for m in MovimientoFinanciero.query.filter_by(categoria="PAGO_REALIZADO").all())
-    compras_por_pagar = sum(
-        max(0.0, float(o.total or 0) - float(o.pago_monto or 0))
-        for o in OrdenCompra.query.filter(OrdenCompra.estatus.in_(["FACTURADA", "RECIBIDA COMPLETA", "PARCIALMENTE RECIBIDA"])).all()
+    por_vencer_30 = sum(
+        float(m.saldo or 0)
+        for m in activos
+        if m.fecha_vencimiento and 0 <= _finanzas_dias_restantes(m) <= 30
+    )
+    pagos_recientes = (
+        MovimientoFinancieroPago.query
+        .join(MovimientoFinanciero)
+        .filter(MovimientoFinanciero.categoria == FINANZAS_CATEGORIA_CREDITO)
+        .order_by(MovimientoFinancieroPago.fecha.desc(), MovimientoFinancieroPago.id.desc())
+        .limit(12)
+        .all()
     )
 
     return render_template(
         "finanzas.html",
-        title="Finanzas",
-        movimientos=movimientos,
-        movimientos_por_cobrar=movimientos_por_cobrar,
-        movimientos_por_pagar=movimientos_por_pagar,
-        movimientos_creditos=movimientos_creditos,
-        movimientos_pagos=movimientos_pagos,
-        movimientos_vencimientos=movimientos_vencimientos,
-        categorias=FINANZAS_CATEGORIAS,
+        title="Creditos",
+        creditos=movimientos,
+        pagos_recientes=pagos_recientes,
         estatus_options=FINANZAS_ESTATUS,
         q=q,
-        categoria=categoria,
         estatus=estatus,
-        active_tab=active_tab,
-        por_cobrar=por_cobrar,
-        por_pagar=por_pagar,
+        saldo_total=saldo_total,
+        monto_total=monto_total,
+        pagado_total=pagado_total,
         vencido=vencido,
-        recibido=recibido,
-        pagado=pagado,
-        compras_por_pagar=compras_por_pagar,
+        por_vencer_30=por_vencer_30,
         finanzas_estatus_real=_finanzas_estatus_real,
         finanzas_badge_class=_finanzas_badge_class,
         finanzas_category_label=_finanzas_category_label,
         finanzas_fecha_input=_finanzas_fecha_input,
+        finanzas_dias_restantes=_finanzas_dias_restantes,
+        finanzas_pagado=_finanzas_pagado,
+        finanzas_porcentaje_pagado=_finanzas_porcentaje_pagado,
+        finanzas_porcentaje_tiempo=_finanzas_porcentaje_tiempo,
+        finanzas_tiempo_estado=_finanzas_tiempo_estado,
     )
 
 
@@ -8032,15 +8047,11 @@ def finanzas_index():
 @login_required
 def finanzas_crear():
     f = request.form
-    categoria = (f.get("categoria") or "").strip().upper()
     contraparte = (f.get("contraparte") or "").strip()
     concepto = (f.get("concepto") or "").strip()
     monto = fmt(parse_float(f.get("monto"), 0))
-    if categoria not in FINANZAS_CATEGORIAS:
-        flash("Selecciona un tipo financiero valido.", "warning")
-        return _finanzas_redirect()
     if not contraparte or not concepto or monto <= 0:
-        flash("Captura contraparte, concepto y monto mayor a cero.", "warning")
+        flash("Captura quien otorgo el credito, concepto y monto mayor a cero.", "warning")
         return _finanzas_redirect()
 
     fecha = _parse_date_or_none(f.get("fecha")) or now_cdmx_naive()
@@ -8049,12 +8060,10 @@ def finanzas_crear():
     if not fecha_vencimiento and dias_credito:
         fecha_vencimiento = fecha + timedelta(days=dias_credito)
 
-    saldo = 0.0 if categoria in {"PAGO_RECIBIDO", "PAGO_REALIZADO"} else monto
-    estatus = "PAGADO" if saldo <= 0 else "PENDIENTE"
     mov = MovimientoFinanciero(
         folio=_finanzas_next_folio(),
-        categoria=categoria,
-        estatus=estatus,
+        categoria=FINANZAS_CATEGORIA_CREDITO,
+        estatus="PENDIENTE",
         contraparte=contraparte,
         concepto=concepto,
         proyecto=(f.get("proyecto") or "").strip() or None,
@@ -8063,7 +8072,7 @@ def finanzas_crear():
         fecha_vencimiento=fecha_vencimiento,
         dias_credito=dias_credito,
         monto=monto,
-        saldo=saldo,
+        saldo=monto,
         moneda=(f.get("moneda") or "MXN").strip().upper()[:10] or "MXN",
         notas=(f.get("notas") or "").strip() or None,
         responsable=responsable_actual() or None,
@@ -8071,7 +8080,7 @@ def finanzas_crear():
     )
     db.session.add(mov)
     db.session.commit()
-    flash(f"Movimiento {mov.folio} registrado.", "success")
+    flash(f"Credito {mov.folio} registrado.", "success")
     return _finanzas_redirect()
 
 
@@ -8080,21 +8089,17 @@ def finanzas_crear():
 def finanzas_actualizar(mov_id: int):
     mov = MovimientoFinanciero.query.get_or_404(mov_id)
     f = request.form
-    categoria = (f.get("categoria") or "").strip().upper()
     contraparte = (f.get("contraparte") or "").strip()
     concepto = (f.get("concepto") or "").strip()
     estatus = (f.get("estatus") or "").strip().upper()
     monto = fmt(parse_float(f.get("monto"), 0))
     saldo = fmt(parse_float(f.get("saldo"), 0))
 
-    if categoria not in FINANZAS_CATEGORIAS:
-        flash("Selecciona un tipo financiero valido.", "warning")
-        return _finanzas_redirect()
     if estatus not in FINANZAS_ESTATUS:
-        flash("Selecciona un estatus financiero valido.", "warning")
+        flash("Selecciona un estatus valido.", "warning")
         return _finanzas_redirect()
     if not contraparte or not concepto or monto <= 0:
-        flash("Captura contraparte, concepto y monto mayor a cero.", "warning")
+        flash("Captura quien otorgo el credito, concepto y monto mayor a cero.", "warning")
         return _finanzas_redirect()
 
     fecha = _parse_date_or_none(f.get("fecha")) or mov.fecha or now_cdmx_naive()
@@ -8112,7 +8117,7 @@ def finanzas_actualizar(mov_id: int):
         elif saldo < monto and estatus == "PENDIENTE":
             estatus = "PARCIAL"
 
-    mov.categoria = categoria
+    mov.categoria = FINANZAS_CATEGORIA_CREDITO
     mov.estatus = estatus
     mov.contraparte = contraparte
     mov.concepto = concepto
@@ -8127,7 +8132,7 @@ def finanzas_actualizar(mov_id: int):
     mov.notas = (f.get("notas") or "").strip() or None
     mov.actualizado_en = now_cdmx_naive()
     db.session.commit()
-    flash(f"Movimiento {mov.folio} actualizado.", "success")
+    flash(f"Credito {mov.folio} actualizado.", "success")
     return _finanzas_redirect()
 
 
@@ -8138,7 +8143,7 @@ def finanzas_eliminar(mov_id: int):
     folio = mov.folio or f"#{mov.id}"
     db.session.delete(mov)
     db.session.commit()
-    flash(f"Movimiento {folio} eliminado.", "success")
+    flash(f"Credito {folio} eliminado.", "success")
     return _finanzas_redirect()
 
 
@@ -8150,17 +8155,25 @@ def finanzas_abono(mov_id: int):
     if abono <= 0:
         flash("Captura un abono mayor a cero.", "warning")
         return _finanzas_redirect()
+    abono = min(abono, float(mov.saldo or 0))
+    fecha_pago = _parse_date_or_none(request.form.get("fecha_pago")) or now_cdmx_naive()
+    referencia = (request.form.get("referencia_pago") or "").strip() or None
+    nota = (request.form.get("nota_abono") or "").strip() or None
+    pago = MovimientoFinancieroPago(
+        movimiento=mov,
+        fecha=fecha_pago,
+        monto=abono,
+        referencia=referencia,
+        notas=nota,
+        responsable=responsable_actual() or None,
+        usuario_id=getattr(current_user, "id", None),
+    )
+    db.session.add(pago)
     mov.saldo = fmt(max(0.0, float(mov.saldo or 0) - abono))
     mov.estatus = "PAGADO" if mov.saldo <= 0 else "PARCIAL"
-    nota = (request.form.get("nota_abono") or "").strip()
-    stamp = now_cdmx_naive().strftime("%d/%m/%Y")
-    bitacora = f"Abono {stamp}: ${abono:,.2f}"
-    if nota:
-        bitacora += f" - {nota}"
-    mov.notas = "\n".join([x for x in [mov.notas, bitacora] if x])
     mov.actualizado_en = now_cdmx_naive()
     db.session.commit()
-    flash("Abono registrado.", "success")
+    flash("Pago registrado.", "success")
     return _finanzas_redirect()
 
 
@@ -8179,7 +8192,7 @@ def finanzas_estatus(mov_id: int):
         mov.saldo = 0.0
     mov.actualizado_en = now_cdmx_naive()
     db.session.commit()
-    flash("Estatus financiero actualizado.", "success")
+    flash("Estatus del credito actualizado.", "success")
     return _finanzas_redirect()
 
 
@@ -8189,41 +8202,71 @@ def finanzas_export_xlsx():
     if Workbook is None:
         abort(501, description="openpyxl no instalado en el servidor.")
 
-    movimientos = MovimientoFinanciero.query.order_by(MovimientoFinanciero.fecha.desc(), MovimientoFinanciero.id.desc()).all()
+    movimientos = (
+        MovimientoFinanciero.query
+        .filter_by(categoria=FINANZAS_CATEGORIA_CREDITO)
+        .order_by(MovimientoFinanciero.fecha.desc(), MovimientoFinanciero.id.desc())
+        .all()
+    )
     wb = Workbook()
     ws = wb.active
-    ws.title = "Finanzas"
+    ws.title = "Creditos"
     ws.append([
-        "Folio", "Tipo", "Estatus", "Contraparte", "Concepto", "Proyecto", "Referencia",
-        "Fecha", "Vencimiento", "Dias credito", "Monto", "Saldo", "Moneda", "Responsable", "Notas",
+        "Folio", "Otorgante", "Concepto", "Estatus", "Fecha credito", "Vencimiento",
+        "Dias credito", "Dias restantes", "Monto", "Pagado", "Saldo", "Moneda",
+        "Referencia", "Responsable", "Notas",
     ])
     for mov in movimientos:
         ws.append([
             mov.folio or "",
-            _finanzas_category_label(mov.categoria),
-            _finanzas_estatus_real(mov),
             mov.contraparte or "",
             mov.concepto or "",
-            mov.proyecto or "",
-            mov.referencia or "",
+            _finanzas_estatus_real(mov),
             mov.fecha.strftime("%d/%m/%Y") if mov.fecha else "",
             mov.fecha_vencimiento.strftime("%d/%m/%Y") if mov.fecha_vencimiento else "",
             int(mov.dias_credito or 0),
+            _finanzas_dias_restantes(mov),
             float(mov.monto or 0),
+            _finanzas_pagado(mov),
             float(mov.saldo or 0),
             mov.moneda or "MXN",
+            mov.referencia or "",
             mov.responsable or "",
             mov.notas or "",
         ])
-    for cell in ws[1]:
-        cell.font = Font(bold=True, color="FFFFFF")
-        cell.fill = PatternFill("solid", fgColor="0D47A1")
-        cell.alignment = Alignment(horizontal="center")
-    for col in ("K", "L"):
+    ws_pagos = wb.create_sheet("Pagos")
+    ws_pagos.append(["Credito", "Otorgante", "Fecha pago", "Monto", "Referencia", "Responsable", "Notas"])
+    pagos = (
+        MovimientoFinancieroPago.query
+        .join(MovimientoFinanciero)
+        .filter(MovimientoFinanciero.categoria == FINANZAS_CATEGORIA_CREDITO)
+        .order_by(MovimientoFinancieroPago.fecha.desc(), MovimientoFinancieroPago.id.desc())
+        .all()
+    )
+    for pago in pagos:
+        ws_pagos.append([
+            pago.movimiento.folio if pago.movimiento else "",
+            pago.movimiento.contraparte if pago.movimiento else "",
+            pago.fecha.strftime("%d/%m/%Y") if pago.fecha else "",
+            float(pago.monto or 0),
+            pago.referencia or "",
+            pago.responsable or "",
+            pago.notas or "",
+        ])
+    for sheet in (ws, ws_pagos):
+        for cell in sheet[1]:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="0D47A1")
+            cell.alignment = Alignment(horizontal="center")
+    for col in ("I", "J", "K"):
         for cell in ws[col][1:]:
             cell.number_format = '"$"#,##0.00'
-    for idx, width in enumerate([18, 20, 16, 30, 38, 28, 20, 14, 14, 14, 16, 16, 10, 18, 44], start=1):
+    for cell in ws_pagos["D"][1:]:
+        cell.number_format = '"$"#,##0.00'
+    for idx, width in enumerate([18, 30, 36, 16, 14, 14, 14, 14, 16, 16, 16, 10, 20, 18, 44], start=1):
         ws.column_dimensions[get_column_letter(idx)].width = width
+    for idx, width in enumerate([18, 30, 14, 16, 24, 18, 44], start=1):
+        ws_pagos.column_dimensions[get_column_letter(idx)].width = width
 
     bio = io.BytesIO()
     wb.save(bio)
@@ -8232,7 +8275,7 @@ def finanzas_export_xlsx():
     return Response(
         bio.getvalue(),
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="finanzas_{stamp}.xlsx"'},
+        headers={"Content-Disposition": f'attachment; filename="creditos_recibidos_{stamp}.xlsx"'},
     )
 
 

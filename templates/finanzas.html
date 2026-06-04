@@ -1,163 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Finanzas{% endblock %}
-
-{% macro captura_financiera(tab_id, categoria_default, titulo, contraparte_label, concepto_placeholder, mostrar_tipo=False, mostrar_credito=True) %}
-<div class="card border-0 shadow-sm mb-3">
-  <div class="card-header bg-primary text-white fw-bold">{{ titulo }}</div>
-  <div class="card-body">
-    <form method="post" action="{{ url_for('finanzas_crear') }}" class="row g-3">
-      <input type="hidden" name="tab" value="{{ tab_id }}">
-      {% if mostrar_tipo %}
-      <div class="col-md-3">
-        <label class="form-label">Tipo</label>
-        <select name="categoria" class="form-select" required>
-          {% if tab_id == "creditos" %}
-          <option value="CREDITO_OTORGADO">Credito otorgado</option>
-          <option value="CREDITO_RECIBIDO">Credito recibido</option>
-          {% else %}
-          <option value="PAGO_RECIBIDO">Pago recibido</option>
-          <option value="PAGO_REALIZADO">Pago realizado</option>
-          {% endif %}
-        </select>
-      </div>
-      {% else %}
-      <input type="hidden" name="categoria" value="{{ categoria_default }}">
-      {% endif %}
-      <div class="col-md-3">
-        <label class="form-label">{{ contraparte_label }}</label>
-        <input name="contraparte" class="form-control" required>
-      </div>
-      <div class="col-md-4">
-        <label class="form-label">Concepto</label>
-        <input name="concepto" class="form-control" placeholder="{{ concepto_placeholder }}" required>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label">Monto</label>
-        <input type="number" step="any" min="0" name="monto" class="form-control" required>
-      </div>
-      <div class="col-md-3">
-        <label class="form-label">Fecha</label>
-        <input type="date" name="fecha" class="form-control">
-      </div>
-      {% if mostrar_credito %}
-      <div class="col-md-2">
-        <label class="form-label">Dias credito</label>
-        <input type="number" min="0" step="1" name="dias_credito" class="form-control" value="0">
-      </div>
-      <div class="col-md-3">
-        <label class="form-label">Vencimiento</label>
-        <input type="date" name="fecha_vencimiento" class="form-control">
-      </div>
-      {% endif %}
-      <div class="col-md-3">
-        <label class="form-label">Proyecto</label>
-        <input name="proyecto" class="form-control">
-      </div>
-      <div class="col-md-3">
-        <label class="form-label">Referencia</label>
-        <input name="referencia" class="form-control" placeholder="Factura, OC o transferencia">
-      </div>
-      <div class="col-md-2">
-        <label class="form-label">Moneda</label>
-        <input name="moneda" class="form-control" value="MXN">
-      </div>
-      <div class="col-md-7">
-        <label class="form-label">Notas</label>
-        <input name="notas" class="form-control">
-      </div>
-      <div class="col-md-3 d-grid align-self-end">
-        <button class="btn btn-success">Guardar</button>
-      </div>
-    </form>
-  </div>
-</div>
-{% endmacro %}
-
-{% macro tabla_financiera(items, titulo_vacio) %}
-<div class="card border-0 shadow-sm">
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-hover align-middle mb-0">
-        <thead>
-          <tr>
-            <th>Folio</th>
-            <th>Tipo</th>
-            <th>Contraparte</th>
-            <th>Concepto</th>
-            <th>Vence</th>
-            <th>Monto</th>
-            <th>Saldo</th>
-            <th>Estatus</th>
-            <th>Abono / cierre</th>
-            <th>Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for mov in items %}
-          {% set estatus_real = finanzas_estatus_real(mov) %}
-          <tr>
-            <td class="fw-bold">{{ mov.folio }}</td>
-            <td>{{ finanzas_category_label(mov.categoria) }}</td>
-            <td>
-              <div class="fw-semibold">{{ mov.contraparte }}</div>
-              <div class="small text-muted">{{ mov.proyecto or "" }}</div>
-            </td>
-            <td>
-              <div>{{ mov.concepto }}</div>
-              <div class="small text-muted">{{ mov.referencia or "" }}</div>
-            </td>
-            <td>
-              {{ mov.fecha_vencimiento.strftime("%d/%m/%Y") if mov.fecha_vencimiento else "-" }}
-              {% if mov.dias_credito %}
-              <div class="small text-muted">{{ mov.dias_credito }} dias</div>
-              {% endif %}
-            </td>
-            <td class="fw-semibold">${{ "{:,.2f}".format(mov.monto or 0) }}</td>
-            <td class="fw-bold">${{ "{:,.2f}".format(mov.saldo or 0) }}</td>
-            <td><span class="badge bg-{{ finanzas_badge_class(estatus_real) }}">{{ estatus_real }}</span></td>
-            <td style="min-width: 280px;">
-              {% if estatus_real not in ["PAGADO", "CANCELADO"] %}
-              <form method="post" action="{{ url_for('finanzas_abono', mov_id=mov.id) }}" class="d-flex gap-1 mb-1">
-                <input type="number" step="any" min="0" name="abono" class="form-control form-control-sm" placeholder="$">
-                <input name="nota_abono" class="form-control form-control-sm" placeholder="Nota">
-                <button class="btn btn-sm btn-outline-success">Abonar</button>
-              </form>
-              {% endif %}
-              <form method="post" action="{{ url_for('finanzas_estatus', mov_id=mov.id) }}" class="d-flex gap-1">
-                <select name="estatus" class="form-select form-select-sm">
-                  {% for item in estatus_options %}
-                  <option value="{{ item }}" {% if mov.estatus == item %}selected{% endif %}>{{ item }}</option>
-                  {% endfor %}
-                </select>
-                <button class="btn btn-sm btn-outline-primary">Actualizar</button>
-              </form>
-            </td>
-            <td>
-              <div class="d-flex gap-1">
-                <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editar-finanzas-{{ mov.id }}">Editar</button>
-                <form method="post" action="{{ url_for('finanzas_eliminar', mov_id=mov.id) }}" onsubmit="return confirm('Eliminar el movimiento {{ mov.folio }}? Esta accion no se puede deshacer.');">
-                  <button class="btn btn-sm btn-outline-danger">Eliminar</button>
-                </form>
-              </div>
-            </td>
-          </tr>
-          {% else %}
-          <tr>
-            <td colspan="10" class="text-center text-muted py-4">{{ titulo_vacio }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-{% endmacro %}
+{% block title %}Creditos recibidos{% endblock %}
 
 {% block content %}
 <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 my-4">
   <div>
-    <h2 class="fw-bold text-primary mb-1">Finanzas</h2>
-    <div class="text-muted">Control separado de cobros, pagos, creditos y vencimientos.</div>
+    <h2 class="fw-bold text-primary mb-1">Creditos recibidos</h2>
+    <div class="text-muted">Control de creditos que nos otorgaron, pagos realizados, saldo y tiempo disponible.</div>
   </div>
   <a href="{{ url_for('finanzas_export_xlsx') }}" class="btn btn-outline-success">Exportar Excel</a>
 </div>
@@ -166,44 +14,95 @@
   <div class="col-md-3">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-body">
-        <div class="text-muted small">Por cobrar</div>
-        <div class="h3 fw-bold text-success mb-0">${{ "{:,.2f}".format(por_cobrar or 0) }}</div>
+        <div class="text-muted small">Credito total</div>
+        <div class="h3 fw-bold text-primary mb-0">${{ "{:,.2f}".format(monto_total or 0) }}</div>
       </div>
     </div>
   </div>
   <div class="col-md-3">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-body">
-        <div class="text-muted small">Por pagar</div>
-        <div class="h3 fw-bold text-danger mb-0">${{ "{:,.2f}".format(por_pagar or 0) }}</div>
+        <div class="text-muted small">Pagado</div>
+        <div class="h3 fw-bold text-success mb-0">${{ "{:,.2f}".format(pagado_total or 0) }}</div>
       </div>
     </div>
   </div>
   <div class="col-md-3">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-body">
-        <div class="text-muted small">Vencido</div>
-        <div class="h3 fw-bold text-warning mb-0">${{ "{:,.2f}".format(vencido or 0) }}</div>
+        <div class="text-muted small">Saldo pendiente</div>
+        <div class="h3 fw-bold text-danger mb-0">${{ "{:,.2f}".format(saldo_total or 0) }}</div>
       </div>
     </div>
   </div>
   <div class="col-md-3">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-body">
-        <div class="text-muted small">Compras por pagar</div>
-        <div class="h3 fw-bold text-primary mb-0">${{ "{:,.2f}".format(compras_por_pagar or 0) }}</div>
+        <div class="text-muted small">Vencido / 30 dias</div>
+        <div class="h5 fw-bold text-warning mb-0">${{ "{:,.2f}".format(vencido or 0) }}</div>
+        <div class="small text-muted">Por vencer: ${{ "{:,.2f}".format(por_vencer_30 or 0) }}</div>
       </div>
     </div>
   </div>
 </div>
 
-<div class="card shadow-sm border-0 mb-3">
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-primary text-white fw-bold">Nuevo credito recibido</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('finanzas_crear') }}" class="row g-3">
+      <div class="col-md-3">
+        <label class="form-label">Quien nos dio el credito</label>
+        <input name="contraparte" class="form-control" placeholder="Proveedor, banco o persona" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Concepto</label>
+        <input name="concepto" class="form-control" placeholder="Material, linea de credito, prestamo, OC" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Monto credito</label>
+        <input type="number" step="any" min="0" name="monto" class="form-control" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Fecha otorgado</label>
+        <input type="date" name="fecha" class="form-control">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Dias credito</label>
+        <input type="number" min="0" step="1" name="dias_credito" class="form-control" value="0">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Vencimiento</label>
+        <input type="date" name="fecha_vencimiento" class="form-control">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Referencia</label>
+        <input name="referencia" class="form-control" placeholder="Factura, contrato, OC">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Moneda</label>
+        <input name="moneda" class="form-control" value="MXN">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Proyecto</label>
+        <input name="proyecto" class="form-control">
+      </div>
+      <div class="col-md-7">
+        <label class="form-label">Notas</label>
+        <input name="notas" class="form-control">
+      </div>
+      <div class="col-md-3 d-grid align-self-end">
+        <button class="btn btn-success">Guardar credito</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card shadow-sm border-0 mb-4">
   <div class="card-header bg-light">
     <form method="get" action="{{ url_for('finanzas_index') }}" class="row g-2 align-items-end">
-      <input type="hidden" name="tab" value="{{ active_tab }}">
       <div class="col-md-8">
         <label class="form-label">Buscar</label>
-        <input name="q" class="form-control" value="{{ q }}" placeholder="Folio, contraparte, proyecto, concepto o referencia">
+        <input name="q" class="form-control" value="{{ q }}" placeholder="Otorgante, folio, concepto, proyecto o referencia">
       </div>
       <div class="col-md-3">
         <label class="form-label">Estatus</label>
@@ -219,122 +118,202 @@
       </div>
     </form>
   </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Folio</th>
+            <th>Otorgante</th>
+            <th>Concepto</th>
+            <th>Vence</th>
+            <th>Monto</th>
+            <th>Pagado</th>
+            <th>Saldo</th>
+            <th>Avance</th>
+            <th>Estatus</th>
+            <th>Registrar pago</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for cred in creditos %}
+          {% set estatus_real = finanzas_estatus_real(cred) %}
+          {% set dias_restantes = finanzas_dias_restantes(cred) %}
+          {% set tiempo_estado = finanzas_tiempo_estado(cred) %}
+          <tr>
+            <td class="fw-bold">{{ cred.folio }}</td>
+            <td>
+              <div class="fw-semibold">{{ cred.contraparte }}</div>
+              <div class="small text-muted">{{ cred.proyecto or "" }}</div>
+            </td>
+            <td>
+              <div>{{ cred.concepto }}</div>
+              <div class="small text-muted">{{ cred.referencia or "" }}</div>
+            </td>
+            <td>
+              {{ cred.fecha_vencimiento.strftime("%d/%m/%Y") if cred.fecha_vencimiento else "-" }}
+              {% if dias_restantes is not none %}
+              <div class="small {% if dias_restantes < 0 %}text-danger{% elif dias_restantes <= 30 %}text-warning{% else %}text-muted{% endif %}">
+                {% if dias_restantes < 0 %}Vencido hace {{ dias_restantes|abs }} dias{% else %}{{ dias_restantes }} dias restantes{% endif %}
+              </div>
+              {% endif %}
+            </td>
+            <td class="fw-semibold">${{ "{:,.2f}".format(cred.monto or 0) }}</td>
+            <td class="text-success fw-semibold">${{ "{:,.2f}".format(finanzas_pagado(cred)) }}</td>
+            <td class="text-danger fw-bold">${{ "{:,.2f}".format(cred.saldo or 0) }}</td>
+            <td style="min-width: 230px;">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <span class="small fw-semibold text-{{ tiempo_estado.clase }}">{{ tiempo_estado.texto }}</span>
+                <span class="small text-muted">{{ tiempo_estado.detalle }}</span>
+              </div>
+              <div class="progress" style="height: 10px;" title="Tiempo consumido del credito">
+                <div class="progress-bar bg-{{ tiempo_estado.clase }}" style="width: {{ finanzas_porcentaje_tiempo(cred) }}%"></div>
+              </div>
+              <div class="d-flex justify-content-between small text-muted mt-1">
+                <span>{{ cred.fecha.strftime("%d/%m/%Y") if cred.fecha else "Inicio" }}</span>
+                <span>{{ cred.fecha_vencimiento.strftime("%d/%m/%Y") if cred.fecha_vencimiento else "Sin vencimiento" }}</span>
+              </div>
+              <div class="progress mt-2" style="height: 6px;" title="Porcentaje pagado">
+                <div class="progress-bar bg-success" style="width: {{ finanzas_porcentaje_pagado(cred) }}%"></div>
+              </div>
+              <div class="small text-muted mt-1">Pagado {{ "{:.0f}".format(finanzas_porcentaje_pagado(cred)) }}%</div>
+            </td>
+            <td><span class="badge bg-{{ finanzas_badge_class(estatus_real) }}">{{ estatus_real }}</span></td>
+            <td style="min-width: 330px;">
+              {% if estatus_real not in ["PAGADO", "CANCELADO"] %}
+              <form method="post" action="{{ url_for('finanzas_abono', mov_id=cred.id) }}" class="row g-1">
+                <div class="col-3"><input type="date" name="fecha_pago" class="form-control form-control-sm"></div>
+                <div class="col-3"><input type="number" step="any" min="0" name="abono" class="form-control form-control-sm" placeholder="$"></div>
+                <div class="col-3"><input name="referencia_pago" class="form-control form-control-sm" placeholder="Ref."></div>
+                <div class="col-2"><input name="nota_abono" class="form-control form-control-sm" placeholder="Nota"></div>
+                <div class="col-1 d-grid"><button class="btn btn-sm btn-outline-success">OK</button></div>
+              </form>
+              {% endif %}
+            </td>
+            <td>
+              <div class="d-flex flex-wrap gap-1">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#historial-credito-{{ cred.id }}">Pagos</button>
+                <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editar-credito-{{ cred.id }}">Editar</button>
+                <form method="post" action="{{ url_for('finanzas_estatus', mov_id=cred.id) }}">
+                  <input type="hidden" name="estatus" value="CANCELADO">
+                  <button class="btn btn-sm btn-outline-warning" onclick="return confirm('Cancelar el credito {{ cred.folio }}?');">Cancelar</button>
+                </form>
+                <form method="post" action="{{ url_for('finanzas_eliminar', mov_id=cred.id) }}" onsubmit="return confirm('Eliminar el credito {{ cred.folio }} y sus pagos? Esta accion no se puede deshacer.');">
+                  <button class="btn btn-sm btn-outline-danger">Eliminar</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="11" class="text-center text-muted py-4">No hay creditos registrados con estos filtros.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
-<ul class="nav nav-tabs mb-3" id="finanzasTabs" role="tablist">
-  <li class="nav-item" role="presentation">
-    <button class="nav-link {% if active_tab == 'por-cobrar' %}active{% endif %}" id="por-cobrar-tab" data-bs-toggle="tab" data-bs-target="#por-cobrar" type="button" role="tab">Por cobrar</button>
-  </li>
-  <li class="nav-item" role="presentation">
-    <button class="nav-link {% if active_tab == 'por-pagar' %}active{% endif %}" id="por-pagar-tab" data-bs-toggle="tab" data-bs-target="#por-pagar" type="button" role="tab">Por pagar</button>
-  </li>
-  <li class="nav-item" role="presentation">
-    <button class="nav-link {% if active_tab == 'creditos' %}active{% endif %}" id="creditos-tab" data-bs-toggle="tab" data-bs-target="#creditos" type="button" role="tab">Creditos</button>
-  </li>
-  <li class="nav-item" role="presentation">
-    <button class="nav-link {% if active_tab == 'pagos' %}active{% endif %}" id="pagos-tab" data-bs-toggle="tab" data-bs-target="#pagos" type="button" role="tab">Pagos</button>
-  </li>
-  <li class="nav-item" role="presentation">
-    <button class="nav-link {% if active_tab == 'vencimientos' %}active{% endif %}" id="vencimientos-tab" data-bs-toggle="tab" data-bs-target="#vencimientos" type="button" role="tab">Vencimientos</button>
-  </li>
-</ul>
-
-<div class="tab-content" id="finanzasTabsContent">
-  <div class="tab-pane fade {% if active_tab == 'por-cobrar' %}show active{% endif %}" id="por-cobrar" role="tabpanel" aria-labelledby="por-cobrar-tab">
-    {{ captura_financiera("por-cobrar", "CUENTA_POR_COBRAR", "Nuevo cobro por hacer", "Cliente", "Factura, estimacion, anticipo por cobrar") }}
-    {{ tabla_financiera(movimientos_por_cobrar, "No hay cobros por hacer con estos filtros.") }}
-  </div>
-
-  <div class="tab-pane fade {% if active_tab == 'por-pagar' %}show active{% endif %}" id="por-pagar" role="tabpanel" aria-labelledby="por-pagar-tab">
-    {{ captura_financiera("por-pagar", "CUENTA_POR_PAGAR", "Nuevo cobro por pagar", "Proveedor / acreedor", "Factura proveedor, renta, servicio, material") }}
-    {{ tabla_financiera(movimientos_por_pagar, "No hay cobros por pagar con estos filtros.") }}
-  </div>
-
-  <div class="tab-pane fade {% if active_tab == 'creditos' %}show active{% endif %}" id="creditos" role="tabpanel" aria-labelledby="creditos-tab">
-    {{ captura_financiera("creditos", "", "Nuevo credito", "Cliente / proveedor / banco", "Linea de credito, prestamo, financiamiento", True, True) }}
-    {{ tabla_financiera(movimientos_creditos, "No hay creditos con estos filtros.") }}
-  </div>
-
-  <div class="tab-pane fade {% if active_tab == 'pagos' %}show active{% endif %}" id="pagos" role="tabpanel" aria-labelledby="pagos-tab">
-    {{ captura_financiera("pagos", "", "Nuevo pago", "Cliente / proveedor", "Transferencia, deposito, pago de factura", True, False) }}
-    {{ tabla_financiera(movimientos_pagos, "No hay pagos con estos filtros.") }}
-  </div>
-
-  <div class="tab-pane fade {% if active_tab == 'vencimientos' %}show active{% endif %}" id="vencimientos" role="tabpanel" aria-labelledby="vencimientos-tab">
-    {{ tabla_financiera(movimientos_vencimientos, "No hay vencimientos pendientes con estos filtros.") }}
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-light fw-bold">Ultimos pagos registrados</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Credito</th>
+            <th>Otorgante</th>
+            <th>Monto</th>
+            <th>Referencia</th>
+            <th>Notas</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pago in pagos_recientes %}
+          <tr>
+            <td>{{ pago.fecha.strftime("%d/%m/%Y") if pago.fecha else "" }}</td>
+            <td class="fw-semibold">{{ pago.movimiento.folio if pago.movimiento else "" }}</td>
+            <td>{{ pago.movimiento.contraparte if pago.movimiento else "" }}</td>
+            <td class="fw-bold text-success">${{ "{:,.2f}".format(pago.monto or 0) }}</td>
+            <td>{{ pago.referencia or "" }}</td>
+            <td>{{ pago.notas or "" }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="6" class="text-center text-muted py-4">Todavia no hay pagos registrados.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 
-{% for mov in movimientos %}
-<div class="modal fade" id="editar-finanzas-{{ mov.id }}" tabindex="-1" aria-labelledby="editar-finanzas-label-{{ mov.id }}" aria-hidden="true">
+{% for cred in creditos %}
+<div class="modal fade" id="editar-credito-{{ cred.id }}" tabindex="-1" aria-labelledby="editar-credito-label-{{ cred.id }}" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
-      <form method="post" action="{{ url_for('finanzas_actualizar', mov_id=mov.id) }}">
+      <form method="post" action="{{ url_for('finanzas_actualizar', mov_id=cred.id) }}">
         <div class="modal-header">
-          <h5 class="modal-title" id="editar-finanzas-label-{{ mov.id }}">Editar {{ mov.folio }}</h5>
+          <h5 class="modal-title" id="editar-credito-label-{{ cred.id }}">Editar {{ cred.folio }}</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
         </div>
         <div class="modal-body">
           <div class="row g-3">
             <div class="col-md-4">
-              <label class="form-label">Tipo</label>
-              <select name="categoria" class="form-select" required>
-                {% for item in categorias %}
-                <option value="{{ item }}" {% if mov.categoria == item %}selected{% endif %}>{{ finanzas_category_label(item) }}</option>
-                {% endfor %}
-              </select>
+              <label class="form-label">Quien nos dio el credito</label>
+              <input name="contraparte" class="form-control" value="{{ cred.contraparte or '' }}" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Concepto</label>
+              <input name="concepto" class="form-control" value="{{ cred.concepto or '' }}" required>
             </div>
             <div class="col-md-4">
               <label class="form-label">Estatus</label>
               <select name="estatus" class="form-select" required>
                 {% for item in estatus_options %}
-                <option value="{{ item }}" {% if mov.estatus == item %}selected{% endif %}>{{ item }}</option>
+                <option value="{{ item }}" {% if cred.estatus == item %}selected{% endif %}>{{ item }}</option>
                 {% endfor %}
               </select>
             </div>
-            <div class="col-md-4">
-              <label class="form-label">Contraparte</label>
-              <input name="contraparte" class="form-control" value="{{ mov.contraparte or '' }}" required>
+            <div class="col-md-3">
+              <label class="form-label">Monto credito</label>
+              <input type="number" step="any" min="0" name="monto" class="form-control" value="{{ cred.monto or 0 }}" required>
             </div>
-            <div class="col-md-8">
-              <label class="form-label">Concepto</label>
-              <input name="concepto" class="form-control" value="{{ mov.concepto or '' }}" required>
+            <div class="col-md-3">
+              <label class="form-label">Saldo pendiente</label>
+              <input type="number" step="any" min="0" name="saldo" class="form-control" value="{{ cred.saldo or 0 }}">
             </div>
-            <div class="col-md-2">
-              <label class="form-label">Monto</label>
-              <input type="number" step="any" min="0" name="monto" class="form-control" value="{{ mov.monto or 0 }}" required>
+            <div class="col-md-3">
+              <label class="form-label">Fecha otorgado</label>
+              <input type="date" name="fecha" class="form-control" value="{{ finanzas_fecha_input(cred.fecha) }}">
             </div>
-            <div class="col-md-2">
-              <label class="form-label">Saldo</label>
-              <input type="number" step="any" min="0" name="saldo" class="form-control" value="{{ mov.saldo or 0 }}">
-            </div>
-            <div class="col-md-4">
-              <label class="form-label">Fecha</label>
-              <input type="date" name="fecha" class="form-control" value="{{ finanzas_fecha_input(mov.fecha) }}">
-            </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
               <label class="form-label">Dias credito</label>
-              <input type="number" min="0" step="1" name="dias_credito" class="form-control" value="{{ mov.dias_credito or 0 }}">
+              <input type="number" min="0" step="1" name="dias_credito" class="form-control" value="{{ cred.dias_credito or 0 }}">
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
               <label class="form-label">Vencimiento</label>
-              <input type="date" name="fecha_vencimiento" class="form-control" value="{{ finanzas_fecha_input(mov.fecha_vencimiento) }}">
+              <input type="date" name="fecha_vencimiento" class="form-control" value="{{ finanzas_fecha_input(cred.fecha_vencimiento) }}">
             </div>
-            <div class="col-md-5">
-              <label class="form-label">Proyecto</label>
-              <input name="proyecto" class="form-control" value="{{ mov.proyecto or '' }}">
-            </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
               <label class="form-label">Referencia</label>
-              <input name="referencia" class="form-control" value="{{ mov.referencia or '' }}">
+              <input name="referencia" class="form-control" value="{{ cred.referencia or '' }}">
             </div>
             <div class="col-md-3">
               <label class="form-label">Moneda</label>
-              <input name="moneda" class="form-control" value="{{ mov.moneda or 'MXN' }}">
+              <input name="moneda" class="form-control" value="{{ cred.moneda or 'MXN' }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Proyecto</label>
+              <input name="proyecto" class="form-control" value="{{ cred.proyecto or '' }}">
             </div>
             <div class="col-12">
               <label class="form-label">Notas</label>
-              <textarea name="notas" class="form-control" rows="3">{{ mov.notas or '' }}</textarea>
+              <textarea name="notas" class="form-control" rows="3">{{ cred.notas or '' }}</textarea>
             </div>
           </div>
         </div>
@@ -346,18 +325,47 @@
     </div>
   </div>
 </div>
-{% endfor %}
 
-<script>
-document.querySelectorAll('#finanzasTabs button[data-bs-toggle="tab"]').forEach((button) => {
-  button.addEventListener('shown.bs.tab', (event) => {
-    const target = event.target.getAttribute('data-bs-target') || '';
-    const tab = target.replace('#', '');
-    const url = new URL(window.location.href);
-    url.searchParams.set('tab', tab);
-    window.history.replaceState({}, '', url);
-    document.querySelector('input[name="tab"]')?.setAttribute('value', tab);
-  });
-});
-</script>
+<div class="modal fade" id="historial-credito-{{ cred.id }}" tabindex="-1" aria-labelledby="historial-credito-label-{{ cred.id }}" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="historial-credito-label-{{ cred.id }}">Pagos de {{ cred.folio }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body p-0">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Monto</th>
+              <th>Referencia</th>
+              <th>Responsable</th>
+              <th>Notas</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for pago in cred.pagos %}
+            <tr>
+              <td>{{ pago.fecha.strftime("%d/%m/%Y") if pago.fecha else "" }}</td>
+              <td class="fw-bold text-success">${{ "{:,.2f}".format(pago.monto or 0) }}</td>
+              <td>{{ pago.referencia or "" }}</td>
+              <td>{{ pago.responsable or "" }}</td>
+              <td>{{ pago.notas or "" }}</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="5" class="text-center text-muted py-4">Este credito todavia no tiene pagos registrados.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
 {% endblock %}
