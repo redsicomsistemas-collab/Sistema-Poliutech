@@ -2341,6 +2341,7 @@ from models import (
     InventarioMovimiento,
     OrdenCompra,
     OrdenCompraPartida,
+    MovimientoFinanciero,
 )
 
 # ---------------------------------------------------------
@@ -7862,6 +7863,353 @@ def _parse_date_or_none(raw: str):
         return datetime.strptime(raw, "%Y-%m-%d")
     except ValueError:
         return None
+
+
+FINANZAS_CATEGORIAS = (
+    "CUENTA_POR_COBRAR",
+    "CUENTA_POR_PAGAR",
+    "CREDITO_OTORGADO",
+    "CREDITO_RECIBIDO",
+    "PAGO_RECIBIDO",
+    "PAGO_REALIZADO",
+)
+FINANZAS_ESTATUS = ("PENDIENTE", "PARCIAL", "PAGADO", "VENCIDO", "CANCELADO")
+
+
+def _finanzas_next_folio() -> str:
+    year = now_cdmx_naive().year
+    prefix = f"FIN-{year}-"
+    latest = (
+        MovimientoFinanciero.query
+        .filter(MovimientoFinanciero.folio.like(f"{prefix}%"))
+        .order_by(MovimientoFinanciero.id.desc())
+        .first()
+    )
+    if latest and latest.folio:
+        try:
+            seq = int(latest.folio.rsplit("-", 1)[-1]) + 1
+        except Exception:
+            seq = latest.id + 1
+    else:
+        seq = 1
+    return f"{prefix}{seq:04d}"
+
+
+def _finanzas_estatus_real(mov: MovimientoFinanciero) -> str:
+    estatus = (mov.estatus or "PENDIENTE").upper()
+    if estatus in {"PAGADO", "CANCELADO"}:
+        return estatus
+    if float(mov.saldo or 0) <= 0:
+        return "PAGADO"
+    if mov.fecha_vencimiento and mov.fecha_vencimiento.date() < now_cdmx_naive().date():
+        return "VENCIDO"
+    if float(mov.saldo or 0) < float(mov.monto or 0):
+        return "PARCIAL"
+    return estatus
+
+
+def _finanzas_badge_class(estatus: str) -> str:
+    return {
+        "PAGADO": "success",
+        "PARCIAL": "info",
+        "VENCIDO": "danger",
+        "CANCELADO": "secondary",
+    }.get((estatus or "").upper(), "warning")
+
+
+def _finanzas_category_label(categoria: str) -> str:
+    return {
+        "CUENTA_POR_COBRAR": "Por cobrar",
+        "CUENTA_POR_PAGAR": "Por pagar",
+        "CREDITO_OTORGADO": "Credito otorgado",
+        "CREDITO_RECIBIDO": "Credito recibido",
+        "PAGO_RECIBIDO": "Pago recibido",
+        "PAGO_REALIZADO": "Pago realizado",
+    }.get((categoria or "").upper(), categoria or "")
+
+
+def _finanzas_fecha_input(fecha) -> str:
+    return fecha.strftime("%Y-%m-%d") if fecha else ""
+
+
+@app.route("/finanzas")
+@login_required
+def finanzas_index():
+    q = (request.args.get("q") or "").strip()
+    categoria = (request.args.get("categoria") or "").strip().upper()
+    estatus = (request.args.get("estatus") or "").strip().upper()
+
+    query = MovimientoFinanciero.query
+    if q:
+        like = f"%{q}%"
+        query = query.filter(or_(
+            MovimientoFinanciero.folio.ilike(like),
+            MovimientoFinanciero.contraparte.ilike(like),
+            MovimientoFinanciero.concepto.ilike(like),
+            MovimientoFinanciero.proyecto.ilike(like),
+            MovimientoFinanciero.referencia.ilike(like),
+        ))
+    if categoria:
+        query = query.filter(MovimientoFinanciero.categoria == categoria)
+    if estatus:
+        if estatus == "VENCIDO":
+            query = query.filter(
+                MovimientoFinanciero.saldo > 0,
+                MovimientoFinanciero.estatus.notin_(["PAGADO", "CANCELADO"]),
+                MovimientoFinanciero.fecha_vencimiento < now_cdmx_naive(),
+            )
+        else:
+            query = query.filter(MovimientoFinanciero.estatus == estatus)
+
+    movimientos = query.order_by(
+        MovimientoFinanciero.fecha_vencimiento.is_(None),
+        MovimientoFinanciero.fecha_vencimiento.asc(),
+        MovimientoFinanciero.fecha.desc(),
+        MovimientoFinanciero.id.desc(),
+    ).all()
+
+    activos = [
+        m for m in MovimientoFinanciero.query.all()
+        if _finanzas_estatus_real(m) not in {"PAGADO", "CANCELADO"}
+    ]
+    por_cobrar = sum(float(m.saldo or 0) for m in activos if m.categoria in {"CUENTA_POR_COBRAR", "CREDITO_OTORGADO"})
+    por_pagar = sum(float(m.saldo or 0) for m in activos if m.categoria in {"CUENTA_POR_PAGAR", "CREDITO_RECIBIDO"})
+    vencido = sum(float(m.saldo or 0) for m in activos if _finanzas_estatus_real(m) == "VENCIDO")
+    recibido = sum(float(m.monto or 0) for m in MovimientoFinanciero.query.filter_by(categoria="PAGO_RECIBIDO").all())
+    pagado = sum(float(m.monto or 0) for m in MovimientoFinanciero.query.filter_by(categoria="PAGO_REALIZADO").all())
+    compras_por_pagar = sum(
+        max(0.0, float(o.total or 0) - float(o.pago_monto or 0))
+        for o in OrdenCompra.query.filter(OrdenCompra.estatus.in_(["FACTURADA", "RECIBIDA COMPLETA", "PARCIALMENTE RECIBIDA"])).all()
+    )
+
+    return render_template(
+        "finanzas.html",
+        title="Finanzas",
+        movimientos=movimientos,
+        categorias=FINANZAS_CATEGORIAS,
+        estatus_options=FINANZAS_ESTATUS,
+        q=q,
+        categoria=categoria,
+        estatus=estatus,
+        por_cobrar=por_cobrar,
+        por_pagar=por_pagar,
+        vencido=vencido,
+        recibido=recibido,
+        pagado=pagado,
+        compras_por_pagar=compras_por_pagar,
+        finanzas_estatus_real=_finanzas_estatus_real,
+        finanzas_badge_class=_finanzas_badge_class,
+        finanzas_category_label=_finanzas_category_label,
+        finanzas_fecha_input=_finanzas_fecha_input,
+    )
+
+
+@app.route("/finanzas/crear", methods=["POST"])
+@login_required
+def finanzas_crear():
+    f = request.form
+    categoria = (f.get("categoria") or "").strip().upper()
+    contraparte = (f.get("contraparte") or "").strip()
+    concepto = (f.get("concepto") or "").strip()
+    monto = fmt(parse_float(f.get("monto"), 0))
+    if categoria not in FINANZAS_CATEGORIAS:
+        flash("Selecciona un tipo financiero valido.", "warning")
+        return redirect(url_for("finanzas_index"))
+    if not contraparte or not concepto or monto <= 0:
+        flash("Captura contraparte, concepto y monto mayor a cero.", "warning")
+        return redirect(url_for("finanzas_index"))
+
+    fecha = _parse_date_or_none(f.get("fecha")) or now_cdmx_naive()
+    dias_credito = max(0, int(parse_float(f.get("dias_credito"), 0)))
+    fecha_vencimiento = _parse_date_or_none(f.get("fecha_vencimiento"))
+    if not fecha_vencimiento and dias_credito:
+        fecha_vencimiento = fecha + timedelta(days=dias_credito)
+
+    saldo = 0.0 if categoria in {"PAGO_RECIBIDO", "PAGO_REALIZADO"} else monto
+    estatus = "PAGADO" if saldo <= 0 else "PENDIENTE"
+    mov = MovimientoFinanciero(
+        folio=_finanzas_next_folio(),
+        categoria=categoria,
+        estatus=estatus,
+        contraparte=contraparte,
+        concepto=concepto,
+        proyecto=(f.get("proyecto") or "").strip() or None,
+        referencia=(f.get("referencia") or "").strip() or None,
+        fecha=fecha,
+        fecha_vencimiento=fecha_vencimiento,
+        dias_credito=dias_credito,
+        monto=monto,
+        saldo=saldo,
+        moneda=(f.get("moneda") or "MXN").strip().upper()[:10] or "MXN",
+        notas=(f.get("notas") or "").strip() or None,
+        responsable=responsable_actual() or None,
+        usuario_id=getattr(current_user, "id", None),
+    )
+    db.session.add(mov)
+    db.session.commit()
+    flash(f"Movimiento {mov.folio} registrado.", "success")
+    return redirect(url_for("finanzas_index"))
+
+
+@app.route("/finanzas/<int:mov_id>/actualizar", methods=["POST"])
+@login_required
+def finanzas_actualizar(mov_id: int):
+    mov = MovimientoFinanciero.query.get_or_404(mov_id)
+    f = request.form
+    categoria = (f.get("categoria") or "").strip().upper()
+    contraparte = (f.get("contraparte") or "").strip()
+    concepto = (f.get("concepto") or "").strip()
+    estatus = (f.get("estatus") or "").strip().upper()
+    monto = fmt(parse_float(f.get("monto"), 0))
+    saldo = fmt(parse_float(f.get("saldo"), 0))
+
+    if categoria not in FINANZAS_CATEGORIAS:
+        flash("Selecciona un tipo financiero valido.", "warning")
+        return redirect(url_for("finanzas_index"))
+    if estatus not in FINANZAS_ESTATUS:
+        flash("Selecciona un estatus financiero valido.", "warning")
+        return redirect(url_for("finanzas_index"))
+    if not contraparte or not concepto or monto <= 0:
+        flash("Captura contraparte, concepto y monto mayor a cero.", "warning")
+        return redirect(url_for("finanzas_index"))
+
+    fecha = _parse_date_or_none(f.get("fecha")) or mov.fecha or now_cdmx_naive()
+    dias_credito = max(0, int(parse_float(f.get("dias_credito"), 0)))
+    fecha_vencimiento = _parse_date_or_none(f.get("fecha_vencimiento"))
+    if not fecha_vencimiento and dias_credito:
+        fecha_vencimiento = fecha + timedelta(days=dias_credito)
+
+    if estatus in {"PAGADO", "CANCELADO"}:
+        saldo = 0.0
+    else:
+        saldo = min(max(0.0, saldo), monto)
+        if saldo <= 0:
+            estatus = "PAGADO"
+        elif saldo < monto and estatus == "PENDIENTE":
+            estatus = "PARCIAL"
+
+    mov.categoria = categoria
+    mov.estatus = estatus
+    mov.contraparte = contraparte
+    mov.concepto = concepto
+    mov.proyecto = (f.get("proyecto") or "").strip() or None
+    mov.referencia = (f.get("referencia") or "").strip() or None
+    mov.fecha = fecha
+    mov.fecha_vencimiento = fecha_vencimiento
+    mov.dias_credito = dias_credito
+    mov.monto = monto
+    mov.saldo = saldo
+    mov.moneda = (f.get("moneda") or "MXN").strip().upper()[:10] or "MXN"
+    mov.notas = (f.get("notas") or "").strip() or None
+    mov.actualizado_en = now_cdmx_naive()
+    db.session.commit()
+    flash(f"Movimiento {mov.folio} actualizado.", "success")
+    return redirect(url_for("finanzas_index"))
+
+
+@app.route("/finanzas/<int:mov_id>/eliminar", methods=["POST"])
+@login_required
+def finanzas_eliminar(mov_id: int):
+    mov = MovimientoFinanciero.query.get_or_404(mov_id)
+    folio = mov.folio or f"#{mov.id}"
+    db.session.delete(mov)
+    db.session.commit()
+    flash(f"Movimiento {folio} eliminado.", "success")
+    return redirect(url_for("finanzas_index"))
+
+
+@app.route("/finanzas/<int:mov_id>/abono", methods=["POST"])
+@login_required
+def finanzas_abono(mov_id: int):
+    mov = MovimientoFinanciero.query.get_or_404(mov_id)
+    abono = fmt(parse_float(request.form.get("abono"), 0))
+    if abono <= 0:
+        flash("Captura un abono mayor a cero.", "warning")
+        return redirect(url_for("finanzas_index"))
+    mov.saldo = fmt(max(0.0, float(mov.saldo or 0) - abono))
+    mov.estatus = "PAGADO" if mov.saldo <= 0 else "PARCIAL"
+    nota = (request.form.get("nota_abono") or "").strip()
+    stamp = now_cdmx_naive().strftime("%d/%m/%Y")
+    bitacora = f"Abono {stamp}: ${abono:,.2f}"
+    if nota:
+        bitacora += f" - {nota}"
+    mov.notas = "\n".join([x for x in [mov.notas, bitacora] if x])
+    mov.actualizado_en = now_cdmx_naive()
+    db.session.commit()
+    flash("Abono registrado.", "success")
+    return redirect(url_for("finanzas_index"))
+
+
+@app.route("/finanzas/<int:mov_id>/estatus", methods=["POST"])
+@login_required
+def finanzas_estatus(mov_id: int):
+    mov = MovimientoFinanciero.query.get_or_404(mov_id)
+    estatus = (request.form.get("estatus") or "").strip().upper()
+    if estatus not in FINANZAS_ESTATUS:
+        flash("Estatus invalido.", "warning")
+        return redirect(url_for("finanzas_index"))
+    mov.estatus = estatus
+    if estatus == "PAGADO":
+        mov.saldo = 0.0
+    elif estatus == "CANCELADO":
+        mov.saldo = 0.0
+    mov.actualizado_en = now_cdmx_naive()
+    db.session.commit()
+    flash("Estatus financiero actualizado.", "success")
+    return redirect(url_for("finanzas_index"))
+
+
+@app.route("/finanzas/export.xlsx")
+@login_required
+def finanzas_export_xlsx():
+    if Workbook is None:
+        abort(501, description="openpyxl no instalado en el servidor.")
+
+    movimientos = MovimientoFinanciero.query.order_by(MovimientoFinanciero.fecha.desc(), MovimientoFinanciero.id.desc()).all()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Finanzas"
+    ws.append([
+        "Folio", "Tipo", "Estatus", "Contraparte", "Concepto", "Proyecto", "Referencia",
+        "Fecha", "Vencimiento", "Dias credito", "Monto", "Saldo", "Moneda", "Responsable", "Notas",
+    ])
+    for mov in movimientos:
+        ws.append([
+            mov.folio or "",
+            _finanzas_category_label(mov.categoria),
+            _finanzas_estatus_real(mov),
+            mov.contraparte or "",
+            mov.concepto or "",
+            mov.proyecto or "",
+            mov.referencia or "",
+            mov.fecha.strftime("%d/%m/%Y") if mov.fecha else "",
+            mov.fecha_vencimiento.strftime("%d/%m/%Y") if mov.fecha_vencimiento else "",
+            int(mov.dias_credito or 0),
+            float(mov.monto or 0),
+            float(mov.saldo or 0),
+            mov.moneda or "MXN",
+            mov.responsable or "",
+            mov.notas or "",
+        ])
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="0D47A1")
+        cell.alignment = Alignment(horizontal="center")
+    for col in ("K", "L"):
+        for cell in ws[col][1:]:
+            cell.number_format = '"$"#,##0.00'
+    for idx, width in enumerate([18, 20, 16, 30, 38, 28, 20, 14, 14, 14, 16, 16, 10, 18, 44], start=1):
+        ws.column_dimensions[get_column_letter(idx)].width = width
+
+    bio = io.BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    stamp = now_cdmx_naive().strftime("%Y%m%d_%H%M%S")
+    return Response(
+        bio.getvalue(),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="finanzas_{stamp}.xlsx"'},
+    )
 
 
 def _orden_compra_next_folio() -> str:

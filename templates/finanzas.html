@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+{% block title %}Finanzas{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 my-4">
+  <div>
+    <h2 class="fw-bold text-primary mb-1">Finanzas</h2>
+    <div class="text-muted">Creditos, cuentas por cobrar, cuentas por pagar, pagos y vencimientos.</div>
+  </div>
+  <a href="{{ url_for('finanzas_export_xlsx') }}" class="btn btn-outline-success">Exportar Excel</a>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Por cobrar</div>
+        <div class="h3 fw-bold text-success mb-0">${{ "{:,.2f}".format(por_cobrar or 0) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Por pagar</div>
+        <div class="h3 fw-bold text-danger mb-0">${{ "{:,.2f}".format(por_pagar or 0) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Vencido</div>
+        <div class="h3 fw-bold text-warning mb-0">${{ "{:,.2f}".format(vencido or 0) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Compras por pagar</div>
+        <div class="h3 fw-bold text-primary mb-0">${{ "{:,.2f}".format(compras_por_pagar or 0) }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-primary text-white fw-bold">Nuevo movimiento</div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('finanzas_crear') }}" class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Tipo</label>
+            <select name="categoria" class="form-select" required>
+              {% for item in categorias %}
+              <option value="{{ item }}">{{ finanzas_category_label(item) }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Contraparte</label>
+            <input name="contraparte" class="form-control" placeholder="Cliente, proveedor o banco" required>
+          </div>
+          <div class="col-md-8">
+            <label class="form-label">Concepto</label>
+            <input name="concepto" class="form-control" placeholder="Factura, anticipo, credito, estimacion" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Monto</label>
+            <input type="number" step="any" min="0" name="monto" class="form-control" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Fecha</label>
+            <input type="date" name="fecha" class="form-control">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Dias credito</label>
+            <input type="number" min="0" step="1" name="dias_credito" class="form-control" value="0">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Vencimiento</label>
+            <input type="date" name="fecha_vencimiento" class="form-control">
+          </div>
+          <div class="col-md-5">
+            <label class="form-label">Proyecto</label>
+            <input name="proyecto" class="form-control">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Referencia</label>
+            <input name="referencia" class="form-control" placeholder="Factura, OC, transferencia">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Moneda</label>
+            <input name="moneda" class="form-control" value="MXN">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Notas</label>
+            <textarea name="notas" class="form-control" rows="2"></textarea>
+          </div>
+          <div class="col-12 d-grid d-md-flex justify-content-md-end">
+            <button class="btn btn-success">Guardar movimiento</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-light fw-bold">Flujo registrado</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <div class="border rounded p-3 h-100">
+              <div class="text-muted small">Pagos recibidos</div>
+              <div class="h4 fw-bold text-success mb-0">${{ "{:,.2f}".format(recibido or 0) }}</div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="border rounded p-3 h-100">
+              <div class="text-muted small">Pagos realizados</div>
+              <div class="h4 fw-bold text-danger mb-0">${{ "{:,.2f}".format(pagado or 0) }}</div>
+            </div>
+          </div>
+          <div class="col-12">
+            <div class="alert alert-info mb-0">
+              Las ordenes de compra facturadas o recibidas se muestran como referencia en "Compras por pagar"; los movimientos financieros se controlan aqui con saldos y vencimientos propios.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm border-0">
+  <div class="card-header bg-light">
+    <form method="get" action="{{ url_for('finanzas_index') }}" class="row g-2 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label">Buscar</label>
+        <input name="q" class="form-control" value="{{ q }}" placeholder="Folio, contraparte, proyecto o referencia">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Tipo</label>
+        <select name="categoria" class="form-select">
+          <option value="">Todos</option>
+          {% for item in categorias %}
+          <option value="{{ item }}" {% if categoria == item %}selected{% endif %}>{{ finanzas_category_label(item) }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Estatus</label>
+        <select name="estatus" class="form-select">
+          <option value="">Todos</option>
+          {% for item in estatus_options %}
+          <option value="{{ item }}" {% if estatus == item %}selected{% endif %}>{{ item }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2 d-grid">
+        <button class="btn btn-outline-primary">Filtrar</button>
+      </div>
+    </form>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Folio</th>
+            <th>Tipo</th>
+            <th>Contraparte</th>
+            <th>Concepto</th>
+            <th>Vence</th>
+            <th>Monto</th>
+            <th>Saldo</th>
+            <th>Estatus</th>
+            <th>Abono / cierre</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for mov in movimientos %}
+          {% set estatus_real = finanzas_estatus_real(mov) %}
+          <tr>
+            <td class="fw-bold">{{ mov.folio }}</td>
+            <td>{{ finanzas_category_label(mov.categoria) }}</td>
+            <td>
+              <div class="fw-semibold">{{ mov.contraparte }}</div>
+              <div class="small text-muted">{{ mov.proyecto or "" }}</div>
+            </td>
+            <td>
+              <div>{{ mov.concepto }}</div>
+              <div class="small text-muted">{{ mov.referencia or "" }}</div>
+            </td>
+            <td>
+              {{ mov.fecha_vencimiento.strftime("%d/%m/%Y") if mov.fecha_vencimiento else "-" }}
+              {% if mov.dias_credito %}
+              <div class="small text-muted">{{ mov.dias_credito }} dias</div>
+              {% endif %}
+            </td>
+            <td class="fw-semibold">${{ "{:,.2f}".format(mov.monto or 0) }}</td>
+            <td class="fw-bold">${{ "{:,.2f}".format(mov.saldo or 0) }}</td>
+            <td><span class="badge bg-{{ finanzas_badge_class(estatus_real) }}">{{ estatus_real }}</span></td>
+            <td style="min-width: 280px;">
+              {% if estatus_real not in ["PAGADO", "CANCELADO"] %}
+              <form method="post" action="{{ url_for('finanzas_abono', mov_id=mov.id) }}" class="d-flex gap-1 mb-1">
+                <input type="number" step="any" min="0" name="abono" class="form-control form-control-sm" placeholder="$">
+                <input name="nota_abono" class="form-control form-control-sm" placeholder="Nota">
+                <button class="btn btn-sm btn-outline-success">Abonar</button>
+              </form>
+              {% endif %}
+              <form method="post" action="{{ url_for('finanzas_estatus', mov_id=mov.id) }}" class="d-flex gap-1">
+                <select name="estatus" class="form-select form-select-sm">
+                  {% for item in estatus_options %}
+                  <option value="{{ item }}" {% if mov.estatus == item %}selected{% endif %}>{{ item }}</option>
+                  {% endfor %}
+                </select>
+                <button class="btn btn-sm btn-outline-primary">Actualizar</button>
+              </form>
+            </td>
+            <td>
+              <div class="d-flex gap-1">
+                <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editar-finanzas-{{ mov.id }}">Editar</button>
+                <form method="post" action="{{ url_for('finanzas_eliminar', mov_id=mov.id) }}" onsubmit="return confirm('Eliminar el movimiento {{ mov.folio }}? Esta accion no se puede deshacer.');">
+                  <button class="btn btn-sm btn-outline-danger">Eliminar</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="10" class="text-center text-muted py-4">No hay movimientos financieros con estos filtros.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% for mov in movimientos %}
+<div class="modal fade" id="editar-finanzas-{{ mov.id }}" tabindex="-1" aria-labelledby="editar-finanzas-label-{{ mov.id }}" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('finanzas_actualizar', mov_id=mov.id) }}">
+        <div class="modal-header">
+          <h5 class="modal-title" id="editar-finanzas-label-{{ mov.id }}">Editar {{ mov.folio }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Tipo</label>
+              <select name="categoria" class="form-select" required>
+                {% for item in categorias %}
+                <option value="{{ item }}" {% if mov.categoria == item %}selected{% endif %}>{{ finanzas_category_label(item) }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Estatus</label>
+              <select name="estatus" class="form-select" required>
+                {% for item in estatus_options %}
+                <option value="{{ item }}" {% if mov.estatus == item %}selected{% endif %}>{{ item }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Contraparte</label>
+              <input name="contraparte" class="form-control" value="{{ mov.contraparte or '' }}" required>
+            </div>
+            <div class="col-md-8">
+              <label class="form-label">Concepto</label>
+              <input name="concepto" class="form-control" value="{{ mov.concepto or '' }}" required>
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">Monto</label>
+              <input type="number" step="any" min="0" name="monto" class="form-control" value="{{ mov.monto or 0 }}" required>
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">Saldo</label>
+              <input type="number" step="any" min="0" name="saldo" class="form-control" value="{{ mov.saldo or 0 }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Fecha</label>
+              <input type="date" name="fecha" class="form-control" value="{{ finanzas_fecha_input(mov.fecha) }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Dias credito</label>
+              <input type="number" min="0" step="1" name="dias_credito" class="form-control" value="{{ mov.dias_credito or 0 }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Vencimiento</label>
+              <input type="date" name="fecha_vencimiento" class="form-control" value="{{ finanzas_fecha_input(mov.fecha_vencimiento) }}">
+            </div>
+            <div class="col-md-5">
+              <label class="form-label">Proyecto</label>
+              <input name="proyecto" class="form-control" value="{{ mov.proyecto or '' }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Referencia</label>
+              <input name="referencia" class="form-control" value="{{ mov.referencia or '' }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Moneda</label>
+              <input name="moneda" class="form-control" value="{{ mov.moneda or 'MXN' }}">
+            </div>
+            <div class="col-12">
+              <label class="form-label">Notas</label>
+              <textarea name="notas" class="form-control" rows="3">{{ mov.notas or '' }}</textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button class="btn btn-primary">Guardar cambios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

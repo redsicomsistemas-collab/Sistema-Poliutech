@@ -429,6 +429,35 @@ class OrdenCompraPartida(db.Model):
         return f"<OrdenCompraPartida orden={self.orden_id} {self.descripcion}>"
 
 
+class MovimientoFinanciero(db.Model):
+    __tablename__ = "movimiento_financiero"
+
+    id = db.Column(db.Integer, primary_key=True)
+    folio = db.Column(db.String(40), unique=True, index=True)
+    categoria = db.Column(db.String(30), nullable=False, index=True)
+    estatus = db.Column(db.String(20), default="PENDIENTE", nullable=False, index=True)
+    contraparte = db.Column(db.String(180), nullable=False, index=True)
+    concepto = db.Column(db.String(260), nullable=False)
+    proyecto = db.Column(db.String(200), index=True)
+    referencia = db.Column(db.String(120))
+    fecha = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    fecha_vencimiento = db.Column(db.DateTime, nullable=True, index=True)
+    dias_credito = db.Column(db.Integer, default=0, nullable=False)
+    monto = db.Column(db.Float, default=0.0, nullable=False)
+    saldo = db.Column(db.Float, default=0.0, nullable=False)
+    moneda = db.Column(db.String(10), default="MXN", nullable=False)
+    notas = db.Column(db.Text)
+    responsable = db.Column(db.String(120))
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    usuario = db.relationship("Usuario", backref=db.backref("movimientos_financieros", lazy=True))
+
+    def __repr__(self):
+        return f"<MovimientoFinanciero {self.folio or self.id} {self.categoria} {self.contraparte}>"
+
+
 class APUSheet(db.Model):
     __tablename__ = "apu_sheet"
 
