@@ -7965,6 +7965,8 @@ def _finanzas_porcentaje_tiempo(mov: MovimientoFinanciero) -> float:
 
 
 def _finanzas_tiempo_estado(mov: MovimientoFinanciero) -> dict:
+    if _finanzas_estatus_real(mov) == "PAGADO":
+        return {"texto": "Liquidado", "clase": "primary", "detalle": "Credito pagado"}
     dias = _finanzas_dias_restantes(mov)
     if dias is None:
         return {"texto": "Sin vencimiento", "clase": "secondary", "detalle": ""}

@@ -141,7 +141,7 @@
           {% set estatus_real = finanzas_estatus_real(cred) %}
           {% set dias_restantes = finanzas_dias_restantes(cred) %}
           {% set tiempo_estado = finanzas_tiempo_estado(cred) %}
-          <tr>
+          <tr class="{% if estatus_real == 'PAGADO' %}table-success{% endif %}">
             <td class="fw-bold">{{ cred.folio }}</td>
             <td>
               <div class="fw-semibold">{{ cred.contraparte }}</div>
@@ -161,7 +161,13 @@
             </td>
             <td class="fw-semibold">${{ "{:,.2f}".format(cred.monto or 0) }}</td>
             <td class="text-success fw-semibold">${{ "{:,.2f}".format(finanzas_pagado(cred)) }}</td>
-            <td class="text-danger fw-bold">${{ "{:,.2f}".format(cred.saldo or 0) }}</td>
+            <td class="{% if estatus_real == 'PAGADO' %}text-success{% else %}text-danger{% endif %} fw-bold">
+              {% if estatus_real == "PAGADO" %}
+              Liquidado
+              {% else %}
+              ${{ "{:,.2f}".format(cred.saldo or 0) }}
+              {% endif %}
+            </td>
             <td style="min-width: 230px;">
               <div class="d-flex justify-content-between align-items-center mb-1">
                 <span class="small fw-semibold text-{{ tiempo_estado.clase }}">{{ tiempo_estado.texto }}</span>
@@ -189,6 +195,8 @@
                 <div class="col-2"><input name="nota_abono" class="form-control form-control-sm" placeholder="Nota"></div>
                 <div class="col-1 d-grid"><button class="btn btn-sm btn-outline-success">OK</button></div>
               </form>
+              {% elif estatus_real == "PAGADO" %}
+              <span class="badge bg-primary">Credito liquidado</span>
               {% endif %}
             </td>
             <td>
