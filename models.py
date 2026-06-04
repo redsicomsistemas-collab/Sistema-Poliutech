@@ -453,9 +453,34 @@ class MovimientoFinanciero(db.Model):
     actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     usuario = db.relationship("Usuario", backref=db.backref("movimientos_financieros", lazy=True))
+    pagos = db.relationship(
+        "MovimientoFinancieroPago",
+        backref="movimiento",
+        cascade="all, delete-orphan",
+        order_by="MovimientoFinancieroPago.fecha.desc(), MovimientoFinancieroPago.id.desc()",
+    )
 
     def __repr__(self):
         return f"<MovimientoFinanciero {self.folio or self.id} {self.categoria} {self.contraparte}>"
+
+
+class MovimientoFinancieroPago(db.Model):
+    __tablename__ = "movimiento_financiero_pago"
+
+    id = db.Column(db.Integer, primary_key=True)
+    movimiento_id = db.Column(db.Integer, db.ForeignKey("movimiento_financiero.id"), nullable=False, index=True)
+    fecha = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    monto = db.Column(db.Float, default=0.0, nullable=False)
+    referencia = db.Column(db.String(120))
+    notas = db.Column(db.Text)
+    responsable = db.Column(db.String(120))
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    usuario = db.relationship("Usuario", backref=db.backref("pagos_creditos_financieros", lazy=True))
+
+    def __repr__(self):
+        return f"<MovimientoFinancieroPago movimiento={self.movimiento_id} monto={self.monto}>"
 
 
 class APUSheet(db.Model):

@@ -345,7 +345,7 @@
             </tr>
           </thead>
           <tbody>
-            {% for pago in cred.pagos %}
+            {% for pago in pagos_por_credito.get(cred.id, []) %}
             <tr>
               <td>{{ pago.fecha.strftime("%d/%m/%Y") if pago.fecha else "" }}</td>
               <td class="fw-bold text-success">${{ "{:,.2f}".format(pago.monto or 0) }}</td>

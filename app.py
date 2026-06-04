@@ -2342,8 +2342,26 @@ from models import (
     OrdenCompra,
     OrdenCompraPartida,
     MovimientoFinanciero,
-    MovimientoFinancieroPago,
 )
+
+try:
+    from models import MovimientoFinancieroPago
+except ImportError:
+    class MovimientoFinancieroPago(db.Model):
+        __tablename__ = "movimiento_financiero_pago"
+
+        id = db.Column(db.Integer, primary_key=True)
+        movimiento_id = db.Column(db.Integer, db.ForeignKey("movimiento_financiero.id"), nullable=False, index=True)
+        fecha = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+        monto = db.Column(db.Float, default=0.0, nullable=False)
+        referencia = db.Column(db.String(120))
+        notas = db.Column(db.Text)
+        responsable = db.Column(db.String(120))
+        usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
+        creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+        movimiento = db.relationship("MovimientoFinanciero")
+        usuario = db.relationship("Usuario", backref=db.backref("pagos_creditos_financieros_fallback", lazy=True))
 
 # ---------------------------------------------------------
 # Flask + DB + Login
@@ -8017,12 +8035,22 @@ def finanzas_index():
         .limit(12)
         .all()
     )
+    pagos_credito = (
+        MovimientoFinancieroPago.query
+        .filter(MovimientoFinancieroPago.movimiento_id.in_([m.id for m in movimientos] or [0]))
+        .order_by(MovimientoFinancieroPago.fecha.desc(), MovimientoFinancieroPago.id.desc())
+        .all()
+    )
+    pagos_por_credito: dict[int, list[MovimientoFinancieroPago]] = {}
+    for pago in pagos_credito:
+        pagos_por_credito.setdefault(pago.movimiento_id, []).append(pago)
 
     return render_template(
         "finanzas.html",
         title="Creditos",
         creditos=movimientos,
         pagos_recientes=pagos_recientes,
+        pagos_por_credito=pagos_por_credito,
         estatus_options=FINANZAS_ESTATUS,
         q=q,
         estatus=estatus,
