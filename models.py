@@ -60,6 +60,7 @@ class Cotizacion(db.Model):
     iva_porc = db.Column(db.Float, default=16.0)
     iva_monto = db.Column(db.Float, default=0.0)
     total = db.Column(db.Float, default=0.0)
+    moneda = db.Column(db.String(10), default="MXN")
     notas = db.Column(db.String(3000))
     last_whatsapp_at = db.Column(db.DateTime, nullable=True)
     responsable = db.Column(db.String(120))  # sustituye a “representante”

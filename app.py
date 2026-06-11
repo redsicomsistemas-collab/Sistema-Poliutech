@@ -2712,6 +2712,7 @@ def ensure_schema():
             ("iva_porc", "ALTER TABLE cotizacion ADD COLUMN iva_porc FLOAT DEFAULT 16.0"),
             ("iva_monto", "ALTER TABLE cotizacion ADD COLUMN iva_monto FLOAT DEFAULT 0.0"),
             ("total", "ALTER TABLE cotizacion ADD COLUMN total FLOAT DEFAULT 0.0"),
+            ("moneda", "ALTER TABLE cotizacion ADD COLUMN moneda VARCHAR(10) DEFAULT 'MXN'"),
             ("notas", "ALTER TABLE cotizacion ADD COLUMN notas VARCHAR(3000)"),
             ("last_whatsapp_at", "ALTER TABLE cotizacion ADD COLUMN last_whatsapp_at TIMESTAMP NULL"),
             ("proyecto", "ALTER TABLE cotizacion ADD COLUMN proyecto VARCHAR(200)"),
@@ -4051,13 +4052,28 @@ def money(n: float) -> str:
     except Exception:
         return "${:,.2f}".format(0)
 
-def cantidad_en_letra_mn(total: float) -> str:
+def normalize_moneda(value: str | None) -> str:
+    raw = (value or "").strip().upper()
+    if raw in {"USD", "DOLAR", "DOLARES", "DÓLAR", "DÓLARES"}:
+        return "USD"
+    return "MXN"
+
+def moneda_label(moneda: str | None) -> str:
+    return "Dólares (USD)" if normalize_moneda(moneda) == "USD" else "Pesos (MXN)"
+
+def money_currency(n: float, moneda: str | None = None) -> str:
+    return f"{money(n)} {normalize_moneda(moneda)}"
+
+def cantidad_en_letra(total: float, moneda: str | None = None) -> str:
+    moneda_norm = normalize_moneda(moneda)
     try:
         from num2words import num2words
     except Exception:
         entero = int(total)
         cents = int(round((total - entero) * 100)) % 100
-        return f"Cantidad en letra: {entero} pesos {cents:02d}/100 M.N."
+        unidad = "dólares" if moneda_norm == "USD" else "pesos"
+        sufijo = "USD" if moneda_norm == "USD" else "M.N."
+        return f"Cantidad en letra: {entero} {unidad} {cents:02d}/100 {sufijo}"
     entero = int(total)
     cents = int(round((total - entero) * 100)) % 100
     palabras = num2words(entero, lang="es").strip()
@@ -4065,7 +4081,12 @@ def cantidad_en_letra_mn(total: float) -> str:
         palabras = palabras[:-4] + " un"
     if palabras:
         palabras = palabras[0].upper() + palabras[1:]
-    return f"Cantidad en letra: {palabras} pesos {cents:02d}/100 M.N."
+    unidad = "dólar" if moneda_norm == "USD" and entero == 1 else "dólares" if moneda_norm == "USD" else "peso" if entero == 1 else "pesos"
+    sufijo = "USD" if moneda_norm == "USD" else "M.N."
+    return f"Cantidad en letra: {palabras} {unidad} {cents:02d}/100 {sufijo}"
+
+def cantidad_en_letra_mn(total: float) -> str:
+    return cantidad_en_letra(total, "MXN")
 
 def normalize_whatsapp(number: str) -> str:
     if not number:
@@ -5897,6 +5918,7 @@ def crear_cotizacion():
     empresa = (f.get("empresa") or "").strip()
     proyecto = (f.get("proyecto") or "").strip() or None
     ciudad_trabajo = (f.get("ciudad_trabajo") or "").strip().upper() or None
+    moneda = normalize_moneda(f.get("moneda"))
 
     # === responsable_final ===
     # USER: siempre su nombre (primer nombre)
@@ -5957,6 +5979,7 @@ def crear_cotizacion():
         responsable=responsable_final,
         proyecto=proyecto,
         ciudad_trabajo=ciudad_trabajo,
+        moneda=moneda,
     )
     db.session.add(cot)
     db.session.flush()
@@ -6152,6 +6175,7 @@ def actualizar_cotizacion(cot_id: int):
     c.responsable = (responsable_final or c.responsable)
     c.proyecto = (f.get("proyecto") or "").strip() or None
     c.ciudad_trabajo = (f.get("ciudad_trabajo") or "").strip().upper() or None
+    c.moneda = normalize_moneda(f.get("moneda") or getattr(c, "moneda", None))
     iva_porc = parse_float(f.get("iva_porc"), c.iva_porc or 16.0)
 
     # --- Zona (descuento) ---
@@ -7324,6 +7348,7 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
     cliente_correo = cli.correo if cli else ""
     cliente_telefono = cli.telefono if cli else ""
     ciudad_trabajo = (getattr(c, "ciudad_trabajo", "") or "").strip()
+    moneda = normalize_moneda(getattr(c, "moneda", None))
     try:
         correo_lineas = _parse_email_list(cliente_correo)
     except ValueError:
@@ -7347,6 +7372,10 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
             Paragraph(f"<b>Teléfono:</b> {cliente_telefono}", styles["Encabezado"]),
             Paragraph(f"<b>Ciudad:</b> {escape(ciudad_trabajo)}", styles["Encabezado"]),
         ],
+        [
+            Paragraph(f"<b>Moneda:</b> {moneda_label(moneda)}", styles["Encabezado"]),
+            Paragraph("", styles["Encabezado"]),
+        ],
     ]
     meta_tbl = Table(meta_data, colWidths=[95*mm, 95*mm], hAlign="LEFT")
     meta_tbl.setStyle(TableStyle([
@@ -7368,8 +7397,8 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
             Paragraph(" ".join(str(d.unidad or "-").strip().splitlines()), styles["UnitCell"]),
             Paragraph(f"{(d.cantidad or 0):.2f}", styles["NormalCenter"]),
             Paragraph((d.sistema or "-").strip(), styles["NormalCell"]),
-            Paragraph(money(d.precio_unitario), styles["NormalRight"]),
-            Paragraph(money(d.subtotal), styles["NormalRight"]),
+            Paragraph(money_currency(d.precio_unitario, moneda), styles["NormalRight"]),
+            Paragraph(money_currency(d.subtotal, moneda), styles["NormalRight"]),
         ])
 
     tbl = Table(
@@ -7401,15 +7430,7 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
     # === CANTIDAD EN LETRA ===
     resumen_elems = []
     try:
-        from num2words import num2words
-        total = float(c.total or 0)
-        enteros = int(total)
-        centavos = int(round((total - enteros) * 100)) % 100
-        palabras = num2words(enteros, lang='es').strip()
-        if palabras.endswith(" uno"):
-            palabras = palabras[:-4] + " un"
-        palabras = palabras.capitalize()
-        cantidad_letra = f"{palabras} pesos {centavos:02d}/100 M.N."
+        cantidad_letra = cantidad_en_letra(float(c.total or 0), moneda).replace("Cantidad en letra: ", "", 1)
         resumen_elems.append(Paragraph(f"<b>Cantidad en letra:</b> {cantidad_letra}", styles["Encabezado"]))
         resumen_elems.append(Spacer(1, 4))
     except Exception as e:
@@ -7422,13 +7443,13 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
     subtotal_desc = subtotal - descuento
     descuento_porc_pdf = (descuento / subtotal * 100.0) if subtotal > 0 else 0.0
 
-    tot_data = [["Subtotal:", money(subtotal)]]
+    tot_data = [["Subtotal:", money_currency(subtotal, moneda)]]
     if descuento and descuento > 0.0001:
-        tot_data.append([f"Descuento ({descuento_porc_pdf:g}%):", "-" + money(descuento)])
-        tot_data.append(["Subtotal c/ desc.:", money(subtotal_desc)])
+        tot_data.append([f"Descuento ({descuento_porc_pdf:g}%):", "-" + money_currency(descuento, moneda)])
+        tot_data.append(["Subtotal c/ desc.:", money_currency(subtotal_desc, moneda)])
     tot_data.extend([
-        [f"IVA ({c.iva_porc:.2f}%):", money(c.iva_monto)],
-        ["Total:", money(c.total)],
+        [f"IVA ({c.iva_porc:.2f}%):", money_currency(c.iva_monto, moneda)],
+        ["Total:", money_currency(c.total, moneda)],
     ])
     t2 = Table(tot_data, colWidths=[45*mm, 35*mm], hAlign="RIGHT")
     t2.setStyle(TableStyle([

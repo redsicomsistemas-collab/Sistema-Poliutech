@@ -29,6 +29,13 @@
             </datalist>
           </div>
           <div class="col-md-4 mt-3"><label class="form-label">Ciudad</label><input type="text" name="ciudad_trabajo" class="form-control text-uppercase" value="{{ c.ciudad_trabajo or '' }}" placeholder="CIUDAD DE MÉXICO"></div>
+          <div class="col-md-4 mt-3">
+            <label class="form-label">Moneda</label>
+            <select name="moneda" class="form-select">
+              <option value="MXN" {% if (c.moneda or 'MXN') == 'MXN' %}selected{% endif %}>Pesos (MXN)</option>
+              <option value="USD" {% if c.moneda == 'USD' %}selected{% endif %}>Dólares (USD)</option>
+            </select>
+          </div>
         </div>
 
         <h5 class="fw-bold text-primary mt-4 mb-3">Renglones de cotización</h5>
