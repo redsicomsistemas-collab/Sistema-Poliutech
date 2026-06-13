@@ -386,10 +386,10 @@
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('inventario_index') }}">📦 Inventario</a></li>
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('ordenes_compra_index') }}">🧾 Compras</a></li>
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('finanzas_index') }}">🏦 Finanzas</a></li>
-          <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('prospectos') }}">📋 Prospectos</a></li>
+          <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('prospectos') }}">📋 Por Cotizar</a></li>
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('admin_catalogos') }}">📚 Catálogos</a></li>
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('pu.obras_index') }}">🧮 Precios Unitarios</a></li>
-          <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('registro_obras') }}">🏗️ Registro Obras</a></li>
+          <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('registro_obras') }}">🏗️ Prospectos</a></li>
           {% if current_user.is_authenticated and (current_user.rol or "")|upper == "ADMIN" %}
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('altas_proveedores') }}">🗂️ Altas</a></li>
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('admin_usuarios') }}">👥 Usuarios</a></li>
@@ -397,7 +397,7 @@
           {% endif %}
 
           {% if current_user.is_authenticated %}
-          <li class="nav-item"><span class="nav-link text-white-50">👤 {{ current_user.nombre }}</span></li>
+          <li class="nav-item"><span class="nav-link text-white fw-semibold">👤 Sesión: {{ current_user.nombre }}</span></li>
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('logout') }}">🚪 Cerrar sesión</a></li>
           {% endif %}
         </ul>

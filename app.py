@@ -4278,12 +4278,39 @@ def proyecto_detalle():
     cotizaciones = q.order_by(Cotizacion.fecha.desc()).all()
     total_importe = sum(float(c.total or 0) for c in cotizaciones)
     promedio_importe = total_importe / len(cotizaciones) if cotizaciones else 0.0
+
+    monthly_map = {}
+    status_map = {estado: 0 for estado in VALID_ESTATUS}
+    for cot in cotizaciones:
+        if cot.fecha:
+            key = cot.fecha.strftime("%Y-%m")
+            label = cot.fecha.strftime("%b %Y")
+        else:
+            key = "0000-00"
+            label = "Sin fecha"
+
+        item = monthly_map.setdefault(key, {"label": label, "total": 0.0, "cotizaciones": 0})
+        item["total"] += float(cot.total or 0)
+        item["cotizaciones"] += 1
+
+        estatus = (cot.estatus or "").strip().upper()
+        if estatus in status_map:
+            status_map[estatus] += 1
+
+    monthly_series = [monthly_map[key] for key in sorted(monthly_map.keys())]
+    status_series = {
+        "labels": VALID_ESTATUS,
+        "counts": [status_map.get(estado, 0) for estado in VALID_ESTATUS],
+    }
+
     return render_template(
         "proyecto_detalle.html",
         proyecto=nombre,
         cotizaciones=cotizaciones,
         total_importe=total_importe,
         promedio_importe=promedio_importe,
+        monthly_series=monthly_series,
+        status_series=status_series,
         valid_estatus=VALID_ESTATUS,
         title=f"Proyecto {nombre} - Sistema MAR",
     )

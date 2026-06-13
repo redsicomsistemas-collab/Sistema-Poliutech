@@ -40,6 +40,29 @@
   </div>
 </div>
 
+<div class="row g-3 mb-4">
+  <div class="col-lg-8">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h5 class="card-title text-primary">Resumen mensual del proyecto</h5>
+        <div style="height:300px;">
+          <canvas id="proyectoChartMensual"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h5 class="card-title text-primary">Distribución por estatus</h5>
+        <div style="height:300px;">
+          <canvas id="proyectoChartEstatus"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="card shadow-sm">
   <div class="card-body">
     <div class="table-responsive">
@@ -85,5 +108,92 @@
     </div>
   </div>
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  if (typeof Chart === "undefined") return;
+
+  const monthlySeries = {{ monthly_series|tojson }};
+  const statusSeries = {{ status_series|tojson }};
+  const moneyCompact = new Intl.NumberFormat("es-MX", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  });
+  const chartColors = ["#1565c0", "#f9a825", "#00897b", "#6d4c41", "#546e7a", "#2e7d32", "#c62828"];
+
+  new Chart(document.getElementById("proyectoChartMensual"), {
+    data: {
+      labels: monthlySeries.map((item) => item.label),
+      datasets: [
+        {
+          type: "bar",
+          label: "Importe total ($)",
+          data: monthlySeries.map((item) => Number(item.total || 0)),
+          yAxisID: "y",
+          backgroundColor: "#1565c0",
+          borderRadius: 6,
+          maxBarThickness: 46,
+        },
+        {
+          type: "line",
+          label: "Cotizaciones",
+          data: monthlySeries.map((item) => Number(item.cotizaciones || 0)),
+          yAxisID: "y1",
+          borderColor: "#43a047",
+          backgroundColor: "#43a047",
+          pointRadius: 4,
+          tension: 0.25,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { position: "top" },
+        tooltip: {
+          callbacks: {
+            label: (context) => {
+              if (context.dataset.yAxisID === "y") {
+                return ` ${context.dataset.label}: $${Number(context.raw || 0).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+              }
+              return ` ${context.dataset.label}: ${context.raw || 0}`;
+            },
+          },
+        },
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { callback: (value) => `$${moneyCompact.format(value)}` },
+        },
+        y1: {
+          beginAtZero: true,
+          position: "right",
+          grid: { drawOnChartArea: false },
+          ticks: { precision: 0 },
+        },
+      },
+    },
+  });
+
+  new Chart(document.getElementById("proyectoChartEstatus"), {
+    type: "doughnut",
+    data: {
+      labels: statusSeries.labels,
+      datasets: [{
+        data: statusSeries.counts,
+        backgroundColor: chartColors,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: "bottom" } },
+    },
+  });
+});
+</script>
 
 {% endblock %}
