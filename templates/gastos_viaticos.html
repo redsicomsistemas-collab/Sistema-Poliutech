@@ -105,15 +105,15 @@
 
           <div class="col-md-2">
             <label class="form-label">Subtotal</label>
-            <input type="number" step="any" min="0" name="subtotal" id="subtotal" class="form-control">
+            <input type="number" step="any" min="0" name="subtotal" id="subtotal" class="form-control js-subtotal">
           </div>
           <div class="col-md-2">
             <label class="form-label">IVA</label>
-            <input type="number" step="any" min="0" name="iva" id="iva" class="form-control">
+            <input type="number" step="any" min="0" name="iva" id="iva" class="form-control js-iva">
           </div>
           <div class="col-md-2">
             <label class="form-label">Total</label>
-            <input type="number" step="any" min="0" name="total" id="total" class="form-control" required>
+            <input type="number" step="any" min="0" name="total" id="total" class="form-control js-total" required>
           </div>
           <div class="col-md-2">
             <label class="form-label">Moneda</label>
@@ -298,9 +298,9 @@
             <div class="col-md-5"><label class="form-label">Concepto(s)</label><input name="concepto" class="form-control" value="{{ gasto.concepto or '' }}"></div>
             <div class="col-md-3"><label class="form-label">Fecha</label><input type="date" name="fecha_comprobante" class="form-control" value="{{ fecha_input(gasto.fecha_comprobante) }}"></div>
             <div class="col-md-4"><label class="form-label">Quien hizo la compra</label><input name="responsable" class="form-control" value="{{ gasto.responsable or '' }}"></div>
-            <div class="col-md-2"><label class="form-label">Subtotal</label><input type="number" step="any" min="0" name="subtotal" class="form-control" value="{{ gasto.subtotal or 0 }}"></div>
-            <div class="col-md-2"><label class="form-label">IVA</label><input type="number" step="any" min="0" name="iva" class="form-control" value="{{ gasto.iva or 0 }}"></div>
-            <div class="col-md-2"><label class="form-label">Total</label><input type="number" step="any" min="0" name="total" class="form-control" value="{{ gasto.total or 0 }}"></div>
+            <div class="col-md-2"><label class="form-label">Subtotal</label><input type="number" step="any" min="0" name="subtotal" class="form-control js-subtotal" value="{{ gasto.subtotal or 0 }}"></div>
+            <div class="col-md-2"><label class="form-label">IVA</label><input type="number" step="any" min="0" name="iva" class="form-control js-iva" value="{{ gasto.iva or 0 }}"></div>
+            <div class="col-md-2"><label class="form-label">Total</label><input type="number" step="any" min="0" name="total" class="form-control js-total" value="{{ gasto.total or 0 }}"></div>
             <div class="col-md-2"><label class="form-label">Moneda</label><input name="moneda" class="form-control" value="{{ gasto.moneda or 'MXN' }}"></div>
             <div class="col-md-4"><label class="form-label">Metodo pago</label><input name="metodo_pago" class="form-control" value="{{ gasto.metodo_pago or '' }}"></div>
             <div class="col-md-4"><label class="form-label">Referencia</label><input name="referencia" class="form-control" value="{{ gasto.referencia or '' }}"></div>
@@ -342,6 +342,35 @@
   const notasModalEl = document.getElementById("aiNotasModal");
   const notasTextoEl = document.getElementById("aiNotasTexto");
   let fileMode = "attach";
+  const money = value => {
+    const n = Number.parseFloat(String(value || "").replace(/,/g, ""));
+    return Number.isFinite(n) ? n : 0;
+  };
+  const asCurrencyInput = value => {
+    const rounded = Math.round((Number(value) || 0) * 100) / 100;
+    return rounded ? rounded.toFixed(2) : "";
+  };
+  const updateTotalsFromSubtotal = (subtotalEl, ivaEl, totalEl) => {
+    const subtotal = money(subtotalEl.value);
+    if (!subtotal) {
+      ivaEl.value = "";
+      totalEl.value = "";
+      return;
+    }
+    const iva = subtotal * 0.16;
+    ivaEl.value = asCurrencyInput(iva);
+    totalEl.value = asCurrencyInput(subtotal + iva);
+  };
+  const bindTotals = root => {
+    const subtotalEl = root.querySelector(".js-subtotal") || root.querySelector("#subtotal");
+    const ivaEl = root.querySelector(".js-iva") || root.querySelector("#iva");
+    const totalEl = root.querySelector(".js-total") || root.querySelector("#total");
+    if (!subtotalEl || !ivaEl || !totalEl) return;
+    subtotalEl.addEventListener("input", () => updateTotalsFromSubtotal(subtotalEl, ivaEl, totalEl));
+    subtotalEl.addEventListener("change", () => updateTotalsFromSubtotal(subtotalEl, ivaEl, totalEl));
+  };
+  bindTotals(document.getElementById("gastoForm"));
+  document.querySelectorAll(".modal form").forEach(bindTotals);
   const setStatus = (text, cls = "info") => {
     statusBox.className = `alert alert-${cls} mb-3`;
     statusBox.textContent = text;
