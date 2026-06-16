@@ -42,16 +42,8 @@
           <input type="text" name="solicitante" class="form-control" value="{{ current_user.nombre if current_user.is_authenticated else '' }}" required maxlength="160">
         </div>
         <div class="col-lg-4">
-          <label class="form-label fw-bold">Empresa</label>
-          <input type="text" name="empresa" class="form-control" maxlength="160">
-        </div>
-        <div class="col-lg-4">
           <label class="form-label fw-bold">Correo</label>
           <input type="email" name="correo" class="form-control" maxlength="160">
-        </div>
-        <div class="col-lg-4">
-          <label class="form-label fw-bold">Teléfono</label>
-          <input type="text" name="telefono" class="form-control" maxlength="60">
         </div>
         <div class="col-lg-4">
           <label class="form-label fw-bold">Categoría</label>

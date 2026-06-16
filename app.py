@@ -2076,7 +2076,6 @@ def _load_ticket_rows(filters: dict[str, str]) -> list[dict]:
             db.func.lower(db.func.coalesce(TicketSoporte.folio, "")).like(q),
             db.func.lower(db.func.coalesce(TicketSoporte.asunto, "")).like(q),
             db.func.lower(db.func.coalesce(TicketSoporte.solicitante, "")).like(q),
-            db.func.lower(db.func.coalesce(TicketSoporte.empresa, "")).like(q),
         ))
     return [_ticket_to_row(ticket) for ticket in query.limit(300).all()]
 
@@ -5129,8 +5128,6 @@ def soporte_ticket_nuevo():
         descripcion = (request.form.get("descripcion") or "").strip()
         solicitante = (request.form.get("solicitante") or "").strip()
         correo = (request.form.get("correo") or "").strip()
-        telefono = (request.form.get("telefono") or "").strip()
-        empresa = (request.form.get("empresa") or "").strip()
         categoria = _normalize_ticket_category(request.form.get("categoria"))
         prioridad = _normalize_ticket_priority(request.form.get("prioridad"))
         responsable = (request.form.get("responsable") or "").strip() if is_admin() else (responsable_actual() or "").strip()
@@ -5147,8 +5144,8 @@ def soporte_ticket_nuevo():
             descripcion=descripcion,
             solicitante=solicitante,
             correo=correo or None,
-            telefono=telefono or None,
-            empresa=empresa or None,
+            telefono=None,
+            empresa=None,
             categoria=categoria,
             prioridad=prioridad,
             estado="NUEVO",
