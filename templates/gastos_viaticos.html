@@ -8,6 +8,38 @@
     white-space: normal;
     line-height: 1.1;
   }
+  .gastos-table {
+    table-layout: fixed;
+    width: 100%;
+  }
+  .gastos-table th,
+  .gastos-table td {
+    vertical-align: middle;
+  }
+  .gastos-table .col-folio { width: 9.5rem; }
+  .gastos-table .col-grupo { width: 12.5rem; }
+  .gastos-table .col-comprobante { width: 34%; }
+  .gastos-table .col-compra { width: 8.5rem; }
+  .gastos-table .col-fecha { width: 7.5rem; }
+  .gastos-table .col-total { width: 8rem; }
+  .gastos-table .col-ia { width: 5rem; }
+  .gastos-table .col-estatus { width: 7.5rem; }
+  .gastos-table .col-adjuntos { width: 7rem; }
+  .gastos-table .col-acciones { width: 8.5rem; }
+  .cell-wrap {
+    overflow-wrap: anywhere;
+    word-break: normal;
+    white-space: normal;
+  }
+  .concept-preview {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .filter-actions {
+    min-width: 0;
+  }
 </style>
 <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 my-4">
   <div>
@@ -184,11 +216,11 @@
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-header bg-light">
     <form method="get" action="{{ url_for('gastos_viaticos_index') }}" class="row g-2 align-items-end">
-      <div class="col-md-6">
+      <div class="col-xl-5 col-lg-6">
         <label class="form-label">Buscar</label>
         <input name="q" class="form-control" value="{{ q }}" placeholder="Folio, proveedor, concepto, comprador, proyecto, evento o referencia">
       </div>
-      <div class="col-md-2">
+      <div class="col-xl-2 col-lg-3 col-md-4">
         <label class="form-label">Agrupacion</label>
         <select name="agrupacion" class="form-select">
           <option value="">Todas</option>
@@ -197,7 +229,7 @@
           {% endfor %}
         </select>
       </div>
-      <div class="col-md-2">
+      <div class="col-xl-2 col-lg-3 col-md-4">
         <label class="form-label">Estatus</label>
         <select name="estatus" class="form-select">
           <option value="">Todos</option>
@@ -206,45 +238,45 @@
           {% endfor %}
         </select>
       </div>
-      <div class="col-md-2 d-grid">
+      <div class="col-xl-1 col-lg-2 col-md-4 d-grid filter-actions">
         <button class="btn btn-outline-primary">Filtrar</button>
       </div>
-      <div class="col-md-2 d-grid">
+      <div class="col-xl-2 col-lg-2 col-md-4 d-grid filter-actions">
         <a class="btn btn-outline-success" href="{{ url_for('gastos_viaticos_export_xlsx', q=q, agrupacion=agrupacion, estatus=estatus) }}">Excel</a>
       </div>
     </form>
   </div>
   <div class="card-body p-0">
     <div class="table-responsive">
-      <table class="table table-hover align-middle mb-0">
+      <table class="table table-hover align-middle mb-0 gastos-table">
         <thead>
           <tr>
-            <th>Folio</th>
-            <th>Grupo</th>
-            <th>Comprobante</th>
-            <th>Compra</th>
-            <th>Fecha</th>
-            <th>Total</th>
-            <th>IA</th>
-            <th>Estatus</th>
-            <th>Adjuntos</th>
-            <th>Acciones</th>
+            <th class="col-folio">Folio</th>
+            <th class="col-grupo">Grupo</th>
+            <th class="col-comprobante">Comprobante</th>
+            <th class="col-compra">Compra</th>
+            <th class="col-fecha">Fecha</th>
+            <th class="col-total">Total</th>
+            <th class="col-ia">IA</th>
+            <th class="col-estatus">Estatus</th>
+            <th class="col-adjuntos">Adjuntos</th>
+            <th class="col-acciones">Acciones</th>
           </tr>
         </thead>
         <tbody>
           {% for gasto in comprobaciones %}
           <tr>
-            <td class="fw-bold">{{ gasto.folio }}</td>
-            <td>
+            <td class="fw-bold cell-wrap">{{ gasto.folio }}</td>
+            <td class="cell-wrap">
               <div class="fw-semibold">{{ gasto.proyecto if gasto.tipo_agrupacion == "PROYECTO" else gasto.evento }}</div>
               <div class="small text-muted">{{ gasto.tipo_agrupacion }} · {{ gasto.tipo_gasto }}</div>
             </td>
-            <td>
+            <td class="cell-wrap">
               <div class="fw-semibold">{{ gasto.proveedor or "Sin proveedor" }}</div>
-              <div>{{ gasto.concepto }}</div>
+              <div class="concept-preview" title="{{ gasto.concepto }}">{{ gasto.concepto }}</div>
               <div class="small text-muted">{{ gasto.referencia or "" }}</div>
             </td>
-            <td>{{ gasto.responsable or "-" }}</td>
+            <td class="cell-wrap">{{ gasto.responsable or "-" }}</td>
             <td>{{ gasto.fecha_comprobante.strftime("%d/%m/%Y") if gasto.fecha_comprobante else "-" }}</td>
             <td class="fw-bold">${{ "{:,.2f}".format(gasto.total or 0) }} {{ gasto.moneda }}</td>
             <td>
