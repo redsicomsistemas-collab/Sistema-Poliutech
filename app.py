@@ -8440,6 +8440,7 @@ def _gastos_heuristic_extract(text: str) -> dict:
     return {
         "proveedor": lines[0][:160] if lines else "",
         "concepto": "Comprobante de gasto",
+        "conceptos": ["Comprobante de gasto"],
         "referencia": "",
         "fecha_comprobante": date_value,
         "subtotal": subtotal,
@@ -8456,9 +8457,10 @@ def _gastos_heuristic_extract(text: str) -> dict:
 def _gastos_ai_extract(file_bytes: bytes, filename: str, mime_type: str, text: str = "") -> dict:
     prompt = (
         "Extrae datos de un comprobante de gastos o viaticos en Mexico. "
-        "Responde solo JSON valido con estas llaves: proveedor, concepto, referencia, "
+        "Responde solo JSON valido con estas llaves: proveedor, concepto, conceptos, referencia, "
         "fecha_comprobante en formato YYYY-MM-DD, subtotal, iva, total, moneda, metodo_pago, "
         "tipo_gasto como GASTO o VIATICO, confianza de 0 a 1, observaciones. "
+        "conceptos debe ser una lista con cada concepto comprado o consumido detectado. "
         "Si un dato no existe usa cadena vacia o 0."
     )
     if not OPENAI_API_KEY:
@@ -8492,9 +8494,17 @@ def _gastos_ai_extract(file_bytes: bytes, filename: str, mime_type: str, text: s
 
 def _gastos_normalize_ai(data: dict) -> dict:
     data = data or {}
+    conceptos_raw = data.get("conceptos")
+    conceptos = []
+    if isinstance(conceptos_raw, list):
+        conceptos = [str(item).strip() for item in conceptos_raw if str(item or "").strip()]
+    elif conceptos_raw:
+        conceptos = [str(conceptos_raw).strip()]
+    concepto_text = "; ".join(conceptos) or str(data.get("concepto") or "Comprobante de gasto")
     normalized = {
         "proveedor": str(data.get("proveedor") or "")[:180],
-        "concepto": str(data.get("concepto") or "Comprobante de gasto")[:260],
+        "concepto": concepto_text[:260],
+        "conceptos": conceptos[:20],
         "referencia": str(data.get("referencia") or "")[:120],
         "fecha_comprobante": str(data.get("fecha_comprobante") or "")[:10],
         "subtotal": fmt(parse_float(data.get("subtotal"), 0)),
@@ -8517,9 +8527,7 @@ def _gastos_redirect():
     return redirect(request.referrer or url_for("gastos_viaticos_index"))
 
 
-@app.route("/gastos-viaticos")
-@login_required
-def gastos_viaticos_index():
+def _gastos_query_from_request():
     q = (request.args.get("q") or "").strip()
     agrupacion = (request.args.get("agrupacion") or "").strip().upper()
     estatus = (request.args.get("estatus") or "").strip().upper()
@@ -8534,12 +8542,19 @@ def gastos_viaticos_index():
             ComprobacionGasto.proyecto.ilike(like),
             ComprobacionGasto.evento.ilike(like),
             ComprobacionGasto.referencia.ilike(like),
+            ComprobacionGasto.responsable.ilike(like),
         ))
     if agrupacion in GASTOS_AGRUPACIONES:
         query = query.filter(ComprobacionGasto.tipo_agrupacion == agrupacion)
     if estatus in GASTOS_ESTATUS:
         query = query.filter(ComprobacionGasto.estatus == estatus)
+    return query, q, agrupacion, estatus
 
+
+@app.route("/gastos-viaticos")
+@login_required
+def gastos_viaticos_index():
+    query, q, agrupacion, estatus = _gastos_query_from_request()
     comprobaciones = query.order_by(ComprobacionGasto.fecha_registro.desc(), ComprobacionGasto.id.desc()).all()
     total_general = sum(float(g.total or 0) for g in comprobaciones)
     total_pendiente = sum(float(g.total or 0) for g in comprobaciones if (g.estatus or "") in {"PENDIENTE", "EN REVISION"})
@@ -8569,6 +8584,66 @@ def gastos_viaticos_index():
         agrupaciones=GASTOS_AGRUPACIONES,
         gastos_badge_class=_gastos_badge_class,
         fecha_input=_finanzas_fecha_input,
+        responsable_default=responsable_actual() or "",
+    )
+
+
+@app.route("/gastos-viaticos/export.xlsx")
+@login_required
+def gastos_viaticos_export_xlsx():
+    if Workbook is None:
+        abort(501, description="openpyxl no instalado en el servidor.")
+
+    query, _q, _agrupacion, _estatus = _gastos_query_from_request()
+    comprobaciones = query.order_by(ComprobacionGasto.fecha_registro.desc(), ComprobacionGasto.id.desc()).all()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Gastos y viaticos"
+    headers = [
+        "Folio", "Agrupacion", "Proyecto", "Evento", "Tipo", "Estatus",
+        "Quien hizo la compra", "Proveedor", "Concepto(s)", "Referencia",
+        "Fecha comprobante", "Subtotal", "IVA", "Total", "Moneda",
+        "Metodo pago", "Notas", "Confianza IA", "Adjuntos",
+    ]
+    ws.append(headers)
+    for gasto in comprobaciones:
+        ws.append([
+            gasto.folio or "",
+            gasto.tipo_agrupacion or "",
+            gasto.proyecto or "",
+            gasto.evento or "",
+            gasto.tipo_gasto or "",
+            gasto.estatus or "",
+            gasto.responsable or "",
+            gasto.proveedor or "",
+            gasto.concepto or "",
+            gasto.referencia or "",
+            gasto.fecha_comprobante.strftime("%Y-%m-%d") if gasto.fecha_comprobante else "",
+            float(gasto.subtotal or 0),
+            float(gasto.iva or 0),
+            float(gasto.total or 0),
+            gasto.moneda or "",
+            gasto.metodo_pago or "",
+            gasto.notas or "",
+            float(gasto.ai_confianza or 0),
+            len(gasto.adjuntos or []),
+        ])
+
+    for idx, header in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=idx)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="0D6EFD")
+        ws.column_dimensions[get_column_letter(idx)].width = min(max(len(header) + 3, 14), 28)
+
+    out = io.BytesIO()
+    wb.save(out)
+    out.seek(0)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return Response(
+        out.getvalue(),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="gastos_viaticos_{stamp}.xlsx"'},
     )
 
 
@@ -8642,7 +8717,7 @@ def gastos_viaticos_crear():
         notas=(f.get("notas") or "").strip() or None,
         ai_confianza=min(1.0, max(0.0, parse_float(f.get("ai_confianza"), 0))),
         ai_resultado=(f.get("ai_resultado") or "").strip() or None,
-        responsable=responsable_actual() or None,
+        responsable=(f.get("responsable") or "").strip() or responsable_actual() or None,
         usuario_id=getattr(current_user, "id", None),
     )
     db.session.add(gasto)
@@ -8685,6 +8760,7 @@ def gastos_viaticos_actualizar(gasto_id: int):
     gasto.moneda = (f.get("moneda") or "MXN").strip().upper()[:10] or "MXN"
     gasto.metodo_pago = (f.get("metodo_pago") or "").strip() or None
     gasto.notas = (f.get("notas") or "").strip() or None
+    gasto.responsable = (f.get("responsable") or "").strip() or gasto.responsable
     gasto.actualizado_en = now_cdmx_naive()
     db.session.commit()
     flash(f"Comprobacion {gasto.folio} actualizada.", "success")

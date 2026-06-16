@@ -9,6 +9,7 @@
   </div>
   <div class="d-flex gap-2">
     <button type="button" id="btnPorImagen" class="btn btn-primary fw-semibold">POR IMAGEN</button>
+    <a href="{{ url_for('gastos_viaticos_export_xlsx', q=q, agrupacion=agrupacion, estatus=estatus) }}" class="btn btn-success fw-semibold">Exportar Excel</a>
     <button type="button" class="btn btn-outline-primary" onclick="document.getElementById('manualConcepto').focus()">Captura manual</button>
   </div>
 </div>
@@ -67,7 +68,7 @@
             <input name="evento" id="evento" class="form-control" placeholder="Evento, viaje o actividad">
           </div>
           <div class="col-md-1 d-grid align-self-end">
-            <button type="button" class="btn btn-outline-secondary" id="btnArchivo">PDF</button>
+            <button type="button" class="btn btn-outline-secondary" id="btnArchivo">Imagen/PDF</button>
           </div>
 
           <div class="col-md-3">
@@ -83,12 +84,16 @@
             <input name="proveedor" id="proveedor" class="form-control" placeholder="Restaurante, hotel, proveedor">
           </div>
           <div class="col-md-4">
-            <label class="form-label">Concepto</label>
+            <label class="form-label">Concepto(s)</label>
             <input name="concepto" id="manualConcepto" class="form-control" placeholder="Alimentos, hospedaje, gasolina" required>
           </div>
           <div class="col-md-2">
             <label class="form-label">Fecha comprobante</label>
             <input type="date" name="fecha_comprobante" id="fecha_comprobante" class="form-control">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Quien hizo la compra</label>
+            <input name="responsable" id="responsable" class="form-control" value="{{ responsable_default }}" placeholder="Nombre">
           </div>
 
           <div class="col-md-2">
@@ -174,7 +179,7 @@
     <form method="get" action="{{ url_for('gastos_viaticos_index') }}" class="row g-2 align-items-end">
       <div class="col-md-6">
         <label class="form-label">Buscar</label>
-        <input name="q" class="form-control" value="{{ q }}" placeholder="Folio, proveedor, concepto, proyecto, evento o referencia">
+        <input name="q" class="form-control" value="{{ q }}" placeholder="Folio, proveedor, concepto, comprador, proyecto, evento o referencia">
       </div>
       <div class="col-md-2">
         <label class="form-label">Agrupacion</label>
@@ -197,6 +202,9 @@
       <div class="col-md-2 d-grid">
         <button class="btn btn-outline-primary">Filtrar</button>
       </div>
+      <div class="col-md-2 d-grid">
+        <a class="btn btn-outline-success" href="{{ url_for('gastos_viaticos_export_xlsx', q=q, agrupacion=agrupacion, estatus=estatus) }}">Excel</a>
+      </div>
     </form>
   </div>
   <div class="card-body p-0">
@@ -207,6 +215,7 @@
             <th>Folio</th>
             <th>Grupo</th>
             <th>Comprobante</th>
+            <th>Compra</th>
             <th>Fecha</th>
             <th>Total</th>
             <th>IA</th>
@@ -228,6 +237,7 @@
               <div>{{ gasto.concepto }}</div>
               <div class="small text-muted">{{ gasto.referencia or "" }}</div>
             </td>
+            <td>{{ gasto.responsable or "-" }}</td>
             <td>{{ gasto.fecha_comprobante.strftime("%d/%m/%Y") if gasto.fecha_comprobante else "-" }}</td>
             <td class="fw-bold">${{ "{:,.2f}".format(gasto.total or 0) }} {{ gasto.moneda }}</td>
             <td>
@@ -255,7 +265,7 @@
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="9" class="text-center text-muted py-4">No hay comprobaciones con estos filtros.</td></tr>
+          <tr><td colspan="10" class="text-center text-muted py-4">No hay comprobaciones con estos filtros.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -278,8 +288,9 @@
             <div class="col-md-4"><label class="form-label">Evento</label><input name="evento" class="form-control" value="{{ gasto.evento or '' }}"></div>
             <div class="col-md-4"><label class="form-label">Estatus</label><select name="estatus" class="form-select">{% for item in estatus_options %}<option value="{{ item }}" {% if gasto.estatus == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></div>
             <div class="col-md-4"><label class="form-label">Proveedor</label><input name="proveedor" class="form-control" value="{{ gasto.proveedor or '' }}"></div>
-            <div class="col-md-5"><label class="form-label">Concepto</label><input name="concepto" class="form-control" value="{{ gasto.concepto or '' }}"></div>
+            <div class="col-md-5"><label class="form-label">Concepto(s)</label><input name="concepto" class="form-control" value="{{ gasto.concepto or '' }}"></div>
             <div class="col-md-3"><label class="form-label">Fecha</label><input type="date" name="fecha_comprobante" class="form-control" value="{{ fecha_input(gasto.fecha_comprobante) }}"></div>
+            <div class="col-md-4"><label class="form-label">Quien hizo la compra</label><input name="responsable" class="form-control" value="{{ gasto.responsable or '' }}"></div>
             <div class="col-md-2"><label class="form-label">Subtotal</label><input type="number" step="any" min="0" name="subtotal" class="form-control" value="{{ gasto.subtotal or 0 }}"></div>
             <div class="col-md-2"><label class="form-label">IVA</label><input type="number" step="any" min="0" name="iva" class="form-control" value="{{ gasto.iva or 0 }}"></div>
             <div class="col-md-2"><label class="form-label">Total</label><input type="number" step="any" min="0" name="total" class="form-control" value="{{ gasto.total or 0 }}"></div>
@@ -299,10 +310,30 @@
 </div>
 {% endfor %}
 
+<div class="modal fade" id="aiNotasModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title">Resultado del analisis IA</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <div class="small text-muted mb-2">Esto fue lo que antes se colocaba en NOTAS:</div>
+        <div id="aiNotasTexto" class="border rounded p-3 bg-light" style="white-space: pre-wrap;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Entendido</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 (() => {
   const fileInput = document.getElementById("comprobanteFile");
   const statusBox = document.getElementById("aiStatus");
+  const notasModalEl = document.getElementById("aiNotasModal");
+  const notasTextoEl = document.getElementById("aiNotasTexto");
   const setStatus = (text, cls = "info") => {
     statusBox.className = `alert alert-${cls} mb-3`;
     statusBox.textContent = text;
@@ -333,9 +364,14 @@
       fill("moneda", data.moneda);
       fill("metodo_pago", data.metodo_pago);
       fill("tipo_gasto", data.tipo_gasto);
-      fill("notas", data.observaciones);
+      const notas = document.getElementById("notas");
+      if (notas) notas.value = "";
       fill("ai_confianza", data.confianza || 0);
       fill("ai_resultado", JSON.stringify(data));
+      if (notasTextoEl) notasTextoEl.textContent = data.observaciones || "Sin observaciones.";
+      if (notasModalEl && window.bootstrap?.Modal) {
+        window.bootstrap.Modal.getOrCreateInstance(notasModalEl).show();
+      }
       setStatus(`Campos llenados. Confianza estimada: ${Math.round((data.confianza || 0) * 100)}%. Revisa y edita antes de guardar.`, "success");
     } catch (err) {
       setStatus(err.message || "No se pudo analizar el comprobante.", "warning");
