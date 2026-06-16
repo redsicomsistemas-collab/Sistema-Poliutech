@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .ticket-priority-URGENTE { background: #dc3545; }
+  .ticket-priority-ALTA { background: #fd7e14; }
+  .ticket-priority-MEDIA { background: #0d6efd; }
+  .ticket-priority-BAJA { background: #6c757d; }
+  .ticket-state {
+    border: 1px solid rgba(13, 110, 253, 0.18);
+    background: #eef5ff;
+    color: #084298;
+  }
+  .ticket-row-title {
+    max-width: 520px;
+  }
+</style>
+
+<div class="py-4">
+  <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+    <div>
+      <h2 class="mb-1">Soporte técnico</h2>
+      <div class="text-muted small">Portal de tickets con seguimiento y capturas de pantalla.</div>
+    </div>
+    <a href="{{ url_for('soporte_ticket_nuevo') }}" class="btn btn-primary">Nuevo ticket</a>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <div class="small text-muted">Tickets filtrados</div>
+          <div class="display-6 fw-bold">{{ rows|length }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <div class="small text-muted">Abiertos</div>
+          <div class="display-6 fw-bold text-primary">{{ total_abiertos }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <div class="small text-muted">Urgentes</div>
+          <div class="display-6 fw-bold text-danger">{{ total_urgentes }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <form method="get" class="row g-3 align-items-end">
+        <div class="col-xl-4 col-md-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Buscar</label>
+          <input type="text" name="q" class="form-control form-control-sm" value="{{ filters.q if filters else '' }}" placeholder="Folio, asunto, solicitante o empresa">
+        </div>
+        <div class="col-xl-2 col-md-3">
+          <label class="form-label small fw-bold text-secondary mb-1">Estado</label>
+          <select name="estado" class="form-select form-select-sm">
+            <option value="">Todos</option>
+            {% for estado in status_options %}
+            <option value="{{ estado }}" {% if filters and filters.estado == estado %}selected{% endif %}>{{ estado }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-xl-2 col-md-3">
+          <label class="form-label small fw-bold text-secondary mb-1">Prioridad</label>
+          <select name="prioridad" class="form-select form-select-sm">
+            <option value="">Todas</option>
+            {% for prioridad in priority_options %}
+            <option value="{{ prioridad }}" {% if filters and filters.prioridad == prioridad %}selected{% endif %}>{{ prioridad }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-xl-2 col-md-4">
+          <label class="form-label small fw-bold text-secondary mb-1">Responsable</label>
+          <input type="text" name="responsable" class="form-control form-control-sm" value="{{ filters.responsable if filters else '' }}">
+        </div>
+        <div class="col-xl-2 col-md-4 d-flex gap-2">
+          <button type="submit" class="btn btn-primary btn-sm flex-fill">Filtrar</button>
+          <a href="{{ url_for('soporte_tickets') }}" class="btn btn-outline-secondary btn-sm">Limpiar</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Folio</th>
+            <th>Ticket</th>
+            <th>Solicitante</th>
+            <th>Estado</th>
+            <th>Prioridad</th>
+            <th>Responsable</th>
+            <th>Actividad</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td class="fw-semibold">{{ row.folio }}</td>
+            <td class="ticket-row-title">
+              <div class="fw-semibold text-truncate">{{ row.asunto }}</div>
+              <div class="small text-muted">{{ row.categoria }} · {{ row.comentarios_count }} comentarios · {{ row.adjuntos_count }} adjuntos</div>
+            </td>
+            <td>
+              <div>{{ row.solicitante }}</div>
+              <div class="small text-muted">{{ row.empresa or "Sin empresa" }}</div>
+            </td>
+            <td><span class="badge rounded-pill ticket-state">{{ row.estado }}</span></td>
+            <td><span class="badge ticket-priority-{{ row.prioridad }}">{{ row.prioridad }}</span></td>
+            <td>{{ row.responsable or "Sin asignar" }}</td>
+            <td class="small text-muted">{{ row.actualizado_en.strftime('%Y-%m-%d %H:%M') if row.actualizado_en else "Sin fecha" }}</td>
+            <td class="text-end"><a href="{{ url_for('soporte_ticket_detalle', ticket_id=row.id) }}" class="btn btn-outline-primary btn-sm">Abrir</a></td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="8" class="text-center text-muted py-5">No hay tickets con estos filtros.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

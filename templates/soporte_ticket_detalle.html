@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .ticket-description, .comment-text { white-space: pre-wrap; }
+  .attachment-thumb {
+    width: 180px;
+    height: 120px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid #dee2e6;
+  }
+  .comment-card + .comment-card { margin-top: 1rem; }
+</style>
+
+<div class="container py-4">
+  <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+    <div>
+      <h2 class="mb-1">{{ ticket.folio or ("TCK-%06d"|format(ticket.id)) }}</h2>
+      <div class="text-muted">{{ ticket.asunto }}</div>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="{{ url_for('soporte_tickets') }}" class="btn btn-outline-secondary">Volver</a>
+      <a href="{{ url_for('soporte_ticket_nuevo') }}" class="btn btn-primary">Nuevo ticket</a>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-lg-8">
+      <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            <span class="badge text-bg-primary">{{ ticket.estado }}</span>
+            <span class="badge text-bg-secondary">{{ ticket.prioridad }}</span>
+            <span class="badge text-bg-light border text-dark">{{ ticket.categoria }}</span>
+          </div>
+          <div class="ticket-description">{{ ticket.descripcion }}</div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-white fw-bold">Responder o adjuntar captura</div>
+        <div class="card-body">
+          <form method="post" enctype="multipart/form-data">
+            <input type="hidden" name="action" value="comment">
+            <textarea name="comentario" class="form-control mb-3" rows="4" placeholder="Escribe una respuesta o actualización para este ticket."></textarea>
+            {% if (current_user.rol or "")|upper == "ADMIN" %}
+            <div class="form-check mb-3">
+              <input class="form-check-input" type="checkbox" name="es_interno" value="1" id="es_interno">
+              <label class="form-check-label" for="es_interno">Comentario interno</label>
+            </div>
+            {% endif %}
+            <input type="file" name="adjuntos" class="form-control mb-3" multiple accept="image/*,.pdf,.txt,.log,.csv,.xlsx,.xls,.doc,.docx">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div class="small text-muted">Puedes pegar capturas desde el portapapeles en el formulario de nuevo ticket.</div>
+              <button type="submit" class="btn btn-primary">Guardar respuesta</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <h5 class="mb-3">Historial</h5>
+      {% for comentario in comentarios %}
+      <div class="card shadow-sm border-0 comment-card" id="comentario-{{ comentario.id }}">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+            <div>
+              <div class="fw-semibold">{{ comentario.autor }}</div>
+              <div class="small text-muted">{{ comentario.creado_en.strftime('%Y-%m-%d %H:%M') if comentario.creado_en else "Sin fecha" }}</div>
+            </div>
+            {% if comentario.es_interno %}
+            <span class="badge text-bg-warning">Interno</span>
+            {% endif %}
+          </div>
+          <div class="comment-text mt-3">{{ comentario.comentario }}</div>
+          {% if comentario.adjuntos %}
+          <div class="d-flex flex-wrap gap-3 mt-3">
+            {% for adj in comentario.adjuntos %}
+            <a href="{{ ticket_public_url(adj) }}" target="_blank" class="text-decoration-none">
+              {% if (adj.mime_type or "").startswith("image/") %}
+              <img src="{{ ticket_public_url(adj) }}" class="attachment-thumb d-block mb-1" alt="{{ adj.nombre_original }}">
+              {% endif %}
+              <span class="small">{{ adj.nombre_original }}</span>
+            </a>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% else %}
+      <div class="card shadow-sm border-0">
+        <div class="card-body text-center text-muted py-5">Aún no hay respuestas para este ticket.</div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-white fw-bold">Datos y estado</div>
+        <div class="card-body">
+          <form method="post">
+            <input type="hidden" name="action" value="update">
+            <label class="form-label small fw-bold text-secondary">Estado</label>
+            <select name="estado" class="form-select mb-3">
+              {% for estado in status_options %}
+              <option value="{{ estado }}" {% if ticket.estado == estado %}selected{% endif %}>{{ estado }}</option>
+              {% endfor %}
+            </select>
+            <label class="form-label small fw-bold text-secondary">Prioridad</label>
+            <select name="prioridad" class="form-select mb-3">
+              {% for prioridad in priority_options %}
+              <option value="{{ prioridad }}" {% if ticket.prioridad == prioridad %}selected{% endif %}>{{ prioridad }}</option>
+              {% endfor %}
+            </select>
+            <label class="form-label small fw-bold text-secondary">Categoría</label>
+            <select name="categoria" class="form-select mb-3">
+              {% for categoria in category_options %}
+              <option value="{{ categoria }}" {% if ticket.categoria == categoria %}selected{% endif %}>{{ categoria }}</option>
+              {% endfor %}
+            </select>
+            <label class="form-label small fw-bold text-secondary">Responsable</label>
+            <input type="text" name="responsable" class="form-control mb-3" value="{{ ticket.responsable or '' }}" {% if not ((current_user.rol or '')|upper == 'ADMIN') %}readonly{% endif %}>
+            <button type="submit" class="btn btn-primary w-100">Actualizar ticket</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-white fw-bold">Solicitante</div>
+        <div class="card-body small">
+          <div class="mb-2"><span class="text-muted">Nombre:</span> <strong>{{ ticket.solicitante }}</strong></div>
+          <div class="mb-2"><span class="text-muted">Empresa:</span> {{ ticket.empresa or "Sin empresa" }}</div>
+          <div class="mb-2"><span class="text-muted">Correo:</span> {{ ticket.correo or "Sin correo" }}</div>
+          <div><span class="text-muted">Teléfono:</span> {{ ticket.telefono or "Sin teléfono" }}</div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm border-0">
+        <div class="card-header bg-white fw-bold">Adjuntos del ticket</div>
+        <div class="card-body">
+          {% for adj in adjuntos %}
+          <a href="{{ ticket_public_url(adj) }}" target="_blank" class="d-block text-decoration-none mb-3">
+            {% if (adj.mime_type or "").startswith("image/") %}
+            <img src="{{ ticket_public_url(adj) }}" class="attachment-thumb d-block mb-1" alt="{{ adj.nombre_original }}">
+            {% endif %}
+            <span class="small">{{ adj.nombre_original }}</span>
+          </a>
+          {% else %}
+          <div class="text-muted small">Sin adjuntos todavía.</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

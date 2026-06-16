@@ -51,6 +51,21 @@ PROSPECT_STATUS_OPTIONS = [
     "FINALIZADO",
     "RECHAZADO",
 ]
+TICKET_STATUS_OPTIONS = [
+    "NUEVO",
+    "EN REVISION",
+    "EN PROCESO",
+    "ESPERANDO RESPUESTA",
+    "RESUELTO",
+    "CERRADO",
+]
+TICKET_PRIORITY_OPTIONS = ["BAJA", "MEDIA", "ALTA", "URGENTE"]
+TICKET_CATEGORY_OPTIONS = ["GENERAL", "SISTEMA", "COTIZACIONES", "COMPRAS", "FACTURACION", "APP MOVIL"]
+TICKET_ALLOWED_EXTENSIONS = {
+    ".png", ".jpg", ".jpeg", ".webp", ".gif",
+    ".pdf", ".txt", ".log", ".csv", ".xlsx", ".xls", ".doc", ".docx",
+}
+TICKET_MAX_ATTACHMENTS = 6
 PROVIDER_NUMBERS_JSON = Path(__file__).resolve().parent / "provider_numbers.json"
 PROVIDER_NUMBERS_XLSX = Path.home() / "Downloads" / "NUMEROS DE PROVEEDOR POLIUTECH.xlsx"
 REGISTRO_OBRAS_JSON = Path(__file__).resolve().parent / "registro_obras.json"
@@ -1944,6 +1959,140 @@ def _filter_prospectos(rows: list[dict], filters: dict[str, str]) -> list[dict]:
     return [row for row in rows if _prospecto_matches_filters(row, filters)]
 
 
+def _normalize_ticket_status(value: object) -> str:
+    status = str(value or "").strip().upper()
+    return status if status in TICKET_STATUS_OPTIONS else "NUEVO"
+
+
+def _normalize_ticket_priority(value: object) -> str:
+    priority = str(value or "").strip().upper()
+    return priority if priority in TICKET_PRIORITY_OPTIONS else "MEDIA"
+
+
+def _normalize_ticket_category(value: object) -> str:
+    category = str(value or "").strip().upper()
+    return category if category in TICKET_CATEGORY_OPTIONS else "GENERAL"
+
+
+def _ticket_is_closed(status: str) -> bool:
+    return _normalize_ticket_status(status) in {"RESUELTO", "CERRADO"}
+
+
+def _ticket_upload_root(ticket_id: int) -> Path:
+    base = Path(app.static_folder or "static") / "uploads" / "tickets" / str(ticket_id)
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+def _ticket_file_is_allowed(filename: str) -> bool:
+    ext = Path(filename or "").suffix.lower()
+    return bool(ext and ext in TICKET_ALLOWED_EXTENSIONS)
+
+
+def _ticket_public_url(adjunto: "TicketAdjunto") -> str:
+    return url_for("static", filename=(adjunto.ruta_relativa or "").replace("\\", "/"))
+
+
+def _save_ticket_attachments(ticket: "TicketSoporte", files, comentario: Optional["TicketComentario"] = None) -> int:
+    saved = 0
+    for uploaded in list(files or [])[:TICKET_MAX_ATTACHMENTS]:
+        original = (uploaded.filename or "").strip()
+        if not original:
+            continue
+        if not _ticket_file_is_allowed(original):
+            raise ValueError(f"El archivo '{original}' no tiene un formato permitido.")
+
+        safe_original = secure_filename(original) or "adjunto"
+        ext = Path(safe_original).suffix.lower()
+        unique_name = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}_{saved + 1}{ext}"
+        dest_dir = _ticket_upload_root(ticket.id)
+        dest_path = dest_dir / unique_name
+        uploaded.save(dest_path)
+
+        rel_path = Path("uploads") / "tickets" / str(ticket.id) / unique_name
+        size = dest_path.stat().st_size if dest_path.exists() else 0
+        db.session.add(TicketAdjunto(
+            ticket_id=ticket.id,
+            comentario_id=getattr(comentario, "id", None),
+            usuario_id=getattr(current_user, "id", None),
+            nombre_original=original[:260],
+            nombre_archivo=unique_name,
+            ruta_relativa=str(rel_path).replace("\\", "/"),
+            mime_type=uploaded.mimetype or mimetypes.guess_type(original)[0],
+            tamano_bytes=int(size or 0),
+        ))
+        saved += 1
+    return saved
+
+
+def _ticket_to_row(ticket: "TicketSoporte") -> dict:
+    return {
+        "id": ticket.id,
+        "folio": ticket.folio or f"TCK-{ticket.id:06d}",
+        "asunto": ticket.asunto or "",
+        "solicitante": ticket.solicitante or "",
+        "empresa": ticket.empresa or "",
+        "categoria": _normalize_ticket_category(ticket.categoria),
+        "prioridad": _normalize_ticket_priority(ticket.prioridad),
+        "estado": _normalize_ticket_status(ticket.estado),
+        "responsable": ticket.responsable or "",
+        "creado_en": ticket.creado_en,
+        "actualizado_en": ticket.actualizado_en,
+        "comentarios_count": len(ticket.comentarios or []),
+        "adjuntos_count": len(ticket.adjuntos or []),
+    }
+
+
+def _ticket_filters_from_request() -> dict[str, str]:
+    estado_raw = (request.args.get("estado") or "").strip()
+    prioridad_raw = (request.args.get("prioridad") or "").strip()
+    return {
+        "q": (request.args.get("q") or "").strip().lower(),
+        "estado": _normalize_ticket_status(estado_raw) if estado_raw else "",
+        "prioridad": _normalize_ticket_priority(prioridad_raw) if prioridad_raw else "",
+        "responsable": (request.args.get("responsable") or "").strip().lower(),
+    }
+
+
+def _tickets_base_query():
+    query = TicketSoporte.query
+    if not is_admin():
+        ra = responsable_actual()
+        query = query.filter(or_(TicketSoporte.responsable == ra, TicketSoporte.creado_por_id == getattr(current_user, "id", None)))
+    return query
+
+
+def _load_ticket_rows(filters: dict[str, str]) -> list[dict]:
+    query = _tickets_base_query().order_by(TicketSoporte.creado_en.desc())
+    if filters.get("estado"):
+        query = query.filter(TicketSoporte.estado == filters["estado"])
+    if filters.get("prioridad"):
+        query = query.filter(TicketSoporte.prioridad == filters["prioridad"])
+    if filters.get("responsable"):
+        query = query.filter(db.func.lower(db.func.coalesce(TicketSoporte.responsable, "")).contains(filters["responsable"]))
+    if filters.get("q"):
+        q = f"%{filters['q']}%"
+        query = query.filter(or_(
+            db.func.lower(db.func.coalesce(TicketSoporte.folio, "")).like(q),
+            db.func.lower(db.func.coalesce(TicketSoporte.asunto, "")).like(q),
+            db.func.lower(db.func.coalesce(TicketSoporte.solicitante, "")).like(q),
+            db.func.lower(db.func.coalesce(TicketSoporte.empresa, "")).like(q),
+        ))
+    return [_ticket_to_row(ticket) for ticket in query.limit(300).all()]
+
+
+def require_ticket_owner_or_admin(ticket: "TicketSoporte") -> None:
+    if is_admin():
+        return
+    ra = responsable_actual()
+    current_user_id = getattr(current_user, "id", None)
+    if current_user_id and ticket.creado_por_id == current_user_id:
+        return
+    if ra and (ticket.responsable or "").strip().lower() == ra.strip().lower():
+        return
+    abort(403)
+
+
 def _build_simple_xls(sheet_name: str, headers: list[str], rows: list[list[str]]) -> bytes:
     def html_cell(value: object) -> str:
         text = "" if value is None else str(value)
@@ -2336,6 +2485,9 @@ from models import (
     RegistroObraSeguimiento,
     Prospecto,
     ProspectoSeguimiento,
+    TicketSoporte,
+    TicketComentario,
+    TicketAdjunto,
     ActivityLog,
     InventarioProducto,
     InventarioMovimiento,
@@ -4946,6 +5098,155 @@ def eliminar_prospecto_seguimiento(prospecto_id: int, seg_id: int):
     db.session.commit()
     flash("Seguimiento eliminado.", "success")
     return redirect(url_for("prospecto_seguimiento", prospecto_id=prospecto.id))
+
+
+@app.route("/soporte")
+@login_required
+def soporte_tickets():
+    filters = _ticket_filters_from_request()
+    rows = _load_ticket_rows(filters)
+    total_abiertos = sum(1 for row in rows if row["estado"] not in {"RESUELTO", "CERRADO"})
+    total_urgentes = sum(1 for row in rows if row["prioridad"] == "URGENTE")
+    return render_template(
+        "soporte_tickets.html",
+        title="Soporte - Tickets",
+        rows=rows,
+        filters=filters,
+        status_options=TICKET_STATUS_OPTIONS,
+        priority_options=TICKET_PRIORITY_OPTIONS,
+        category_options=TICKET_CATEGORY_OPTIONS,
+        total_abiertos=total_abiertos,
+        total_urgentes=total_urgentes,
+        default_responsable=responsable_actual() or "",
+    )
+
+
+@app.route("/soporte/nuevo", methods=["GET", "POST"])
+@login_required
+def soporte_ticket_nuevo():
+    if request.method == "POST":
+        asunto = (request.form.get("asunto") or "").strip()
+        descripcion = (request.form.get("descripcion") or "").strip()
+        solicitante = (request.form.get("solicitante") or "").strip()
+        correo = (request.form.get("correo") or "").strip()
+        telefono = (request.form.get("telefono") or "").strip()
+        empresa = (request.form.get("empresa") or "").strip()
+        categoria = _normalize_ticket_category(request.form.get("categoria"))
+        prioridad = _normalize_ticket_priority(request.form.get("prioridad"))
+        responsable = (request.form.get("responsable") or "").strip() if is_admin() else (responsable_actual() or "").strip()
+
+        if not asunto or not descripcion or not solicitante:
+            flash("Captura asunto, descripción y solicitante.", "warning")
+            return redirect(url_for("soporte_ticket_nuevo"))
+        if correo and not re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", correo):
+            flash(f"El correo '{correo}' no es valido.", "danger")
+            return redirect(url_for("soporte_ticket_nuevo"))
+
+        ticket = TicketSoporte(
+            asunto=asunto,
+            descripcion=descripcion,
+            solicitante=solicitante,
+            correo=correo or None,
+            telefono=telefono or None,
+            empresa=empresa or None,
+            categoria=categoria,
+            prioridad=prioridad,
+            estado="NUEVO",
+            responsable=responsable or None,
+            creado_por_id=getattr(current_user, "id", None),
+            creado_en=now_cdmx_naive(),
+            actualizado_en=now_cdmx_naive(),
+        )
+        db.session.add(ticket)
+        db.session.flush()
+        ticket.folio = f"TCK-{ticket.id:06d}"
+
+        try:
+            saved = _save_ticket_attachments(ticket, request.files.getlist("adjuntos"))
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), "danger")
+            return redirect(url_for("soporte_ticket_nuevo"))
+
+        db.session.commit()
+        flash(f"Ticket {ticket.folio} creado correctamente. Adjuntos: {saved}.", "success")
+        return redirect(url_for("soporte_ticket_detalle", ticket_id=ticket.id))
+
+    return render_template(
+        "soporte_ticket_form.html",
+        title="Nuevo ticket de soporte",
+        status_options=TICKET_STATUS_OPTIONS,
+        priority_options=TICKET_PRIORITY_OPTIONS,
+        category_options=TICKET_CATEGORY_OPTIONS,
+        default_responsable=responsable_actual() or "",
+    )
+
+
+@app.route("/soporte/<int:ticket_id>", methods=["GET", "POST"])
+@login_required
+def soporte_ticket_detalle(ticket_id: int):
+    ticket = TicketSoporte.query.get_or_404(ticket_id)
+    require_ticket_owner_or_admin(ticket)
+
+    if request.method == "POST":
+        action = (request.form.get("action") or "").strip().lower()
+
+        if action == "update":
+            ticket.estado = _normalize_ticket_status(request.form.get("estado"))
+            ticket.prioridad = _normalize_ticket_priority(request.form.get("prioridad"))
+            ticket.categoria = _normalize_ticket_category(request.form.get("categoria"))
+            if is_admin():
+                ticket.responsable = (request.form.get("responsable") or "").strip() or None
+            ticket.actualizado_en = now_cdmx_naive()
+            ticket.cerrado_en = now_cdmx_naive() if _ticket_is_closed(ticket.estado) else None
+            db.session.commit()
+            flash("Ticket actualizado.", "success")
+            return redirect(url_for("soporte_ticket_detalle", ticket_id=ticket.id))
+
+        if action == "comment":
+            comentario = (request.form.get("comentario") or "").strip()
+            if not comentario and not any((f.filename or "").strip() for f in request.files.getlist("adjuntos")):
+                flash("Escribe un comentario o adjunta una captura.", "warning")
+                return redirect(url_for("soporte_ticket_detalle", ticket_id=ticket.id))
+
+            seg = TicketComentario(
+                ticket_id=ticket.id,
+                usuario_id=getattr(current_user, "id", None),
+                autor=(getattr(current_user, "nombre", None) or responsable_actual() or "Soporte").strip(),
+                comentario=comentario or "Adjuntos agregados.",
+                es_interno=bool(request.form.get("es_interno")) and is_admin(),
+                creado_en=now_cdmx_naive(),
+            )
+            db.session.add(seg)
+            db.session.flush()
+            try:
+                _save_ticket_attachments(ticket, request.files.getlist("adjuntos"), comentario=seg)
+            except ValueError as exc:
+                db.session.rollback()
+                flash(str(exc), "danger")
+                return redirect(url_for("soporte_ticket_detalle", ticket_id=ticket.id))
+
+            if ticket.estado == "NUEVO":
+                ticket.estado = "EN REVISION"
+            ticket.actualizado_en = now_cdmx_naive()
+            db.session.commit()
+            flash("Comentario guardado.", "success")
+            return redirect(url_for("soporte_ticket_detalle", ticket_id=ticket.id, _anchor=f"comentario-{seg.id}"))
+
+        flash("Acción no válida para el ticket.", "danger")
+        return redirect(url_for("soporte_ticket_detalle", ticket_id=ticket.id))
+
+    return render_template(
+        "soporte_ticket_detalle.html",
+        title=f"Ticket {ticket.folio or ticket.id}",
+        ticket=ticket,
+        comentarios=ticket.comentarios,
+        adjuntos=ticket.adjuntos,
+        status_options=TICKET_STATUS_OPTIONS,
+        priority_options=TICKET_PRIORITY_OPTIONS,
+        category_options=TICKET_CATEGORY_OPTIONS,
+        ticket_public_url=_ticket_public_url,
+    )
 
 
 @app.route("/prospectos/export.pdf")

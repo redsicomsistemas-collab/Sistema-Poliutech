@@ -275,6 +275,82 @@ class ProspectoSeguimiento(db.Model):
     def __repr__(self):
         return f"<ProspectoSeguimiento prospecto={self.prospecto_id} autor={self.autor}>"
 
+
+class TicketSoporte(db.Model):
+    __tablename__ = "ticket_soporte"
+
+    id = db.Column(db.Integer, primary_key=True)
+    folio = db.Column(db.String(40), unique=True, index=True)
+    asunto = db.Column(db.String(220), nullable=False)
+    descripcion = db.Column(db.Text, nullable=False)
+    solicitante = db.Column(db.String(160), nullable=False)
+    correo = db.Column(db.String(160))
+    telefono = db.Column(db.String(60))
+    empresa = db.Column(db.String(160))
+    categoria = db.Column(db.String(80), default="GENERAL", nullable=False)
+    prioridad = db.Column(db.String(20), default="MEDIA", nullable=False)
+    estado = db.Column(db.String(30), default="NUEVO", nullable=False, index=True)
+    responsable = db.Column(db.String(120), index=True)
+    creado_por_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    cerrado_en = db.Column(db.DateTime, nullable=True)
+
+    creado_por = db.relationship("Usuario", foreign_keys=[creado_por_id], backref=db.backref("tickets_creados", lazy=True))
+    comentarios = db.relationship(
+        "TicketComentario",
+        backref="ticket",
+        cascade="all, delete-orphan",
+        order_by="TicketComentario.creado_en.desc()",
+    )
+    adjuntos = db.relationship(
+        "TicketAdjunto",
+        backref="ticket",
+        cascade="all, delete-orphan",
+        order_by="TicketAdjunto.creado_en.desc()",
+    )
+
+    def __repr__(self):
+        return f"<TicketSoporte {self.folio or self.id} {self.estado}>"
+
+
+class TicketComentario(db.Model):
+    __tablename__ = "ticket_comentario"
+
+    id = db.Column(db.Integer, primary_key=True)
+    ticket_id = db.Column(db.Integer, db.ForeignKey("ticket_soporte.id"), nullable=False, index=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
+    autor = db.Column(db.String(120), nullable=False)
+    comentario = db.Column(db.Text, nullable=False)
+    es_interno = db.Column(db.Boolean, default=False, nullable=False)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    usuario = db.relationship("Usuario", backref=db.backref("comentarios_ticket", lazy=True))
+
+    def __repr__(self):
+        return f"<TicketComentario ticket={self.ticket_id} autor={self.autor}>"
+
+
+class TicketAdjunto(db.Model):
+    __tablename__ = "ticket_adjunto"
+
+    id = db.Column(db.Integer, primary_key=True)
+    ticket_id = db.Column(db.Integer, db.ForeignKey("ticket_soporte.id"), nullable=False, index=True)
+    comentario_id = db.Column(db.Integer, db.ForeignKey("ticket_comentario.id"), nullable=True, index=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
+    nombre_original = db.Column(db.String(260), nullable=False)
+    nombre_archivo = db.Column(db.String(260), nullable=False)
+    ruta_relativa = db.Column(db.String(360), nullable=False)
+    mime_type = db.Column(db.String(120))
+    tamano_bytes = db.Column(db.Integer, default=0, nullable=False)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    comentario = db.relationship("TicketComentario", backref=db.backref("adjuntos", lazy=True, cascade="all, delete-orphan"))
+    usuario = db.relationship("Usuario", backref=db.backref("adjuntos_ticket", lazy=True))
+
+    def __repr__(self):
+        return f"<TicketAdjunto ticket={self.ticket_id} archivo={self.nombre_original}>"
+
 # ---------------------------------------------------------
 # BITÁCORA (Audit Log)
 # ---------------------------------------------------------
