@@ -560,6 +560,62 @@ class MovimientoFinancieroPago(db.Model):
         return f"<MovimientoFinancieroPago movimiento={self.movimiento_id} monto={self.monto}>"
 
 
+class ComprobacionGasto(db.Model):
+    __tablename__ = "comprobacion_gasto"
+
+    id = db.Column(db.Integer, primary_key=True)
+    folio = db.Column(db.String(40), unique=True, index=True)
+    tipo_agrupacion = db.Column(db.String(20), default="PROYECTO", nullable=False, index=True)
+    proyecto = db.Column(db.String(200), index=True)
+    evento = db.Column(db.String(200), index=True)
+    tipo_gasto = db.Column(db.String(80), default="GASTO", nullable=False, index=True)
+    estatus = db.Column(db.String(20), default="PENDIENTE", nullable=False, index=True)
+    proveedor = db.Column(db.String(180), index=True)
+    concepto = db.Column(db.String(260), nullable=False)
+    referencia = db.Column(db.String(120))
+    fecha_comprobante = db.Column(db.DateTime, nullable=True, index=True)
+    fecha_registro = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    subtotal = db.Column(db.Float, default=0.0, nullable=False)
+    iva = db.Column(db.Float, default=0.0, nullable=False)
+    total = db.Column(db.Float, default=0.0, nullable=False)
+    moneda = db.Column(db.String(10), default="MXN", nullable=False)
+    metodo_pago = db.Column(db.String(80))
+    notas = db.Column(db.Text)
+    ai_confianza = db.Column(db.Float, default=0.0, nullable=False)
+    ai_resultado = db.Column(db.Text)
+    responsable = db.Column(db.String(120))
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    usuario = db.relationship("Usuario", backref=db.backref("comprobaciones_gastos", lazy=True))
+    adjuntos = db.relationship(
+        "ComprobacionAdjunto",
+        backref="comprobacion",
+        cascade="all, delete-orphan",
+        order_by="ComprobacionAdjunto.id.desc()",
+    )
+
+    def __repr__(self):
+        return f"<ComprobacionGasto {self.folio or self.id} {self.total}>"
+
+
+class ComprobacionAdjunto(db.Model):
+    __tablename__ = "comprobacion_adjunto"
+
+    id = db.Column(db.Integer, primary_key=True)
+    comprobacion_id = db.Column(db.Integer, db.ForeignKey("comprobacion_gasto.id"), nullable=False, index=True)
+    nombre_original = db.Column(db.String(260), nullable=False)
+    nombre_archivo = db.Column(db.String(260), nullable=False)
+    ruta = db.Column(db.String(400), nullable=False)
+    mime_type = db.Column(db.String(120))
+    tamano = db.Column(db.Integer, default=0, nullable=False)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    def __repr__(self):
+        return f"<ComprobacionAdjunto {self.nombre_original}>"
+
+
 class APUSheet(db.Model):
     __tablename__ = "apu_sheet"
 

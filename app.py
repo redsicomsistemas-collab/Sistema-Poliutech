@@ -4,7 +4,7 @@
 # =========================================================
 from __future__ import annotations
 
-import os, io, csv, sys, math, re, json, traceback, unicodedata, smtplib, zipfile, logging
+import os, io, csv, sys, math, re, json, traceback, unicodedata, smtplib, zipfile, logging, base64
 import mimetypes
 import requests
 from datetime import datetime, timedelta
@@ -2493,6 +2493,8 @@ from models import (
     OrdenCompra,
     OrdenCompraPartida,
     MovimientoFinanciero,
+    ComprobacionGasto,
+    ComprobacionAdjunto,
 )
 
 try:
@@ -8232,6 +8234,10 @@ def _parse_date_or_none(raw: str):
 
 FINANZAS_CATEGORIA_CREDITO = "CREDITO_RECIBIDO"
 FINANZAS_ESTATUS = ("PENDIENTE", "PARCIAL", "PAGADO", "VENCIDO", "CANCELADO")
+GASTOS_ESTATUS = ("PENDIENTE", "EN REVISION", "APROBADO", "RECHAZADO", "REEMBOLSADO")
+GASTOS_TIPOS = ("GASTO", "VIATICO")
+GASTOS_AGRUPACIONES = ("PROYECTO", "EVENTO")
+GASTOS_UPLOAD_EXTS = {"pdf", "png", "jpg", "jpeg", "webp"}
 
 
 def _finanzas_next_folio() -> str:
@@ -8323,6 +8329,377 @@ def _finanzas_tiempo_estado(mov: MovimientoFinanciero) -> dict:
     if dias <= 30:
         return {"texto": "Por vencer", "clase": "warning", "detalle": f"{dias} dias restantes"}
     return {"texto": "A tiempo", "clase": "success", "detalle": f"{dias} dias restantes"}
+
+
+def _gastos_next_folio() -> str:
+    year = now_cdmx_naive().year
+    prefix = f"GAS-{year}-"
+    latest = (
+        ComprobacionGasto.query
+        .filter(ComprobacionGasto.folio.like(f"{prefix}%"))
+        .order_by(ComprobacionGasto.id.desc())
+        .first()
+    )
+    if latest and latest.folio:
+        try:
+            seq = int(latest.folio.rsplit("-", 1)[-1]) + 1
+        except Exception:
+            seq = latest.id + 1
+    else:
+        seq = 1
+    return f"{prefix}{seq:04d}"
+
+
+def _gastos_badge_class(estatus: str) -> str:
+    return {
+        "APROBADO": "success",
+        "REEMBOLSADO": "primary",
+        "RECHAZADO": "danger",
+        "EN REVISION": "info",
+    }.get((estatus or "").upper(), "warning")
+
+
+def _gastos_file_ext(filename: str) -> str:
+    return (filename or "").rsplit(".", 1)[-1].lower() if "." in (filename or "") else ""
+
+
+def _gastos_save_upload(uploaded, comprobacion_id: int) -> ComprobacionAdjunto | None:
+    if not uploaded or not (uploaded.filename or "").strip():
+        return None
+    ext = _gastos_file_ext(uploaded.filename)
+    if ext not in GASTOS_UPLOAD_EXTS:
+        raise ValueError("Adjunta un PDF o imagen valida: pdf, png, jpg, jpeg o webp.")
+
+    upload_dir = Path(app.static_folder or "static") / "uploads" / "gastos_viaticos" / str(comprobacion_id)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    original = secure_filename(uploaded.filename) or f"comprobante.{ext}"
+    stem = Path(original).stem[:80] or "comprobante"
+    filename = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{stem}.{ext}"
+    disk_path = upload_dir / filename
+    uploaded.save(disk_path)
+    rel_path = f"uploads/gastos_viaticos/{comprobacion_id}/{filename}"
+    return ComprobacionAdjunto(
+        comprobacion_id=comprobacion_id,
+        nombre_original=uploaded.filename,
+        nombre_archivo=filename,
+        ruta=rel_path,
+        mime_type=uploaded.mimetype or mimetypes.guess_type(uploaded.filename)[0],
+        tamano=disk_path.stat().st_size if disk_path.exists() else 0,
+    )
+
+
+def _gastos_pdf_text(file_bytes: bytes) -> str:
+    try:
+        import pdfplumber
+        text_parts: list[str] = []
+        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+            for page in pdf.pages[:4]:
+                text_parts.append(page.extract_text() or "")
+        return "\n".join(text_parts).strip()
+    except Exception:
+        return ""
+
+
+def _gastos_parse_json(raw: str) -> dict:
+    raw = (raw or "").strip()
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except Exception:
+        match = re.search(r"\{.*\}", raw, re.S)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except Exception:
+                return {}
+    return {}
+
+
+def _gastos_heuristic_extract(text: str) -> dict:
+    amounts = []
+    for match in re.finditer(r"(?:\$|MXN|M\.N\.)?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})|[0-9]+(?:\.[0-9]{2}))", text or "", re.I):
+        amounts.append(parse_float(match.group(1), 0))
+    amounts = [a for a in amounts if a > 0]
+
+    date_value = ""
+    date_match = re.search(r"\b(\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4})\b", text or "")
+    if date_match:
+        raw = date_match.group(1).replace("/", "-")
+        for fmt_date in ("%Y-%m-%d", "%d-%m-%Y", "%d-%m-%y"):
+            try:
+                date_value = datetime.strptime(raw, fmt_date).strftime("%Y-%m-%d")
+                break
+            except ValueError:
+                continue
+
+    lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
+    total = max(amounts) if amounts else 0.0
+    iva = round(total * 0.16 / 1.16, 2) if total else 0.0
+    subtotal = round(total - iva, 2) if total else 0.0
+    return {
+        "proveedor": lines[0][:160] if lines else "",
+        "concepto": "Comprobante de gasto",
+        "referencia": "",
+        "fecha_comprobante": date_value,
+        "subtotal": subtotal,
+        "iva": iva,
+        "total": total,
+        "moneda": "MXN",
+        "metodo_pago": "",
+        "tipo_gasto": "GASTO",
+        "confianza": 0.45 if total or date_value else 0.0,
+        "observaciones": "Extraccion automatica basica; revisa y ajusta los campos.",
+    }
+
+
+def _gastos_ai_extract(file_bytes: bytes, filename: str, mime_type: str, text: str = "") -> dict:
+    prompt = (
+        "Extrae datos de un comprobante de gastos o viaticos en Mexico. "
+        "Responde solo JSON valido con estas llaves: proveedor, concepto, referencia, "
+        "fecha_comprobante en formato YYYY-MM-DD, subtotal, iva, total, moneda, metodo_pago, "
+        "tipo_gasto como GASTO o VIATICO, confianza de 0 a 1, observaciones. "
+        "Si un dato no existe usa cadena vacia o 0."
+    )
+    if not OPENAI_API_KEY:
+        return _gastos_heuristic_extract(text)
+
+    headers = {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}
+    content = [{"type": "text", "text": prompt}]
+    if text:
+        content.append({"type": "text", "text": f"Texto extraido del PDF:\n{text[:12000]}"})
+    elif (mime_type or "").startswith("image/"):
+        b64 = base64.b64encode(file_bytes).decode("ascii")
+        content.append({"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64}"}})
+    else:
+        return _gastos_heuristic_extract(text)
+
+    payload = {
+        "model": os.getenv("OPENAI_RECEIPT_MODEL", "gpt-4o-mini"),
+        "messages": [{"role": "user", "content": content}],
+        "temperature": 0,
+        "response_format": {"type": "json_object"},
+    }
+    resp = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=60)
+    if resp.status_code >= 400:
+        raise RuntimeError(resp.text[:500])
+    message = ((resp.json().get("choices") or [{}])[0].get("message") or {}).get("content") or "{}"
+    data = _gastos_parse_json(message)
+    fallback = _gastos_heuristic_extract(text)
+    fallback.update({k: v for k, v in data.items() if v not in (None, "")})
+    return fallback
+
+
+def _gastos_normalize_ai(data: dict) -> dict:
+    data = data or {}
+    normalized = {
+        "proveedor": str(data.get("proveedor") or "")[:180],
+        "concepto": str(data.get("concepto") or "Comprobante de gasto")[:260],
+        "referencia": str(data.get("referencia") or "")[:120],
+        "fecha_comprobante": str(data.get("fecha_comprobante") or "")[:10],
+        "subtotal": fmt(parse_float(data.get("subtotal"), 0)),
+        "iva": fmt(parse_float(data.get("iva"), 0)),
+        "total": fmt(parse_float(data.get("total"), 0)),
+        "moneda": (str(data.get("moneda") or "MXN").upper()[:10] or "MXN"),
+        "metodo_pago": str(data.get("metodo_pago") or "")[:80],
+        "tipo_gasto": (str(data.get("tipo_gasto") or "GASTO").upper()[:20] or "GASTO"),
+        "confianza": min(1.0, max(0.0, parse_float(data.get("confianza"), 0))),
+        "observaciones": str(data.get("observaciones") or "")[:500],
+    }
+    if normalized["tipo_gasto"] not in GASTOS_TIPOS:
+        normalized["tipo_gasto"] = "GASTO"
+    if not normalized["subtotal"] and normalized["total"] and normalized["iva"]:
+        normalized["subtotal"] = fmt(normalized["total"] - normalized["iva"])
+    return normalized
+
+
+def _gastos_redirect():
+    return redirect(request.referrer or url_for("gastos_viaticos_index"))
+
+
+@app.route("/gastos-viaticos")
+@login_required
+def gastos_viaticos_index():
+    q = (request.args.get("q") or "").strip()
+    agrupacion = (request.args.get("agrupacion") or "").strip().upper()
+    estatus = (request.args.get("estatus") or "").strip().upper()
+
+    query = ComprobacionGasto.query
+    if q:
+        like = f"%{q}%"
+        query = query.filter(or_(
+            ComprobacionGasto.folio.ilike(like),
+            ComprobacionGasto.proveedor.ilike(like),
+            ComprobacionGasto.concepto.ilike(like),
+            ComprobacionGasto.proyecto.ilike(like),
+            ComprobacionGasto.evento.ilike(like),
+            ComprobacionGasto.referencia.ilike(like),
+        ))
+    if agrupacion in GASTOS_AGRUPACIONES:
+        query = query.filter(ComprobacionGasto.tipo_agrupacion == agrupacion)
+    if estatus in GASTOS_ESTATUS:
+        query = query.filter(ComprobacionGasto.estatus == estatus)
+
+    comprobaciones = query.order_by(ComprobacionGasto.fecha_registro.desc(), ComprobacionGasto.id.desc()).all()
+    total_general = sum(float(g.total or 0) for g in comprobaciones)
+    total_pendiente = sum(float(g.total or 0) for g in comprobaciones if (g.estatus or "") in {"PENDIENTE", "EN REVISION"})
+    total_aprobado = sum(float(g.total or 0) for g in comprobaciones if (g.estatus or "") in {"APROBADO", "REEMBOLSADO"})
+
+    grupos: dict[str, dict] = {}
+    for gasto in comprobaciones:
+        key = gasto.proyecto if gasto.tipo_agrupacion == "PROYECTO" else gasto.evento
+        key = key or "Sin clasificar"
+        item = grupos.setdefault(key, {"nombre": key, "conteo": 0, "total": 0.0, "tipo": gasto.tipo_agrupacion})
+        item["conteo"] += 1
+        item["total"] += float(gasto.total or 0)
+
+    return render_template(
+        "gastos_viaticos.html",
+        title="Gastos y viaticos",
+        comprobaciones=comprobaciones,
+        grupos=sorted(grupos.values(), key=lambda item: item["total"], reverse=True),
+        total_general=total_general,
+        total_pendiente=total_pendiente,
+        total_aprobado=total_aprobado,
+        q=q,
+        agrupacion=agrupacion,
+        estatus=estatus,
+        estatus_options=GASTOS_ESTATUS,
+        gasto_tipos=GASTOS_TIPOS,
+        agrupaciones=GASTOS_AGRUPACIONES,
+        gastos_badge_class=_gastos_badge_class,
+        fecha_input=_finanzas_fecha_input,
+    )
+
+
+@app.route("/gastos-viaticos/analizar", methods=["POST"])
+@login_required
+def gastos_viaticos_analizar():
+    uploaded = request.files.get("comprobante")
+    if not uploaded or not (uploaded.filename or "").strip():
+        return jsonify({"ok": False, "error": "Adjunta una foto, imagen o PDF del comprobante."}), 400
+    ext = _gastos_file_ext(uploaded.filename)
+    if ext not in GASTOS_UPLOAD_EXTS:
+        return jsonify({"ok": False, "error": "Solo se aceptan PDF o imagenes: pdf, png, jpg, jpeg, webp."}), 400
+
+    file_bytes = uploaded.read()
+    mime_type = uploaded.mimetype or mimetypes.guess_type(uploaded.filename)[0] or "application/octet-stream"
+    text = _gastos_pdf_text(file_bytes) if ext == "pdf" else ""
+    try:
+        data = _gastos_normalize_ai(_gastos_ai_extract(file_bytes, uploaded.filename, mime_type, text))
+    except Exception as exc:
+        try:
+            logger.exception("Error analizando comprobante")
+        except Exception:
+            pass
+        return jsonify({"ok": False, "error": f"No se pudo analizar el comprobante: {exc}"}), 500
+    return jsonify({"ok": True, "data": data, "text_detected": bool(text)})
+
+
+@app.route("/gastos-viaticos/crear", methods=["POST"])
+@login_required
+def gastos_viaticos_crear():
+    f = request.form
+    tipo_agrupacion = (f.get("tipo_agrupacion") or "PROYECTO").strip().upper()
+    if tipo_agrupacion not in GASTOS_AGRUPACIONES:
+        tipo_agrupacion = "PROYECTO"
+    tipo_gasto = (f.get("tipo_gasto") or "GASTO").strip().upper()
+    if tipo_gasto not in GASTOS_TIPOS:
+        tipo_gasto = "GASTO"
+    estatus = (f.get("estatus") or "PENDIENTE").strip().upper()
+    if estatus not in GASTOS_ESTATUS:
+        estatus = "PENDIENTE"
+
+    concepto = (f.get("concepto") or "").strip()
+    total = fmt(parse_float(f.get("total"), 0))
+    if not concepto or total <= 0:
+        flash("Captura concepto y total mayor a cero antes de guardar.", "warning")
+        return _gastos_redirect()
+    if tipo_agrupacion == "PROYECTO" and not (f.get("proyecto") or "").strip():
+        flash("Captura el proyecto para agrupar la comprobacion.", "warning")
+        return _gastos_redirect()
+    if tipo_agrupacion == "EVENTO" and not (f.get("evento") or "").strip():
+        flash("Captura el evento para agrupar la comprobacion.", "warning")
+        return _gastos_redirect()
+
+    gasto = ComprobacionGasto(
+        folio=_gastos_next_folio(),
+        tipo_agrupacion=tipo_agrupacion,
+        proyecto=(f.get("proyecto") or "").strip() or None,
+        evento=(f.get("evento") or "").strip() or None,
+        tipo_gasto=tipo_gasto,
+        estatus=estatus,
+        proveedor=(f.get("proveedor") or "").strip() or None,
+        concepto=concepto,
+        referencia=(f.get("referencia") or "").strip() or None,
+        fecha_comprobante=_parse_date_or_none(f.get("fecha_comprobante")),
+        fecha_registro=now_cdmx_naive(),
+        subtotal=fmt(parse_float(f.get("subtotal"), 0)),
+        iva=fmt(parse_float(f.get("iva"), 0)),
+        total=total,
+        moneda=(f.get("moneda") or "MXN").strip().upper()[:10] or "MXN",
+        metodo_pago=(f.get("metodo_pago") or "").strip() or None,
+        notas=(f.get("notas") or "").strip() or None,
+        ai_confianza=min(1.0, max(0.0, parse_float(f.get("ai_confianza"), 0))),
+        ai_resultado=(f.get("ai_resultado") or "").strip() or None,
+        responsable=responsable_actual() or None,
+        usuario_id=getattr(current_user, "id", None),
+    )
+    db.session.add(gasto)
+    db.session.flush()
+
+    try:
+        adjunto = _gastos_save_upload(request.files.get("comprobante"), gasto.id)
+        if adjunto:
+            db.session.add(adjunto)
+    except ValueError as exc:
+        db.session.rollback()
+        flash(str(exc), "warning")
+        return _gastos_redirect()
+
+    db.session.commit()
+    flash(f"Comprobacion {gasto.folio} registrada.", "success")
+    return _gastos_redirect()
+
+
+@app.route("/gastos-viaticos/<int:gasto_id>/actualizar", methods=["POST"])
+@login_required
+def gastos_viaticos_actualizar(gasto_id: int):
+    gasto = ComprobacionGasto.query.get_or_404(gasto_id)
+    f = request.form
+    estatus = (f.get("estatus") or gasto.estatus or "PENDIENTE").strip().upper()
+    if estatus not in GASTOS_ESTATUS:
+        flash("Selecciona un estatus valido.", "warning")
+        return _gastos_redirect()
+
+    gasto.estatus = estatus
+    gasto.proveedor = (f.get("proveedor") or "").strip() or None
+    gasto.concepto = (f.get("concepto") or "").strip() or gasto.concepto
+    gasto.proyecto = (f.get("proyecto") or "").strip() or None
+    gasto.evento = (f.get("evento") or "").strip() or None
+    gasto.referencia = (f.get("referencia") or "").strip() or None
+    gasto.fecha_comprobante = _parse_date_or_none(f.get("fecha_comprobante"))
+    gasto.subtotal = fmt(parse_float(f.get("subtotal"), 0))
+    gasto.iva = fmt(parse_float(f.get("iva"), 0))
+    gasto.total = fmt(parse_float(f.get("total"), 0))
+    gasto.moneda = (f.get("moneda") or "MXN").strip().upper()[:10] or "MXN"
+    gasto.metodo_pago = (f.get("metodo_pago") or "").strip() or None
+    gasto.notas = (f.get("notas") or "").strip() or None
+    gasto.actualizado_en = now_cdmx_naive()
+    db.session.commit()
+    flash(f"Comprobacion {gasto.folio} actualizada.", "success")
+    return _gastos_redirect()
+
+
+@app.route("/gastos-viaticos/<int:gasto_id>/eliminar", methods=["POST"])
+@login_required
+def gastos_viaticos_eliminar(gasto_id: int):
+    gasto = ComprobacionGasto.query.get_or_404(gasto_id)
+    folio = gasto.folio or f"#{gasto.id}"
+    db.session.delete(gasto)
+    db.session.commit()
+    flash(f"Comprobacion {folio} eliminada.", "success")
+    return _gastos_redirect()
 
 
 def _finanzas_redirect():

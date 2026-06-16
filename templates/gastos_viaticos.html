@@ -1,0 +1,349 @@
+{% extends "base.html" %}
+{% block title %}Gastos y viaticos{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 my-4">
+  <div>
+    <h2 class="fw-bold text-primary mb-1">Gastos y viaticos</h2>
+    <div class="text-muted">Comprobacion de pagos con adjuntos, agrupada por proyecto o evento.</div>
+  </div>
+  <div class="d-flex gap-2">
+    <button type="button" id="btnPorImagen" class="btn btn-primary fw-semibold">POR IMAGEN</button>
+    <button type="button" class="btn btn-outline-primary" onclick="document.getElementById('manualConcepto').focus()">Captura manual</button>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Total comprobado</div>
+        <div class="h3 fw-bold text-primary mb-0">${{ "{:,.2f}".format(total_general or 0) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Pendiente / revision</div>
+        <div class="h3 fw-bold text-warning mb-0">${{ "{:,.2f}".format(total_pendiente or 0) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Aprobado / reembolsado</div>
+        <div class="h3 fw-bold text-success mb-0">${{ "{:,.2f}".format(total_aprobado or 0) }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4 mb-4">
+  <div class="col-xl-8">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-primary text-white fw-bold">Nueva comprobacion</div>
+      <div class="card-body">
+        <div id="aiStatus" class="alert alert-info d-none mb-3"></div>
+        <form method="post" action="{{ url_for('gastos_viaticos_crear') }}" enctype="multipart/form-data" class="row g-3" id="gastoForm">
+          <input type="hidden" name="ai_confianza" id="ai_confianza">
+          <input type="hidden" name="ai_resultado" id="ai_resultado">
+          <input type="file" name="comprobante" id="comprobanteFile" class="d-none" accept="application/pdf,image/png,image/jpeg,image/webp" capture="environment">
+
+          <div class="col-md-3">
+            <label class="form-label">Agrupar por</label>
+            <select name="tipo_agrupacion" id="tipoAgrupacion" class="form-select">
+              <option value="PROYECTO">Proyecto</option>
+              <option value="EVENTO">Evento</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Proyecto</label>
+            <input name="proyecto" id="proyecto" class="form-control" placeholder="Nombre del proyecto">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Evento</label>
+            <input name="evento" id="evento" class="form-control" placeholder="Evento, viaje o actividad">
+          </div>
+          <div class="col-md-1 d-grid align-self-end">
+            <button type="button" class="btn btn-outline-secondary" id="btnArchivo">PDF</button>
+          </div>
+
+          <div class="col-md-3">
+            <label class="form-label">Tipo</label>
+            <select name="tipo_gasto" id="tipo_gasto" class="form-select">
+              {% for item in gasto_tipos %}
+              <option value="{{ item }}">{{ item }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Proveedor</label>
+            <input name="proveedor" id="proveedor" class="form-control" placeholder="Restaurante, hotel, proveedor">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Concepto</label>
+            <input name="concepto" id="manualConcepto" class="form-control" placeholder="Alimentos, hospedaje, gasolina" required>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Fecha comprobante</label>
+            <input type="date" name="fecha_comprobante" id="fecha_comprobante" class="form-control">
+          </div>
+
+          <div class="col-md-2">
+            <label class="form-label">Subtotal</label>
+            <input type="number" step="any" min="0" name="subtotal" id="subtotal" class="form-control">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">IVA</label>
+            <input type="number" step="any" min="0" name="iva" id="iva" class="form-control">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Total</label>
+            <input type="number" step="any" min="0" name="total" id="total" class="form-control" required>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Moneda</label>
+            <input name="moneda" id="moneda" class="form-control" value="MXN">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Metodo pago</label>
+            <input name="metodo_pago" id="metodo_pago" class="form-control" placeholder="Tarjeta, efectivo">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Estatus</label>
+            <select name="estatus" class="form-select">
+              {% for item in estatus_options %}
+              <option value="{{ item }}">{{ item }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="col-md-3">
+            <label class="form-label">Referencia</label>
+            <input name="referencia" id="referencia" class="form-control" placeholder="Factura, ticket, UUID">
+          </div>
+          <div class="col-md-7">
+            <label class="form-label">Notas</label>
+            <input name="notas" id="notas" class="form-control">
+          </div>
+          <div class="col-md-2 d-grid align-self-end">
+            <button class="btn btn-success">Guardar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-light fw-bold">Resumen por grupo</div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Grupo</th>
+                <th>Tipo</th>
+                <th>Comprob.</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for grupo in grupos %}
+              <tr>
+                <td class="fw-semibold">{{ grupo.nombre }}</td>
+                <td><span class="badge bg-secondary">{{ grupo.tipo }}</span></td>
+                <td>{{ grupo.conteo }}</td>
+                <td class="fw-bold">${{ "{:,.2f}".format(grupo.total or 0) }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="4" class="text-center text-muted py-4">Sin comprobaciones todavia.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-light">
+    <form method="get" action="{{ url_for('gastos_viaticos_index') }}" class="row g-2 align-items-end">
+      <div class="col-md-6">
+        <label class="form-label">Buscar</label>
+        <input name="q" class="form-control" value="{{ q }}" placeholder="Folio, proveedor, concepto, proyecto, evento o referencia">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Agrupacion</label>
+        <select name="agrupacion" class="form-select">
+          <option value="">Todas</option>
+          {% for item in agrupaciones %}
+          <option value="{{ item }}" {% if agrupacion == item %}selected{% endif %}>{{ item }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Estatus</label>
+        <select name="estatus" class="form-select">
+          <option value="">Todos</option>
+          {% for item in estatus_options %}
+          <option value="{{ item }}" {% if estatus == item %}selected{% endif %}>{{ item }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2 d-grid">
+        <button class="btn btn-outline-primary">Filtrar</button>
+      </div>
+    </form>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Folio</th>
+            <th>Grupo</th>
+            <th>Comprobante</th>
+            <th>Fecha</th>
+            <th>Total</th>
+            <th>IA</th>
+            <th>Estatus</th>
+            <th>Adjuntos</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for gasto in comprobaciones %}
+          <tr>
+            <td class="fw-bold">{{ gasto.folio }}</td>
+            <td>
+              <div class="fw-semibold">{{ gasto.proyecto if gasto.tipo_agrupacion == "PROYECTO" else gasto.evento }}</div>
+              <div class="small text-muted">{{ gasto.tipo_agrupacion }} · {{ gasto.tipo_gasto }}</div>
+            </td>
+            <td>
+              <div class="fw-semibold">{{ gasto.proveedor or "Sin proveedor" }}</div>
+              <div>{{ gasto.concepto }}</div>
+              <div class="small text-muted">{{ gasto.referencia or "" }}</div>
+            </td>
+            <td>{{ gasto.fecha_comprobante.strftime("%d/%m/%Y") if gasto.fecha_comprobante else "-" }}</td>
+            <td class="fw-bold">${{ "{:,.2f}".format(gasto.total or 0) }} {{ gasto.moneda }}</td>
+            <td>
+              {% if gasto.ai_confianza %}
+              <span class="badge bg-info">{{ "{:.0f}".format((gasto.ai_confianza or 0) * 100) }}%</span>
+              {% else %}
+              <span class="text-muted">Manual</span>
+              {% endif %}
+            </td>
+            <td><span class="badge bg-{{ gastos_badge_class(gasto.estatus) }}">{{ gasto.estatus }}</span></td>
+            <td>
+              {% for adj in gasto.adjuntos %}
+              <a class="btn btn-sm btn-outline-secondary mb-1" href="{{ url_for('static', filename=adj.ruta) }}" target="_blank">Ver</a>
+              {% else %}
+              <span class="text-muted">Sin archivo</span>
+              {% endfor %}
+            </td>
+            <td>
+              <div class="d-flex flex-wrap gap-1">
+                <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editar-gasto-{{ gasto.id }}">Editar</button>
+                <form method="post" action="{{ url_for('gastos_viaticos_eliminar', gasto_id=gasto.id) }}" onsubmit="return confirm('Eliminar la comprobacion {{ gasto.folio }}?');">
+                  <button class="btn btn-sm btn-outline-danger">Eliminar</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="9" class="text-center text-muted py-4">No hay comprobaciones con estos filtros.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% for gasto in comprobaciones %}
+<div class="modal fade" id="editar-gasto-{{ gasto.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('gastos_viaticos_actualizar', gasto_id=gasto.id) }}">
+        <div class="modal-header">
+          <h5 class="modal-title">Editar {{ gasto.folio }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-4"><label class="form-label">Proyecto</label><input name="proyecto" class="form-control" value="{{ gasto.proyecto or '' }}"></div>
+            <div class="col-md-4"><label class="form-label">Evento</label><input name="evento" class="form-control" value="{{ gasto.evento or '' }}"></div>
+            <div class="col-md-4"><label class="form-label">Estatus</label><select name="estatus" class="form-select">{% for item in estatus_options %}<option value="{{ item }}" {% if gasto.estatus == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></div>
+            <div class="col-md-4"><label class="form-label">Proveedor</label><input name="proveedor" class="form-control" value="{{ gasto.proveedor or '' }}"></div>
+            <div class="col-md-5"><label class="form-label">Concepto</label><input name="concepto" class="form-control" value="{{ gasto.concepto or '' }}"></div>
+            <div class="col-md-3"><label class="form-label">Fecha</label><input type="date" name="fecha_comprobante" class="form-control" value="{{ fecha_input(gasto.fecha_comprobante) }}"></div>
+            <div class="col-md-2"><label class="form-label">Subtotal</label><input type="number" step="any" min="0" name="subtotal" class="form-control" value="{{ gasto.subtotal or 0 }}"></div>
+            <div class="col-md-2"><label class="form-label">IVA</label><input type="number" step="any" min="0" name="iva" class="form-control" value="{{ gasto.iva or 0 }}"></div>
+            <div class="col-md-2"><label class="form-label">Total</label><input type="number" step="any" min="0" name="total" class="form-control" value="{{ gasto.total or 0 }}"></div>
+            <div class="col-md-2"><label class="form-label">Moneda</label><input name="moneda" class="form-control" value="{{ gasto.moneda or 'MXN' }}"></div>
+            <div class="col-md-4"><label class="form-label">Metodo pago</label><input name="metodo_pago" class="form-control" value="{{ gasto.metodo_pago or '' }}"></div>
+            <div class="col-md-4"><label class="form-label">Referencia</label><input name="referencia" class="form-control" value="{{ gasto.referencia or '' }}"></div>
+            <div class="col-md-8"><label class="form-label">Notas</label><input name="notas" class="form-control" value="{{ gasto.notas or '' }}"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+          <button class="btn btn-primary">Guardar cambios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+<script>
+(() => {
+  const fileInput = document.getElementById("comprobanteFile");
+  const statusBox = document.getElementById("aiStatus");
+  const setStatus = (text, cls = "info") => {
+    statusBox.className = `alert alert-${cls} mb-3`;
+    statusBox.textContent = text;
+    statusBox.classList.remove("d-none");
+  };
+  const fill = (id, value) => {
+    const el = document.getElementById(id);
+    if (el && value !== undefined && value !== null && value !== "") el.value = value;
+  };
+  const analyzeSelectedFile = async () => {
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) return;
+    setStatus("Analizando comprobante con IA...");
+    const body = new FormData();
+    body.append("comprobante", file);
+    try {
+      const resp = await fetch("{{ url_for('gastos_viaticos_analizar') }}", { method: "POST", body });
+      const payload = await resp.json();
+      if (!payload.ok) throw new Error(payload.error || "No se pudo analizar el archivo.");
+      const data = payload.data || {};
+      fill("proveedor", data.proveedor);
+      fill("manualConcepto", data.concepto);
+      fill("referencia", data.referencia);
+      fill("fecha_comprobante", data.fecha_comprobante);
+      fill("subtotal", data.subtotal);
+      fill("iva", data.iva);
+      fill("total", data.total);
+      fill("moneda", data.moneda);
+      fill("metodo_pago", data.metodo_pago);
+      fill("tipo_gasto", data.tipo_gasto);
+      fill("notas", data.observaciones);
+      fill("ai_confianza", data.confianza || 0);
+      fill("ai_resultado", JSON.stringify(data));
+      setStatus(`Campos llenados. Confianza estimada: ${Math.round((data.confianza || 0) * 100)}%. Revisa y edita antes de guardar.`, "success");
+    } catch (err) {
+      setStatus(err.message || "No se pudo analizar el comprobante.", "warning");
+    }
+  };
+  document.getElementById("btnPorImagen").addEventListener("click", () => fileInput.click());
+  document.getElementById("btnArchivo").addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", analyzeSelectedFile);
+})();
+</script>
+{% endblock %}
