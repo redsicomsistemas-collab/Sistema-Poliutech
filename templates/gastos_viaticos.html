@@ -2,6 +2,13 @@
 {% block title %}Gastos y viaticos{% endblock %}
 
 {% block content %}
+<style>
+  .receipt-attach-btn {
+    min-width: 132px;
+    white-space: normal;
+    line-height: 1.1;
+  }
+</style>
 <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 my-4">
   <div>
     <h2 class="fw-bold text-primary mb-1">Gastos y viaticos</h2>
@@ -59,16 +66,16 @@
               <option value="EVENTO">Evento</option>
             </select>
           </div>
-          <div class="col-md-4">
+          <div class="col-md-3">
             <label class="form-label">Proyecto</label>
             <input name="proyecto" id="proyecto" class="form-control" placeholder="Nombre del proyecto">
           </div>
-          <div class="col-md-4">
+          <div class="col-md-3">
             <label class="form-label">Evento</label>
             <input name="evento" id="evento" class="form-control" placeholder="Evento, viaje o actividad">
           </div>
-          <div class="col-md-1 d-grid align-self-end">
-            <button type="button" class="btn btn-outline-secondary" id="btnArchivo">Imagen/PDF</button>
+          <div class="col-md-3 d-grid align-self-end">
+            <button type="button" class="btn btn-outline-secondary receipt-attach-btn" id="btnArchivo">Adjuntar comprobante</button>
           </div>
 
           <div class="col-md-3">
@@ -334,6 +341,7 @@
   const statusBox = document.getElementById("aiStatus");
   const notasModalEl = document.getElementById("aiNotasModal");
   const notasTextoEl = document.getElementById("aiNotasTexto");
+  let fileMode = "attach";
   const setStatus = (text, cls = "info") => {
     statusBox.className = `alert alert-${cls} mb-3`;
     statusBox.textContent = text;
@@ -346,6 +354,14 @@
   const analyzeSelectedFile = async () => {
     const file = fileInput.files && fileInput.files[0];
     if (!file) return;
+    if (fileMode !== "analyze") {
+      const confidence = document.getElementById("ai_confianza");
+      const result = document.getElementById("ai_resultado");
+      if (confidence) confidence.value = 0;
+      if (result) result.value = "";
+      setStatus(`Comprobante adjunto: ${file.name}. Se guardara con el registro sin analizar con IA.`, "success");
+      return;
+    }
     setStatus("Analizando comprobante con IA...");
     const body = new FormData();
     body.append("comprobante", file);
@@ -377,8 +393,14 @@
       setStatus(err.message || "No se pudo analizar el comprobante.", "warning");
     }
   };
-  document.getElementById("btnPorImagen").addEventListener("click", () => fileInput.click());
-  document.getElementById("btnArchivo").addEventListener("click", () => fileInput.click());
+  document.getElementById("btnPorImagen").addEventListener("click", () => {
+    fileMode = "analyze";
+    fileInput.click();
+  });
+  document.getElementById("btnArchivo").addEventListener("click", () => {
+    fileMode = "attach";
+    fileInput.click();
+  });
   fileInput.addEventListener("change", analyzeSelectedFile);
 })();
 </script>

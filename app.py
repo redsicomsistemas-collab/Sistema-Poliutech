@@ -8400,6 +8400,22 @@ def _gastos_pdf_text(file_bytes: bytes) -> str:
         return ""
 
 
+def _gastos_pdf_first_page_png(file_bytes: bytes) -> bytes:
+    try:
+        import pypdfium2 as pdfium
+        pdf = pdfium.PdfDocument(file_bytes)
+        if len(pdf) <= 0:
+            return b""
+        page = pdf[0]
+        bitmap = page.render(scale=2.0)
+        pil_image = bitmap.to_pil()
+        out = io.BytesIO()
+        pil_image.save(out, format="PNG")
+        return out.getvalue()
+    except Exception:
+        return b""
+
+
 def _gastos_parse_json(raw: str) -> dict:
     raw = (raw or "").strip()
     if not raw:
@@ -8414,6 +8430,37 @@ def _gastos_parse_json(raw: str) -> dict:
             except Exception:
                 return {}
     return {}
+
+
+def _gastos_guess_concepts_from_text(text: str) -> list[str]:
+    skip_words = (
+        "total", "subtotal", "iva", "importe", "cambio", "efectivo", "tarjeta",
+        "rfc", "uuid", "folio", "factura", "ticket", "fecha", "hora", "cajero",
+        "cliente", "regimen", "lugar", "expedicion", "metodo", "pago", "moneda",
+    )
+    concepts: list[str] = []
+    for raw_line in (text or "").splitlines():
+        line = re.sub(r"\s+", " ", raw_line or "").strip(" -:\t")
+        if not line or len(line) < 4 or len(line) > 120:
+            continue
+        norm = line.lower()
+        if any(word in norm for word in skip_words):
+            continue
+        if not re.search(r"[a-zA-ZáéíóúÁÉÍÓÚñÑ]", line):
+            continue
+        if re.fullmatch(r"[\d\s,.$%/:-]+", line):
+            continue
+        if re.search(r"\b\d{2,4}[-/]\d{1,2}[-/]\d{1,2}\b", line):
+            continue
+        cleaned = re.sub(r"\s+\$?\d{1,3}(?:,\d{3})*(?:\.\d{2})\s*$", "", line).strip(" -:")
+        if len(cleaned) < 4:
+            continue
+        if cleaned.lower() in {item.lower() for item in concepts}:
+            continue
+        concepts.append(cleaned[:100])
+        if len(concepts) >= 8:
+            break
+    return concepts
 
 
 def _gastos_heuristic_extract(text: str) -> dict:
@@ -8437,10 +8484,12 @@ def _gastos_heuristic_extract(text: str) -> dict:
     total = max(amounts) if amounts else 0.0
     iva = round(total * 0.16 / 1.16, 2) if total else 0.0
     subtotal = round(total - iva, 2) if total else 0.0
+    concepts = _gastos_guess_concepts_from_text(text)
+    concept_text = "; ".join(concepts) if concepts else "Comprobante de gasto"
     return {
         "proveedor": lines[0][:160] if lines else "",
-        "concepto": "Comprobante de gasto",
-        "conceptos": ["Comprobante de gasto"],
+        "concepto": concept_text[:260],
+        "conceptos": concepts or ["Comprobante de gasto"],
         "referencia": "",
         "fecha_comprobante": date_value,
         "subtotal": subtotal,
@@ -8460,7 +8509,9 @@ def _gastos_ai_extract(file_bytes: bytes, filename: str, mime_type: str, text: s
         "Responde solo JSON valido con estas llaves: proveedor, concepto, conceptos, referencia, "
         "fecha_comprobante en formato YYYY-MM-DD, subtotal, iva, total, moneda, metodo_pago, "
         "tipo_gasto como GASTO o VIATICO, confianza de 0 a 1, observaciones. "
-        "conceptos debe ser una lista con cada concepto comprado o consumido detectado. "
+        "conceptos debe ser una lista con cada concepto comprado o consumido detectado en el ticket/PDF, "
+        "por ejemplo alimentos, gasolina, hospedaje o cada partida visible. No uses solo una categoria generica "
+        "si hay articulos o partidas visibles. "
         "Si un dato no existe usa cadena vacia o 0."
     )
     if not OPENAI_API_KEY:
@@ -8473,6 +8524,12 @@ def _gastos_ai_extract(file_bytes: bytes, filename: str, mime_type: str, text: s
     elif (mime_type or "").startswith("image/"):
         b64 = base64.b64encode(file_bytes).decode("ascii")
         content.append({"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64}"}})
+    elif (mime_type or "").lower() == "application/pdf":
+        png_bytes = _gastos_pdf_first_page_png(file_bytes)
+        if not png_bytes:
+            return _gastos_heuristic_extract(text)
+        b64 = base64.b64encode(png_bytes).decode("ascii")
+        content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
     else:
         return _gastos_heuristic_extract(text)
 
@@ -8488,7 +8545,7 @@ def _gastos_ai_extract(file_bytes: bytes, filename: str, mime_type: str, text: s
     message = ((resp.json().get("choices") or [{}])[0].get("message") or {}).get("content") or "{}"
     data = _gastos_parse_json(message)
     fallback = _gastos_heuristic_extract(text)
-    fallback.update({k: v for k, v in data.items() if v not in (None, "")})
+    fallback.update({k: v for k, v in data.items() if v not in (None, "", [], {})})
     return fallback
 
 
