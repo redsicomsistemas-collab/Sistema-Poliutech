@@ -8894,14 +8894,11 @@ def gastos_viaticos_crear():
         return _gastos_redirect()
 
     db.session.commit()
-    if adjunto:
-        try:
-            _send_gastos_review_email(gasto)
-            flash(f"Comprobacion {gasto.folio} registrada y enviada a revision.", "success")
-        except Exception as exc:
-            flash(f"Comprobacion {gasto.folio} registrada, pero no se pudo enviar el correo: {exc}", "warning")
-        return _gastos_redirect()
-    flash(f"Comprobacion {gasto.folio} registrada.", "success")
+    try:
+        _send_gastos_review_email(gasto)
+        flash(f"Comprobacion {gasto.folio} registrada y enviada a revision.", "success")
+    except Exception as exc:
+        flash(f"Comprobacion {gasto.folio} registrada, pero no se pudo enviar el correo: {exc}", "warning")
     return _gastos_redirect()
 
 
