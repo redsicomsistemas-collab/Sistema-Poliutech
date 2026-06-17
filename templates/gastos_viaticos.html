@@ -42,6 +42,10 @@
   .filter-actions {
     min-width: 0;
   }
+  .gasto-row-aprobado > td { background: #e9f7ef; }
+  .gasto-row-rechazado > td { background: #fdecec; }
+  .gasto-row-revision > td { background: #fff7df; }
+  .gasto-row-reembolsado > td { background: #e8f1ff; }
 </style>
 <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 my-4">
   <div>
@@ -252,7 +256,7 @@
     <div class="table-responsive">
       <table class="table table-hover align-middle mb-0 gastos-table">
         <thead>
-          <tr>
+          <tr class="{{ gastos_row_class(gasto.estatus) }}">
             <th class="col-folio">Folio</th>
             <th class="col-grupo">Grupo</th>
             <th class="col-comprobante">Comprobante</th>
@@ -298,6 +302,7 @@
             </td>
             <td>
               <div class="d-flex flex-wrap gap-1">
+                <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('gastos_viaticos_detalle', gasto_id=gasto.id) }}">Detalle</a>
                 <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editar-gasto-{{ gasto.id }}">Editar</button>
                 <form method="post" action="{{ url_for('gastos_viaticos_eliminar', gasto_id=gasto.id) }}" onsubmit="return confirm('Eliminar la comprobacion {{ gasto.folio }}?');">
                   <button class="btn btn-sm btn-outline-danger">Eliminar</button>

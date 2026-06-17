@@ -2459,6 +2459,7 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "26"))
 SMTP_USERNAME = os.getenv("SMTP_USERNAME", "cotizaciones@poliutech.com").strip()
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "Cotizaciones2025@").strip()
 SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USERNAME).strip()
+GASTOS_REVIEW_EMAIL = os.getenv("GASTOS_REVIEW_EMAIL", "gastos@poliutech.com").strip()
 REGISTRO_MAIL_HOST = os.getenv("REGISTRO_MAIL_HOST", "servidor15.escala.net.mx").strip()
 REGISTRO_MAIL_PORT = int(os.getenv("REGISTRO_MAIL_PORT", "26"))
 REGISTRO_MAIL_USERNAME = os.getenv("REGISTRO_MAIL_USERNAME", "info@poliutech.com").strip()
@@ -2557,6 +2558,8 @@ def _require_login_everywhere():
     if request.path == "/login" or request.endpoint == "login":
         return
     if request.path in ("/health", "/ping"):
+        return
+    if request.path.startswith("/gastos-viaticos/revision/"):
         return
     if request.path.startswith("/api/mobile/"):
         return
@@ -8359,6 +8362,16 @@ def _gastos_badge_class(estatus: str) -> str:
     }.get((estatus or "").upper(), "warning")
 
 
+def _gastos_status_row_class(estatus: str) -> str:
+    return {
+        "APROBADO": "gasto-row-aprobado",
+        "RECHAZADO": "gasto-row-rechazado",
+        "EN REVISION": "gasto-row-revision",
+        "PENDIENTE": "gasto-row-revision",
+        "REEMBOLSADO": "gasto-row-reembolsado",
+    }.get((estatus or "").upper(), "")
+
+
 def _gastos_file_ext(filename: str) -> str:
     return (filename or "").rsplit(".", 1)[-1].lower() if "." in (filename or "") else ""
 
@@ -8584,6 +8597,85 @@ def _gastos_redirect():
     return redirect(request.referrer or url_for("gastos_viaticos_index"))
 
 
+def _gastos_review_serializer() -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(app.secret_key, salt="gastos-viaticos-review")
+
+
+def _gastos_review_token(gasto: "ComprobacionGasto", action: str = "view") -> str:
+    return _gastos_review_serializer().dumps({"gasto_id": gasto.id, "action": action})
+
+
+def _gastos_load_from_token(gasto_id: int, token: str, action: str = "view") -> "ComprobacionGasto":
+    try:
+        payload = _gastos_review_serializer().loads(token or "", max_age=60 * 60 * 24 * 45)
+    except (BadSignature, SignatureExpired):
+        abort(403)
+    if int(payload.get("gasto_id") or 0) != int(gasto_id):
+        abort(403)
+    token_action = (payload.get("action") or "").strip()
+    if action == "approve":
+        if token_action != "approve":
+            abort(403)
+    elif token_action not in {action, "approve"}:
+        abort(403)
+    return ComprobacionGasto.query.get_or_404(gasto_id)
+
+
+def _gastos_mail_html(gasto: "ComprobacionGasto", view_url: str, approve_url: str) -> str:
+    concepto = escape(gasto.concepto or "")
+    proveedor = escape(gasto.proveedor or "Sin proveedor")
+    folio = escape(gasto.folio or f"#{gasto.id}")
+    responsable = escape(gasto.responsable or "Sin responsable")
+    total = f"${float(gasto.total or 0):,.2f} {escape(gasto.moneda or 'MXN')}"
+    button_base = "display:inline-block;padding:12px 18px;border-radius:6px;text-decoration:none;font-weight:700;margin-right:10px;"
+    return f"""
+    <html>
+      <body style="font-family:Arial,sans-serif;color:#222;line-height:1.45;">
+        <h2 style="margin:0 0 12px 0;">Nuevo comprobante de gastos y viaticos</h2>
+        <p>Se registro un comprobante para revision.</p>
+        <table style="border-collapse:collapse;margin:16px 0;min-width:420px;">
+          <tr><td style="padding:6px 10px;border:1px solid #ddd;"><b>Folio</b></td><td style="padding:6px 10px;border:1px solid #ddd;">{folio}</td></tr>
+          <tr><td style="padding:6px 10px;border:1px solid #ddd;"><b>Proveedor</b></td><td style="padding:6px 10px;border:1px solid #ddd;">{proveedor}</td></tr>
+          <tr><td style="padding:6px 10px;border:1px solid #ddd;"><b>Concepto(s)</b></td><td style="padding:6px 10px;border:1px solid #ddd;">{concepto}</td></tr>
+          <tr><td style="padding:6px 10px;border:1px solid #ddd;"><b>Total</b></td><td style="padding:6px 10px;border:1px solid #ddd;">{total}</td></tr>
+          <tr><td style="padding:6px 10px;border:1px solid #ddd;"><b>Quien hizo la compra</b></td><td style="padding:6px 10px;border:1px solid #ddd;">{responsable}</td></tr>
+        </table>
+        <p>
+          <a href="{view_url}" style="{button_base}background:#0d6efd;color:#fff;">Ver</a>
+          <a href="{approve_url}" style="{button_base}background:#198754;color:#fff;">Aprobar</a>
+        </p>
+      </body>
+    </html>
+    """.strip()
+
+
+def _send_gastos_review_email(gasto: "ComprobacionGasto") -> None:
+    recipients = _parse_email_list(GASTOS_REVIEW_EMAIL)
+    if not recipients:
+        return
+    view_url = url_for("gastos_viaticos_revision", gasto_id=gasto.id, token=_gastos_review_token(gasto, "view"), _external=True)
+    approve_url = url_for("gastos_viaticos_revision_aprobar", gasto_id=gasto.id, token=_gastos_review_token(gasto, "approve"), _external=True)
+
+    msg = EmailMessage()
+    msg["Subject"] = f"Revision de comprobante {gasto.folio or gasto.id}"
+    msg["From"] = SMTP_FROM
+    msg["To"] = ", ".join(recipients)
+    msg.set_content(
+        f"Nuevo comprobante {gasto.folio or gasto.id}\n"
+        f"Proveedor: {gasto.proveedor or 'Sin proveedor'}\n"
+        f"Concepto(s): {gasto.concepto or ''}\n"
+        f"Total: ${float(gasto.total or 0):,.2f} {gasto.moneda or 'MXN'}\n\n"
+        f"Ver: {view_url}\n"
+        f"Aprobar: {approve_url}\n"
+    )
+    msg.add_alternative(_gastos_mail_html(gasto, view_url, approve_url), subtype="html")
+
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
+        smtp.ehlo()
+        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+        smtp.send_message(msg, to_addrs=recipients)
+
+
 def _gastos_query_from_request():
     q = (request.args.get("q") or "").strip()
     agrupacion = (request.args.get("agrupacion") or "").strip().upper()
@@ -8640,6 +8732,7 @@ def gastos_viaticos_index():
         gasto_tipos=GASTOS_TIPOS,
         agrupaciones=GASTOS_AGRUPACIONES,
         gastos_badge_class=_gastos_badge_class,
+        gastos_row_class=_gastos_status_row_class,
         fecha_input=_finanzas_fecha_input,
         responsable_default=responsable_actual() or "",
     )
@@ -8790,8 +8883,71 @@ def gastos_viaticos_crear():
         return _gastos_redirect()
 
     db.session.commit()
+    if adjunto:
+        try:
+            _send_gastos_review_email(gasto)
+            flash(f"Comprobacion {gasto.folio} registrada y enviada a revision.", "success")
+        except Exception as exc:
+            flash(f"Comprobacion {gasto.folio} registrada, pero no se pudo enviar el correo: {exc}", "warning")
+        return _gastos_redirect()
     flash(f"Comprobacion {gasto.folio} registrada.", "success")
     return _gastos_redirect()
+
+
+@app.route("/gastos-viaticos/<int:gasto_id>/detalle")
+@login_required
+def gastos_viaticos_detalle(gasto_id: int):
+    gasto = ComprobacionGasto.query.get_or_404(gasto_id)
+    return render_template(
+        "gastos_viaticos_detalle.html",
+        title=f"Comprobante {gasto.folio or gasto.id}",
+        gasto=gasto,
+        public_view=False,
+        approve_url=url_for("gastos_viaticos_marcar_aprobado", gasto_id=gasto.id),
+        gastos_badge_class=_gastos_badge_class,
+    )
+
+
+@app.route("/gastos-viaticos/<int:gasto_id>/aprobar", methods=["POST"])
+@login_required
+def gastos_viaticos_marcar_aprobado(gasto_id: int):
+    gasto = ComprobacionGasto.query.get_or_404(gasto_id)
+    gasto.estatus = "APROBADO"
+    gasto.actualizado_en = now_cdmx_naive()
+    db.session.commit()
+    flash(f"Comprobacion {gasto.folio} aprobada.", "success")
+    return redirect(url_for("gastos_viaticos_detalle", gasto_id=gasto.id))
+
+
+@app.route("/gastos-viaticos/revision/<int:gasto_id>")
+def gastos_viaticos_revision(gasto_id: int):
+    gasto = _gastos_load_from_token(gasto_id, request.args.get("token"), "view")
+    token = request.args.get("token") or ""
+    return render_template(
+        "gastos_viaticos_detalle.html",
+        title=f"Comprobante {gasto.folio or gasto.id}",
+        gasto=gasto,
+        public_view=True,
+        approve_url=url_for("gastos_viaticos_revision_aprobar", gasto_id=gasto.id, token=token),
+        gastos_badge_class=_gastos_badge_class,
+    )
+
+
+@app.route("/gastos-viaticos/revision/<int:gasto_id>/aprobar")
+def gastos_viaticos_revision_aprobar(gasto_id: int):
+    gasto = _gastos_load_from_token(gasto_id, request.args.get("token"), "approve")
+    gasto.estatus = "APROBADO"
+    gasto.actualizado_en = now_cdmx_naive()
+    db.session.commit()
+    return render_template(
+        "gastos_viaticos_detalle.html",
+        title=f"Comprobante {gasto.folio or gasto.id}",
+        gasto=gasto,
+        public_view=True,
+        approved_now=True,
+        approve_url=url_for("gastos_viaticos_revision_aprobar", gasto_id=gasto.id, token=request.args.get("token") or ""),
+        gastos_badge_class=_gastos_badge_class,
+    )
 
 
 @app.route("/gastos-viaticos/<int:gasto_id>/actualizar", methods=["POST"])

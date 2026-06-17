@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Detalle de comprobante{% endblock %}
+
+{% block content %}
+<style>
+  .receipt-detail {
+    max-width: 1100px;
+  }
+  .receipt-field {
+    border: 1px solid #e3e6ea;
+    border-radius: 8px;
+    padding: .85rem;
+    height: 100%;
+    background: #fff;
+  }
+  .receipt-attachment-img {
+    max-width: 100%;
+    max-height: 520px;
+    object-fit: contain;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    background: #f8f9fa;
+  }
+</style>
+
+<div class="container py-4 receipt-detail">
+  {% if approved_now %}
+  <div class="alert alert-success">Comprobante aprobado correctamente.</div>
+  {% endif %}
+
+  <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+    <div>
+      <h2 class="fw-bold mb-1">{{ gasto.folio or ("#" ~ gasto.id) }}</h2>
+      <div class="text-muted">Detalle de comprobante de gastos y viaticos</div>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      <span class="badge bg-{{ gastos_badge_class(gasto.estatus) }} fs-6 align-self-center">{{ gasto.estatus }}</span>
+      {% if gasto.estatus != "APROBADO" %}
+        {% if public_view %}
+        <a href="{{ approve_url }}" class="btn btn-success">Aprobar</a>
+        {% else %}
+        <form method="post" action="{{ approve_url }}">
+          <button class="btn btn-success">Aprobar</button>
+        </form>
+        {% endif %}
+      {% endif %}
+      {% if not public_view %}
+      <a href="{{ url_for('gastos_viaticos_index') }}" class="btn btn-outline-secondary">Volver</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-4">
+      <div class="receipt-field">
+        <div class="small text-muted">Quien hizo la compra</div>
+        <div class="fw-semibold">{{ gasto.responsable or "-" }}</div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="receipt-field">
+        <div class="small text-muted">Proveedor</div>
+        <div class="fw-semibold">{{ gasto.proveedor or "Sin proveedor" }}</div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="receipt-field">
+        <div class="small text-muted">Total</div>
+        <div class="fw-bold">${{ "{:,.2f}".format(gasto.total or 0) }} {{ gasto.moneda }}</div>
+      </div>
+    </div>
+    <div class="col-md-8">
+      <div class="receipt-field">
+        <div class="small text-muted">Concepto(s)</div>
+        <div style="white-space: pre-wrap; overflow-wrap: anywhere;">{{ gasto.concepto }}</div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="receipt-field">
+        <div class="small text-muted">Fecha comprobante</div>
+        <div>{{ gasto.fecha_comprobante.strftime("%d/%m/%Y") if gasto.fecha_comprobante else "-" }}</div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="receipt-field">
+        <div class="small text-muted">Subtotal</div>
+        <div>${{ "{:,.2f}".format(gasto.subtotal or 0) }}</div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="receipt-field">
+        <div class="small text-muted">IVA</div>
+        <div>${{ "{:,.2f}".format(gasto.iva or 0) }}</div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="receipt-field">
+        <div class="small text-muted">Referencia</div>
+        <div>{{ gasto.referencia or "-" }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-light fw-bold">Comprobantes adjuntos</div>
+    <div class="card-body">
+      {% for adj in gasto.adjuntos %}
+      <div class="mb-4">
+        <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
+          <div class="fw-semibold">{{ adj.nombre_original }}</div>
+          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('static', filename=adj.ruta) }}" target="_blank">Abrir archivo</a>
+        </div>
+        {% if (adj.mime_type or "").startswith("image/") %}
+        <img src="{{ url_for('static', filename=adj.ruta) }}" alt="{{ adj.nombre_original }}" class="receipt-attachment-img">
+        {% else %}
+        <div class="ratio ratio-4x3 border rounded bg-light">
+          <iframe src="{{ url_for('static', filename=adj.ruta) }}" title="{{ adj.nombre_original }}"></iframe>
+        </div>
+        {% endif %}
+      </div>
+      {% else %}
+      <div class="text-muted">Este registro no tiene comprobante adjunto.</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
