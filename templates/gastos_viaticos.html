@@ -256,7 +256,7 @@
     <div class="table-responsive">
       <table class="table table-hover align-middle mb-0 gastos-table">
         <thead>
-          <tr class="{{ gastos_row_class(gasto.estatus) }}">
+          <tr>
             <th class="col-folio">Folio</th>
             <th class="col-grupo">Grupo</th>
             <th class="col-comprobante">Comprobante</th>
@@ -271,7 +271,7 @@
         </thead>
         <tbody>
           {% for gasto in comprobaciones %}
-          <tr>
+          <tr class="{{ gastos_row_class(gasto.estatus) }}">
             <td class="fw-bold cell-wrap">{{ gasto.folio }}</td>
             <td class="cell-wrap">
               <div class="fw-semibold">{{ gasto.proyecto if gasto.tipo_agrupacion == "PROYECTO" else gasto.evento }}</div>
