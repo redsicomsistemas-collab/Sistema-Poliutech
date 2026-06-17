@@ -8641,7 +8641,7 @@ def _gastos_mail_html(gasto: "ComprobacionGasto", view_url: str, approve_url: st
         <div style="max-width:760px;margin:0 auto;padding:30px 16px;">
           <div style="background:#ffffff;border:1px solid #d9e2ec;border-radius:10px;overflow:hidden;box-shadow:0 8px 24px rgba(15,45,80,.08);">
             <div style="background:#0d47a1;color:#ffffff;padding:22px 26px;">
-              <div style="font-size:12px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;opacity:.9;">MARWHATS · Poliutech</div>
+              <div style="font-size:12px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;opacity:.9;">MAR · Poliutech</div>
               <div style="font-size:23px;font-weight:800;margin-top:5px;">Comprobante pendiente de revision</div>
               <div style="font-size:14px;opacity:.92;margin-top:6px;">Gastos y viaticos</div>
             </div>
@@ -8692,7 +8692,7 @@ def _gastos_mail_html(gasto: "ComprobacionGasto", view_url: str, approve_url: st
               </div>
 
               <div style="margin-top:18px;padding-top:16px;border-top:1px solid #e5e7eb;color:#64748b;font-size:12px;">
-                Este mensaje fue generado automaticamente por MARWHATS. Si los botones no abren, usa la vista HTML del correo.
+                Este mensaje fue generado automaticamente por MAR. Si los botones no abren, usa la vista HTML del correo.
               </div>
             </div>
           </div>
