@@ -2092,6 +2092,80 @@ def require_ticket_owner_or_admin(ticket: "TicketSoporte") -> None:
     abort(403)
 
 
+def _support_ticket_email_html(ticket: "TicketSoporte", detail_url: str) -> str:
+    folio = escape(ticket.folio or f"TCK-{ticket.id:06d}")
+    asunto = escape(ticket.asunto or "")
+    descripcion = escape(ticket.descripcion or "")
+    solicitante = escape(ticket.solicitante or "")
+    correo = escape(ticket.correo or "Sin correo")
+    categoria = escape(ticket.categoria or "GENERAL")
+    prioridad = escape(ticket.prioridad or "MEDIA")
+    responsable = escape(ticket.responsable or "Sin asignar")
+    button_style = (
+        "display:inline-block;min-width:150px;text-align:center;padding:14px 22px;"
+        "border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;"
+        "background:#0d47a1;color:#ffffff;border:1px solid #0d47a1;"
+    )
+    return f"""
+    <html>
+      <body style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+        <div style="max-width:760px;margin:0 auto;padding:30px 16px;">
+          <div style="background:#ffffff;border:1px solid #d9e2ec;border-radius:10px;overflow:hidden;box-shadow:0 8px 24px rgba(15,45,80,.08);">
+            <div style="background:#0d47a1;color:#ffffff;padding:22px 26px;">
+              <div style="font-size:12px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;opacity:.9;">MAR · Soporte</div>
+              <div style="font-size:23px;font-weight:800;margin-top:5px;">Nuevo ticket de soporte</div>
+              <div style="font-size:14px;opacity:.92;margin-top:6px;">{folio}</div>
+            </div>
+            <div style="padding:26px;">
+              <table style="border-collapse:collapse;width:100%;background:#ffffff;margin-bottom:20px;">
+                <tr><td style="padding:10px 12px;border:1px solid #dde3ea;background:#f8fafc;width:34%;font-weight:700;color:#64748b;">Asunto</td><td style="padding:10px 12px;border:1px solid #dde3ea;font-weight:700;">{asunto}</td></tr>
+                <tr><td style="padding:10px 12px;border:1px solid #dde3ea;background:#f8fafc;font-weight:700;color:#64748b;">Solicitante</td><td style="padding:10px 12px;border:1px solid #dde3ea;">{solicitante}</td></tr>
+                <tr><td style="padding:10px 12px;border:1px solid #dde3ea;background:#f8fafc;font-weight:700;color:#64748b;">Correo</td><td style="padding:10px 12px;border:1px solid #dde3ea;">{correo}</td></tr>
+                <tr><td style="padding:10px 12px;border:1px solid #dde3ea;background:#f8fafc;font-weight:700;color:#64748b;">Categoria</td><td style="padding:10px 12px;border:1px solid #dde3ea;">{categoria}</td></tr>
+                <tr><td style="padding:10px 12px;border:1px solid #dde3ea;background:#f8fafc;font-weight:700;color:#64748b;">Prioridad</td><td style="padding:10px 12px;border:1px solid #dde3ea;">{prioridad}</td></tr>
+                <tr><td style="padding:10px 12px;border:1px solid #dde3ea;background:#f8fafc;font-weight:700;color:#64748b;">Responsable</td><td style="padding:10px 12px;border:1px solid #dde3ea;">{responsable}</td></tr>
+              </table>
+              <div style="background:#f8fafc;border:1px solid #dbe4ef;border-radius:10px;padding:16px 18px;margin-bottom:22px;">
+                <div style="font-size:12px;text-transform:uppercase;letter-spacing:.7px;color:#64748b;font-weight:800;margin-bottom:8px;">Descripcion del problema</div>
+                <div style="white-space:pre-wrap;line-height:1.5;">{descripcion}</div>
+              </div>
+              <a href="{detail_url}" style="{button_style}">Ver Ticket</a>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+    """.strip()
+
+
+def _send_support_ticket_email(ticket: "TicketSoporte") -> None:
+    recipients = _parse_email_list(SUPPORT_TICKET_EMAIL)
+    if not recipients:
+        raise ValueError("No hay correo configurado para soporte.")
+    detail_url = url_for("soporte_ticket_detalle", ticket_id=ticket.id, _external=True)
+    msg = EmailMessage()
+    msg["Subject"] = f"Nuevo ticket de soporte {ticket.folio or ticket.id}"
+    msg["From"] = SMTP_FROM or SMTP_USERNAME
+    msg["To"] = ", ".join(recipients)
+    msg.set_content(
+        f"Nuevo ticket de soporte {ticket.folio or ticket.id}\n"
+        f"Asunto: {ticket.asunto or ''}\n"
+        f"Solicitante: {ticket.solicitante or ''}\n"
+        f"Correo: {ticket.correo or ''}\n"
+        f"Categoria: {ticket.categoria or ''}\n"
+        f"Prioridad: {ticket.prioridad or ''}\n"
+        f"Responsable: {ticket.responsable or ''}\n\n"
+        f"Descripcion:\n{ticket.descripcion or ''}\n\n"
+        f"Ver ticket: {detail_url}\n"
+    )
+    msg.add_alternative(_support_ticket_email_html(ticket, detail_url), subtype="html")
+
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
+        smtp.ehlo()
+        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+        smtp.send_message(msg, to_addrs=recipients)
+
+
 def _build_simple_xls(sheet_name: str, headers: list[str], rows: list[list[str]]) -> bytes:
     def html_cell(value: object) -> str:
         text = "" if value is None else str(value)
@@ -2460,6 +2534,7 @@ SMTP_USERNAME = os.getenv("SMTP_USERNAME", "cotizaciones@poliutech.com").strip()
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "Cotizaciones2025@").strip()
 SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USERNAME).strip()
 GASTOS_REVIEW_EMAIL = (os.getenv("GASTOS_REVIEW_EMAIL") or "gastos@poliutech.com").strip()
+SUPPORT_TICKET_EMAIL = (os.getenv("SUPPORT_TICKET_EMAIL") or "sistemas@poliutech.com").strip()
 REGISTRO_MAIL_HOST = os.getenv("REGISTRO_MAIL_HOST", "servidor15.escala.net.mx").strip()
 REGISTRO_MAIL_PORT = int(os.getenv("REGISTRO_MAIL_PORT", "26"))
 REGISTRO_MAIL_USERNAME = os.getenv("REGISTRO_MAIL_USERNAME", "info@poliutech.com").strip()
@@ -5171,7 +5246,15 @@ def soporte_ticket_nuevo():
             return redirect(url_for("soporte_ticket_nuevo"))
 
         db.session.commit()
-        flash(f"Ticket {ticket.folio} creado correctamente. Adjuntos: {saved}.", "success")
+        try:
+            _send_support_ticket_email(ticket)
+            flash(f"Ticket {ticket.folio} creado correctamente y notificado a sistemas. Adjuntos: {saved}.", "success")
+        except Exception as exc:
+            try:
+                logger.exception("No se pudo enviar correo de soporte %s", ticket.folio or ticket.id)
+            except Exception:
+                pass
+            flash(f"Ticket {ticket.folio} creado, pero no se pudo enviar el correo: {exc}", "warning")
         return redirect(url_for("soporte_ticket_detalle", ticket_id=ticket.id))
 
     return render_template(
