@@ -8627,30 +8627,73 @@ def _gastos_mail_html(gasto: "ComprobacionGasto", view_url: str, approve_url: st
     folio = escape(gasto.folio or f"#{gasto.id}")
     responsable = escape(gasto.responsable or "Sin responsable")
     total = f"${float(gasto.total or 0):,.2f} {escape(gasto.moneda or 'MXN')}"
-    button_base = "display:inline-block;padding:13px 22px;border-radius:8px;text-decoration:none;font-weight:700;margin-right:10px;font-size:15px;"
+    grupo = escape((gasto.proyecto if gasto.tipo_agrupacion == "PROYECTO" else gasto.evento) or "Sin grupo")
+    fecha = escape(gasto.fecha_comprobante.strftime("%d/%m/%Y") if gasto.fecha_comprobante else "Sin fecha")
+    referencia = escape(gasto.referencia or "Sin referencia")
+    button_base = (
+        "display:inline-block;min-width:156px;text-align:center;padding:15px 24px;"
+        "border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;"
+        "letter-spacing:.2px;margin:0 8px 10px 0;"
+    )
     return f"""
     <html>
-      <body style="margin:0;padding:0;background:#f3f6fa;font-family:Arial,sans-serif;color:#202124;">
-        <div style="max-width:680px;margin:0 auto;padding:28px 16px;">
-          <div style="background:#ffffff;border:1px solid #e1e7ef;border-radius:12px;overflow:hidden;">
-            <div style="background:#0d6efd;color:#ffffff;padding:18px 22px;">
-              <div style="font-size:20px;font-weight:700;">Nuevo comprobante para revision</div>
-              <div style="font-size:13px;opacity:.9;margin-top:4px;">Gastos y viaticos Poliutech</div>
+      <body style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+        <div style="max-width:760px;margin:0 auto;padding:30px 16px;">
+          <div style="background:#ffffff;border:1px solid #d9e2ec;border-radius:10px;overflow:hidden;box-shadow:0 8px 24px rgba(15,45,80,.08);">
+            <div style="background:#0d47a1;color:#ffffff;padding:22px 26px;">
+              <div style="font-size:12px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;opacity:.9;">MARWHATS · Poliutech</div>
+              <div style="font-size:23px;font-weight:800;margin-top:5px;">Comprobante pendiente de revision</div>
+              <div style="font-size:14px;opacity:.92;margin-top:6px;">Gastos y viaticos</div>
             </div>
-            <div style="padding:22px;">
-              <p style="margin:0 0 16px 0;">Se registro un comprobante y requiere revision.</p>
-              <table style="border-collapse:collapse;width:100%;margin:16px 0;background:#fff;">
-                <tr><td style="padding:9px 12px;border:1px solid #dde3ea;background:#f8fafc;width:34%;"><b>Folio</b></td><td style="padding:9px 12px;border:1px solid #dde3ea;">{folio}</td></tr>
-                <tr><td style="padding:9px 12px;border:1px solid #dde3ea;background:#f8fafc;"><b>Proveedor</b></td><td style="padding:9px 12px;border:1px solid #dde3ea;">{proveedor}</td></tr>
-                <tr><td style="padding:9px 12px;border:1px solid #dde3ea;background:#f8fafc;"><b>Concepto(s)</b></td><td style="padding:9px 12px;border:1px solid #dde3ea;">{concepto}</td></tr>
-                <tr><td style="padding:9px 12px;border:1px solid #dde3ea;background:#f8fafc;"><b>Total</b></td><td style="padding:9px 12px;border:1px solid #dde3ea;font-weight:700;">{total}</td></tr>
-                <tr><td style="padding:9px 12px;border:1px solid #dde3ea;background:#f8fafc;"><b>Quien hizo la compra</b></td><td style="padding:9px 12px;border:1px solid #dde3ea;">{responsable}</td></tr>
-              </table>
-              <div style="margin-top:22px;">
-                <a href="{view_url}" style="{button_base}background:#0d6efd;color:#ffffff;">Ver</a>
-                <a href="{approve_url}" style="{button_base}background:#198754;color:#ffffff;">Aprobar</a>
+            <div style="padding:26px;">
+              <p style="margin:0 0 20px 0;font-size:15px;color:#475569;">Se registro un comprobante y requiere validacion administrativa.</p>
+
+              <div style="border:1px solid #dbe4ef;border-radius:10px;overflow:hidden;margin-bottom:22px;">
+                <div style="background:#f8fafc;padding:14px 18px;border-bottom:1px solid #dbe4ef;">
+                  <div style="font-size:12px;text-transform:uppercase;letter-spacing:.7px;color:#64748b;font-weight:700;">Folio</div>
+                  <div style="font-size:20px;font-weight:800;color:#0d47a1;margin-top:2px;">{folio}</div>
+                </div>
+                <table style="border-collapse:collapse;width:100%;background:#ffffff;">
+                  <tr>
+                    <td style="padding:13px 16px;border-bottom:1px solid #edf2f7;width:34%;color:#64748b;font-weight:700;">Proveedor</td>
+                    <td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#111827;font-weight:600;">{proveedor}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:700;">Concepto(s)</td>
+                    <td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#111827;">{concepto}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:700;">Grupo</td>
+                    <td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#111827;">{grupo}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:700;">Quien hizo la compra</td>
+                    <td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#111827;">{responsable}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:700;">Fecha</td>
+                    <td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#111827;">{fecha}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:13px 16px;color:#64748b;font-weight:700;">Referencia</td>
+                    <td style="padding:13px 16px;color:#111827;">{referencia}</td>
+                  </tr>
+                </table>
               </div>
-              <p style="font-size:12px;color:#6c757d;margin-top:20px;">Si los botones no abren, copia el enlace desde el boton con clic derecho.</p>
+
+              <div style="background:#f0f7ff;border:1px solid #cfe3ff;border-radius:10px;padding:16px 18px;margin-bottom:24px;">
+                <div style="font-size:12px;text-transform:uppercase;letter-spacing:.7px;color:#0d47a1;font-weight:800;">Total del comprobante</div>
+                <div style="font-size:30px;font-weight:900;color:#0d47a1;margin-top:3px;">{total}</div>
+              </div>
+
+              <div style="margin-top:4px;">
+                <a href="{view_url}" style="{button_base}background:#0d47a1;color:#ffffff;border:1px solid #0d47a1;">Ver Detalle</a>
+                <a href="{approve_url}" style="{button_base}background:#16854f;color:#ffffff;border:1px solid #16854f;">Aprobar</a>
+              </div>
+
+              <div style="margin-top:18px;padding-top:16px;border-top:1px solid #e5e7eb;color:#64748b;font-size:12px;">
+                Este mensaje fue generado automaticamente por MARWHATS. Si los botones no abren, usa la vista HTML del correo.
+              </div>
             </div>
           </div>
         </div>
