@@ -2459,7 +2459,7 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "26"))
 SMTP_USERNAME = os.getenv("SMTP_USERNAME", "cotizaciones@poliutech.com").strip()
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "Cotizaciones2025@").strip()
 SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USERNAME).strip()
-GASTOS_REVIEW_EMAIL = os.getenv("GASTOS_REVIEW_EMAIL", "gastos@poliutech.com").strip()
+GASTOS_REVIEW_EMAIL = (os.getenv("GASTOS_REVIEW_EMAIL") or "gastos@poliutech.com").strip()
 REGISTRO_MAIL_HOST = os.getenv("REGISTRO_MAIL_HOST", "servidor15.escala.net.mx").strip()
 REGISTRO_MAIL_PORT = int(os.getenv("REGISTRO_MAIL_PORT", "26"))
 REGISTRO_MAIL_USERNAME = os.getenv("REGISTRO_MAIL_USERNAME", "info@poliutech.com").strip()
@@ -8662,13 +8662,13 @@ def _gastos_mail_html(gasto: "ComprobacionGasto", view_url: str, approve_url: st
 def _send_gastos_review_email(gasto: "ComprobacionGasto") -> None:
     recipients = _parse_email_list(GASTOS_REVIEW_EMAIL)
     if not recipients:
-        return
+        raise ValueError("No hay correo configurado para revision de gastos.")
     view_url = url_for("gastos_viaticos_revision", gasto_id=gasto.id, token=_gastos_review_token(gasto, "view"), _external=True)
     approve_url = url_for("gastos_viaticos_revision_aprobar", gasto_id=gasto.id, token=_gastos_review_token(gasto, "approve"), _external=True)
 
     msg = EmailMessage()
     msg["Subject"] = f"Revision de comprobante {gasto.folio or gasto.id}"
-    msg["From"] = SMTP_FROM
+    msg["From"] = SMTP_FROM or SMTP_USERNAME
     msg["To"] = ", ".join(recipients)
     msg.set_content(
         f"Nuevo comprobante {gasto.folio or gasto.id}\n"
@@ -8898,6 +8898,10 @@ def gastos_viaticos_crear():
         _send_gastos_review_email(gasto)
         flash(f"Comprobacion {gasto.folio} registrada y enviada a revision.", "success")
     except Exception as exc:
+        try:
+            logger.exception("No se pudo enviar correo de revision de gastos %s", gasto.folio or gasto.id)
+        except Exception:
+            pass
         flash(f"Comprobacion {gasto.folio} registrada, pero no se pudo enviar el correo: {exc}", "warning")
     return _gastos_redirect()
 
