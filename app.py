@@ -8627,23 +8627,33 @@ def _gastos_mail_html(gasto: "ComprobacionGasto", view_url: str, approve_url: st
     folio = escape(gasto.folio or f"#{gasto.id}")
     responsable = escape(gasto.responsable or "Sin responsable")
     total = f"${float(gasto.total or 0):,.2f} {escape(gasto.moneda or 'MXN')}"
-    button_base = "display:inline-block;padding:12px 18px;border-radius:6px;text-decoration:none;font-weight:700;margin-right:10px;"
+    button_base = "display:inline-block;padding:13px 22px;border-radius:8px;text-decoration:none;font-weight:700;margin-right:10px;font-size:15px;"
     return f"""
     <html>
-      <body style="font-family:Arial,sans-serif;color:#222;line-height:1.45;">
-        <h2 style="margin:0 0 12px 0;">Nuevo comprobante de gastos y viaticos</h2>
-        <p>Se registro un comprobante para revision.</p>
-        <table style="border-collapse:collapse;margin:16px 0;min-width:420px;">
-          <tr><td style="padding:6px 10px;border:1px solid #ddd;"><b>Folio</b></td><td style="padding:6px 10px;border:1px solid #ddd;">{folio}</td></tr>
-          <tr><td style="padding:6px 10px;border:1px solid #ddd;"><b>Proveedor</b></td><td style="padding:6px 10px;border:1px solid #ddd;">{proveedor}</td></tr>
-          <tr><td style="padding:6px 10px;border:1px solid #ddd;"><b>Concepto(s)</b></td><td style="padding:6px 10px;border:1px solid #ddd;">{concepto}</td></tr>
-          <tr><td style="padding:6px 10px;border:1px solid #ddd;"><b>Total</b></td><td style="padding:6px 10px;border:1px solid #ddd;">{total}</td></tr>
-          <tr><td style="padding:6px 10px;border:1px solid #ddd;"><b>Quien hizo la compra</b></td><td style="padding:6px 10px;border:1px solid #ddd;">{responsable}</td></tr>
-        </table>
-        <p>
-          <a href="{view_url}" style="{button_base}background:#0d6efd;color:#fff;">Ver</a>
-          <a href="{approve_url}" style="{button_base}background:#198754;color:#fff;">Aprobar</a>
-        </p>
+      <body style="margin:0;padding:0;background:#f3f6fa;font-family:Arial,sans-serif;color:#202124;">
+        <div style="max-width:680px;margin:0 auto;padding:28px 16px;">
+          <div style="background:#ffffff;border:1px solid #e1e7ef;border-radius:12px;overflow:hidden;">
+            <div style="background:#0d6efd;color:#ffffff;padding:18px 22px;">
+              <div style="font-size:20px;font-weight:700;">Nuevo comprobante para revision</div>
+              <div style="font-size:13px;opacity:.9;margin-top:4px;">Gastos y viaticos Poliutech</div>
+            </div>
+            <div style="padding:22px;">
+              <p style="margin:0 0 16px 0;">Se registro un comprobante y requiere revision.</p>
+              <table style="border-collapse:collapse;width:100%;margin:16px 0;background:#fff;">
+                <tr><td style="padding:9px 12px;border:1px solid #dde3ea;background:#f8fafc;width:34%;"><b>Folio</b></td><td style="padding:9px 12px;border:1px solid #dde3ea;">{folio}</td></tr>
+                <tr><td style="padding:9px 12px;border:1px solid #dde3ea;background:#f8fafc;"><b>Proveedor</b></td><td style="padding:9px 12px;border:1px solid #dde3ea;">{proveedor}</td></tr>
+                <tr><td style="padding:9px 12px;border:1px solid #dde3ea;background:#f8fafc;"><b>Concepto(s)</b></td><td style="padding:9px 12px;border:1px solid #dde3ea;">{concepto}</td></tr>
+                <tr><td style="padding:9px 12px;border:1px solid #dde3ea;background:#f8fafc;"><b>Total</b></td><td style="padding:9px 12px;border:1px solid #dde3ea;font-weight:700;">{total}</td></tr>
+                <tr><td style="padding:9px 12px;border:1px solid #dde3ea;background:#f8fafc;"><b>Quien hizo la compra</b></td><td style="padding:9px 12px;border:1px solid #dde3ea;">{responsable}</td></tr>
+              </table>
+              <div style="margin-top:22px;">
+                <a href="{view_url}" style="{button_base}background:#0d6efd;color:#ffffff;">Ver</a>
+                <a href="{approve_url}" style="{button_base}background:#198754;color:#ffffff;">Aprobar</a>
+              </div>
+              <p style="font-size:12px;color:#6c757d;margin-top:20px;">Si los botones no abren, copia el enlace desde el boton con clic derecho.</p>
+            </div>
+          </div>
+        </div>
       </body>
     </html>
     """.strip()
@@ -8660,15 +8670,7 @@ def _send_gastos_review_email(gasto: "ComprobacionGasto") -> None:
     msg["Subject"] = f"Revision de comprobante {gasto.folio or gasto.id}"
     msg["From"] = SMTP_FROM
     msg["To"] = ", ".join(recipients)
-    msg.set_content(
-        f"Nuevo comprobante {gasto.folio or gasto.id}\n"
-        f"Proveedor: {gasto.proveedor or 'Sin proveedor'}\n"
-        f"Concepto(s): {gasto.concepto or ''}\n"
-        f"Total: ${float(gasto.total or 0):,.2f} {gasto.moneda or 'MXN'}\n\n"
-        f"Ver: {view_url}\n"
-        f"Aprobar: {approve_url}\n"
-    )
-    msg.add_alternative(_gastos_mail_html(gasto, view_url, approve_url), subtype="html")
+    msg.set_content(_gastos_mail_html(gasto, view_url, approve_url), subtype="html")
 
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
         smtp.ehlo()
