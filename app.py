@@ -8670,7 +8670,16 @@ def _send_gastos_review_email(gasto: "ComprobacionGasto") -> None:
     msg["Subject"] = f"Revision de comprobante {gasto.folio or gasto.id}"
     msg["From"] = SMTP_FROM
     msg["To"] = ", ".join(recipients)
-    msg.set_content(_gastos_mail_html(gasto, view_url, approve_url), subtype="html")
+    msg.set_content(
+        f"Nuevo comprobante {gasto.folio or gasto.id}\n"
+        f"Proveedor: {gasto.proveedor or 'Sin proveedor'}\n"
+        f"Concepto(s): {gasto.concepto or ''}\n"
+        f"Total: ${float(gasto.total or 0):,.2f} {gasto.moneda or 'MXN'}\n\n"
+        "Abre este correo en vista HTML para usar los botones Ver y Aprobar.\n"
+        f"Ver: {view_url}\n"
+        f"Aprobar: {approve_url}\n"
+    )
+    msg.add_alternative(_gastos_mail_html(gasto, view_url, approve_url), subtype="html")
 
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
         smtp.ehlo()
