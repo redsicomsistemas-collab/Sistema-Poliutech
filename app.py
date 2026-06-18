@@ -2145,7 +2145,7 @@ def _send_support_ticket_email(ticket: "TicketSoporte") -> None:
     detail_url = url_for("soporte_ticket_detalle", ticket_id=ticket.id, _external=True)
     msg = EmailMessage()
     msg["Subject"] = f"Nuevo ticket de soporte {ticket.folio or ticket.id}"
-    msg["From"] = SMTP_FROM or SMTP_USERNAME
+    msg["From"] = f"SISTEMA MAR DE TICKETS <{SMTP_FROM or SMTP_USERNAME}>"
     msg["To"] = ", ".join(recipients)
     msg.set_content(
         f"Nuevo ticket de soporte {ticket.folio or ticket.id}\n"
@@ -8794,7 +8794,7 @@ def _send_gastos_review_email(gasto: "ComprobacionGasto") -> None:
 
     msg = EmailMessage()
     msg["Subject"] = f"Revision de comprobante {gasto.folio or gasto.id}"
-    msg["From"] = SMTP_FROM or SMTP_USERNAME
+    msg["From"] = f"REGISTRO DE GASTOS Y/O VIATICOS <{SMTP_FROM or SMTP_USERNAME}>"
     msg["To"] = ", ".join(recipients)
     msg.set_content(
         f"Nuevo comprobante {gasto.folio or gasto.id}\n"
