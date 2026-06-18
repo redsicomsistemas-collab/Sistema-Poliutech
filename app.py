@@ -37,6 +37,7 @@ except Exception:
 DEFAULT_CONDICIONES: list[str] = []
 VALID_ESTATUS = [
     "EN REVISIÓN",
+    "APROBADO",
     "AUTORIZADO",
     "RECHAZADO",
     "ENVIADA",
@@ -7391,7 +7392,7 @@ def _send_quote_review_email(c: Cotizacion) -> None:
 
 def _quote_review_response_mail_html(c: Cotizacion, selected_status: str, reason: str = "") -> str:
     normalized = (selected_status or "").strip().upper()
-    if normalized == "AUTORIZADO":
+    if normalized in {"APROBADO", "AUTORIZADO"}:
         accent = "#16854f"
         bg_soft = "#eaf7f0"
         title = "Cotizacion autorizada"
@@ -7512,7 +7513,7 @@ def _send_quote_review_email_safely(c: Cotizacion) -> None:
 
 def _apply_quote_review_decision(c: Cotizacion, selected_status: str, reason: str = "") -> CotizacionSeguimiento:
     selected_status = (selected_status or "").strip().upper()
-    if selected_status not in {"AUTORIZADO", "RECHAZADO", "EN REVISIÓN"}:
+    if selected_status not in {"APROBADO", "AUTORIZADO", "RECHAZADO", "EN REVISIÓN"}:
         abort(400)
     if selected_status == "RECHAZADO" and not reason.strip():
         abort(400)
@@ -7544,7 +7545,7 @@ def cotizacion_revision_decidir(cot_id: int, action: str):
     token = request.args.get("token") or ""
 
     status_by_action = {
-        "approve": "AUTORIZADO",
+        "approve": "APROBADO",
         "review": "EN REVISIÓN",
         "reject": "RECHAZADO",
     }
