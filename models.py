@@ -54,7 +54,7 @@ class Cotizacion(db.Model):
     folio = db.Column(db.String(40), unique=True)
     cliente_id = db.Column(db.Integer, db.ForeignKey("cliente.id"))
     fecha = db.Column(db.DateTime, default=datetime.utcnow)
-    estatus = db.Column(db.String(20), default="PENDIENTE")
+    estatus = db.Column(db.String(20), default="EN REVISIÓN")
     subtotal = db.Column(db.Float, default=0.0)
     descuento_total = db.Column(db.Float, default=0.0)
     iva_porc = db.Column(db.Float, default=16.0)

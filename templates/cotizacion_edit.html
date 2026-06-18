@@ -87,7 +87,7 @@
           <div class="col-md-4">
             <label class="form-label fw-bold">Estatus actual</label>
             <select class="form-select" name="estatus">
-              {% for estado in ['ENVIADA', 'PENDIENTE', 'EN CURSO', 'O. TERMINADA', 'FINALIZADA', 'GANADA', 'PERDIDA'] %}
+              {% for estado in valid_estatus %}
               <option value="{{ estado }}" {% if c.estatus == estado %}selected{% endif %}>{{ estado }}</option>
               {% endfor %}
             </select>

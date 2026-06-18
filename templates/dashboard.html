@@ -56,6 +56,36 @@
     min-width: 0;
   }
 
+  .quote-select-cell {
+    white-space: nowrap;
+  }
+
+  .quote-status-flag {
+    display: inline-block;
+    width: 0.72rem;
+    height: 0.72rem;
+    border-radius: 50%;
+    margin-right: 0.45rem;
+    vertical-align: middle;
+    border: 1px solid rgba(0, 0, 0, 0.18);
+  }
+
+  .quote-flag-green {
+    background: #1f9d55;
+  }
+
+  .quote-flag-yellow {
+    background: #f2c94c;
+  }
+
+  .quote-flag-red {
+    background: #d64545;
+  }
+
+  .quote-flag-muted {
+    background: #adb5bd;
+  }
+
   .dashboard-quotes-table .cell-acciones {
     min-width: 10rem;
     white-space: normal !important;
@@ -307,7 +337,18 @@
                 data-empresa="{{ (c.cliente.empresa if c.cliente else '')|lower }}"
                 data-proyecto="{{ (c.proyecto or '')|lower }}">
               {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
-              <td class="text-center">
+              <td class="text-center quote-select-cell">
+                {% set estatus_flag = (c.estatus or '')|upper %}
+                {% if estatus_flag in ['AUTORIZADO', 'APROBADO', 'GANADA', 'FINALIZADA'] %}
+                  {% set flag_class = 'quote-flag-green' %}
+                {% elif estatus_flag in ['RECHAZADO', 'PERDIDA'] %}
+                  {% set flag_class = 'quote-flag-red' %}
+                {% elif estatus_flag in ['EN REVISIÓN', 'EN REVISION'] %}
+                  {% set flag_class = 'quote-flag-yellow' %}
+                {% else %}
+                  {% set flag_class = 'quote-flag-muted' %}
+                {% endif %}
+                <span class="quote-status-flag {{ flag_class }}" title="{{ c.estatus or 'Sin estatus' }}"></span>
                 <input type="checkbox" class="chk-cot" value="{{ c.id }}" aria-label="Seleccionar {{ c.folio }}">
                 <button
                   type="button"
@@ -1016,9 +1057,22 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 
 <script>
-</script>
+function quoteFlagClass(estatus) {
+    const normalized = (estatus || "").trim().toUpperCase();
+    if (["AUTORIZADO", "APROBADO", "GANADA", "FINALIZADA"].includes(normalized)) return "quote-flag-green";
+    if (["RECHAZADO", "PERDIDA"].includes(normalized)) return "quote-flag-red";
+    if (["EN REVISIÓN", "EN REVISION"].includes(normalized)) return "quote-flag-yellow";
+    return "quote-flag-muted";
+}
 
-<script>
+function updateQuoteFlag(row, estatus) {
+    const flag = row?.querySelector(".quote-status-flag");
+    if (!flag) return;
+    flag.classList.remove("quote-flag-green", "quote-flag-yellow", "quote-flag-red", "quote-flag-muted");
+    flag.classList.add(quoteFlagClass(estatus));
+    flag.title = estatus || "Sin estatus";
+}
+
 function cambiarEstatus(id, selectElem) {
     const nuevo = selectElem.value;
 
@@ -1039,46 +1093,16 @@ function cambiarEstatus(id, selectElem) {
             });
 
             const fila = selectElem.closest("tr");
-            if (fila) fila.dataset.estatus = nuevo;
+            if (fila) {
+                fila.dataset.estatus = nuevo;
+                updateQuoteFlag(fila, nuevo);
+            }
             if (typeof window.refreshDashboardCharts === "function") {
                 window.refreshDashboardCharts();
             }
             if (typeof window.refreshDashboardSummary === "function") {
                 window.refreshDashboardSummary();
             }
-        } else {
-            Swal.fire("Error", data.error, "error");
-        }
-    })
-    .catch(err => {
-        Swal.fire("Error", "No se pudo actualizar el estatus.", "error");
-        console.error(err);
-    });
-}
-</script>
-
-<script>
-function cambiarEstatus(id, selectElem) {
-    const nuevo = selectElem.value;
-
-    fetch(`/api/cotizaciones/${id}/estatus`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ estatus: nuevo })
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.ok) {
-            Swal.fire({
-                icon: "success",
-                title: "Estatus actualizado",
-                text: data.mensaje,
-                timer: 1500,
-                showConfirmButton: false
-            });
-
-            const fila = selectElem.closest("tr");
-            if (fila) fila.dataset.estatus = nuevo;
         } else {
             Swal.fire("Error", data.error, "error");
         }

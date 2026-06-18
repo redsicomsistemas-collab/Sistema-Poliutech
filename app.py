@@ -36,6 +36,9 @@ except Exception:
 # por el usuario y, cuando aplique, la trazabilidad de la zona.
 DEFAULT_CONDICIONES: list[str] = []
 VALID_ESTATUS = [
+    "EN REVISIÓN",
+    "AUTORIZADO",
+    "RECHAZADO",
     "ENVIADA",
     "PENDIENTE",
     "EN CURSO",
@@ -1597,7 +1600,7 @@ def _create_mobile_voice_quote(preview: dict, user: Usuario) -> Cotizacion:
         folio=generar_folio(),
         fecha=now_cdmx_naive(),
         cliente_id=cliente.id if cliente else None,
-        estatus="PENDIENTE",
+        estatus="EN REVISIÓN",
         notas="\n".join(part for part in notes_parts if part).strip() or None,
         responsable=responsible,
         proyecto=(header_data.get("proyecto") or preview.get("proyecto") or "").strip() or None,
@@ -1644,6 +1647,7 @@ def _create_mobile_voice_quote(preview: dict, user: Usuario) -> Cotizacion:
     db.session.commit()
     _voice_log_command(user, preview, status="CREATED", cotizacion=cot)
     _send_quote_created_notification(cot)
+    _send_quote_review_email_safely(cot)
     return cot
 
 
@@ -2472,7 +2476,7 @@ def _build_matrix_xlsx(sheet_name: str, rows: list[list[str]], column_widths: Op
     return output.getvalue()
 
 from flask import (
-    Flask, render_template, request, redirect, url_for,
+    Flask, render_template, render_template_string, request, redirect, url_for,
     flash, jsonify, Response, abort, g, current_app
 )
 
@@ -2533,6 +2537,8 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "26"))
 SMTP_USERNAME = os.getenv("SMTP_USERNAME", "cotizaciones@poliutech.com").strip()
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "Cotizaciones2025@").strip()
 SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USERNAME).strip()
+COTIZACION_REVIEW_EMAIL = (os.getenv("COTIZACION_REVIEW_EMAIL") or "glemus@poliutech.com").strip()
+COTIZACION_RESPONSE_EMAIL = (os.getenv("COTIZACION_RESPONSE_EMAIL") or "umorales@poliutech.com").strip()
 GASTOS_REVIEW_EMAIL = (os.getenv("GASTOS_REVIEW_EMAIL") or "gastos@poliutech.com").strip()
 SUPPORT_TICKET_EMAIL = (os.getenv("SUPPORT_TICKET_EMAIL") or "sistemas@poliutech.com").strip()
 REGISTRO_MAIL_HOST = os.getenv("REGISTRO_MAIL_HOST", "servidor15.escala.net.mx").strip()
@@ -2635,6 +2641,8 @@ def _require_login_everywhere():
     if request.path in ("/health", "/ping"):
         return
     if request.path.startswith("/gastos-viaticos/revision/"):
+        return
+    if request.path.startswith("/cotizaciones/revision/"):
         return
     if request.path.startswith("/api/mobile/"):
         return
@@ -3430,7 +3438,7 @@ def sample_import_payload() -> dict:
     return {
         "folio": "COT-2026-02-026-2",
         "fecha": "2026-02-26",
-        "estatus": "PENDIENTE",
+        "estatus": "EN REVISIÓN",
         "responsable": responsable_actual() or "",
         "cliente": {
             "nombre_cliente": "Ing. Adriana Vazquez / Ing. Karla Reyes",
@@ -4152,7 +4160,7 @@ def _normalize_import_payload(payload: dict) -> dict:
     return {
         "folio": (payload.get("folio") or payload.get("folio_externo") or "").strip() or None,
         "fecha": parse_datetime_flexible(payload.get("fecha")) or now_cdmx_naive(),
-        "estatus": (payload.get("estatus") or "PENDIENTE").strip().upper(),
+        "estatus": (payload.get("estatus") or "EN REVISIÓN").strip().upper(),
         "responsable": (payload.get("responsable") or "").strip() or None,
         "proyecto": (payload.get("proyecto") or payload.get("obra") or "").strip() or None,
         "cliente": cliente,
@@ -4275,6 +4283,7 @@ def import_external_quote_payload(payload: dict, source_label: Optional[str] = N
 
     db.session.commit()
     _send_quote_created_notification(cot)
+    _send_quote_review_email_safely(cot)
     return cot
 
 def money(n: float) -> str:
@@ -5835,7 +5844,7 @@ def api_mobile_registro_obras_list():
 @require_mobile_auth
 def api_mobile_pending_quotes():
     query = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
-    query = query.filter(db.func.upper(Cotizacion.estatus) == "PENDIENTE")
+    query = query.filter(db.func.upper(Cotizacion.estatus).in_(["PENDIENTE", "EN REVISIÓN", "EN REVISION"]))
 
     items = []
     for cot in query.order_by(Cotizacion.fecha.desc()).limit(100).all():
@@ -6386,7 +6395,7 @@ def crear_cotizacion():
         folio=generar_folio(),
         fecha=now_cdmx_naive(),
         cliente_id=cliente.id if cliente else None,
-        estatus=(f.get("estatus") or "PENDIENTE").upper(),
+        estatus=(f.get("estatus") or "EN REVISIÓN").upper(),
         notas=(f.get("notas") or "").strip() or None,
         last_whatsapp_at=None,
         responsable=responsable_final,
@@ -6471,6 +6480,7 @@ def crear_cotizacion():
     db.session.commit()
 
     _send_quote_created_notification(cot)
+    _send_quote_review_email_safely(cot)
 
     # --- Apertura automática del PDF ---
     pdf_url = url_for("export_cotizacion_pdf", cot_id=cot.id)
@@ -6524,7 +6534,7 @@ def editar_cotizacion(cot_id: int):
     descuento_porc_actual = 0.0
     if float(c.subtotal or 0) > 0:
         descuento_porc_actual = (float(c.descuento_total or 0) / float(c.subtotal or 0)) * 100.0
-    return render_template("cotizacion_edit.html", c=c, zona_actual=zona_actual, notas_adicionales=notas_adicionales, descuento_porc_actual=descuento_porc_actual, proyectos=_known_project_names(), title=f"Editar {c.folio}")
+    return render_template("cotizacion_edit.html", c=c, zona_actual=zona_actual, notas_adicionales=notas_adicionales, descuento_porc_actual=descuento_porc_actual, proyectos=_known_project_names(), valid_estatus=VALID_ESTATUS, title=f"Editar {c.folio}")
 
 @app.route("/cotizaciones/<int:cot_id>/actualizar", methods=["POST"])
 @login_required
@@ -7261,6 +7271,278 @@ def _send_cotizacion_email(c: Cotizacion, recipients: list[str], cc: list[str] |
         smtp.ehlo()
         smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
         smtp.send_message(msg, to_addrs=[*recipients, *cc, *bcc])
+
+
+def _quote_review_serializer() -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(app.secret_key, salt="cotizacion-review")
+
+
+def _quote_review_token(cot: Cotizacion, action: str) -> str:
+    return _quote_review_serializer().dumps({"cotizacion_id": cot.id, "action": action})
+
+
+def _quote_review_load_from_token(cot_id: int, token: str, action: str) -> Cotizacion:
+    try:
+        payload = _quote_review_serializer().loads(token or "", max_age=60 * 60 * 24 * 45)
+    except (BadSignature, SignatureExpired):
+        abort(403)
+    if int(payload.get("cotizacion_id") or 0) != int(cot_id):
+        abort(403)
+    token_action = (payload.get("action") or "").strip()
+    if token_action != action:
+        abort(403)
+    return Cotizacion.query.get_or_404(cot_id)
+
+
+def _quote_status_flag_class(status: str) -> str:
+    normalized = (status or "").strip().upper()
+    if normalized in {"AUTORIZADO", "APROBADO", "GANADA", "FINALIZADA"}:
+        return "quote-flag-green"
+    if normalized in {"RECHAZADO", "PERDIDA"}:
+        return "quote-flag-red"
+    if normalized in {"EN REVISIÓN", "EN REVISION"}:
+        return "quote-flag-yellow"
+    return "quote-flag-muted"
+
+
+def _quote_review_mail_html(c: Cotizacion, approve_url: str, reject_url: str, review_url: str) -> str:
+    cli = c.cliente
+    cliente = escape(cli.nombre_cliente if cli else "Sin cliente")
+    empresa = escape(cli.empresa if cli and cli.empresa else "")
+    proyecto = escape(c.proyecto or "Sin proyecto")
+    folio = escape(c.folio or f"#{c.id}")
+    total = f"${float(c.total or 0):,.2f} {escape(c.moneda or 'MXN')}"
+    responsable = escape(c.responsable or "Sin responsable")
+    button_base = (
+        "display:inline-block;min-width:142px;text-align:center;padding:14px 20px;"
+        "border-radius:8px;text-decoration:none;font-weight:800;font-size:15px;"
+        "margin:0 8px 10px 0;color:#ffffff;"
+    )
+    return f"""
+    <html>
+      <body style="margin:0;padding:0;background:#f3f6fb;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+        <div style="max-width:760px;margin:0 auto;padding:28px 16px;">
+          <div style="background:#ffffff;border:1px solid #dbe4ef;border-radius:10px;overflow:hidden;">
+            <div style="background:#0d47a1;color:#ffffff;padding:22px 26px;">
+              <div style="font-size:12px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;">MAR · Poliutech</div>
+              <div style="font-size:23px;font-weight:800;margin-top:5px;">Cotizacion pendiente de revision</div>
+              <div style="font-size:14px;opacity:.92;margin-top:6px;">{folio}</div>
+            </div>
+            <div style="padding:26px;">
+              <p style="margin:0 0 18px 0;">Se genero una nueva cotizacion con estatus <b>EN REVISIÓN</b>.</p>
+              <table style="border-collapse:collapse;width:100%;margin-bottom:22px;">
+                <tr><td style="padding:10px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:700;">Cliente</td><td style="padding:10px;border-bottom:1px solid #edf2f7;">{cliente}</td></tr>
+                <tr><td style="padding:10px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:700;">Empresa</td><td style="padding:10px;border-bottom:1px solid #edf2f7;">{empresa}</td></tr>
+                <tr><td style="padding:10px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:700;">Proyecto</td><td style="padding:10px;border-bottom:1px solid #edf2f7;">{proyecto}</td></tr>
+                <tr><td style="padding:10px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:700;">Responsable</td><td style="padding:10px;border-bottom:1px solid #edf2f7;">{responsable}</td></tr>
+                <tr><td style="padding:10px;color:#64748b;font-weight:700;">Total</td><td style="padding:10px;font-size:20px;font-weight:900;color:#0d47a1;">{total}</td></tr>
+              </table>
+              <div>
+                <a href="{reject_url}" style="{button_base}background:#c62828;border:1px solid #c62828;">RECHAZADO</a>
+                <a href="{approve_url}" style="{button_base}background:#16854f;border:1px solid #16854f;">APROBAR</a>
+                <a href="{review_url}" style="{button_base}background:#f0ad00;border:1px solid #f0ad00;color:#1f2937;">EN REVISIÓN</a>
+              </div>
+              <p style="margin:16px 0 0 0;color:#64748b;font-size:12px;">Si un boton no abre, copia el enlace desde el correo en tu navegador.</p>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+    """.strip()
+
+
+def _send_quote_review_email(c: Cotizacion) -> None:
+    recipients = _parse_email_list(COTIZACION_REVIEW_EMAIL)
+    if not recipients:
+        raise ValueError("No hay correo configurado para revision de cotizaciones.")
+    pdf_response = export_cotizacion_pdf(c.id)
+    pdf_response.direct_passthrough = False
+    pdf_bytes = pdf_response.get_data()
+    approve_url = url_for("cotizacion_revision_decidir", cot_id=c.id, action="approve", token=_quote_review_token(c, "approve"), _external=True)
+    reject_url = url_for("cotizacion_revision_decidir", cot_id=c.id, action="reject", token=_quote_review_token(c, "reject"), _external=True)
+    review_url = url_for("cotizacion_revision_decidir", cot_id=c.id, action="review", token=_quote_review_token(c, "review"), _external=True)
+
+    msg = EmailMessage()
+    msg["Subject"] = f"Revision de cotizacion {c.folio or c.id}"
+    msg["From"] = f"COTIZACIONES POLIUTECH <{SMTP_FROM or SMTP_USERNAME}>"
+    msg["To"] = ", ".join(recipients)
+    msg.set_content(
+        f"Nueva cotizacion {c.folio or c.id}\n"
+        f"Estatus: EN REVISIÓN\n"
+        f"Total: {money(c.total)} {c.moneda or 'MXN'}\n\n"
+        "Abre este correo en vista HTML para usar los botones.\n"
+        f"Rechazado: {reject_url}\n"
+        f"Aprobar: {approve_url}\n"
+        f"En revision: {review_url}\n"
+    )
+    msg.add_alternative(_quote_review_mail_html(c, approve_url, reject_url, review_url), subtype="html")
+    msg.add_attachment(
+        pdf_bytes,
+        maintype="application",
+        subtype="pdf",
+        filename=f"{c.folio or c.id}.pdf",
+    )
+
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
+        smtp.ehlo()
+        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+        smtp.send_message(msg, to_addrs=recipients)
+
+
+def _send_quote_review_response_email(c: Cotizacion, selected_status: str, reason: str = "") -> None:
+    recipients = _parse_email_list(COTIZACION_RESPONSE_EMAIL)
+    if not recipients:
+        raise ValueError("No hay correo configurado para respuesta de cotizaciones.")
+    motivo_line = f"\nMotivo de rechazo: {reason.strip()}" if reason.strip() else ""
+    msg = EmailMessage()
+    msg["Subject"] = f"Respuesta cotizacion {c.folio or c.id}: {selected_status}"
+    msg["From"] = f"COTIZACIONES POLIUTECH <{SMTP_FROM or SMTP_USERNAME}>"
+    msg["To"] = ", ".join(recipients)
+    msg.set_content(
+        f"Se registro una respuesta para la cotizacion {c.folio or c.id}.\n"
+        f"Estatus seleccionado: {selected_status}\n"
+        f"Cliente: {c.cliente.nombre_cliente if c.cliente else 'Sin cliente'}\n"
+        f"Proyecto: {c.proyecto or 'Sin proyecto'}\n"
+        f"Total: {money(c.total)} {c.moneda or 'MXN'}"
+        f"{motivo_line}\n"
+    )
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
+        smtp.ehlo()
+        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+        smtp.send_message(msg, to_addrs=recipients)
+
+
+def _send_quote_review_email_safely(c: Cotizacion) -> None:
+    try:
+        _send_quote_review_email(c)
+    except Exception as exc:
+        try:
+            logger.exception("No se pudo enviar correo de revision de cotizacion %s", c.folio or c.id)
+        except Exception:
+            pass
+        print(f"[Cotizaciones] Error enviando revision {c.folio or c.id}: {exc}", file=sys.stderr)
+
+
+def _apply_quote_review_decision(c: Cotizacion, selected_status: str, reason: str = "") -> CotizacionSeguimiento:
+    selected_status = (selected_status or "").strip().upper()
+    if selected_status not in {"AUTORIZADO", "RECHAZADO", "EN REVISIÓN"}:
+        abort(400)
+    if selected_status == "RECHAZADO" and not reason.strip():
+        abort(400)
+
+    c.estatus = selected_status
+    comentario = f"Revision de cotizacion: {selected_status}."
+    if reason.strip():
+        comentario += f"\nMotivo de rechazo: {reason.strip()}"
+    seg = CotizacionSeguimiento(
+        cotizacion_id=c.id,
+        usuario_id=None,
+        autor="Revision por correo",
+        comentario=comentario,
+        fecha_seguimiento=now_cdmx_naive(),
+        actualizado_en=now_cdmx_naive(),
+    )
+    db.session.add(seg)
+    db.session.commit()
+    _send_quote_review_response_email(c, selected_status, reason)
+    return seg
+
+
+@app.route("/cotizaciones/revision/<int:cot_id>/<action>", methods=["GET", "POST"])
+def cotizacion_revision_decidir(cot_id: int, action: str):
+    action = (action or "").strip().lower()
+    if action not in {"approve", "reject", "review"}:
+        abort(404)
+    c = _quote_review_load_from_token(cot_id, request.args.get("token"), action)
+    token = request.args.get("token") or ""
+
+    status_by_action = {
+        "approve": "AUTORIZADO",
+        "review": "EN REVISIÓN",
+        "reject": "RECHAZADO",
+    }
+    selected_status = status_by_action[action]
+
+    if action == "reject":
+        if request.method == "POST":
+            reason = (request.form.get("motivo") or "").strip()
+            if not reason:
+                return render_template_string(
+                    _quote_reject_form_html(c, token, "Captura el motivo del rechazo."),
+                    title=f"Rechazar {c.folio}",
+                ), 400
+            _apply_quote_review_decision(c, selected_status, reason)
+            return render_template_string(_quote_decision_result_html(c, selected_status, reason), title=f"{c.folio} {selected_status}")
+
+        return render_template_string(_quote_reject_form_html(c, token), title=f"Rechazar {c.folio}")
+
+    _apply_quote_review_decision(c, selected_status)
+    return render_template_string(_quote_decision_result_html(c, selected_status), title=f"{c.folio} {selected_status}")
+
+
+def _quote_reject_form_html(c: Cotizacion, token: str, error: str = "") -> str:
+    error_html = f'<div class="alert alert-danger">{escape(error)}</div>' if error else ""
+    action_url = url_for("cotizacion_revision_decidir", cot_id=c.id, action="reject", token=token)
+    return f"""
+    <!doctype html>
+    <html lang="es">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Rechazar {escape(c.folio or str(c.id))}</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+      </head>
+      <body class="bg-light">
+        <main class="container py-5" style="max-width:760px;">
+          <div class="card shadow-sm border-0">
+            <div class="card-header bg-danger text-white">
+              <h1 class="h5 mb-0">Rechazar cotización {escape(c.folio or str(c.id))}</h1>
+            </div>
+            <div class="card-body">
+              {error_html}
+              <p class="text-muted">Escribe el motivo del rechazo. Se guardará en el seguimiento de la cotización y se notificará por correo.</p>
+              <form method="post" action="{action_url}">
+                <label for="motivo" class="form-label fw-bold">Motivo de rechazo</label>
+                <textarea id="motivo" name="motivo" class="form-control" rows="5" required></textarea>
+                <div class="d-flex justify-content-end mt-3">
+                  <button type="submit" class="btn btn-danger">Guardar rechazo</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </main>
+      </body>
+    </html>
+    """.strip()
+
+
+def _quote_decision_result_html(c: Cotizacion, selected_status: str, reason: str = "") -> str:
+    reason_html = f"<p><b>Motivo:</b> {escape(reason)}</p>" if reason else ""
+    return f"""
+    <!doctype html>
+    <html lang="es">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>{escape(c.folio or str(c.id))}</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+      </head>
+      <body class="bg-light">
+        <main class="container py-5" style="max-width:760px;">
+          <div class="card shadow-sm border-0">
+            <div class="card-header bg-primary text-white">
+              <h1 class="h5 mb-0">Respuesta registrada</h1>
+            </div>
+            <div class="card-body">
+              <p class="mb-2">La cotización <b>{escape(c.folio or str(c.id))}</b> quedó con estatus <b>{escape(selected_status)}</b>.</p>
+              {reason_html}
+              <p class="text-muted mb-0">El seguimiento fue actualizado y se envió la respuesta por correo.</p>
+            </div>
+          </div>
+        </main>
+      </body>
+    </html>
+    """.strip()
 
 
 @app.route("/api/cotizaciones/<int:cot_id>/send-email", methods=["POST"])
