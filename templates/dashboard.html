@@ -62,28 +62,51 @@
 
   .quote-status-flag {
     display: inline-block;
-    width: 0.72rem;
-    height: 0.72rem;
-    border-radius: 50%;
+    position: relative;
+    width: 1.05rem;
+    height: 1rem;
     margin-right: 0.45rem;
     vertical-align: middle;
-    border: 1px solid rgba(0, 0, 0, 0.18);
+  }
+
+  .quote-status-flag::before {
+    content: "";
+    position: absolute;
+    left: 0.1rem;
+    top: 0.08rem;
+    width: 2px;
+    height: 0.86rem;
+    background: #4b5563;
+    border-radius: 2px;
+  }
+
+  .quote-status-flag::after {
+    content: "";
+    position: absolute;
+    left: 0.22rem;
+    top: 0.1rem;
+    width: 0.72rem;
+    height: 0.46rem;
+    background: var(--quote-flag-color, #adb5bd);
+    border: 1px solid rgba(0, 0, 0, 0.22);
+    border-left: 0;
+    clip-path: polygon(0 0, 100% 0, 82% 50%, 100% 100%, 0 100%);
   }
 
   .quote-flag-green {
-    background: #1f9d55;
+    --quote-flag-color: #1f9d55;
   }
 
   .quote-flag-yellow {
-    background: #f2c94c;
+    --quote-flag-color: #f2c94c;
   }
 
   .quote-flag-red {
-    background: #d64545;
+    --quote-flag-color: #d64545;
   }
 
   .quote-flag-muted {
-    background: #adb5bd;
+    --quote-flag-color: #adb5bd;
   }
 
   .dashboard-quotes-table .cell-acciones {
@@ -1053,6 +1076,19 @@ document.addEventListener("DOMContentLoaded", () => {
   updateBulkDeleteState();
   renderFilteredCharts();
   refreshSummaryCards();
+
+  const reviewDone = new URLSearchParams(window.location.search).get("quote_review_done");
+  if (reviewDone === "1") {
+    Swal.fire({
+      icon: "success",
+      title: "Listo",
+      text: "El seguimiento fue actualizado y se envió la respuesta por correo."
+    }).then(() => {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("quote_review_done");
+      window.history.replaceState({}, document.title, url.pathname + url.search + url.hash);
+    });
+  }
 });
 </script>
 

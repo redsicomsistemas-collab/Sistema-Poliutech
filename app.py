@@ -7472,12 +7472,12 @@ def cotizacion_revision_decidir(cot_id: int, action: str):
                     title=f"Rechazar {c.folio}",
                 ), 400
             _apply_quote_review_decision(c, selected_status, reason)
-            return render_template_string(_quote_decision_result_html(c, selected_status, reason), title=f"{c.folio} {selected_status}")
+            return redirect(url_for("index", quote_review_done="1"))
 
         return render_template_string(_quote_reject_form_html(c, token), title=f"Rechazar {c.folio}")
 
     _apply_quote_review_decision(c, selected_status)
-    return render_template_string(_quote_decision_result_html(c, selected_status), title=f"{c.folio} {selected_status}")
+    return redirect(url_for("index", quote_review_done="1"))
 
 
 def _quote_reject_form_html(c: Cotizacion, token: str, error: str = "") -> str:
@@ -7492,9 +7492,9 @@ def _quote_reject_form_html(c: Cotizacion, token: str, error: str = "") -> str:
         <title>Rechazar {escape(c.folio or str(c.id))}</title>
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
       </head>
-      <body class="bg-light">
+      <body style="background:#f1f3f5;">
         <main class="container py-5" style="max-width:760px;">
-          <div class="card shadow-sm border-0">
+          <div class="card shadow-sm" style="border:2px solid #d9dee5;border-radius:8px;overflow:hidden;">
             <div class="card-header bg-danger text-white">
               <h1 class="h5 mb-0">Rechazar cotización {escape(c.folio or str(c.id))}</h1>
             </div>
@@ -7503,7 +7503,7 @@ def _quote_reject_form_html(c: Cotizacion, token: str, error: str = "") -> str:
               <p class="text-muted">Escribe el motivo del rechazo. Se guardará en el seguimiento de la cotización y se notificará por correo.</p>
               <form method="post" action="{action_url}">
                 <label for="motivo" class="form-label fw-bold">Motivo de rechazo</label>
-                <textarea id="motivo" name="motivo" class="form-control" rows="5" required></textarea>
+                <textarea id="motivo" name="motivo" class="form-control" rows="5" style="border:2px solid #b8c0cc;box-shadow:inset 0 1px 2px rgba(0,0,0,.04);" required></textarea>
                 <div class="d-flex justify-content-end mt-3">
                   <button type="submit" class="btn btn-danger">Guardar rechazo</button>
                 </div>
