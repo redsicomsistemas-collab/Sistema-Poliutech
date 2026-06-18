@@ -7389,6 +7389,92 @@ def _send_quote_review_email(c: Cotizacion) -> None:
         smtp.send_message(msg, to_addrs=recipients)
 
 
+def _quote_review_response_mail_html(c: Cotizacion, selected_status: str, reason: str = "") -> str:
+    normalized = (selected_status or "").strip().upper()
+    if normalized == "AUTORIZADO":
+        accent = "#16854f"
+        bg_soft = "#eaf7f0"
+        title = "Cotizacion autorizada"
+    elif normalized == "RECHAZADO":
+        accent = "#c62828"
+        bg_soft = "#fdecee"
+        title = "Cotizacion rechazada"
+    else:
+        accent = "#f0ad00"
+        bg_soft = "#fff7df"
+        title = "Cotizacion en revision"
+
+    cli = c.cliente
+    folio = escape(c.folio or f"#{c.id}")
+    cliente = escape(cli.nombre_cliente if cli else "Sin cliente")
+    empresa = escape(cli.empresa if cli and cli.empresa else "Sin empresa")
+    proyecto = escape(c.proyecto or "Sin proyecto")
+    responsable = escape(c.responsable or "Sin responsable")
+    total = f"{money(c.total)} {escape(c.moneda or 'MXN')}"
+    motivo_html = ""
+    if reason.strip():
+        motivo_html = f"""
+          <div style="margin-top:22px;padding:18px 20px;background:#fff;border:1px solid #f1c4c9;border-left:6px solid #c62828;border-radius:8px;">
+            <div style="font-size:12px;text-transform:uppercase;letter-spacing:.7px;color:#9f1d1d;font-weight:800;margin-bottom:8px;">Motivo de rechazo</div>
+            <div style="font-size:15px;line-height:1.55;color:#1f2937;white-space:pre-wrap;">{escape(reason.strip())}</div>
+          </div>
+        """
+
+    return f"""
+    <html>
+      <body style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+        <div style="max-width:760px;margin:0 auto;padding:30px 16px;">
+          <div style="background:#ffffff;border:1px solid #d9e2ec;border-radius:10px;overflow:hidden;box-shadow:0 8px 24px rgba(15,45,80,.08);">
+            <div style="background:{accent};color:#ffffff;padding:24px 28px;">
+              <div style="font-size:12px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;opacity:.92;">MAR · Poliutech</div>
+              <div style="font-size:24px;font-weight:900;margin-top:6px;">{title}</div>
+              <div style="font-size:14px;opacity:.95;margin-top:7px;">Respuesta registrada para {folio}</div>
+            </div>
+            <div style="padding:28px;">
+              <div style="display:inline-block;background:{bg_soft};border:1px solid {accent};border-radius:999px;padding:9px 16px;color:{accent};font-weight:900;font-size:13px;letter-spacing:.5px;text-transform:uppercase;">
+                {escape(normalized)}
+              </div>
+              <p style="margin:20px 0 22px 0;font-size:15px;color:#475569;">Se registro una respuesta de revision para esta cotizacion.</p>
+              <div style="border:1px solid #dbe4ef;border-radius:10px;overflow:hidden;">
+                <div style="background:#f8fafc;padding:15px 18px;border-bottom:1px solid #dbe4ef;">
+                  <div style="font-size:12px;text-transform:uppercase;letter-spacing:.7px;color:#64748b;font-weight:800;">Folio</div>
+                  <div style="font-size:21px;font-weight:900;color:{accent};margin-top:2px;">{folio}</div>
+                </div>
+                <table style="border-collapse:collapse;width:100%;background:#ffffff;">
+                  <tr>
+                    <td style="padding:13px 16px;border-bottom:1px solid #edf2f7;width:34%;color:#64748b;font-weight:800;">Cliente</td>
+                    <td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#111827;font-weight:700;">{cliente}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:800;">Empresa</td>
+                    <td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#111827;">{empresa}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:800;">Proyecto</td>
+                    <td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#111827;">{proyecto}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:800;">Responsable</td>
+                    <td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#111827;">{responsable}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:13px 16px;color:#64748b;font-weight:800;">Total</td>
+                    <td style="padding:13px 16px;color:{accent};font-size:20px;font-weight:900;">{total}</td>
+                  </tr>
+                </table>
+              </div>
+              {motivo_html}
+              <div style="margin-top:22px;padding-top:16px;border-top:1px solid #e5e7eb;color:#64748b;font-size:12px;">
+                Este mensaje fue generado automaticamente por MAR. El seguimiento de la cotizacion ya fue actualizado.
+              </div>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+    """.strip()
+
+
 def _send_quote_review_response_email(c: Cotizacion, selected_status: str, reason: str = "") -> None:
     recipients = _parse_email_list(COTIZACION_RESPONSE_EMAIL)
     if not recipients:
@@ -7406,6 +7492,7 @@ def _send_quote_review_response_email(c: Cotizacion, selected_status: str, reaso
         f"Total: {money(c.total)} {c.moneda or 'MXN'}"
         f"{motivo_line}\n"
     )
+    msg.add_alternative(_quote_review_response_mail_html(c, selected_status, reason), subtype="html")
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
         smtp.ehlo()
         smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
