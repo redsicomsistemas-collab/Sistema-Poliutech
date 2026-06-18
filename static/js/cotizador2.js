@@ -229,30 +229,52 @@ document.addEventListener("DOMContentLoaded", ()=>{
     frm.addEventListener("submit", async (e) => {
       e.preventDefault();
 
-      const formData = new FormData(frm);
-      const res = await fetch(frm.action, { method: "POST", body: formData });
-      const text = await res.text();
+      const submitBtn = frm.querySelector('button[type="submit"]');
+      if (submitBtn) submitBtn.disabled = true;
 
-      const folioMatch = text.match(/Folio:\s*<b>(.*?)<\/b>/i);
-      const folio = folioMatch ? folioMatch[1] : null;
+      Swal.fire({
+        title: "Guardando cotización...",
+        text: "Por favor espera un momento.",
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        didOpen: () => Swal.showLoading(),
+      });
 
-      if (text.includes("Cotización creada con éxito") && folio) {
-        Swal.fire({
-          icon: "success",
-          title: "Cotización guardada",
-          html: `Folio: <b>${folio}</b><br>Se abrirá el PDF en una nueva pestaña.`,
-          confirmButtonText: "Ver PDF",
-          timer: 2400,
-          timerProgressBar: true,
-        }).then(() => {
-          window.open(`/cotizaciones/${folio}/export.pdf`.replace(/PTCH-\d+/, folio), "_blank");
-          setTimeout(() => {
-            window.location.href = "/";
-          }, 800);
-        });
-      } else {
+      try {
+        const formData = new FormData(frm);
+        const res = await fetch(frm.action, { method: "POST", body: formData });
+        const text = await res.text();
+
+        const folioMatch = text.match(/Folio:\s*<b>(.*?)<\/b>/i);
+        const folio = folioMatch ? folioMatch[1] : null;
+
+        Swal.close();
+
+        if (text.includes("Cotización creada con éxito") && folio) {
+          Swal.fire({
+            icon: "success",
+            title: "Cotización guardada",
+            html: `Folio: <b>${folio}</b><br>Se abrirá el PDF en una nueva pestaña.`,
+            confirmButtonText: "Ver PDF",
+            timer: 2400,
+            timerProgressBar: true,
+          }).then(() => {
+            window.open(`/cotizaciones/${folio}/export.pdf`.replace(/PTCH-\d+/, folio), "_blank");
+            setTimeout(() => {
+              window.location.href = "/";
+            }, 800);
+          });
+        } else {
+          if (submitBtn) submitBtn.disabled = false;
+          Swal.fire("Error", "No se pudo guardar la cotización.", "error");
+          console.warn("Respuesta inesperada:", text);
+        }
+      } catch (err) {
+        if (submitBtn) submitBtn.disabled = false;
+        Swal.close();
         Swal.fire("Error", "No se pudo guardar la cotización.", "error");
-        console.warn("Respuesta inesperada:", text);
+        console.error(err);
       }
     });
   }
