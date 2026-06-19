@@ -10,7 +10,7 @@ from flask import (
     Blueprint, request, redirect, url_for,
     render_template, flash, jsonify, Response
 )
-from sqlalchemy import text
+from sqlalchemy import text, or_
 from models import db, Cliente, Concepto
 
 bp = Blueprint("catalogos", __name__)
@@ -30,9 +30,33 @@ def _parse_price(value) -> float:
 def catalogos_index():
     page_clientes = int(request.args.get("page_clientes", 1))
     page_conceptos = int(request.args.get("page_conceptos", 1))
+    q_clientes = (request.args.get("q_clientes") or "").strip()
+    q_conceptos = (request.args.get("q_conceptos") or "").strip()
 
-    clientes_pag = Cliente.query.order_by(Cliente.id.desc()).paginate(page=page_clientes, per_page=10)
-    conceptos_pag = Concepto.query.order_by(Concepto.id.desc()).paginate(page=page_conceptos, per_page=10)
+    clientes_q = Cliente.query
+    if q_clientes:
+        like_clientes = f"%{q_clientes}%"
+        clientes_q = clientes_q.filter(or_(
+            Cliente.nombre_cliente.ilike(like_clientes),
+            Cliente.empresa.ilike(like_clientes),
+            Cliente.responsable.ilike(like_clientes),
+            Cliente.correo.ilike(like_clientes),
+            Cliente.telefono.ilike(like_clientes),
+            Cliente.rfc.ilike(like_clientes),
+        ))
+
+    conceptos_q = Concepto.query
+    if q_conceptos:
+        like_conceptos = f"%{q_conceptos}%"
+        conceptos_q = conceptos_q.filter(or_(
+            Concepto.nombre_concepto.ilike(like_conceptos),
+            Concepto.unidad.ilike(like_conceptos),
+            Concepto.sistema.ilike(like_conceptos),
+            Concepto.descripcion.ilike(like_conceptos),
+        ))
+
+    clientes_pag = clientes_q.order_by(Cliente.id.desc()).paginate(page=page_clientes, per_page=10)
+    conceptos_pag = conceptos_q.order_by(Concepto.id.desc()).paginate(page=page_conceptos, per_page=10)
 
     return render_template(
         "admin_catalogos.html",
@@ -40,7 +64,9 @@ def catalogos_index():
         clientes=clientes_pag.items,
         conceptos=conceptos_pag.items,
         clientes_pag=clientes_pag,
-        conceptos_pag=conceptos_pag
+        conceptos_pag=conceptos_pag,
+        q_clientes=q_clientes,
+        q_conceptos=q_conceptos,
     )
 
 # ---------------------------------------------------------

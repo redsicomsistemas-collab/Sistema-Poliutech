@@ -6262,13 +6262,35 @@ def importar_cotizacion_externa():
 def admin_catalogos():
     page_clientes = request.args.get("page_clientes", 1, type=int)
     page_conceptos = request.args.get("page_conceptos", 1, type=int)
+    q_clientes = (request.args.get("q_clientes") or "").strip()
+    q_conceptos = (request.args.get("q_conceptos") or "").strip()
 
     qc = Cliente.query
     if not is_admin():
         qc = qc.filter(Cliente.responsable == responsable_actual())
+    if q_clientes:
+        like_clientes = f"%{q_clientes}%"
+        qc = qc.filter(or_(
+            Cliente.nombre_cliente.ilike(like_clientes),
+            Cliente.empresa.ilike(like_clientes),
+            Cliente.responsable.ilike(like_clientes),
+            Cliente.correo.ilike(like_clientes),
+            Cliente.telefono.ilike(like_clientes),
+            Cliente.rfc.ilike(like_clientes),
+        ))
+
+    conceptos_q = Concepto.query
+    if q_conceptos:
+        like_conceptos = f"%{q_conceptos}%"
+        conceptos_q = conceptos_q.filter(or_(
+            Concepto.nombre_concepto.ilike(like_conceptos),
+            Concepto.unidad.ilike(like_conceptos),
+            Concepto.sistema.ilike(like_conceptos),
+            Concepto.descripcion.ilike(like_conceptos),
+        ))
 
     clientes_pag = qc.order_by(Cliente.id.desc()).paginate(page=page_clientes, per_page=10, error_out=False)
-    conceptos_pag = Concepto.query.order_by(Concepto.id.desc()).paginate(page=page_conceptos, per_page=10, error_out=False)
+    conceptos_pag = conceptos_q.order_by(Concepto.id.desc()).paginate(page=page_conceptos, per_page=10, error_out=False)
 
     return render_template(
         "admin_catalogos.html",
@@ -6276,7 +6298,9 @@ def admin_catalogos():
         clientes=clientes_pag.items,
         clientes_pag=clientes_pag,
         conceptos=conceptos_pag.items,
-        conceptos_pag=conceptos_pag
+        conceptos_pag=conceptos_pag,
+        q_clientes=q_clientes,
+        q_conceptos=q_conceptos,
     )
 
 # ---------------------------------------------------------
