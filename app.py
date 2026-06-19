@@ -2542,6 +2542,7 @@ COTIZACION_REVIEW_EMAIL = (os.getenv("COTIZACION_REVIEW_EMAIL") or "glemus@poliu
 COTIZACION_RESPONSE_EMAIL = (os.getenv("COTIZACION_RESPONSE_EMAIL") or "umorales@poliutech.com").strip()
 GASTOS_REVIEW_EMAIL = (os.getenv("GASTOS_REVIEW_EMAIL") or "gastos@poliutech.com").strip()
 SUPPORT_TICKET_EMAIL = (os.getenv("SUPPORT_TICKET_EMAIL") or "sistemas@poliutech.com").strip()
+COTIZACION_TRASH_RETENTION_DAYS = 30
 REGISTRO_MAIL_HOST = os.getenv("REGISTRO_MAIL_HOST", "servidor15.escala.net.mx").strip()
 REGISTRO_MAIL_PORT = int(os.getenv("REGISTRO_MAIL_PORT", "26"))
 REGISTRO_MAIL_USERNAME = os.getenv("REGISTRO_MAIL_USERNAME", "info@poliutech.com").strip()
@@ -2957,6 +2958,9 @@ def ensure_schema():
             ("last_whatsapp_at", "ALTER TABLE cotizacion ADD COLUMN last_whatsapp_at TIMESTAMP NULL"),
             ("proyecto", "ALTER TABLE cotizacion ADD COLUMN proyecto VARCHAR(200)"),
             ("ciudad_trabajo", "ALTER TABLE cotizacion ADD COLUMN ciudad_trabajo VARCHAR(120)"),
+            ("eliminada_en", "ALTER TABLE cotizacion ADD COLUMN eliminada_en TIMESTAMP NULL"),
+            ("eliminada_por", "ALTER TABLE cotizacion ADD COLUMN eliminada_por VARCHAR(120)"),
+            ("eliminacion_definitiva_en", "ALTER TABLE cotizacion ADD COLUMN eliminacion_definitiva_en TIMESTAMP NULL"),
         ]:
             if col not in cols:
                 try:
@@ -3268,6 +3272,7 @@ def _build_dashboard_cotizaciones_query(
     cliente: str = "",
 ):
     q = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
+    q = q.filter(Cotizacion.eliminada_en.is_(None))
 
     if not is_admin():
         q = q.filter(Cotizacion.responsable == responsable_actual())
@@ -3302,9 +3307,46 @@ def _build_dashboard_cotizaciones_query(
 
 def _cotizaciones_base_query():
     q = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
+    q = q.filter(Cotizacion.eliminada_en.is_(None))
     if not is_admin():
         q = q.filter(Cotizacion.responsable == responsable_actual())
     return q
+
+def _cotizaciones_activas_query():
+    return Cotizacion.query.filter(Cotizacion.eliminada_en.is_(None))
+
+def _cotizacion_activa_or_404(cot_id: int) -> Cotizacion:
+    return _cotizaciones_activas_query().filter(Cotizacion.id == cot_id).first_or_404()
+
+def _soft_delete_cotizacion(cot: Cotizacion) -> None:
+    now = now_cdmx_naive()
+    cot.eliminada_en = now
+    cot.eliminada_por = getattr(current_user, "nombre", None) or "Sistema"
+    cot.eliminacion_definitiva_en = now + timedelta(days=COTIZACION_TRASH_RETENTION_DAYS)
+
+def _restore_cotizacion(cot: Cotizacion) -> None:
+    cot.eliminada_en = None
+    cot.eliminada_por = None
+    cot.eliminacion_definitiva_en = None
+
+def _purge_expired_cotizacion_trash() -> int:
+    cutoff = now_cdmx_naive() - timedelta(days=COTIZACION_TRASH_RETENTION_DAYS)
+    expired = Cotizacion.query.filter(Cotizacion.eliminada_en.isnot(None), Cotizacion.eliminada_en <= cutoff).all()
+    for cot in expired:
+        for detalle in list(cot.detalles):
+            db.session.delete(detalle)
+        db.session.delete(cot)
+    if expired:
+        db.session.commit()
+    return len(expired)
+
+with app.app_context():
+    try:
+        purged = _purge_expired_cotizacion_trash()
+        if purged:
+            print(f"🧹 Cotizaciones purgadas de papelera: {purged}")
+    except Exception as e:
+        print("⚠️ purge cotizaciones papelera:", e)
 
 def _project_label_expr():
     return db.func.coalesce(
@@ -4438,19 +4480,23 @@ def index():
     # ADMIN: ve todo
     # USER: ve SOLO lo suyo por responsable
     if is_admin():
-        quotes_query = Cotizacion.query.order_by(Cotizacion.fecha.desc())
+        quotes_query = _cotizaciones_activas_query().order_by(Cotizacion.fecha.desc())
         total_cotizaciones = quotes_query.count()
-        total_importe = db.session.query(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar() or 0
+        total_importe = (
+            db.session.query(db.func.coalesce(db.func.sum(Cotizacion.total), 0))
+            .filter(Cotizacion.eliminada_en.is_(None))
+            .scalar() or 0
+        )
     else:
         ra = responsable_actual()
         quotes_query = (
-            Cotizacion.query
-            .filter_by(responsable=ra)
+            _cotizaciones_activas_query()
+            .filter(Cotizacion.responsable == ra)
             .order_by(Cotizacion.fecha.desc())
         )
         total_cotizaciones = quotes_query.count()
         total_importe = (db.session.query(db.func.coalesce(db.func.sum(Cotizacion.total), 0))
-                         .filter(Cotizacion.responsable == ra).scalar() or 0)
+                         .filter(Cotizacion.responsable == ra, Cotizacion.eliminada_en.is_(None)).scalar() or 0)
 
     pagination = quotes_query.paginate(page=page, per_page=per_page, error_out=False)
     cotizaciones = pagination.items
@@ -5845,6 +5891,7 @@ def api_mobile_registro_obras_list():
 @require_mobile_auth
 def api_mobile_pending_quotes():
     query = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
+    query = query.filter(Cotizacion.eliminada_en.is_(None))
     query = query.filter(db.func.upper(Cotizacion.estatus).in_(["PENDIENTE", "EN REVISIÓN", "EN REVISION"]))
 
     items = []
@@ -5866,7 +5913,7 @@ def api_mobile_pending_quotes():
 @app.route("/api/mobile/dashboard/summary", methods=["GET"])
 @require_mobile_auth
 def api_mobile_dashboard_summary():
-    query = Cotizacion.query
+    query = _cotizaciones_activas_query()
 
     total_cotizaciones = query.count()
     total_importe = float(
@@ -5897,6 +5944,7 @@ def api_mobile_dashboard_summary():
 def api_mobile_quotes():
     estatus = (request.args.get("estatus") or "").strip().upper()
     query = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
+    query = query.filter(Cotizacion.eliminada_en.is_(None))
     if estatus:
         query = query.filter(Cotizacion.estatus == estatus)
 
@@ -6006,7 +6054,7 @@ def api_mobile_voice_transcribe():
 @require_mobile_auth
 def api_mobile_update_quote_status(cot_id: int):
     user = g.mobile_user
-    cot = Cotizacion.query.get_or_404(cot_id)
+    cot = _cotizacion_activa_or_404(cot_id)
     if not _mobile_user_is_admin(user):
         if (cot.responsable or "").strip().lower() != _mobile_user_responsable(user).lower():
             return _mobile_json_error("No autorizado para esta cotización.", 403)
@@ -6052,7 +6100,7 @@ def api_mobile_update_quote_status(cot_id: int):
 @require_mobile_auth
 def api_mobile_quote_followup_detail(cot_id: int, seg_id: int):
     user = g.mobile_user
-    cot = Cotizacion.query.get_or_404(cot_id)
+    cot = _cotizacion_activa_or_404(cot_id)
     if not _mobile_user_can_access_quote(user, cot):
         return _mobile_json_error("No autorizado para esta cotización.", 403)
 
@@ -6082,7 +6130,7 @@ def api_mobile_quote_followup_detail(cot_id: int, seg_id: int):
 @app.route("/api/mobile/cotizaciones/<int:cot_id>/pdf", methods=["GET"])
 @require_mobile_auth
 def api_mobile_quote_pdf(cot_id: int):
-    cot = Cotizacion.query.get_or_404(cot_id)
+    cot = _cotizacion_activa_or_404(cot_id)
     if not _mobile_user_can_access_quote(g.mobile_user, cot):
         return _mobile_json_error("No autorizado para esta cotización.", 403)
     return _build_cotizacion_pdf_response(cot)
@@ -6541,7 +6589,7 @@ def crear_cotizacion():
 @app.route("/cotizaciones/<int:cot_id>/editar")
 @login_required
 def editar_cotizacion(cot_id: int):
-    c = Cotizacion.query.get_or_404(cot_id)
+    c = _cotizacion_activa_or_404(cot_id)
     require_owner_or_admin(c)
     # zona actual (si existe) viene persistida en notas como: "Zona: ... (X% descuento)"
     zona_actual = ""
@@ -6564,7 +6612,7 @@ def editar_cotizacion(cot_id: int):
 @app.route("/cotizaciones/<int:cot_id>/actualizar", methods=["POST"])
 @login_required
 def actualizar_cotizacion(cot_id: int):
-    c = Cotizacion.query.get_or_404(cot_id)
+    c = _cotizacion_activa_or_404(cot_id)
     require_owner_or_admin(c)
 
     f = request.form
@@ -6742,17 +6790,15 @@ window.location.href = "{detalle}";
 @app.route("/cotizaciones/<int:cot_id>/eliminar")
 @login_required
 def eliminar_cotizacion(cot_id):
-    cot = Cotizacion.query.get_or_404(cot_id)
+    cot = _cotizacion_activa_or_404(cot_id)
     # ✅ Solo ADMIN puede eliminar
     if not is_admin():
         abort(403)
 
     try:
-        for d in cot.detalles:
-            db.session.delete(d)
-        db.session.delete(cot)
+        _soft_delete_cotizacion(cot)
         db.session.commit()
-        flash(f"Cotización {cot.folio} eliminada correctamente.", "success")
+        flash(f"Cotización {cot.folio} enviada a papelera por {COTIZACION_TRASH_RETENTION_DAYS} días.", "success")
     except Exception as e:
         db.session.rollback()
         flash(f"Error al eliminar la cotización: {str(e)}", "danger")
@@ -6792,16 +6838,14 @@ def bulk_eliminar_cotizaciones():
 
     try:
         for cot_id in norm_ids:
-            cot = Cotizacion.query.get(cot_id)
+            cot = _cotizaciones_activas_query().filter(Cotizacion.id == cot_id).first()
             if not cot:
                 skipped += 1
                 continue
 
             # (Admin-only) — no validación de ownership
 
-            for d in list(cot.detalles):
-                db.session.delete(d)
-            db.session.delete(cot)
+            _soft_delete_cotizacion(cot)
             deleted_ids.append(cot_id)
 
         db.session.commit()
@@ -6856,9 +6900,7 @@ def bulk_eliminar_filtradas():
     try:
         for cot in items:
             cot_id = cot.id
-            for d in list(cot.detalles):
-                db.session.delete(d)
-            db.session.delete(cot)
+            _soft_delete_cotizacion(cot)
             deleted_ids.append(cot_id)
 
         db.session.commit()
@@ -6867,13 +6909,53 @@ def bulk_eliminar_filtradas():
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
+@app.route("/cotizaciones/papelera")
+@login_required
+def papelera_cotizaciones():
+    if not is_admin():
+        abort(403)
+    try:
+        _purge_expired_cotizacion_trash()
+    except Exception as e:
+        db.session.rollback()
+        flash(f"No se pudo limpiar la papelera vencida: {e}", "warning")
+
+    items = (
+        Cotizacion.query
+        .filter(Cotizacion.eliminada_en.isnot(None))
+        .order_by(Cotizacion.eliminada_en.desc())
+        .all()
+    )
+    return render_template(
+        "cotizaciones_papelera.html",
+        items=items,
+        retention_days=COTIZACION_TRASH_RETENTION_DAYS,
+        now=now_cdmx_naive(),
+        title="Papelera de cotizaciones - Sistema MAR",
+    )
+
+@app.route("/cotizaciones/<int:cot_id>/restaurar", methods=["POST"])
+@login_required
+def restaurar_cotizacion(cot_id: int):
+    if not is_admin():
+        abort(403)
+    cot = Cotizacion.query.filter(Cotizacion.id == cot_id, Cotizacion.eliminada_en.isnot(None)).first_or_404()
+    try:
+        _restore_cotizacion(cot)
+        db.session.commit()
+        flash(f"Cotización {cot.folio} restaurada correctamente.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"No se pudo restaurar la cotización: {e}", "danger")
+    return redirect(url_for("papelera_cotizaciones"))
+
 @app.route("/cotizaciones")
 @login_required
 def list_cotizaciones():
     page = int(request.args.get("p", 1) or 1)
     per_page = 25
 
-    q = Cotizacion.query
+    q = _cotizaciones_activas_query()
     if not is_admin():
         q = q.filter(Cotizacion.responsable == responsable_actual())
 
@@ -6893,7 +6975,7 @@ def list_cotizaciones():
 @app.route("/cotizaciones/<int:cot_id>")
 @login_required
 def view_cotizacion(cot_id: int):
-    c = Cotizacion.query.get_or_404(cot_id)
+    c = _cotizacion_activa_or_404(cot_id)
     require_owner_or_admin(c)
     zona_actual = ""
     try:
@@ -6912,7 +6994,7 @@ def view_cotizacion(cot_id: int):
 @app.route("/cotizaciones/<int:cot_id>/seguimiento")
 @login_required
 def cotizacion_seguimiento(cot_id: int):
-    c = Cotizacion.query.get_or_404(cot_id)
+    c = _cotizacion_activa_or_404(cot_id)
     require_owner_or_admin(c)
     return render_template(
         "cotizacion_seguimiento.html",
@@ -6925,7 +7007,7 @@ def cotizacion_seguimiento(cot_id: int):
 @app.route("/cotizaciones/<int:cot_id>/seguimiento", methods=["POST"])
 @login_required
 def crear_cotizacion_seguimiento(cot_id: int):
-    c = Cotizacion.query.get_or_404(cot_id)
+    c = _cotizacion_activa_or_404(cot_id)
     require_owner_or_admin(c)
 
     nuevo_estatus = (request.form.get("estatus") or "").strip().upper()
@@ -6983,7 +7065,7 @@ def crear_cotizacion_seguimiento(cot_id: int):
 @app.route("/cotizaciones/<int:cot_id>/seguimiento/<int:seg_id>/editar", methods=["POST"])
 @login_required
 def editar_cotizacion_seguimiento(cot_id: int, seg_id: int):
-    c = Cotizacion.query.get_or_404(cot_id)
+    c = _cotizacion_activa_or_404(cot_id)
     require_owner_or_admin(c)
     seg = CotizacionSeguimiento.query.filter_by(id=seg_id, cotizacion_id=c.id).first_or_404()
     require_followup_author_or_admin(seg)
@@ -7002,7 +7084,7 @@ def editar_cotizacion_seguimiento(cot_id: int, seg_id: int):
 @app.route("/cotizaciones/<int:cot_id>/seguimiento/<int:seg_id>/eliminar", methods=["POST"])
 @login_required
 def eliminar_cotizacion_seguimiento(cot_id: int, seg_id: int):
-    c = Cotizacion.query.get_or_404(cot_id)
+    c = _cotizacion_activa_or_404(cot_id)
     require_owner_or_admin(c)
     seg = CotizacionSeguimiento.query.filter_by(id=seg_id, cotizacion_id=c.id).first_or_404()
     require_followup_author_or_admin(seg)
@@ -7015,7 +7097,7 @@ def eliminar_cotizacion_seguimiento(cot_id: int, seg_id: int):
 @app.route("/cotizaciones/<int:cot_id>/ver")
 @login_required
 def ver_cotizacion(cot_id: int):
-    cot = Cotizacion.query.get_or_404(cot_id)
+    cot = _cotizacion_activa_or_404(cot_id)
     require_owner_or_admin(cot)
     condiciones_finales = _condiciones_comerciales_finales(cot.notas or "")
     notas_adicionales, _ = _split_notas_y_zona(cot.notas or "")
@@ -7027,7 +7109,7 @@ def ver_cotizacion(cot_id: int):
 @app.route("/api/cotizaciones/<int:cot_id>/estatus", methods=["POST"])
 @login_required
 def api_update_estatus(cot_id):
-    c = Cotizacion.query.get_or_404(cot_id)
+    c = _cotizacion_activa_or_404(cot_id)
     require_owner_or_admin(c)
 
     ct = request.headers.get("Content-Type", "")
@@ -7077,7 +7159,7 @@ def api_update_estatus(cot_id):
 @app.route("/cotizaciones/<int:cot_id>/export.csv")
 @login_required
 def export_cotizacion_csv(cot_id: int):
-    c = Cotizacion.query.get_or_404(cot_id)
+    c = _cotizacion_activa_or_404(cot_id)
     require_owner_or_admin(c)
 
     output = io.StringIO()
@@ -7110,7 +7192,7 @@ def export_cotizacion_csv(cot_id: int):
 def export_cotizacion_xlsx(cot_id: int):
     if Workbook is None:
         abort(501, description="openpyxl no instalado en el servidor.")
-    c = Cotizacion.query.get_or_404(cot_id)
+    c = _cotizacion_activa_or_404(cot_id)
     require_owner_or_admin(c)
 
     wb = Workbook()
@@ -7316,7 +7398,7 @@ def _quote_review_load_from_token(cot_id: int, token: str, action: str) -> Cotiz
     token_action = (payload.get("action") or "").strip()
     if token_action != action:
         abort(403)
-    return Cotizacion.query.get_or_404(cot_id)
+    return _cotizacion_activa_or_404(cot_id)
 
 
 def _quote_status_flag_class(status: str) -> str:
@@ -7678,7 +7760,7 @@ def _quote_decision_result_html(c: Cotizacion, selected_status: str, reason: str
 @app.route("/api/cotizaciones/<int:cot_id>/send-email", methods=["POST"])
 @login_required
 def api_send_cotizacion_email(cot_id: int):
-    c = Cotizacion.query.get_or_404(cot_id)
+    c = _cotizacion_activa_or_404(cot_id)
     require_owner_or_admin(c)
 
     data = request.get_json(silent=True) or {}
@@ -8322,7 +8404,7 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
 
 @app.route("/cotizaciones/<int:cot_id>/export.pdf")
 def export_cotizacion_pdf(cot_id: int):
-    c = Cotizacion.query.get_or_404(cot_id)
+    c = _cotizacion_activa_or_404(cot_id)
     mobile_user = _mobile_user_from_token()
     if mobile_user:
         if not _mobile_user_can_access_quote(mobile_user, c):
@@ -8348,7 +8430,7 @@ def export_cotizacion_pdf_by_folio(folio: str):
     folio = (folio or "").strip()
     if not folio:
         abort(404)
-    c = Cotizacion.query.filter_by(folio=folio).first_or_404()
+    c = _cotizaciones_activas_query().filter(Cotizacion.folio == folio).first_or_404()
     require_owner_or_admin(c)
     return export_cotizacion_pdf(c.id)
 
@@ -8359,6 +8441,7 @@ def export_cotizacion_pdf_by_folio(folio: str):
 @login_required
 def api_cotizaciones_search():
     q = Cotizacion.query.join(Cliente, isouter=True)
+    q = q.filter(Cotizacion.eliminada_en.is_(None))
 
     if not is_admin():
         q = q.filter(Cotizacion.responsable == responsable_actual())
@@ -8507,7 +8590,7 @@ def enviar_notificaciones_pendientes():
 
         cotizaciones = (
             Cotizacion.query
-            .filter(db.func.upper(Cotizacion.estatus) != "FINALIZADA")
+            .filter(Cotizacion.eliminada_en.is_(None), db.func.upper(Cotizacion.estatus) != "FINALIZADA")
             .all()
         )
 

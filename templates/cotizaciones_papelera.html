@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 my-4">
+  <div>
+    <h1 class="h3 mb-1">Papelera de cotizaciones</h1>
+    <p class="text-muted mb-0">Las cotizaciones eliminadas se conservan {{ retention_days }} dias antes de borrarse definitivamente.</p>
+  </div>
+  <a href="{{ url_for('index') }}" class="btn btn-outline-primary btn-sm">Volver al dashboard</a>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    {% if items %}
+    <div class="table-responsive">
+      <table class="table table-bordered align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Folio</th>
+            <th>Cliente</th>
+            <th>Proyecto</th>
+            <th>Total</th>
+            <th>Eliminada</th>
+            <th>Por</th>
+            <th>Borrado definitivo</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in items %}
+          <tr>
+            <td class="fw-semibold">{{ c.folio }}</td>
+            <td>{{ c.cliente.nombre_cliente if c.cliente else '' }}</td>
+            <td>{{ c.proyecto or 'Sin proyecto' }}</td>
+            <td>${{ "{:,.2f}".format(c.total or 0) }}</td>
+            <td>{{ c.eliminada_en.strftime('%Y-%m-%d %H:%M') if c.eliminada_en else '-' }}</td>
+            <td>{{ c.eliminada_por or '-' }}</td>
+            <td>{{ c.eliminacion_definitiva_en.strftime('%Y-%m-%d %H:%M') if c.eliminacion_definitiva_en else '-' }}</td>
+            <td>
+              <form method="post" action="{{ url_for('restaurar_cotizacion', cot_id=c.id) }}" class="d-inline">
+                <button type="submit" class="btn btn-success btn-sm">Restaurar</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center text-muted py-5">
+      No hay cotizaciones en papelera.
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

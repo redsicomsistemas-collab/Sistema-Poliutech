@@ -844,9 +844,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const res = await Swal.fire({
       icon: "warning",
       title: "¿Eliminar cotizaciones seleccionadas?",
-      html: `Vas a eliminar <b>${ids.length}</b> cotización(es). Esta acción no se puede deshacer.`,
+      html: `Vas a mover <b>${ids.length}</b> cotización(es) a la papelera. Podrás restaurarlas durante 30 días.`,
       showCancelButton: true,
-      confirmButtonText: "Sí, eliminar",
+      confirmButtonText: "Sí, mover a papelera",
       cancelButtonText: "Cancelar",
       confirmButtonColor: "#dc3545",
     });
@@ -901,9 +901,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const res = await Swal.fire({
       icon: "warning",
       title: "¿Eliminar cotizaciones visibles (filtradas)?",
-      html: `Vas a eliminar <b>${visibleIds.length}</b> cotización(es) que coinciden con los filtros actuales.<br>Esta acción no se puede deshacer.`,
+      html: `Vas a mover <b>${visibleIds.length}</b> cotización(es) que coinciden con los filtros actuales a la papelera.<br>Podrás restaurarlas durante 30 días.`,
       showCancelButton: true,
-      confirmButtonText: "Sí, eliminar",
+      confirmButtonText: "Sí, mover a papelera",
       cancelButtonText: "Cancelar",
       confirmButtonColor: "#dc3545",
     });

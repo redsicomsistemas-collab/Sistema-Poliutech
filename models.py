@@ -69,6 +69,9 @@ class Cotizacion(db.Model):
     area_total = db.Column(db.Float, default=0.0)
     memoria_tecnica = db.Column(db.Text)
     lista_materiales_json = db.Column(db.Text)
+    eliminada_en = db.Column(db.DateTime, nullable=True, index=True)
+    eliminada_por = db.Column(db.String(120), nullable=True)
+    eliminacion_definitiva_en = db.Column(db.DateTime, nullable=True)
 
     detalles = db.relationship(
         "CotizacionDetalle",
