@@ -265,9 +265,12 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   btnDeleteSelected?.addEventListener("click", () => {
-    const anySelected = Array.from(document.querySelectorAll(".row-selector")).some((input) => input.checked);
-    if (!anySelected) {
+    const selectedCount = Array.from(document.querySelectorAll(".row-selector")).filter((input) => input.checked).length;
+    if (!selectedCount) {
       alert("Selecciona al menos un prospecto para eliminar.");
+      return;
+    }
+    if (!confirm(`¿Seguro que deseas eliminar ${selectedCount} prospecto(s) seleccionado(s)?`)) {
       return;
     }
     tableAction.value = "delete";

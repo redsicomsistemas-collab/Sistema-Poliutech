@@ -2538,9 +2538,11 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "26"))
 SMTP_USERNAME = os.getenv("SMTP_USERNAME", "cotizaciones@poliutech.com").strip()
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "Cotizaciones2025@").strip()
 SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USERNAME).strip()
-COTIZACION_REVIEW_EMAIL = (os.getenv("COTIZACION_REVIEW_EMAIL") or "glemus@poliutech.com").strip()
+COTIZACION_REVIEW_EMAIL = "hjaramillo@poliutech.com"
+COTIZACION_REVIEW_BCC_EMAIL = "sistemas@poliutech.com"
 COTIZACION_RESPONSE_EMAIL = (os.getenv("COTIZACION_RESPONSE_EMAIL") or "umorales@poliutech.com").strip()
-GASTOS_REVIEW_EMAIL = (os.getenv("GASTOS_REVIEW_EMAIL") or "gastos@poliutech.com").strip()
+GASTOS_REVIEW_EMAIL = "hjaramillo@poliutech.com"
+GASTOS_REVIEW_BCC_EMAIL = "sistemas@poliutech.com"
 SUPPORT_TICKET_EMAIL = (os.getenv("SUPPORT_TICKET_EMAIL") or "sistemas@poliutech.com").strip()
 COTIZACION_TRASH_RETENTION_DAYS = 30
 REGISTRO_MAIL_HOST = os.getenv("REGISTRO_MAIL_HOST", "servidor15.escala.net.mx").strip()
@@ -3185,6 +3187,10 @@ def setup_admin():
 # ---------------------------------------------------------
 def is_admin() -> bool:
     return bool(getattr(current_user, "is_authenticated", False) and (getattr(current_user, "rol", "") or "").upper() == "ADMIN")
+
+def is_admin_account() -> bool:
+    nombre = (getattr(current_user, "nombre", "") or "").strip().lower()
+    return bool(getattr(current_user, "is_authenticated", False) and nombre == "admin")
 
 def normalize_user_role(value: str) -> str:
     rol = (value or "").strip().upper()
@@ -7460,6 +7466,7 @@ def _quote_review_mail_html(c: Cotizacion, approve_url: str, reject_url: str, re
 
 def _send_quote_review_email(c: Cotizacion) -> None:
     recipients = _parse_email_list(COTIZACION_REVIEW_EMAIL)
+    bcc = _parse_email_list(COTIZACION_REVIEW_BCC_EMAIL)
     if not recipients:
         raise ValueError("No hay correo configurado para revision de cotizaciones.")
     pdf_response = export_cotizacion_pdf(c.id)
@@ -7493,7 +7500,7 @@ def _send_quote_review_email(c: Cotizacion) -> None:
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
         smtp.ehlo()
         smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-        smtp.send_message(msg, to_addrs=recipients)
+        smtp.send_message(msg, to_addrs=[*recipients, *bcc])
 
 
 def _quote_review_response_mail_html(c: Cotizacion, selected_status: str, reason: str = "") -> str:
@@ -8622,7 +8629,7 @@ except Exception as e:
 @app.route("/admin/bitacora")
 @login_required
 def admin_bitacora():
-    if not is_admin():
+    if not is_admin_account():
         abort(403)
 
     page = int(request.args.get("page", 1) or 1)
@@ -8677,7 +8684,7 @@ def admin_bitacora():
 @app.route("/admin/usuarios", methods=["GET", "POST"])
 @login_required
 def admin_usuarios():
-    if not is_admin():
+    if not is_admin_account():
         abort(403)
 
     if request.method == "POST":
@@ -8722,7 +8729,7 @@ def admin_usuarios():
 @app.route("/admin/usuarios/<int:user_id>/editar", methods=["POST"])
 @login_required
 def admin_usuario_editar(user_id: int):
-    if not is_admin():
+    if not is_admin_account():
         abort(403)
 
     usuario = Usuario.query.get_or_404(user_id)
@@ -8763,7 +8770,7 @@ def admin_usuario_editar(user_id: int):
 @app.route("/admin/usuarios/<int:user_id>/eliminar", methods=["POST"])
 @login_required
 def admin_usuario_eliminar(user_id: int):
-    if not is_admin():
+    if not is_admin_account():
         abort(403)
 
     usuario = Usuario.query.get_or_404(user_id)
@@ -9282,6 +9289,7 @@ def _gastos_mail_html(gasto: "ComprobacionGasto", view_url: str, approve_url: st
 
 def _send_gastos_review_email(gasto: "ComprobacionGasto") -> None:
     recipients = _parse_email_list(GASTOS_REVIEW_EMAIL)
+    bcc = _parse_email_list(GASTOS_REVIEW_BCC_EMAIL)
     if not recipients:
         raise ValueError("No hay correo configurado para revision de gastos.")
     view_url = url_for("gastos_viaticos_revision", gasto_id=gasto.id, token=_gastos_review_token(gasto, "view"), _external=True)
@@ -9305,7 +9313,7 @@ def _send_gastos_review_email(gasto: "ComprobacionGasto") -> None:
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
         smtp.ehlo()
         smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-        smtp.send_message(msg, to_addrs=recipients)
+        smtp.send_message(msg, to_addrs=[*recipients, *bcc])
 
 
 def _gastos_query_from_request():

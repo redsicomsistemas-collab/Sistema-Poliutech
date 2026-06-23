@@ -449,7 +449,7 @@
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('admin_catalogos') }}">📚 Catálogos</a></li>
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('pu.obras_index') }}">🧮 P. Unitarios</a></li>
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('registro_obras') }}">🏗️ Prospectos</a></li>
-          {% if current_user.is_authenticated and (current_user.rol or "")|upper == "ADMIN" %}
+          {% if current_user.is_authenticated and ((current_user.rol or "")|upper == "ADMIN" or (current_user.nombre or "")|lower == "admin") %}
           <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle text-white fw-semibold" href="#" id="adminMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false">
               ⚙️ Admin
@@ -457,8 +457,10 @@
             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="adminMenu">
               <li><a class="dropdown-item" href="{{ url_for('altas_proveedores') }}">🗂️ Altas</a></li>
               <li><a class="dropdown-item" href="{{ url_for('papelera_cotizaciones') }}">🗑️ Papelera</a></li>
+              {% if (current_user.nombre or "")|lower == "admin" %}
               <li><a class="dropdown-item" href="{{ url_for('admin_usuarios') }}">👥 Usuarios</a></li>
               <li><a class="dropdown-item" href="{{ url_for('admin_bitacora') }}">🧾 Bitácora</a></li>
+              {% endif %}
             </ul>
           </li>
           {% endif %}
@@ -504,6 +506,62 @@
 
   <!-- Bootstrap -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- ====== Confirmacion global para acciones destructivas ====== -->
+  <script>
+  (function() {
+    const defaultMessage = "¿Seguro que deseas eliminar este registro? Esta acción puede no deshacerse.";
+
+    function isDestructiveUrl(value) {
+      if (!value) return false;
+      try {
+        const url = new URL(value, window.location.origin);
+        const path = url.pathname.toLowerCase();
+        return path.includes("/eliminar") || path.includes("/delete") || path.includes("/bulk-delete");
+      } catch (_) {
+        const fallback = String(value).toLowerCase();
+        return fallback.includes("/eliminar") || fallback.includes("/delete") || fallback.includes("/bulk-delete");
+      }
+    }
+
+    function confirmDestructive(el, fallbackMessage) {
+      const message = el?.dataset?.confirmMessage || fallbackMessage || defaultMessage;
+      return window.confirm(message);
+    }
+
+    document.addEventListener("click", function(event) {
+      const link = event.target.closest("a[href]");
+      if (link && isDestructiveUrl(link.getAttribute("href"))) {
+        if (!confirmDestructive(link)) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        return;
+      }
+
+      const submitter = event.target.closest('button[type="submit"], input[type="submit"]');
+      const form = submitter?.form;
+      if (!form || form.hasAttribute("onsubmit")) return;
+
+      const action = submitter.getAttribute("formaction") || form.getAttribute("action") || "";
+      if (isDestructiveUrl(action) && !confirmDestructive(submitter)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    });
+
+    document.addEventListener("submit", function(event) {
+      const form = event.target;
+      if (!(form instanceof HTMLFormElement) || form.hasAttribute("onsubmit")) return;
+
+      const action = form.getAttribute("action") || "";
+      if (isDestructiveUrl(action) && !confirmDestructive(form)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    });
+  })();
+  </script>
 
   <!-- ====== Script del splash ====== -->
   <script>
