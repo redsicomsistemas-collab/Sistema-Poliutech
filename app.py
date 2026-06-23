@@ -2949,6 +2949,16 @@ def ensure_schema():
 
     # --- Otros mínimos para estabilidad ---
     try:
+        user_cols = _table_columns("usuario")
+        if "correo" not in user_cols:
+            db.session.execute(text("ALTER TABLE usuario ADD COLUMN correo VARCHAR(160)"))
+            db.session.commit()
+            print("✅ Campo 'correo' agregado en 'usuario'.")
+    except Exception as e:
+        print("⚠️ ensure_schema(usuario.correo):", e)
+
+    # --- Otros mínimos para estabilidad ---
+    try:
         cols = _table_columns("cotizacion")
         for col, stmt in [
             ("subtotal", "ALTER TABLE cotizacion ADD COLUMN subtotal FLOAT DEFAULT 0.0"),
@@ -3201,8 +3211,24 @@ def admin_users_base_query():
     admin_first = case((db.func.upper(Usuario.rol) == "ADMIN", 0), else_=1)
     return Usuario.query.order_by(admin_first, Usuario.nombre.asc())
 
-def _send_user_created_email(usuario: Usuario, created_by: Usuario | None = None, initial_password: str = "") -> None:
+def _user_notification_recipients(usuario: Usuario) -> list[str]:
     recipients = _parse_email_list(USER_CREATION_EMAIL)
+    user_email = getattr(usuario, "correo", None)
+    if user_email:
+        recipients.extend(_parse_email_list(user_email))
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for email in recipients:
+        key = email.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(email)
+    return unique
+
+def _send_user_created_email(usuario: Usuario, created_by: Usuario | None = None, initial_password: str = "") -> None:
+    recipients = _user_notification_recipients(usuario)
     if not recipients:
         raise ValueError("No hay correo configurado para altas de usuarios.")
 
@@ -3215,6 +3241,7 @@ def _send_user_created_email(usuario: Usuario, created_by: Usuario | None = None
     rows = [
         ("ID", usuario.id),
         ("Usuario", usuario.nombre or ""),
+        ("Correo", usuario.correo or "No capturado"),
         ("Rol", (usuario.rol or "USER").upper()),
         ("Contraseña", initial_password or "No disponible"),
         ("Creado por", f"{created_by_name}" + (f" (ID {created_by_id})" if created_by_id else "")),
@@ -3249,6 +3276,111 @@ def _send_user_created_email(usuario: Usuario, created_by: Usuario | None = None
 
     msg = EmailMessage()
     msg["Subject"] = f"Nuevo usuario MAR: {usuario.nombre or usuario.id}"
+    msg["From"] = f"SISTEMA MAR <{SMTP_FROM or SMTP_USERNAME}>"
+    msg["To"] = ", ".join(recipients)
+    msg.set_content(text_body)
+    msg.add_alternative(html_body, subtype="html")
+
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
+        smtp.ehlo()
+        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+        smtp.send_message(msg, to_addrs=recipients)
+
+def _send_user_updated_email(
+    usuario: Usuario,
+    updated_by: Usuario | None = None,
+    previous_nombre: str = "",
+    previous_rol: str = "",
+    previous_correo: str = "",
+    new_password: str = "",
+) -> None:
+    recipients = _user_notification_recipients(usuario)
+    if not recipients:
+        raise ValueError("No hay correo configurado para cambios de usuarios.")
+
+    updated_at = now_cdmx_naive().strftime("%d/%m/%Y %H:%M")
+    updated_by_name = (getattr(updated_by, "nombre", "") or "Sistema").strip() or "Sistema"
+    updated_by_id = getattr(updated_by, "id", None)
+    ip = (request.headers.get("X-Forwarded-For") or request.remote_addr or "").split(",")[0].strip() or "No disponible"
+    user_agent = (request.headers.get("User-Agent") or "No disponible").strip()
+    current_nombre = usuario.nombre or ""
+    current_correo = usuario.correo or ""
+    current_rol = (usuario.rol or "USER").upper()
+    previous_rol = (previous_rol or "USER").upper()
+
+    changes: list[tuple[str, str, str]] = []
+    if previous_nombre != current_nombre:
+        changes.append(("Nombre", previous_nombre or "-", current_nombre or "-"))
+    if (previous_correo or "") != current_correo:
+        changes.append(("Correo", previous_correo or "-", current_correo or "-"))
+    if previous_rol != current_rol:
+        changes.append(("Rol", previous_rol or "-", current_rol or "-"))
+    if new_password:
+        changes.append(("Contraseña", "Anterior no disponible", new_password))
+
+    if not changes:
+        return
+
+    rows = [
+        ("ID", usuario.id),
+        ("Usuario actual", current_nombre),
+        ("Correo actual", current_correo or "No capturado"),
+        ("Rol actual", current_rol),
+        ("Actualizado por", f"{updated_by_name}" + (f" (ID {updated_by_id})" if updated_by_id else "")),
+        ("Fecha de cambio (CDMX)", updated_at),
+        ("IP de origen", ip),
+        ("Navegador", user_agent),
+    ]
+    changes_text = "\n".join(f"- {label}: {before} -> {after}" for label, before, after in changes)
+    text_body = (
+        "Cambio de usuario en Sistema MAR\n\n"
+        + "\n".join(f"{label}: {value}" for label, value in rows)
+        + "\n\nCambios realizados:\n"
+        + changes_text
+    )
+    detail_rows = "".join(
+        f"<tr><td style='padding:10px 12px;border:1px solid #dde3ea;background:#f8fafc;font-weight:700;color:#64748b;width:34%;'>{escape(str(label))}</td>"
+        f"<td style='padding:10px 12px;border:1px solid #dde3ea;color:#111827;'>{escape(str(value))}</td></tr>"
+        for label, value in rows
+    )
+    change_rows = "".join(
+        f"<tr><td style='padding:10px 12px;border:1px solid #dde3ea;font-weight:700;'>{escape(label)}</td>"
+        f"<td style='padding:10px 12px;border:1px solid #dde3ea;color:#64748b;'>{escape(before)}</td>"
+        f"<td style='padding:10px 12px;border:1px solid #dde3ea;color:#111827;font-weight:700;'>{escape(after)}</td></tr>"
+        for label, before, after in changes
+    )
+    html_body = f"""
+    <html>
+      <body style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+        <div style="max-width:760px;margin:0 auto;padding:28px 16px;">
+          <div style="background:#ffffff;border:1px solid #dbe4ef;border-radius:10px;overflow:hidden;">
+            <div style="background:#0d47a1;color:#ffffff;padding:22px 26px;">
+              <div style="font-size:12px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;">MAR · Poliutech</div>
+              <div style="font-size:23px;font-weight:800;margin-top:5px;">Usuario actualizado</div>
+            </div>
+            <div style="padding:24px;">
+              <table style="border-collapse:collapse;width:100%;background:#ffffff;margin-bottom:20px;">{detail_rows}</table>
+              <div style="font-size:15px;font-weight:800;color:#0d47a1;margin-bottom:8px;">Cambios realizados</div>
+              <table style="border-collapse:collapse;width:100%;background:#ffffff;">
+                <thead>
+                  <tr>
+                    <th style="padding:10px 12px;border:1px solid #dde3ea;background:#f8fafc;text-align:left;">Campo</th>
+                    <th style="padding:10px 12px;border:1px solid #dde3ea;background:#f8fafc;text-align:left;">Antes</th>
+                    <th style="padding:10px 12px;border:1px solid #dde3ea;background:#f8fafc;text-align:left;">Ahora</th>
+                  </tr>
+                </thead>
+                <tbody>{change_rows}</tbody>
+              </table>
+              <p style="margin:16px 0 0 0;color:#64748b;font-size:12px;">Este mensaje fue generado automaticamente por Sistema MAR.</p>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+    """.strip()
+
+    msg = EmailMessage()
+    msg["Subject"] = f"Usuario MAR actualizado: {current_nombre or usuario.id}"
     msg["From"] = f"SISTEMA MAR <{SMTP_FROM or SMTP_USERNAME}>"
     msg["To"] = ", ".join(recipients)
     msg.set_content(text_body)
@@ -8748,12 +8880,25 @@ def admin_usuarios():
 
     if request.method == "POST":
         nombre = (request.form.get("nombre") or "").strip()
+        correo = (request.form.get("correo") or "").strip()
         password = (request.form.get("password") or "").strip()
         rol = normalize_user_role(request.form.get("rol"))
 
         if not nombre:
             flash("El nombre del usuario es obligatorio.", "danger")
             return redirect(url_for("admin_usuarios"))
+        if not correo:
+            flash("El correo del usuario es obligatorio.", "danger")
+            return redirect(url_for("admin_usuarios"))
+        try:
+            correos_usuario = _parse_email_list(correo)
+        except ValueError as exc:
+            flash(str(exc), "danger")
+            return redirect(url_for("admin_usuarios"))
+        if len(correos_usuario) != 1:
+            flash("Captura un solo correo para el usuario.", "danger")
+            return redirect(url_for("admin_usuarios"))
+        correo = correos_usuario[0]
         if not password:
             flash("La contrasena es obligatoria para crear un usuario.", "danger")
             return redirect(url_for("admin_usuarios"))
@@ -8763,7 +8908,7 @@ def admin_usuarios():
             flash("Ya existe un usuario con ese nombre.", "danger")
             return redirect(url_for("admin_usuarios"))
 
-        nuevo = Usuario(nombre=nombre, rol=rol)
+        nuevo = Usuario(nombre=nombre, correo=correo, rol=rol)
         nuevo.set_password(password)
         db.session.add(nuevo)
         db.session.commit()
@@ -8801,12 +8946,28 @@ def admin_usuario_editar(user_id: int):
 
     usuario = Usuario.query.get_or_404(user_id)
     nombre = (request.form.get("nombre") or "").strip()
+    correo = (request.form.get("correo") or "").strip()
     password = (request.form.get("password") or "").strip()
     rol = normalize_user_role(request.form.get("rol"))
+    previous_nombre = usuario.nombre or ""
+    previous_correo = usuario.correo or ""
+    previous_rol = usuario.rol or "USER"
 
     if not nombre:
         flash("El nombre del usuario es obligatorio.", "danger")
         return redirect(url_for("admin_usuarios"))
+    if not correo:
+        flash("El correo del usuario es obligatorio.", "danger")
+        return redirect(url_for("admin_usuarios"))
+    try:
+        correos_usuario = _parse_email_list(correo)
+    except ValueError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("admin_usuarios"))
+    if len(correos_usuario) != 1:
+        flash("Captura un solo correo para el usuario.", "danger")
+        return redirect(url_for("admin_usuarios"))
+    correo = correos_usuario[0]
 
     duplicado = Usuario.query.filter(
         db.func.lower(Usuario.nombre) == nombre.lower(),
@@ -8826,12 +8987,21 @@ def admin_usuario_editar(user_id: int):
             return redirect(url_for("admin_usuarios"))
 
     usuario.nombre = nombre
+    usuario.correo = correo
     usuario.rol = rol
     if password:
         usuario.set_password(password)
 
     db.session.commit()
-    flash(f"Usuario '{nombre}' actualizado correctamente.", "success")
+    try:
+        _send_user_updated_email(usuario, current_user, previous_nombre, previous_rol, previous_correo, password)
+        flash(f"Usuario '{nombre}' actualizado correctamente y notificado a sistemas.", "success")
+    except Exception as exc:
+        try:
+            logger.exception("No se pudo enviar correo de cambio de usuario %s", usuario.id)
+        except Exception:
+            pass
+        flash(f"Usuario '{nombre}' actualizado correctamente, pero no se pudo enviar el correo a sistemas: {exc}", "warning")
     return redirect(url_for("admin_usuarios"))
 
 @app.route("/admin/usuarios/<int:user_id>/eliminar", methods=["POST"])

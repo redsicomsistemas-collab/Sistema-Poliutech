@@ -160,6 +160,8 @@ class Usuario(UserMixin, db.Model):
     # ADMIN o REP
     rol = db.Column(db.String(10), default="REP", nullable=False)
 
+    correo = db.Column(db.String(160))
+
     password_hash = db.Column(db.String(255), nullable=False)
 
 

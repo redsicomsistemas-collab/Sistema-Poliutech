@@ -31,6 +31,10 @@
             <input type="text" name="nombre" class="form-control" placeholder="Ej. Rafael" required>
           </div>
           <div class="col-12">
+            <label class="form-label fw-semibold">Correo</label>
+            <input type="email" name="correo" class="form-control" placeholder="usuario@poliutech.com" required>
+          </div>
+          <div class="col-12">
             <label class="form-label fw-semibold">Contrasena</label>
             <input type="password" name="password" class="form-control" placeholder="Contrasena inicial" required>
           </div>
@@ -69,7 +73,7 @@
               <tr>
                 <th style="min-width:220px;">Usuario</th>
                 <th style="min-width:140px;">Rol</th>
-                <th style="min-width:360px;">Editar</th>
+                <th style="min-width:460px;">Editar</th>
                 <th style="min-width:140px;">Eliminar</th>
               </tr>
             </thead>
@@ -78,6 +82,7 @@
               <tr>
                 <td>
                   <div class="fw-bold">{{ usuario.nombre }}</div>
+                  <div class="small text-muted">{{ usuario.correo or "Sin correo" }}</div>
                   <div class="small text-muted">ID {{ usuario.id }}</div>
                 </td>
                 <td>
@@ -91,15 +96,18 @@
                       <input type="text" name="nombre" value="{{ usuario.nombre }}" class="form-control" required>
                     </div>
                     <div class="col-12 col-lg-4">
+                      <input type="email" name="correo" value="{{ usuario.correo or '' }}" class="form-control" placeholder="Correo" required>
+                    </div>
+                    <div class="col-12 col-lg-4">
                       <input type="password" name="password" class="form-control" placeholder="Nueva contrasena (opcional)">
                     </div>
-                    <div class="col-8 col-lg-2">
+                    <div class="col-8 col-lg-3">
                       <select name="rol" class="form-select">
                         <option value="USER" {% if (usuario.rol or '')|upper != 'ADMIN' %}selected{% endif %}>Usuario</option>
                         <option value="ADMIN" {% if (usuario.rol or '')|upper == 'ADMIN' %}selected{% endif %}>Administrador</option>
                       </select>
                     </div>
-                    <div class="col-4 col-lg-2 d-grid">
+                    <div class="col-4 col-lg-3 d-grid">
                       <button type="submit" class="btn btn-outline-primary">Guardar</button>
                     </div>
                   </form>
