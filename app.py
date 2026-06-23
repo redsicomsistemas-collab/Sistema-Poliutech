@@ -2544,6 +2544,7 @@ COTIZACION_RESPONSE_EMAIL = (os.getenv("COTIZACION_RESPONSE_EMAIL") or "umorales
 GASTOS_REVIEW_EMAIL = "hjaramillo@poliutech.com"
 GASTOS_REVIEW_BCC_EMAIL = "sistemas@poliutech.com"
 SUPPORT_TICKET_EMAIL = (os.getenv("SUPPORT_TICKET_EMAIL") or "sistemas@poliutech.com").strip()
+USER_CREATION_EMAIL = "sistemas@poliutech.com"
 COTIZACION_TRASH_RETENTION_DAYS = 30
 REGISTRO_MAIL_HOST = os.getenv("REGISTRO_MAIL_HOST", "servidor15.escala.net.mx").strip()
 REGISTRO_MAIL_PORT = int(os.getenv("REGISTRO_MAIL_PORT", "26"))
@@ -3199,6 +3200,64 @@ def normalize_user_role(value: str) -> str:
 def admin_users_base_query():
     admin_first = case((db.func.upper(Usuario.rol) == "ADMIN", 0), else_=1)
     return Usuario.query.order_by(admin_first, Usuario.nombre.asc())
+
+def _send_user_created_email(usuario: Usuario, created_by: Usuario | None = None, initial_password: str = "") -> None:
+    recipients = _parse_email_list(USER_CREATION_EMAIL)
+    if not recipients:
+        raise ValueError("No hay correo configurado para altas de usuarios.")
+
+    created_at = now_cdmx_naive().strftime("%d/%m/%Y %H:%M")
+    created_by_name = (getattr(created_by, "nombre", "") or "Sistema").strip() or "Sistema"
+    created_by_id = getattr(created_by, "id", None)
+    ip = (request.headers.get("X-Forwarded-For") or request.remote_addr or "").split(",")[0].strip() or "No disponible"
+    user_agent = (request.headers.get("User-Agent") or "No disponible").strip()
+
+    rows = [
+        ("ID", usuario.id),
+        ("Usuario", usuario.nombre or ""),
+        ("Rol", (usuario.rol or "USER").upper()),
+        ("Contraseña", initial_password or "No disponible"),
+        ("Creado por", f"{created_by_name}" + (f" (ID {created_by_id})" if created_by_id else "")),
+        ("Fecha de alta (CDMX)", created_at),
+        ("IP de origen", ip),
+        ("Navegador", user_agent),
+    ]
+    text_body = "Nuevo usuario creado en Sistema MAR\n\n" + "\n".join(f"{label}: {value}" for label, value in rows)
+    html_rows = "".join(
+        f"<tr><td style='padding:10px 12px;border:1px solid #dde3ea;background:#f8fafc;font-weight:700;color:#64748b;width:34%;'>{escape(str(label))}</td>"
+        f"<td style='padding:10px 12px;border:1px solid #dde3ea;color:#111827;'>{escape(str(value))}</td></tr>"
+        for label, value in rows
+    )
+    html_body = f"""
+    <html>
+      <body style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+        <div style="max-width:720px;margin:0 auto;padding:28px 16px;">
+          <div style="background:#ffffff;border:1px solid #dbe4ef;border-radius:10px;overflow:hidden;">
+            <div style="background:#0d47a1;color:#ffffff;padding:22px 26px;">
+              <div style="font-size:12px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;">MAR · Poliutech</div>
+              <div style="font-size:23px;font-weight:800;margin-top:5px;">Nuevo usuario creado</div>
+            </div>
+            <div style="padding:24px;">
+              <table style="border-collapse:collapse;width:100%;background:#ffffff;">{html_rows}</table>
+              <p style="margin:16px 0 0 0;color:#64748b;font-size:12px;">Este mensaje fue generado automaticamente por Sistema MAR.</p>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+    """.strip()
+
+    msg = EmailMessage()
+    msg["Subject"] = f"Nuevo usuario MAR: {usuario.nombre or usuario.id}"
+    msg["From"] = f"SISTEMA MAR <{SMTP_FROM or SMTP_USERNAME}>"
+    msg["To"] = ", ".join(recipients)
+    msg.set_content(text_body)
+    msg.add_alternative(html_body, subtype="html")
+
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
+        smtp.ehlo()
+        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+        smtp.send_message(msg, to_addrs=recipients)
 
 def responsable_actual() -> str:
     """
@@ -8708,7 +8767,15 @@ def admin_usuarios():
         nuevo.set_password(password)
         db.session.add(nuevo)
         db.session.commit()
-        flash(f"Usuario '{nombre}' creado correctamente.", "success")
+        try:
+            _send_user_created_email(nuevo, current_user, password)
+            flash(f"Usuario '{nombre}' creado correctamente y notificado a sistemas.", "success")
+        except Exception as exc:
+            try:
+                logger.exception("No se pudo enviar correo de alta de usuario %s", nuevo.id)
+            except Exception:
+                pass
+            flash(f"Usuario '{nombre}' creado correctamente, pero no se pudo enviar el correo a sistemas: {exc}", "warning")
         return redirect(url_for("admin_usuarios"))
 
     q = (request.args.get("q") or "").strip()
