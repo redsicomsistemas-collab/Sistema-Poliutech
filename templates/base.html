@@ -22,10 +22,23 @@
     /* ====== NAVBAR RESPONSIVO ====== */
     .navbar {
       transition: background-color 0.3s ease;
+      --bs-navbar-padding-y: 0.45rem;
+    }
+
+    .navbar .container-fluid {
+      gap: 0.75rem;
     }
 
     .navbar-brand span {
       font-size: 1.05rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .navbar-brand {
+      min-width: 0;
+      max-width: min(360px, calc(100vw - 86px));
     }
 
     .navbar-toggler {
@@ -53,15 +66,52 @@
       transition: background-color 0.2s, transform 0.2s;
       border-radius: 8px;
       margin: 2px 2px;
-      padding: 0.55rem 0.65rem;
-      font-size: 0.94rem;
+      padding: 0.48rem 0.55rem;
+      font-size: 0.88rem;
       line-height: 1.15;
       white-space: nowrap;
+    }
+
+    .navbar .dropdown-menu {
+      min-width: 13rem;
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+    }
+
+    .navbar-user-link {
+      max-width: 12rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .navbar-nav .nav-link:hover {
       background-color: rgba(255, 255, 255, 0.15);
       transform: translateY(-1px);
+    }
+
+    @media (min-width: 1200px) {
+      .navbar-collapse {
+        min-width: 0;
+      }
+
+      .navbar-nav {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+    }
+
+    @media (max-width: 1399.98px) {
+      .navbar-brand span {
+        font-size: 0.96rem;
+      }
+
+      .navbar-brand img {
+        height: 38px;
+      }
+
+      .navbar-nav .nav-link {
+        padding-inline: 0.48rem;
+        font-size: 0.84rem;
+      }
     }
 
     @media (max-width: 768px) {
@@ -79,6 +129,13 @@
       .navbar-nav .nav-link {
         padding: 0.6rem 1rem;
         font-size: 1.05rem;
+      }
+
+      .navbar .dropdown-menu {
+        text-align: center;
+        border: 0;
+        box-shadow: none;
+        margin-inline: 1rem;
       }
 
       .navbar-brand span {
@@ -364,7 +421,7 @@
   </div>
 
   <!-- ====== Navbar ====== -->
-  <nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
+  <nav class="navbar navbar-expand-xl navbar-dark bg-primary shadow-sm">
     <div class="container-fluid px-3">
       <!-- Logo y título -->
       <a class="navbar-brand d-flex align-items-center" href="{{ url_for('index') }}">
@@ -380,7 +437,7 @@
       <!-- Enlaces -->
       <div class="collapse navbar-collapse justify-content-end" id="mainNavbar">
         <ul class="navbar-nav mb-2 mb-lg-0 text-center">
-          <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('index') }}">🏠 Dashboard</a></li>
+          <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('index') }}">🏠 Inicio</a></li>
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('cotizador') }}">💰 Cotizador</a></li>
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('proyectos') }}">📁 Proyectos</a></li>
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('inventario_index') }}">📦 Inventario</a></li>
@@ -390,18 +447,33 @@
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('soporte_tickets') }}">🎫 Soporte</a></li>
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('prospectos') }}">📋 Por Cotizar</a></li>
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('admin_catalogos') }}">📚 Catálogos</a></li>
-          <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('pu.obras_index') }}">🧮 Precios Unitarios</a></li>
+          <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('pu.obras_index') }}">🧮 P. Unitarios</a></li>
           <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('registro_obras') }}">🏗️ Prospectos</a></li>
           {% if current_user.is_authenticated and (current_user.rol or "")|upper == "ADMIN" %}
-          <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('altas_proveedores') }}">🗂️ Altas</a></li>
-          <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('papelera_cotizaciones') }}">🗑️ Papelera</a></li>
-          <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('admin_usuarios') }}">👥 Usuarios</a></li>
-          <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('admin_bitacora') }}">🧾 Bitácora</a></li>
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle text-white fw-semibold" href="#" id="adminMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+              ⚙️ Admin
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="adminMenu">
+              <li><a class="dropdown-item" href="{{ url_for('altas_proveedores') }}">🗂️ Altas</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('papelera_cotizaciones') }}">🗑️ Papelera</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('admin_usuarios') }}">👥 Usuarios</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('admin_bitacora') }}">🧾 Bitácora</a></li>
+            </ul>
+          </li>
           {% endif %}
 
           {% if current_user.is_authenticated %}
-          <li class="nav-item"><span class="nav-link text-white fw-semibold">👤 Sesión: {{ current_user.nombre }}</span></li>
-          <li class="nav-item"><a class="nav-link text-white fw-semibold" href="{{ url_for('logout') }}">🚪 Cerrar sesión</a></li>
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle navbar-user-link text-white fw-semibold" href="#" id="userMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false" title="{{ current_user.nombre }}">
+              👤 {{ current_user.nombre }}
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userMenu">
+              <li><span class="dropdown-item-text">Sesión activa</span></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item" href="{{ url_for('logout') }}">🚪 Cerrar sesión</a></li>
+            </ul>
+          </li>
           {% endif %}
         </ul>
       </div>
