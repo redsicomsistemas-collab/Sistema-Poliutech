@@ -4673,27 +4673,34 @@ def logout():
 def index():
     page = request.args.get("page", 1, type=int)
     per_page = 20
+    desde = (request.args.get("desde") or "").strip()
+    hasta = (request.args.get("hasta") or "").strip()
+    estatus = (request.args.get("estatus") or "").strip()
+    cliente = (request.args.get("cliente") or "").strip()
+    dashboard_filters = {
+        "desde": desde,
+        "hasta": hasta,
+        "estatus": estatus,
+        "cliente": cliente,
+    }
 
-    # ADMIN: ve todo
-    # USER: ve SOLO lo suyo por responsable
-    if is_admin():
-        quotes_query = _cotizaciones_activas_query().order_by(Cotizacion.fecha.desc())
-        total_cotizaciones = quotes_query.count()
-        total_importe = (
-            db.session.query(db.func.coalesce(db.func.sum(Cotizacion.total), 0))
-            .filter(Cotizacion.eliminada_en.is_(None))
-            .scalar() or 0
+    try:
+        base_query = _build_dashboard_cotizaciones_query(
+            desde=desde,
+            hasta=hasta,
+            estatus=estatus,
+            cliente=cliente,
         )
-    else:
-        ra = responsable_actual()
-        quotes_query = (
-            _cotizaciones_activas_query()
-            .filter(Cotizacion.responsable == ra)
-            .order_by(Cotizacion.fecha.desc())
-        )
-        total_cotizaciones = quotes_query.count()
-        total_importe = (db.session.query(db.func.coalesce(db.func.sum(Cotizacion.total), 0))
-                         .filter(Cotizacion.responsable == ra, Cotizacion.eliminada_en.is_(None)).scalar() or 0)
+    except ValueError:
+        base_query = _build_dashboard_cotizaciones_query()
+        dashboard_filters = {"desde": "", "hasta": "", "estatus": "", "cliente": ""}
+
+    total_cotizaciones = base_query.count()
+    total_importe = (
+        base_query.with_entities(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar()
+        or 0
+    )
+    quotes_query = base_query.order_by(Cotizacion.fecha.desc())
 
     pagination = quotes_query.paginate(page=page, per_page=per_page, error_out=False)
     cotizaciones = pagination.items
@@ -4708,6 +4715,7 @@ def index():
         total_catalogo=total_catalogo,
         cotizaciones=cotizaciones,
         pagination=pagination,
+        dashboard_filters=dashboard_filters,
         valid_estatus=VALID_ESTATUS,
         show_splash=True
     )

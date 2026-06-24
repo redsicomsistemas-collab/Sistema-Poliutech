@@ -289,24 +289,24 @@
       <div class="row g-3 align-items-end mb-3 dashboard-filters">
         <div class="col-xl-2 col-lg-3 col-md-6">
           <label class="form-label small fw-bold text-secondary mb-1">Desde</label>
-          <input type="date" id="filtro-desde" class="form-control form-control-sm">
+          <input type="date" id="filtro-desde" class="form-control form-control-sm" value="{{ dashboard_filters.desde }}">
         </div>
         <div class="col-xl-2 col-lg-3 col-md-6">
           <label class="form-label small fw-bold text-secondary mb-1">Hasta</label>
-          <input type="date" id="filtro-hasta" class="form-control form-control-sm">
+          <input type="date" id="filtro-hasta" class="form-control form-control-sm" value="{{ dashboard_filters.hasta }}">
         </div>
         <div class="col-xl-2 col-lg-3 col-md-6">
           <label class="form-label small fw-bold text-secondary mb-1">Estatus</label>
           <select id="filtro-estatus" class="form-select form-select-sm">
             <option value="">Todos</option>
             {% for estado in valid_estatus %}
-            <option value="{{ estado }}">{{ estado }}</option>
+            <option value="{{ estado }}" {% if dashboard_filters.estatus == estado %}selected{% endif %}>{{ estado }}</option>
             {% endfor %}
           </select>
         </div>
         <div class="col-xl-3 col-lg-3 col-md-6">
           <label class="form-label small fw-bold text-secondary mb-1">Cliente / Empresa / Proyecto</label>
-          <input type="text" id="filtro-cliente" class="form-control form-control-sm" placeholder="Buscar...">
+          <input type="text" id="filtro-cliente" class="form-control form-control-sm" placeholder="Buscar..." value="{{ dashboard_filters.cliente }}">
         </div>
         <div class="col-xl-3 col-12">
           <div class="filter-actions">
@@ -428,26 +428,30 @@
       {% if pagination and pagination.pages > 1 %}
       <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mt-3">
         <div class="text-muted small">
+          {% if pagination.total == 0 %}
+          Mostrando 0 de 0 cotizaciones
+          {% else %}
           Mostrando {{ ((pagination.page - 1) * pagination.per_page) + 1 }} -
           {{ ((pagination.page - 1) * pagination.per_page) + (cotizaciones|length) }}
           de {{ pagination.total }} cotizaciones
+          {% endif %}
         </div>
         <nav aria-label="Paginacion de cotizaciones">
           <ul class="pagination pagination-sm mb-0">
             <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
-              <a class="page-link" href="{{ url_for('index', page=pagination.prev_num) if pagination.has_prev else '#' }}">Anterior</a>
+              <a class="page-link" href="{{ url_for('index', page=pagination.prev_num, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente) if pagination.has_prev else '#' }}">Anterior</a>
             </li>
             {% for p in pagination.iter_pages(left_edge=1, left_current=1, right_current=2, right_edge=1) %}
               {% if p %}
               <li class="page-item {% if p == pagination.page %}active{% endif %}">
-                <a class="page-link" href="{{ url_for('index', page=p) }}">{{ p }}</a>
+                <a class="page-link" href="{{ url_for('index', page=p, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente) }}">{{ p }}</a>
               </li>
               {% else %}
               <li class="page-item disabled"><span class="page-link">...</span></li>
               {% endif %}
             {% endfor %}
             <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
-              <a class="page-link" href="{{ url_for('index', page=pagination.next_num) if pagination.has_next else '#' }}">Siguiente</a>
+              <a class="page-link" href="{{ url_for('index', page=pagination.next_num, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente) if pagination.has_next else '#' }}">Siguiente</a>
             </li>
           </ul>
         </nav>
@@ -951,46 +955,23 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
   });
-  const filas = document.querySelectorAll("#tablaCotizaciones tr");
-
-  function filtrar() {
-    const d = desde.value ? new Date(desde.value + "T00:00:00") : null;
-    const h = hasta.value ? new Date(hasta.value + "T23:59:59") : null;
-    const e = estatus.value.trim();
-    const c = cliente.value.trim().toLowerCase();
-
-    filas.forEach(tr => {
-      const f = new Date(tr.dataset.fecha);
-      const est = tr.dataset.estatus?.trim() || "";
-      const cli = tr.dataset.cliente || "";
-      const emp = tr.dataset.empresa || "";
-      const pro = tr.dataset.proyecto || "";
-      let visible = true;
-
-      if (d && f < d) visible = false;
-      if (h && f > h) visible = false;
-      if (e && est !== e) visible = false;
-      if (c && !(cli.includes(c) || emp.includes(c) || pro.includes(c))) visible = false;
-
-      tr.style.display = visible ? "" : "none";
-    });
-
-    // recalcular estado del checkbox "seleccionar todo" y botón
-    updateBulkDeleteState();
-    renderFilteredCharts();
-    refreshSummaryCards();
+  function aplicarFiltrosDashboard() {
+    const params = buildFilterParams();
+    const query = params.toString();
+    window.location.href = `{{ url_for('index') }}${query ? `?${query}` : ""}`;
   }
 
-  ["input", "change", "keyup"].forEach(evt => {
-    [desde, hasta, estatus, cliente].forEach(el => el.addEventListener(evt, filtrar));
+  let clienteFilterTimer = null;
+  [desde, hasta, estatus].forEach((el) => {
+    el?.addEventListener("change", aplicarFiltrosDashboard);
+  });
+  cliente?.addEventListener("input", () => {
+    window.clearTimeout(clienteFilterTimer);
+    clienteFilterTimer = window.setTimeout(aplicarFiltrosDashboard, 450);
   });
 
   limpiar.addEventListener("click", () => {
-    [desde, hasta, estatus, cliente].forEach(el => el.value = "");
-    filas.forEach(tr => tr.style.display = "");
-    updateBulkDeleteState();
-    renderFilteredCharts();
-    refreshSummaryCards();
+    window.location.href = "{{ url_for('index') }}";
   });
 
   if (exportarExcel) {
