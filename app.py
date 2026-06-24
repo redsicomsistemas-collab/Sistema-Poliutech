@@ -584,11 +584,7 @@ def _mobile_user_is_admin(user: Usuario) -> bool:
 
 
 def _mobile_user_responsable(user: Usuario) -> str:
-    nombre = (getattr(user, "nombre", "") or "").strip()
-    if not nombre:
-        return ""
-    first = nombre.split()[0].strip()
-    return first[:1].upper() + first[1:].lower() if first else ""
+    return _usuario_nombre_representante(user)
 
 
 def require_mobile_auth(fn):
@@ -2835,7 +2831,7 @@ def _audit_after_request(response):
         rol = None
         try:
             if current_user and getattr(current_user, "is_authenticated", False):
-                usuario = (getattr(current_user, "nombre", None) or "ANON")[:60]
+                usuario = (_usuario_nombre_representante(current_user) or "ANON")[:60]
                 usuario_id = getattr(current_user, "id", None)
                 rol = getattr(current_user, "rol", None)
         except Exception:
@@ -2927,6 +2923,17 @@ def ensure_schema():
             print("✅ Campo 'sistema' agregado en 'cliente'.")
     except Exception as e:
         print("⚠️ ensure_schema(cliente.sistema):", e)
+
+    # --- USUARIO.nombre_visible ---
+    try:
+        cols_user = _table_columns("usuario")
+        if "nombre_visible" not in cols_user:
+            db.session.execute(text("ALTER TABLE usuario ADD COLUMN nombre_visible VARCHAR(120)"))
+            db.session.execute(text("UPDATE usuario SET nombre_visible = nombre WHERE nombre_visible IS NULL OR TRIM(nombre_visible) = ''"))
+            db.session.commit()
+            print("✅ Campo 'nombre_visible' agregado en 'usuario'.")
+    except Exception as e:
+        print("⚠️ ensure_schema(usuario.nombre_visible):", e)
 
     # --- COTIZACION.responsable ---
     try:
@@ -3145,7 +3152,7 @@ def seed_default_users():
             exists = Usuario.query.filter(db.func.lower(Usuario.nombre) == nombre.lower()).first()
             if exists:
                 continue
-            u = Usuario(nombre=nombre, rol=rol)
+            u = Usuario(nombre=nombre, nombre_visible=nombre, rol=rol)
             # Usa el helper del modelo para hashear
             try:
                 u.set_password(password)
@@ -3186,7 +3193,7 @@ def setup_admin():
     if u:
         return f"Ya existe el usuario {nombre}"
 
-    u = Usuario(nombre=nombre, rol=rol)
+    u = Usuario(nombre=nombre, nombre_visible=nombre, rol=rol)
     u.set_password(password)
     db.session.add(u)
     db.session.commit()
@@ -3233,7 +3240,7 @@ def _send_user_created_email(usuario: Usuario, created_by: Usuario | None = None
         raise ValueError("No hay correo configurado para altas de usuarios.")
 
     created_at = now_cdmx_naive().strftime("%d/%m/%Y %H:%M")
-    created_by_name = (getattr(created_by, "nombre", "") or "Sistema").strip() or "Sistema"
+    created_by_name = (_usuario_nombre_representante(created_by) or "Sistema").strip() or "Sistema"
     created_by_id = getattr(created_by, "id", None)
     ip = (request.headers.get("X-Forwarded-For") or request.remote_addr or "").split(",")[0].strip() or "No disponible"
     user_agent = (request.headers.get("User-Agent") or "No disponible").strip()
@@ -3241,6 +3248,7 @@ def _send_user_created_email(usuario: Usuario, created_by: Usuario | None = None
     rows = [
         ("ID", usuario.id),
         ("Usuario", usuario.nombre or ""),
+        ("Nombre", _usuario_nombre_representante(usuario) or ""),
         ("Correo", usuario.correo or "No capturado"),
         ("Rol", (usuario.rol or "USER").upper()),
         ("Contraseña", initial_password or "No disponible"),
@@ -3290,6 +3298,7 @@ def _send_user_updated_email(
     usuario: Usuario,
     updated_by: Usuario | None = None,
     previous_nombre: str = "",
+    previous_nombre_visible: str = "",
     previous_rol: str = "",
     previous_correo: str = "",
     new_password: str = "",
@@ -3299,18 +3308,21 @@ def _send_user_updated_email(
         raise ValueError("No hay correo configurado para cambios de usuarios.")
 
     updated_at = now_cdmx_naive().strftime("%d/%m/%Y %H:%M")
-    updated_by_name = (getattr(updated_by, "nombre", "") or "Sistema").strip() or "Sistema"
+    updated_by_name = (_usuario_nombre_representante(updated_by) or "Sistema").strip() or "Sistema"
     updated_by_id = getattr(updated_by, "id", None)
     ip = (request.headers.get("X-Forwarded-For") or request.remote_addr or "").split(",")[0].strip() or "No disponible"
     user_agent = (request.headers.get("User-Agent") or "No disponible").strip()
     current_nombre = usuario.nombre or ""
+    current_nombre_visible = _usuario_nombre_representante(usuario)
     current_correo = usuario.correo or ""
     current_rol = (usuario.rol or "USER").upper()
     previous_rol = (previous_rol or "USER").upper()
 
     changes: list[tuple[str, str, str]] = []
     if previous_nombre != current_nombre:
-        changes.append(("Nombre", previous_nombre or "-", current_nombre or "-"))
+        changes.append(("Usuario", previous_nombre or "-", current_nombre or "-"))
+    if (previous_nombre_visible or "") != current_nombre_visible:
+        changes.append(("Nombre", previous_nombre_visible or "-", current_nombre_visible or "-"))
     if (previous_correo or "") != current_correo:
         changes.append(("Correo", previous_correo or "-", current_correo or "-"))
     if previous_rol != current_rol:
@@ -3391,17 +3403,23 @@ def _send_user_updated_email(
         smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
         smtp.send_message(msg, to_addrs=recipients)
 
+def _usuario_nombre_representante(user: Usuario | None) -> str:
+    if not user:
+        return ""
+    visible = (getattr(user, "nombre_visible", None) or "").strip()
+    if visible:
+        return visible
+    nombre = (getattr(user, "nombre", "") or "").strip()
+    return nombre
+
 def responsable_actual() -> str:
     """
-    Regla: "solo el primer nombre" (ej. 'Rafa').
-    Si el usuario no tiene nombre, regresa vacío.
+    Nombre visible del usuario autenticado para representante/autor.
+    Si aun no se capturo, usa el usuario como respaldo.
     """
-    nombre = (getattr(current_user, "nombre", "") or "").strip()
-    if not nombre:
+    if not getattr(current_user, "is_authenticated", False):
         return ""
-    first = nombre.split()[0].strip()
-    # Title-case para igualar tu formato en BD (Rafa, Cesar, etc.)
-    return first[:1].upper() + first[1:].lower() if first else ""
+    return _usuario_nombre_representante(current_user)
 
 def require_owner_or_admin(cot: Cotizacion) -> None:
     if is_admin():
@@ -3518,7 +3536,7 @@ def _cotizacion_activa_or_404(cot_id: int) -> Cotizacion:
 def _soft_delete_cotizacion(cot: Cotizacion) -> None:
     now = now_cdmx_naive()
     cot.eliminada_en = now
-    cot.eliminada_por = getattr(current_user, "nombre", None) or "Sistema"
+    cot.eliminada_por = responsable_actual() or "Sistema"
     cot.eliminacion_definitiva_en = now + timedelta(days=COTIZACION_TRASH_RETENTION_DAYS)
 
 def _restore_cotizacion(cot: Cotizacion) -> None:
@@ -5398,7 +5416,7 @@ def crear_prospecto_seguimiento(prospecto_id: int):
         return redirect(url_for("prospecto_seguimiento", prospecto_id=prospecto.id))
 
     prospecto.status = nuevo_status
-    autor = (getattr(current_user, "nombre", None) or responsable_actual() or "Sistema").strip()
+    autor = (responsable_actual() or "Sistema").strip()
     seg = ProspectoSeguimiento(
         prospecto_id=prospecto.id,
         usuario_id=getattr(current_user, "id", None),
@@ -5573,7 +5591,7 @@ def soporte_ticket_detalle(ticket_id: int):
                 flash("Escribe un comentario o adjunta una captura.", "warning")
                 return redirect(url_for("soporte_ticket_detalle", ticket_id=ticket.id))
 
-            autor = (getattr(current_user, "nombre", None) or responsable_actual() or "Soporte").strip()
+            autor = (responsable_actual() or "Soporte").strip()
             comentario_final = comentario or "Adjuntos agregados."
             seg = TicketComentario(
                 ticket_id=ticket.id,
@@ -5974,7 +5992,7 @@ def crear_registro_obra_seguimiento(registro_id: int):
         flash("Escribe un comentario de seguimiento.", "warning")
         return redirect(url_for("registro_obra_seguimiento", registro_id=registro.id))
 
-    autor = (getattr(current_user, "nombre", None) or responsable_actual() or "Sistema").strip()
+    autor = (responsable_actual() or "Sistema").strip()
     seg = RegistroObraSeguimiento(
         registro_obra_id=registro.id,
         usuario_id=getattr(current_user, "id", None),
@@ -7291,7 +7309,7 @@ def crear_cotizacion_seguimiento(cot_id: int):
         return redirect(url_for("cotizacion_seguimiento", cot_id=c.id))
 
     seg = None
-    autor = (getattr(current_user, "nombre", None) or responsable_actual() or "Sistema").strip()
+    autor = (responsable_actual() or "Sistema").strip()
     if comentario:
         seg = CotizacionSeguimiento(
             cotizacion_id=c.id,
@@ -9102,12 +9120,16 @@ def admin_usuarios():
 
     if request.method == "POST":
         nombre = (request.form.get("nombre") or "").strip()
+        nombre_visible = (request.form.get("nombre_visible") or "").strip()
         correo = (request.form.get("correo") or "").strip()
         password = (request.form.get("password") or "").strip()
         rol = normalize_user_role(request.form.get("rol"))
 
         if not nombre:
-            flash("El nombre del usuario es obligatorio.", "danger")
+            flash("El usuario es obligatorio.", "danger")
+            return redirect(url_for("admin_usuarios"))
+        if not nombre_visible:
+            flash("El nombre es obligatorio.", "danger")
             return redirect(url_for("admin_usuarios"))
         if not correo:
             flash("El correo del usuario es obligatorio.", "danger")
@@ -9127,10 +9149,10 @@ def admin_usuarios():
 
         exists = Usuario.query.filter(db.func.lower(Usuario.nombre) == nombre.lower()).first()
         if exists:
-            flash("Ya existe un usuario con ese nombre.", "danger")
+            flash("Ya existe un usuario con ese usuario.", "danger")
             return redirect(url_for("admin_usuarios"))
 
-        nuevo = Usuario(nombre=nombre, correo=correo, rol=rol)
+        nuevo = Usuario(nombre=nombre, nombre_visible=nombre_visible, correo=correo, rol=rol)
         nuevo.set_password(password)
         db.session.add(nuevo)
         db.session.commit()
@@ -9148,7 +9170,12 @@ def admin_usuarios():
     q = (request.args.get("q") or "").strip()
     usuarios_query = admin_users_base_query()
     if q:
-        usuarios_query = usuarios_query.filter(Usuario.nombre.ilike(f"%{q}%"))
+        usuarios_query = usuarios_query.filter(
+            or_(
+                Usuario.nombre.ilike(f"%{q}%"),
+                Usuario.nombre_visible.ilike(f"%{q}%"),
+            )
+        )
 
     usuarios = usuarios_query.all()
     total_admins = Usuario.query.filter(db.func.upper(Usuario.rol) == "ADMIN").count()
@@ -9168,15 +9195,20 @@ def admin_usuario_editar(user_id: int):
 
     usuario = Usuario.query.get_or_404(user_id)
     nombre = (request.form.get("nombre") or "").strip()
+    nombre_visible = (request.form.get("nombre_visible") or "").strip()
     correo = (request.form.get("correo") or "").strip()
     password = (request.form.get("password") or "").strip()
     rol = normalize_user_role(request.form.get("rol"))
     previous_nombre = usuario.nombre or ""
+    previous_nombre_visible = _usuario_nombre_representante(usuario)
     previous_correo = usuario.correo or ""
     previous_rol = usuario.rol or "USER"
 
     if not nombre:
-        flash("El nombre del usuario es obligatorio.", "danger")
+        flash("El usuario es obligatorio.", "danger")
+        return redirect(url_for("admin_usuarios"))
+    if not nombre_visible:
+        flash("El nombre es obligatorio.", "danger")
         return redirect(url_for("admin_usuarios"))
     if not correo:
         flash("El correo del usuario es obligatorio.", "danger")
@@ -9209,6 +9241,7 @@ def admin_usuario_editar(user_id: int):
             return redirect(url_for("admin_usuarios"))
 
     usuario.nombre = nombre
+    usuario.nombre_visible = nombre_visible
     usuario.correo = correo
     usuario.rol = rol
     if password:
@@ -9216,7 +9249,7 @@ def admin_usuario_editar(user_id: int):
 
     db.session.commit()
     try:
-        _send_user_updated_email(usuario, current_user, previous_nombre, previous_rol, previous_correo, password)
+        _send_user_updated_email(usuario, current_user, previous_nombre, previous_nombre_visible, previous_rol, previous_correo, password)
         flash(f"Usuario '{nombre}' actualizado correctamente y notificado a sistemas.", "success")
     except Exception as exc:
         try:

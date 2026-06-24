@@ -27,8 +27,12 @@
       <div class="card-body">
         <form method="post" action="{{ url_for('admin_usuarios') }}" class="row g-3">
           <div class="col-12">
+            <label class="form-label fw-semibold">Usuario</label>
+            <input type="text" name="nombre" class="form-control" placeholder="Ej. rafael" required>
+          </div>
+          <div class="col-12">
             <label class="form-label fw-semibold">Nombre</label>
-            <input type="text" name="nombre" class="form-control" placeholder="Ej. Rafael" required>
+            <input type="text" name="nombre_visible" class="form-control" placeholder="Ej. Rafael Martinez" required>
           </div>
           <div class="col-12">
             <label class="form-label fw-semibold">Correo</label>
@@ -59,7 +63,7 @@
         <form method="get" class="row g-2 align-items-end">
           <div class="col-12 col-md-9">
             <label class="form-label fw-semibold">Buscar usuario</label>
-            <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Nombre del usuario">
+            <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Usuario o nombre">
           </div>
           <div class="col-12 col-md-3 d-grid">
             <button class="btn btn-outline-primary fw-semibold">Buscar</button>
@@ -71,7 +75,7 @@
           <table class="table table-hover align-middle mb-0">
             <thead class="table-primary">
               <tr>
-                <th style="min-width:220px;">Usuario</th>
+                <th style="min-width:220px;">Nombre</th>
                 <th style="min-width:140px;">Rol</th>
                 <th style="min-width:460px;">Editar</th>
                 <th style="min-width:140px;">Eliminar</th>
@@ -81,7 +85,8 @@
               {% for usuario in usuarios %}
               <tr>
                 <td>
-                  <div class="fw-bold">{{ usuario.nombre }}</div>
+                  <div class="fw-bold">{{ usuario.nombre_visible or usuario.nombre }}</div>
+                  <div class="small text-muted">Usuario: {{ usuario.nombre }}</div>
                   <div class="small text-muted">{{ usuario.correo or "Sin correo" }}</div>
                   <div class="small text-muted">ID {{ usuario.id }}</div>
                 </td>
@@ -93,7 +98,10 @@
                 <td>
                   <form method="post" action="{{ url_for('admin_usuario_editar', user_id=usuario.id) }}" class="row g-2">
                     <div class="col-12 col-lg-4">
-                      <input type="text" name="nombre" value="{{ usuario.nombre }}" class="form-control" required>
+                      <input type="text" name="nombre" value="{{ usuario.nombre }}" class="form-control" placeholder="Usuario" required>
+                    </div>
+                    <div class="col-12 col-lg-4">
+                      <input type="text" name="nombre_visible" value="{{ usuario.nombre_visible or usuario.nombre }}" class="form-control" placeholder="Nombre" required>
                     </div>
                     <div class="col-12 col-lg-4">
                       <input type="email" name="correo" value="{{ usuario.correo or '' }}" class="form-control" placeholder="Correo" required>

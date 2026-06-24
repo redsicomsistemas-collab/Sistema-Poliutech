@@ -154,8 +154,11 @@ class Usuario(UserMixin, db.Model):
     __tablename__ = "usuario"
     id = db.Column(db.Integer, primary_key=True)
 
-    # Solo primer nombre (ej: "Rafa")
+    # Usuario/login unico (ej: "rafa")
     nombre = db.Column(db.String(60), unique=True, nullable=False)
+
+    # Nombre visible para representante/autor (ej: "Rafael Martinez")
+    nombre_visible = db.Column(db.String(120))
 
     # ADMIN o REP
     rol = db.Column(db.String(10), default="REP", nullable=False)
@@ -171,6 +174,10 @@ class Usuario(UserMixin, db.Model):
 
     def check_password(self, raw: str) -> bool:
         return check_password_hash(self.password_hash, raw)
+
+    @property
+    def nombre_representante(self) -> str:
+        return (self.nombre_visible or self.nombre or "").strip()
 
     def __repr__(self):
         return f"<Usuario {self.nombre} ({self.rol})>"
