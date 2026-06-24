@@ -5380,7 +5380,7 @@ def prospecto_seguimiento(prospecto_id: int):
         "prospecto_seguimiento.html",
         prospecto=prospecto,
         seguimientos=prospecto.seguimientos,
-        usuarios_etiquetables=_usuarios_etiquetables(),
+        mention_users=_usuarios_menciones_payload(),
         title=f"Seguimiento prospecto {prospecto.titulo}",
     )
 
@@ -5391,7 +5391,7 @@ def crear_prospecto_seguimiento(prospecto_id: int):
     prospecto = Prospecto.query.get_or_404(prospecto_id)
     comentario = (request.form.get("comentario") or "").strip()
     nuevo_status = _normalize_prospecto_status(request.form.get("status"))
-    tagged_users = _usuarios_etiquetados_from_form()
+    tagged_users = _usuarios_mencionados_en_comentario(comentario)
 
     if not comentario:
         flash("Escribe un comentario de seguimiento.", "warning")
@@ -5568,7 +5568,7 @@ def soporte_ticket_detalle(ticket_id: int):
 
         if action == "comment":
             comentario = (request.form.get("comentario") or "").strip()
-            tagged_users = _usuarios_etiquetados_from_form()
+            tagged_users = _usuarios_mencionados_en_comentario(comentario)
             if not comentario and not any((f.filename or "").strip() for f in request.files.getlist("adjuntos")):
                 flash("Escribe un comentario o adjunta una captura.", "warning")
                 return redirect(url_for("soporte_ticket_detalle", ticket_id=ticket.id))
@@ -5625,7 +5625,7 @@ def soporte_ticket_detalle(ticket_id: int):
         status_options=TICKET_STATUS_OPTIONS,
         priority_options=TICKET_PRIORITY_OPTIONS,
         category_options=TICKET_CATEGORY_OPTIONS,
-        usuarios_etiquetables=_usuarios_etiquetables(),
+        mention_users=_usuarios_menciones_payload(),
         ticket_public_url=_ticket_public_url,
     )
 
@@ -5957,7 +5957,7 @@ def registro_obra_seguimiento(registro_id: int):
         "registro_obra_seguimiento.html",
         registro=registro,
         seguimientos=registro.seguimientos,
-        usuarios_etiquetables=_usuarios_etiquetables(),
+        mention_users=_usuarios_menciones_payload(),
         title=f"Seguimiento obra {registro.obra}",
     )
 
@@ -5968,7 +5968,7 @@ def crear_registro_obra_seguimiento(registro_id: int):
     registro = RegistroObra.query.get_or_404(registro_id)
     require_registro_obra_owner_or_admin(registro)
     comentario = (request.form.get("comentario") or "").strip()
-    tagged_users = _usuarios_etiquetados_from_form()
+    tagged_users = _usuarios_mencionados_en_comentario(comentario)
 
     if not comentario:
         flash("Escribe un comentario de seguimiento.", "warning")
@@ -7258,7 +7258,7 @@ def cotizacion_seguimiento(cot_id: int):
         c=c,
         seguimientos=c.seguimientos,
         valid_estatus=VALID_ESTATUS,
-        usuarios_etiquetables=_usuarios_etiquetables(),
+        mention_users=_usuarios_menciones_payload(),
         title=f"Seguimiento {c.folio}",
     )
 
@@ -7271,7 +7271,7 @@ def crear_cotizacion_seguimiento(cot_id: int):
     nuevo_estatus = (request.form.get("estatus") or "").strip().upper()
     nuevo_responsable = (request.form.get("responsable") or "").strip()
     comentario = (request.form.get("comentario") or "").strip()
-    tagged_users = _usuarios_etiquetados_from_form()
+    tagged_users = _usuarios_mencionados_en_comentario(comentario)
     hubo_cambio = False
 
     if nuevo_estatus:
@@ -7613,21 +7613,41 @@ def _usuarios_etiquetables() -> list[Usuario]:
     return Usuario.query.order_by(Usuario.nombre.asc()).all()
 
 
-def _usuarios_etiquetados_from_form() -> list[Usuario]:
-    raw_ids = request.form.getlist("tagged_user_ids")
-    user_ids: list[int] = []
-    for raw_id in raw_ids:
-        try:
-            user_id = int(raw_id)
-        except (TypeError, ValueError):
-            continue
-        if user_id not in user_ids:
-            user_ids.append(user_id)
-    if not user_ids:
+def _usuarios_menciones_payload() -> list[dict]:
+    return [
+        {
+            "id": usuario.id,
+            "nombre": usuario.nombre or "",
+            "correo": usuario.correo or "",
+        }
+        for usuario in _usuarios_etiquetables()
+        if usuario.nombre and usuario.correo
+    ]
+
+
+def _normalize_mention_text(value: str) -> str:
+    text = unicodedata.normalize("NFKD", value or "")
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def _usuarios_mencionados_en_comentario(comentario: str) -> list[Usuario]:
+    normalized_comment = _normalize_mention_text(comentario)
+    if "@" not in normalized_comment:
         return []
-    users = Usuario.query.filter(Usuario.id.in_(user_ids)).all()
-    users_by_id = {user.id: user for user in users}
-    return [users_by_id[user_id] for user_id in user_ids if user_id in users_by_id]
+
+    mentioned: list[Usuario] = []
+    seen_ids: set[int] = set()
+    users = sorted(_usuarios_etiquetables(), key=lambda user: len(user.nombre or ""), reverse=True)
+    for usuario in users:
+        nombre = _normalize_mention_text(usuario.nombre or "")
+        if not nombre:
+            continue
+        pattern = rf"@\s*{re.escape(nombre)}(?=$|[\s.,;:!?\)\]\}}])"
+        if re.search(pattern, normalized_comment) and usuario.id not in seen_ids:
+            mentioned.append(usuario)
+            seen_ids.add(usuario.id)
+    return mentioned
 
 
 def _followup_tag_email_html(

@@ -616,6 +616,168 @@
   })();
   </script>
 <!-- ====== Tooltips globales Bootstrap ====== -->
+<style>
+.mention-dropdown {
+  position: fixed;
+  z-index: 5000;
+  min-width: 260px;
+  max-width: min(420px, calc(100vw - 24px));
+  max-height: 240px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+  padding: 0.35rem;
+  display: none;
+}
+.mention-option {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 0.55rem 0.65rem;
+  border-radius: 6px;
+  line-height: 1.2;
+}
+.mention-option:hover,
+.mention-option.active {
+  background: #e9f3ff;
+}
+.mention-option-name {
+  font-weight: 700;
+  color: #1f2937;
+}
+.mention-option-mail {
+  color: #64748b;
+  font-size: 0.82rem;
+  margin-top: 0.12rem;
+}
+</style>
+<script>
+(function() {
+  function normalizeText(value) {
+    return String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+  }
+
+  function getMentionToken(textarea) {
+    const cursor = textarea.selectionStart || 0;
+    const before = textarea.value.slice(0, cursor);
+    const at = before.lastIndexOf("@");
+    if (at < 0) return null;
+
+    const between = before.slice(at + 1);
+    if (/[\n\r.,;:!?)\]}]/.test(between)) return null;
+    if (at > 0 && /[\wÁÉÍÓÚÜÑáéíóúüñ]/.test(before.charAt(at - 1))) return null;
+    return { start: at, end: cursor, query: between.trimStart() };
+  }
+
+  function positionDropdown(textarea, dropdown) {
+    const rect = textarea.getBoundingClientRect();
+    dropdown.style.left = `${Math.max(12, Math.min(rect.left, window.innerWidth - dropdown.offsetWidth - 12))}px`;
+    dropdown.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - dropdown.offsetHeight - 12)}px`;
+  }
+
+  function installMentionTextarea(textarea) {
+    let users = [];
+    try {
+      users = JSON.parse(textarea.dataset.mentionUsers || "[]");
+    } catch (_) {
+      users = [];
+    }
+    if (!users.length) return;
+
+    const dropdown = document.createElement("div");
+    dropdown.className = "mention-dropdown";
+    document.body.appendChild(dropdown);
+    let activeIndex = 0;
+    let matches = [];
+
+    function hide() {
+      dropdown.style.display = "none";
+      dropdown.innerHTML = "";
+      matches = [];
+      activeIndex = 0;
+    }
+
+    function insertUser(user) {
+      const token = getMentionToken(textarea);
+      if (!token) return;
+      const value = textarea.value;
+      const mention = `@${user.nombre} `;
+      textarea.value = value.slice(0, token.start) + mention + value.slice(token.end);
+      const nextCursor = token.start + mention.length;
+      textarea.focus();
+      textarea.setSelectionRange(nextCursor, nextCursor);
+      hide();
+    }
+
+    function render() {
+      const token = getMentionToken(textarea);
+      if (!token) {
+        hide();
+        return;
+      }
+      const query = normalizeText(token.query);
+      matches = users
+        .filter((user) => normalizeText(user.nombre).includes(query))
+        .slice(0, 8);
+      if (!matches.length) {
+        hide();
+        return;
+      }
+      activeIndex = Math.min(activeIndex, matches.length - 1);
+      dropdown.innerHTML = "";
+      matches.forEach((user, index) => {
+        const option = document.createElement("button");
+        option.type = "button";
+        option.className = `mention-option${index === activeIndex ? " active" : ""}`;
+        option.innerHTML = `
+          <div class="mention-option-name">@${user.nombre}</div>
+          <div class="mention-option-mail">${user.correo || ""}</div>
+        `;
+        option.addEventListener("mousedown", (event) => {
+          event.preventDefault();
+          insertUser(user);
+        });
+        dropdown.appendChild(option);
+      });
+      dropdown.style.display = "block";
+      positionDropdown(textarea, dropdown);
+    }
+
+    textarea.addEventListener("input", render);
+    textarea.addEventListener("click", render);
+    textarea.addEventListener("blur", () => window.setTimeout(hide, 140));
+    textarea.addEventListener("keydown", (event) => {
+      if (dropdown.style.display !== "block" || !matches.length) return;
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        activeIndex = (activeIndex + 1) % matches.length;
+        render();
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        activeIndex = (activeIndex - 1 + matches.length) % matches.length;
+        render();
+      } else if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault();
+        insertUser(matches[activeIndex]);
+      } else if (event.key === "Escape") {
+        hide();
+      }
+    });
+    window.addEventListener("resize", () => positionDropdown(textarea, dropdown));
+    window.addEventListener("scroll", () => hide(), true);
+  }
+
+  document.addEventListener("DOMContentLoaded", function() {
+    document.querySelectorAll(".js-mention-textarea").forEach(installMentionTextarea);
+  });
+})();
+</script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
   const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));

@@ -64,15 +64,7 @@
         <div class="card-body">
           <form method="post" enctype="multipart/form-data">
             <input type="hidden" name="action" value="comment">
-            <textarea name="comentario" class="form-control mb-3" rows="4" placeholder="Escribe una respuesta o actualización para este ticket."></textarea>
-            <label for="tagged_user_ids" class="form-label fw-bold text-primary">Etiquetar usuarios</label>
-            <select id="tagged_user_ids" name="tagged_user_ids" class="form-select mb-3" multiple size="5">
-              {% for usuario in usuarios_etiquetables %}
-              <option value="{{ usuario.id }}" {% if not usuario.correo %}disabled{% endif %}>
-                {{ usuario.nombre }}{% if usuario.correo %} - {{ usuario.correo }}{% else %} - sin correo{% endif %}
-              </option>
-              {% endfor %}
-            </select>
+            <textarea name="comentario" class="form-control mb-3 js-mention-textarea" data-mention-users='{{ mention_users|tojson }}' rows="4" placeholder="Escribe una respuesta o actualización para este ticket. Usa @ para etiquetar usuarios."></textarea>
             {% if (current_user.rol or "")|upper == "ADMIN" %}
             <div class="form-check mb-3">
               <input class="form-check-input" type="checkbox" name="es_interno" value="1" id="es_interno">
@@ -81,7 +73,7 @@
             {% endif %}
             <input type="file" name="adjuntos" class="form-control mb-3" multiple accept="image/*,.pdf,.txt,.log,.csv,.xlsx,.xls,.doc,.docx">
             <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-              <div class="small text-muted">Los etiquetados recibirán correo con botón VER.</div>
+              <div class="small text-muted">Escribe @ para etiquetar usuarios. Los mencionados recibirán correo con botón VER.</div>
               <button type="submit" class="btn btn-primary">Guardar respuesta</button>
             </div>
           </form>
