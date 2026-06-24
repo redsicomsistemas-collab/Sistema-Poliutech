@@ -7696,9 +7696,15 @@ def _followup_tag_email_html(
           <div style="border:1px solid #dde3ea;background:#f8fafc;border-radius:8px;padding:14px 16px;line-height:1.5;">
             {comentario_html or "Sin comentario."}
           </div>
-          <div style="margin-top:22px;">
-            <a href="{view_url}" style="display:inline-block;background:#0d6efd;color:#ffffff;text-decoration:none;font-weight:700;padding:11px 18px;border-radius:7px;">VER</a>
-          </div>
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:28px auto 8px auto;">
+            <tr>
+              <td align="center" bgcolor="#0d6efd" style="border-radius:10px;box-shadow:0 8px 18px rgba(13,110,253,0.28);">
+                <a href="{view_url}" target="_blank" style="display:inline-block;min-width:190px;padding:15px 28px;border-radius:10px;background:#0d6efd;color:#ffffff !important;text-decoration:none;font-size:17px;font-weight:800;letter-spacing:.4px;text-align:center;">
+                  VER SEGUIMIENTO
+                </a>
+              </td>
+            </tr>
+          </table>
           <p style="margin:20px 0 0 0;color:#64748b;font-size:12px;">Si el botón no abre, copia este enlace en tu navegador:<br>{view_url}</p>
         </div>
       </div>
