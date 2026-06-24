@@ -420,6 +420,16 @@
     </div>
   </div>
 
+  <div id="followup-saving-overlay" class="position-fixed top-0 start-0 w-100 h-100 d-none" style="background: rgba(15, 23, 42, 0.72); z-index: 6000;">
+    <div class="h-100 d-flex align-items-center justify-content-center px-3">
+      <div class="bg-white rounded shadow-lg text-center p-4" style="width: min(420px, 100%);">
+        <div class="spinner-border text-primary mb-3" role="status" aria-hidden="true"></div>
+        <h5 class="mb-1 fw-bold">ESPERE</h5>
+        <div class="text-secondary fw-semibold">GUARDANDO SEGUIMIENTO</div>
+      </div>
+    </div>
+  </div>
+
   <!-- ====== Navbar ====== -->
   <nav class="navbar navbar-expand-xl navbar-dark bg-primary shadow-sm">
     <div class="container-fluid px-3">
@@ -786,5 +796,31 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 });
 </script> 
+<script>
+(function() {
+  function isFollowupCommentForm(form) {
+    if (!(form instanceof HTMLFormElement)) return false;
+    const commentBox = form.querySelector('textarea[name="comentario"]');
+    if (!commentBox) return false;
+
+    const action = (form.getAttribute("action") || window.location.pathname || "").toLowerCase();
+    const actionInput = (form.querySelector('input[name="action"]')?.value || "").toLowerCase();
+    return form.querySelector(".js-mention-textarea") || action.includes("/seguimiento") || actionInput === "comment";
+  }
+
+  document.addEventListener("submit", function(event) {
+    const form = event.target;
+    if (!isFollowupCommentForm(form)) return;
+    if (event.defaultPrevented) return;
+
+    const overlay = document.getElementById("followup-saving-overlay");
+    overlay?.classList.remove("d-none");
+
+    form.querySelectorAll('button[type="submit"], input[type="submit"]').forEach((button) => {
+      button.disabled = true;
+    });
+  });
+})();
+</script>
 </body>
 </html>
