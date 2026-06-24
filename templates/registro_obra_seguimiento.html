@@ -75,8 +75,16 @@
           placeholder="Escribe aquí el avance, visita, acuerdo o pendiente de esta obra..."
           required
         ></textarea>
+        <label for="tagged_user_ids" class="form-label fw-bold text-primary mt-3">Etiquetar usuarios</label>
+        <select id="tagged_user_ids" name="tagged_user_ids" class="form-select" multiple size="5">
+          {% for usuario in usuarios_etiquetables %}
+          <option value="{{ usuario.id }}" {% if not usuario.correo %}disabled{% endif %}>
+            {{ usuario.nombre }}{% if usuario.correo %} - {{ usuario.correo }}{% else %} - sin correo{% endif %}
+          </option>
+          {% endfor %}
+        </select>
         <div class="d-flex justify-content-between align-items-center mt-3 gap-2 flex-wrap">
-          <div class="small text-muted">Se guardará con fecha, hora y el usuario actual.</div>
+          <div class="small text-muted">Se guardará con fecha, hora y el usuario actual. Los etiquetados recibirán correo con botón VER.</div>
           <button type="submit" class="btn btn-primary">Guardar seguimiento</button>
         </div>
       </form>

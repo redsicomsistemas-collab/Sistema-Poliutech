@@ -5380,6 +5380,7 @@ def prospecto_seguimiento(prospecto_id: int):
         "prospecto_seguimiento.html",
         prospecto=prospecto,
         seguimientos=prospecto.seguimientos,
+        usuarios_etiquetables=_usuarios_etiquetables(),
         title=f"Seguimiento prospecto {prospecto.titulo}",
     )
 
@@ -5390,21 +5391,37 @@ def crear_prospecto_seguimiento(prospecto_id: int):
     prospecto = Prospecto.query.get_or_404(prospecto_id)
     comentario = (request.form.get("comentario") or "").strip()
     nuevo_status = _normalize_prospecto_status(request.form.get("status"))
+    tagged_users = _usuarios_etiquetados_from_form()
 
     if not comentario:
         flash("Escribe un comentario de seguimiento.", "warning")
         return redirect(url_for("prospecto_seguimiento", prospecto_id=prospecto.id))
 
     prospecto.status = nuevo_status
+    autor = (getattr(current_user, "nombre", None) or responsable_actual() or "Sistema").strip()
     seg = ProspectoSeguimiento(
         prospecto_id=prospecto.id,
         usuario_id=getattr(current_user, "id", None),
-        autor=(getattr(current_user, "nombre", None) or responsable_actual() or "Sistema").strip(),
+        autor=autor,
         comentario=comentario,
         fecha_seguimiento=now_cdmx_naive(),
     )
     db.session.add(seg)
     db.session.commit()
+    try:
+        _notify_tagged_followup(
+            tagged_users=tagged_users,
+            module_label="Prospectos",
+            item_label=prospecto.titulo or f"Prospecto #{prospecto.id}",
+            autor=autor,
+            comentario=comentario,
+            view_endpoint="prospecto_seguimiento",
+            view_params={"prospecto_id": prospecto.id, "_anchor": f"seguimiento-{seg.id}"},
+        )
+    except Exception as exc:
+        logger.exception("No se pudo notificar etiquetas del prospecto %s", prospecto.id)
+        flash(f"Seguimiento guardado, pero no se pudo enviar correo a etiquetados: {exc}", "warning")
+        return redirect(url_for("prospecto_seguimiento", prospecto_id=prospecto.id, _anchor=f"seguimiento-{seg.id}"))
     flash("Seguimiento guardado correctamente.", "success")
     return redirect(url_for("prospecto_seguimiento", prospecto_id=prospecto.id, _anchor=f"seguimiento-{seg.id}"))
 
@@ -5551,15 +5568,18 @@ def soporte_ticket_detalle(ticket_id: int):
 
         if action == "comment":
             comentario = (request.form.get("comentario") or "").strip()
+            tagged_users = _usuarios_etiquetados_from_form()
             if not comentario and not any((f.filename or "").strip() for f in request.files.getlist("adjuntos")):
                 flash("Escribe un comentario o adjunta una captura.", "warning")
                 return redirect(url_for("soporte_ticket_detalle", ticket_id=ticket.id))
 
+            autor = (getattr(current_user, "nombre", None) or responsable_actual() or "Soporte").strip()
+            comentario_final = comentario or "Adjuntos agregados."
             seg = TicketComentario(
                 ticket_id=ticket.id,
                 usuario_id=getattr(current_user, "id", None),
-                autor=(getattr(current_user, "nombre", None) or responsable_actual() or "Soporte").strip(),
-                comentario=comentario or "Adjuntos agregados.",
+                autor=autor,
+                comentario=comentario_final,
                 es_interno=bool(request.form.get("es_interno")) and is_admin(),
                 creado_en=now_cdmx_naive(),
             )
@@ -5576,6 +5596,20 @@ def soporte_ticket_detalle(ticket_id: int):
                 ticket.estado = "EN REVISION"
             ticket.actualizado_en = now_cdmx_naive()
             db.session.commit()
+            try:
+                _notify_tagged_followup(
+                    tagged_users=tagged_users,
+                    module_label="Soporte",
+                    item_label=f"{ticket.folio or ('TCK-%06d' % ticket.id)} - {ticket.asunto}",
+                    autor=autor,
+                    comentario=comentario_final,
+                    view_endpoint="soporte_ticket_detalle",
+                    view_params={"ticket_id": ticket.id, "_anchor": f"comentario-{seg.id}"},
+                )
+            except Exception as exc:
+                logger.exception("No se pudo notificar etiquetas del ticket %s", ticket.id)
+                flash(f"Comentario guardado, pero no se pudo enviar correo a etiquetados: {exc}", "warning")
+                return redirect(url_for("soporte_ticket_detalle", ticket_id=ticket.id, _anchor=f"comentario-{seg.id}"))
             flash("Comentario guardado.", "success")
             return redirect(url_for("soporte_ticket_detalle", ticket_id=ticket.id, _anchor=f"comentario-{seg.id}"))
 
@@ -5591,6 +5625,7 @@ def soporte_ticket_detalle(ticket_id: int):
         status_options=TICKET_STATUS_OPTIONS,
         priority_options=TICKET_PRIORITY_OPTIONS,
         category_options=TICKET_CATEGORY_OPTIONS,
+        usuarios_etiquetables=_usuarios_etiquetables(),
         ticket_public_url=_ticket_public_url,
     )
 
@@ -5922,6 +5957,7 @@ def registro_obra_seguimiento(registro_id: int):
         "registro_obra_seguimiento.html",
         registro=registro,
         seguimientos=registro.seguimientos,
+        usuarios_etiquetables=_usuarios_etiquetables(),
         title=f"Seguimiento obra {registro.obra}",
     )
 
@@ -5932,21 +5968,37 @@ def crear_registro_obra_seguimiento(registro_id: int):
     registro = RegistroObra.query.get_or_404(registro_id)
     require_registro_obra_owner_or_admin(registro)
     comentario = (request.form.get("comentario") or "").strip()
+    tagged_users = _usuarios_etiquetados_from_form()
 
     if not comentario:
         flash("Escribe un comentario de seguimiento.", "warning")
         return redirect(url_for("registro_obra_seguimiento", registro_id=registro.id))
 
+    autor = (getattr(current_user, "nombre", None) or responsable_actual() or "Sistema").strip()
     seg = RegistroObraSeguimiento(
         registro_obra_id=registro.id,
         usuario_id=getattr(current_user, "id", None),
-        autor=(getattr(current_user, "nombre", None) or responsable_actual() or "Sistema").strip(),
+        autor=autor,
         comentario=comentario,
         fecha_seguimiento=now_cdmx_naive(),
         actualizado_en=now_cdmx_naive(),
     )
     db.session.add(seg)
     db.session.commit()
+    try:
+        _notify_tagged_followup(
+            tagged_users=tagged_users,
+            module_label="Registro de obras",
+            item_label=registro.obra or f"Obra #{registro.id}",
+            autor=autor,
+            comentario=comentario,
+            view_endpoint="registro_obra_seguimiento",
+            view_params={"registro_id": registro.id, "_anchor": f"seguimiento-{seg.id}"},
+        )
+    except Exception as exc:
+        logger.exception("No se pudo notificar etiquetas de obra %s", registro.id)
+        flash(f"Seguimiento guardado, pero no se pudo enviar correo a etiquetados: {exc}", "warning")
+        return redirect(url_for("registro_obra_seguimiento", registro_id=registro.id, _anchor=f"seguimiento-{seg.id}"))
     flash("Seguimiento de obra guardado correctamente.", "success")
     return redirect(url_for("registro_obra_seguimiento", registro_id=registro.id, _anchor=f"seguimiento-{seg.id}"))
 
@@ -7206,6 +7258,7 @@ def cotizacion_seguimiento(cot_id: int):
         c=c,
         seguimientos=c.seguimientos,
         valid_estatus=VALID_ESTATUS,
+        usuarios_etiquetables=_usuarios_etiquetables(),
         title=f"Seguimiento {c.folio}",
     )
 
@@ -7218,6 +7271,7 @@ def crear_cotizacion_seguimiento(cot_id: int):
     nuevo_estatus = (request.form.get("estatus") or "").strip().upper()
     nuevo_responsable = (request.form.get("responsable") or "").strip()
     comentario = (request.form.get("comentario") or "").strip()
+    tagged_users = _usuarios_etiquetados_from_form()
     hubo_cambio = False
 
     if nuevo_estatus:
@@ -7237,11 +7291,12 @@ def crear_cotizacion_seguimiento(cot_id: int):
         return redirect(url_for("cotizacion_seguimiento", cot_id=c.id))
 
     seg = None
+    autor = (getattr(current_user, "nombre", None) or responsable_actual() or "Sistema").strip()
     if comentario:
         seg = CotizacionSeguimiento(
             cotizacion_id=c.id,
             usuario_id=getattr(current_user, "id", None),
-            autor=(getattr(current_user, "nombre", None) or responsable_actual() or "Sistema").strip(),
+            autor=autor,
             comentario=comentario,
             fecha_seguimiento=now_cdmx_naive(),
             actualizado_en=now_cdmx_naive(),
@@ -7255,6 +7310,20 @@ def crear_cotizacion_seguimiento(cot_id: int):
             _send_quote_followup_push(c, seg)
         except Exception as exc:
             logger.warning("Push de seguimiento fallida: %s", exc)
+        try:
+            _notify_tagged_followup(
+                tagged_users=tagged_users,
+                module_label="Cotizaciones",
+                item_label=c.folio or f"Cotización #{c.id}",
+                autor=autor,
+                comentario=comentario,
+                view_endpoint="cotizacion_seguimiento",
+                view_params={"cot_id": c.id, "_anchor": f"seguimiento-{seg.id}"},
+            )
+        except Exception as exc:
+            logger.exception("No se pudo notificar etiquetas de cotizacion %s", c.id)
+            flash(f"Seguimiento guardado, pero no se pudo enviar correo a etiquetados: {exc}", "warning")
+            return redirect(url_for("cotizacion_seguimiento", cot_id=c.id, _anchor=f"seguimiento-{seg.id}"))
 
     if seg is not None and hubo_cambio:
         flash("Se guardó el seguimiento y también se actualizó la cotización.", "success")
@@ -7538,6 +7607,131 @@ def _parse_email_list(raw: str | list[str] | tuple[str, ...] | None) -> list[str
             raise ValueError(f"Correo inválido: {addr}")
         emails.append(addr)
     return emails
+
+
+def _usuarios_etiquetables() -> list[Usuario]:
+    return Usuario.query.order_by(Usuario.nombre.asc()).all()
+
+
+def _usuarios_etiquetados_from_form() -> list[Usuario]:
+    raw_ids = request.form.getlist("tagged_user_ids")
+    user_ids: list[int] = []
+    for raw_id in raw_ids:
+        try:
+            user_id = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        if user_id not in user_ids:
+            user_ids.append(user_id)
+    if not user_ids:
+        return []
+    users = Usuario.query.filter(Usuario.id.in_(user_ids)).all()
+    users_by_id = {user.id: user for user in users}
+    return [users_by_id[user_id] for user_id in user_ids if user_id in users_by_id]
+
+
+def _followup_tag_email_html(
+    *,
+    usuario: Usuario,
+    module_label: str,
+    item_label: str,
+    autor: str,
+    comentario: str,
+    view_url: str,
+) -> str:
+    usuario_nombre = escape(usuario.nombre or "Usuario")
+    module_label = escape(module_label)
+    item_label = escape(item_label)
+    autor = escape(autor or "Sistema")
+    comentario_html = escape(comentario or "").replace("\n", "<br>")
+    view_url = escape(view_url)
+    return f"""
+    <div style="font-family:Arial,sans-serif;background:#f5f7fb;padding:24px;color:#172033;">
+      <div style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #dde3ea;border-radius:10px;overflow:hidden;">
+        <div style="background:#0d6efd;color:#ffffff;padding:18px 22px;">
+          <h2 style="margin:0;font-size:20px;">Te etiquetaron en un seguimiento</h2>
+          <div style="font-size:13px;opacity:.92;margin-top:4px;">{module_label}</div>
+        </div>
+        <div style="padding:22px;">
+          <p style="margin:0 0 12px 0;">Hola <b>{usuario_nombre}</b>,</p>
+          <p style="margin:0 0 18px 0;"><b>{autor}</b> te etiquetó en <b>{item_label}</b>.</p>
+          <div style="border:1px solid #dde3ea;background:#f8fafc;border-radius:8px;padding:14px 16px;line-height:1.5;">
+            {comentario_html or "Sin comentario."}
+          </div>
+          <div style="margin-top:22px;">
+            <a href="{view_url}" style="display:inline-block;background:#0d6efd;color:#ffffff;text-decoration:none;font-weight:700;padding:11px 18px;border-radius:7px;">VER</a>
+          </div>
+          <p style="margin:20px 0 0 0;color:#64748b;font-size:12px;">Si el botón no abre, copia este enlace en tu navegador:<br>{view_url}</p>
+        </div>
+      </div>
+    </div>
+    """
+
+
+def _send_followup_tag_emails(
+    *,
+    tagged_users: list[Usuario],
+    module_label: str,
+    item_label: str,
+    autor: str,
+    comentario: str,
+    view_url: str,
+) -> int:
+    sent = 0
+    for usuario in tagged_users:
+        recipients = _parse_email_list(getattr(usuario, "correo", None))
+        if not recipients:
+            continue
+        msg = EmailMessage()
+        msg["Subject"] = f"Te etiquetaron en {module_label}: {item_label}"
+        msg["From"] = f"SISTEMA MAR <{SMTP_FROM or SMTP_USERNAME}>"
+        msg["To"] = ", ".join(recipients)
+        msg.set_content(
+            f"Hola {usuario.nombre or 'Usuario'},\n\n"
+            f"{autor or 'Sistema'} te etiquetó en {module_label}: {item_label}.\n\n"
+            f"Seguimiento:\n{comentario or 'Sin comentario.'}\n\n"
+            f"VER: {view_url}\n"
+        )
+        msg.add_alternative(
+            _followup_tag_email_html(
+                usuario=usuario,
+                module_label=module_label,
+                item_label=item_label,
+                autor=autor,
+                comentario=comentario,
+                view_url=view_url,
+            ),
+            subtype="html",
+        )
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
+            smtp.ehlo()
+            smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+            smtp.send_message(msg, to_addrs=recipients)
+        sent += 1
+    return sent
+
+
+def _notify_tagged_followup(
+    *,
+    tagged_users: list[Usuario],
+    module_label: str,
+    item_label: str,
+    autor: str,
+    comentario: str,
+    view_endpoint: str,
+    view_params: dict,
+) -> int:
+    if not tagged_users:
+        return 0
+    view_url = url_for(view_endpoint, _external=True, **view_params)
+    return _send_followup_tag_emails(
+        tagged_users=tagged_users,
+        module_label=module_label,
+        item_label=item_label,
+        autor=autor,
+        comentario=comentario,
+        view_url=view_url,
+    )
 
 
 def _send_cotizacion_email(c: Cotizacion, recipients: list[str], cc: list[str] | None = None, bcc: list[str] | None = None) -> None:
