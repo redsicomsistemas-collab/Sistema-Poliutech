@@ -2537,6 +2537,7 @@ SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USERNAME).strip()
 COTIZACION_REVIEW_EMAIL = "hjaramillo@poliutech.com"
 COTIZACION_REVIEW_BCC_EMAIL = "sistemas@poliutech.com"
 COTIZACION_RESPONSE_EMAIL = (os.getenv("COTIZACION_RESPONSE_EMAIL") or "umorales@poliutech.com").strip()
+COTIZACION_APPROVALS_EMAIL = "aprobaciones@poliutech.com"
 GASTOS_REVIEW_EMAIL = "hjaramillo@poliutech.com"
 GASTOS_REVIEW_BCC_EMAIL = "sistemas@poliutech.com"
 SUPPORT_TICKET_EMAIL = (os.getenv("SUPPORT_TICKET_EMAIL") or "sistemas@poliutech.com").strip()
@@ -7421,6 +7422,12 @@ def api_update_estatus(cot_id):
     c.estatus = nuevo
     db.session.commit()
 
+    if nuevo in {"APROBADO", "AUTORIZADO", "RECHAZADO"}:
+        try:
+            _send_quote_review_response_email(c, nuevo)
+        except Exception as e:
+            logger.warning("Correo de respuesta de cotizacion fallido: %s", e)
+
     try:
         _send_quote_status_push(c, anterior, nuevo)
     except Exception as e:
@@ -7625,6 +7632,18 @@ def _parse_email_list(raw: str | list[str] | tuple[str, ...] | None) -> list[str
             raise ValueError(f"Correo inválido: {addr}")
         emails.append(addr)
     return emails
+
+
+def _unique_emails(*groups: list[str]) -> list[str]:
+    unique: list[str] = []
+    seen: set[str] = set()
+    for group in groups:
+        for email in group:
+            key = email.lower()
+            if key not in seen:
+                seen.add(key)
+                unique.append(email)
+    return unique
 
 
 def _usuarios_etiquetables() -> list[Usuario]:
@@ -8027,7 +8046,10 @@ def _quote_review_response_mail_html(c: Cotizacion, selected_status: str, reason
 
 
 def _send_quote_review_response_email(c: Cotizacion, selected_status: str, reason: str = "") -> None:
-    recipients = _parse_email_list(COTIZACION_RESPONSE_EMAIL)
+    recipients = _unique_emails(
+        _parse_email_list(COTIZACION_RESPONSE_EMAIL),
+        _parse_email_list(COTIZACION_APPROVALS_EMAIL),
+    )
     if not recipients:
         raise ValueError("No hay correo configurado para respuesta de cotizaciones.")
     motivo_line = f"\nMotivo de rechazo: {reason.strip()}" if reason.strip() else ""
@@ -11409,6 +11431,12 @@ try:
     app.register_blueprint(pu_bp, url_prefix="/pu")
 except Exception as e:
     print(f"[WARN] No se pudo cargar blueprint pu_routes: {e}", file=sys.stderr)
+
+try:
+    from facturacion_routes import facturacion_bp
+    app.register_blueprint(facturacion_bp)
+except Exception as e:
+    print(f"[WARN] No se pudo cargar blueprint facturacion_routes: {e}", file=sys.stderr)
 
 # ---------------------------------------------------------
 # Main
