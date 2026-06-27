@@ -1731,20 +1731,42 @@ def _mobile_push_tokens_for_users(user_ids: list[int]) -> list[str]:
     return unique_tokens
 
 
-def _mobile_push_user_ids_for_quote(cot: Cotizacion) -> list[int]:
+def _mobile_push_user_ids_for_approval_reviewer() -> list[int]:
+    review_emails = {email.lower() for email in _parse_email_list(COTIZACION_REVIEW_EMAIL)}
+    users = Usuario.query.all()
     user_ids: set[int] = set()
-    admins = Usuario.query.filter(db.func.upper(Usuario.rol) == "ADMIN").all()
-    user_ids.update(u.id for u in admins if getattr(u, "id", None))
+    for user in users:
+        user_name = (getattr(user, "nombre", "") or "").strip().lower()
+        visible_name = _mobile_user_responsable(user).strip().lower()
+        user_email = (getattr(user, "correo", "") or "").strip().lower()
+        if (
+            user_name == "hansel"
+            or visible_name == "hansel"
+            or visible_name.startswith("hansel ")
+            or user_email in review_emails
+        ):
+            if user.id:
+                user_ids.add(user.id)
+    return list(user_ids)
+
+
+def _mobile_push_user_ids_for_quote_owner(cot: Cotizacion) -> list[int]:
+    user_ids: set[int] = set()
     responsable = (cot.responsable or "").strip().lower()
     if responsable:
-        owner = Usuario.query.filter(db.func.lower(Usuario.nombre) == responsable).first()
+        owner = Usuario.query.filter(
+            or_(
+                db.func.lower(Usuario.nombre) == responsable,
+                db.func.lower(db.func.coalesce(Usuario.nombre_visible, "")) == responsable,
+            )
+        ).first()
         if owner and owner.id:
             user_ids.add(owner.id)
         else:
             users = Usuario.query.all()
             for user in users:
                 first_name = _mobile_user_responsable(user).strip().lower()
-            if first_name and first_name == responsable and user.id:
+                if first_name and first_name == responsable and user.id:
                     user_ids.add(user.id)
     return list(user_ids)
 
@@ -1753,7 +1775,8 @@ def _send_quote_status_push(cot: Cotizacion, previous_status: str, new_status: s
     if (new_status or "").strip().upper() == "FINALIZADA":
         return {"sent": 0, "failed": 0}
     pdf_url = _mobile_quote_pdf_url(cot.id)
-    tokens = _mobile_push_tokens_for_users(_mobile_push_user_ids_for_quote(cot))
+    owner_ids = _mobile_push_user_ids_for_quote_owner(cot)
+    tokens = _mobile_push_tokens_for_users(owner_ids)
     return _send_push_notification(
         tokens,
         title=f"Cotización {new_status}",
@@ -1765,13 +1788,32 @@ def _send_quote_status_push(cot: Cotizacion, previous_status: str, new_status: s
             "previous_status": str(previous_status or ""),
             "estatus": str(new_status or ""),
             "pdf_url": pdf_url,
+            "target_user_id": str(owner_ids[0]) if len(owner_ids) == 1 else "",
+        },
+    )
+
+
+def _send_quote_approval_request_push(cot: Cotizacion) -> dict[str, int]:
+    reviewer_ids = _mobile_push_user_ids_for_approval_reviewer()
+    tokens = _mobile_push_tokens_for_users(reviewer_ids)
+    return _send_push_notification(
+        tokens,
+        title="Cotización pendiente de aprobación",
+        body=f"{cot.folio or 'Sin folio'} · {money(cot.total)}",
+        data={
+            "type": "quote_pending_approval",
+            "cotizacion_id": str(cot.id or ""),
+            "folio": str(cot.folio or ""),
+            "estatus": str(cot.estatus or ""),
+            "pdf_url": _mobile_quote_pdf_url(cot.id),
+            "target_user_id": str(reviewer_ids[0]) if len(reviewer_ids) == 1 else "",
+            "target_user": "Hansel",
         },
     )
 
 
 def _send_quote_created_notification(cot: Cotizacion) -> None:
     estatus_actual = (cot.estatus or "").strip().upper()
-    pdf_url = _mobile_quote_pdf_url(cot.id)
     try:
         msg = (
             "🧾 *Nueva Cotización Creada*\\n"
@@ -1785,25 +1827,13 @@ def _send_quote_created_notification(cot: Cotizacion) -> None:
         logger.warning("WhatsApp de creación falló: %s", exc)
 
     try:
-        tokens = _mobile_push_tokens_for_users(_mobile_push_user_ids_for_quote(cot))
-        _send_push_notification(
-            tokens,
-            title="Nueva cotización creada",
-            body=f"{cot.folio or 'Sin folio'} · {money(cot.total)} · {estatus_actual or 'SIN ESTATUS'}",
-            data={
-                "type": "quote_created",
-                "cotizacion_id": str(cot.id or ""),
-                "folio": str(cot.folio or ""),
-                "estatus": str(cot.estatus or ""),
-                "pdf_url": pdf_url,
-            },
-        )
+        _send_quote_approval_request_push(cot)
     except Exception as exc:
-        logger.warning("Push de creación falló: %s", exc)
+        logger.warning("Push de aprobación pendiente falló: %s", exc)
 
 
 def _send_quote_followup_push(cot: Cotizacion, seg: CotizacionSeguimiento) -> dict[str, int]:
-    tokens = _mobile_push_tokens_for_users(_mobile_push_user_ids_for_quote(cot))
+    tokens = _mobile_push_tokens_for_users(_mobile_push_user_ids_for_quote_owner(cot))
     preview = " ".join((seg.comentario or "").split())
     if len(preview) > 120:
         preview = preview[:117] + "..."
@@ -6114,6 +6144,8 @@ def api_mobile_login():
             "id": user.id,
             "nombre": user.nombre,
             "rol": user.rol,
+            "email": user.correo or "",
+            "correo": user.correo or "",
             "responsable": _mobile_user_responsable(user),
         },
     })
@@ -8115,6 +8147,7 @@ def _apply_quote_review_decision(c: Cotizacion, selected_status: str, reason: st
     if selected_status == "RECHAZADO" and not reason.strip():
         abort(400)
 
+    previous_status = c.estatus
     c.estatus = selected_status
     comentario = f"Revision de cotizacion: {selected_status}."
     if reason.strip():
@@ -8130,6 +8163,10 @@ def _apply_quote_review_decision(c: Cotizacion, selected_status: str, reason: st
     db.session.add(seg)
     db.session.commit()
     _send_quote_review_response_email(c, selected_status, reason)
+    try:
+        _send_quote_status_push(c, previous_status, selected_status)
+    except Exception as exc:
+        logger.warning("Push de respuesta de revisión falló: %s", exc)
     return seg
 
 
