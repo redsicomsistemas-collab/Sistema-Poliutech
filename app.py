@@ -7646,6 +7646,22 @@ def _unique_emails(*groups: list[str]) -> list[str]:
     return unique
 
 
+def _quote_responsible_email(c: Cotizacion) -> list[str]:
+    responsable = (c.responsable or "").strip()
+    if not responsable:
+        return []
+
+    user = Usuario.query.filter(
+        or_(
+            db.func.lower(Usuario.nombre) == responsable.lower(),
+            db.func.lower(db.func.coalesce(Usuario.nombre_visible, "")) == responsable.lower(),
+        )
+    ).first()
+    if not user or not (user.correo or "").strip():
+        return []
+    return _parse_email_list(user.correo)
+
+
 def _usuarios_etiquetables() -> list[Usuario]:
     return Usuario.query.order_by(Usuario.nombre.asc()).all()
 
@@ -8047,6 +8063,7 @@ def _quote_review_response_mail_html(c: Cotizacion, selected_status: str, reason
 
 def _send_quote_review_response_email(c: Cotizacion, selected_status: str, reason: str = "") -> None:
     recipients = _unique_emails(
+        _quote_responsible_email(c),
         _parse_email_list(COTIZACION_RESPONSE_EMAIL),
         _parse_email_list(COTIZACION_APPROVALS_EMAIL),
     )
@@ -8132,12 +8149,12 @@ def cotizacion_revision_decidir(cot_id: int, action: str):
                     title=f"Rechazar {c.folio}",
                 ), 400
             _apply_quote_review_decision(c, selected_status, reason)
-            return redirect(url_for("index", quote_review_done="1"))
+            return redirect(url_for("view_cotizacion", cot_id=c.id, quote_review_done="1"))
 
         return render_template_string(_quote_reject_form_html(c, token), title=f"Rechazar {c.folio}")
 
     _apply_quote_review_decision(c, selected_status)
-    return redirect(url_for("index", quote_review_done="1"))
+    return redirect(url_for("view_cotizacion", cot_id=c.id, quote_review_done="1"))
 
 
 def _quote_reject_form_html(c: Cotizacion, token: str, error: str = "") -> str:

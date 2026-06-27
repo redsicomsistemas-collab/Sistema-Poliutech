@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Factura {{ factura.folio }}{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 my-4">
+  <div>
+    <h2 class="fw-bold text-primary mb-1">Factura {{ factura.folio }}</h2>
+    <div class="text-muted">{{ factura.receptor_nombre }} - {{ factura.receptor_rfc }}</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('facturacion.descargar_pdf', factura_id=factura.id) }}" class="btn btn-outline-primary" target="_blank">PDF</a>
+    <a href="{{ url_for('facturacion.index') }}" class="btn btn-outline-secondary">Volver</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <div class="text-muted small">Estado</div>
+      <div class="h5 mb-0"><span class="badge text-bg-secondary">{{ factura.estatus }}</span></div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <div class="text-muted small">Total</div>
+      <div class="h4 fw-bold text-primary mb-0">${{ "{:,.2f}".format(factura.total or 0) }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <div class="text-muted small">PAC</div>
+      <div class="h6 mb-0">{{ factura.pac or (config.pac if config else 'Sin configurar') }}</div>
+      <div class="small text-muted">{{ factura.pac_ambiente or (config.pac_ambiente if config else '') }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <div class="text-muted small">UUID</div>
+      <div class="small fw-semibold text-break">{{ factura.uuid or "Pendiente" }}</div>
+    </div></div>
+  </div>
+</div>
+
+{% if factura.error_timbrado %}
+<div class="alert alert-warning">{{ factura.error_timbrado }}</div>
+{% endif %}
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-light fw-bold">Datos CFDI</div>
+  <div class="card-body row g-3">
+    <div class="col-md-3"><div class="text-muted small">Uso CFDI</div><div class="fw-semibold">{{ factura.uso_cfdi }}</div></div>
+    <div class="col-md-3"><div class="text-muted small">Metodo</div><div class="fw-semibold">{{ factura.metodo_pago }}</div></div>
+    <div class="col-md-3"><div class="text-muted small">Forma</div><div class="fw-semibold">{{ factura.forma_pago }}</div></div>
+    <div class="col-md-3"><div class="text-muted small">Moneda</div><div class="fw-semibold">{{ factura.moneda }}</div></div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Cantidad</th>
+          <th>Unidad</th>
+          <th>Descripcion</th>
+          <th class="text-end">Precio</th>
+          <th class="text-end">IVA</th>
+          <th class="text-end">Importe</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in factura.partidas %}
+        <tr>
+          <td>{{ p.cantidad }}</td>
+          <td>{{ p.unidad }}</td>
+          <td>{{ p.descripcion }}</td>
+          <td class="text-end">${{ "{:,.2f}".format(p.valor_unitario or 0) }}</td>
+          <td class="text-end">${{ "{:,.2f}".format(p.iva_importe or 0) }}</td>
+          <td class="text-end">${{ "{:,.2f}".format(p.importe or 0) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr><th colspan="5" class="text-end">Subtotal</th><th class="text-end">${{ "{:,.2f}".format(factura.subtotal or 0) }}</th></tr>
+        <tr><th colspan="5" class="text-end">IVA</th><th class="text-end">${{ "{:,.2f}".format(factura.iva or 0) }}</th></tr>
+        <tr><th colspan="5" class="text-end">Total</th><th class="text-end">${{ "{:,.2f}".format(factura.total or 0) }}</th></tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+<div class="d-flex justify-content-end gap-2 mb-5">
+  {% if factura.estatus != 'TIMBRADA' %}
+  <form method="post" action="{{ url_for('facturacion.timbrar', factura_id=factura.id) }}">
+    <button class="btn btn-success">Intentar timbrar</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

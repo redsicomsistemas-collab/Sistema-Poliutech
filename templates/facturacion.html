@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Facturacion{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 my-4">
+  <div>
+    <h2 class="fw-bold text-primary mb-1">Facturacion</h2>
+    <div class="text-muted">CFDI, timbrado, XML/PDF y control fiscal.</div>
+  </div>
+  <a href="{{ url_for('facturacion.nueva') }}" class="btn btn-primary">Nueva factura</a>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Total emitido este mes</div>
+        <div class="h3 fw-bold text-primary mb-0">${{ "{:,.2f}".format(total_mes or 0) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Pendientes de timbrar</div>
+        <div class="h3 fw-bold text-warning mb-0">{{ pendientes }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">PAC</div>
+        <div class="h5 fw-bold mb-0">{{ config.pac if config else "Sin configurar" }}</div>
+        <div class="small text-muted">{{ config.pac_ambiente if config else "Captura datos fiscales abajo" }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-primary text-white fw-bold">Configuracion fiscal y PAC</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('facturacion.guardar_config') }}" class="row g-3">
+      <div class="col-md-2">
+        <label class="form-label">RFC emisor</label>
+        <input name="rfc" class="form-control text-uppercase" value="{{ config.rfc if config else '' }}" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Razon social</label>
+        <input name="razon_social" class="form-control text-uppercase" value="{{ config.razon_social if config else '' }}" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Regimen</label>
+        <input name="regimen_fiscal" class="form-control" placeholder="601" value="{{ config.regimen_fiscal if config else '' }}" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">C.P.</label>
+        <input name="codigo_postal" class="form-control" value="{{ config.codigo_postal if config else '' }}" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">PAC</label>
+        <select name="pac" class="form-select">
+          <option value="FACTURAMA" {% if not config or config.pac == 'FACTURAMA' %}selected{% endif %}>Facturama</option>
+          <option value="FINKOK" {% if config and config.pac == 'FINKOK' %}selected{% endif %}>Finkok</option>
+          <option value="SW" {% if config and config.pac == 'SW' %}selected{% endif %}>SW Sapien</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Ambiente</label>
+        <select name="pac_ambiente" class="form-select">
+          <option value="SANDBOX" {% if not config or config.pac_ambiente == 'SANDBOX' %}selected{% endif %}>Sandbox</option>
+          <option value="PRODUCCION" {% if config and config.pac_ambiente == 'PRODUCCION' %}selected{% endif %}>Produccion</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Usuario/API key PAC</label>
+        <input name="pac_usuario" class="form-control" value="{{ config.pac_usuario if config else '' }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Ruta .cer CSD</label>
+        <input name="csd_cer_path" class="form-control" value="{{ config.csd_cer_path if config else '' }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Ruta .key CSD</label>
+        <input name="csd_key_path" class="form-control" value="{{ config.csd_key_path if config else '' }}">
+      </div>
+      <div class="col-md-1">
+        <label class="form-label">No. cert.</label>
+        <input name="csd_no_certificado" class="form-control" value="{{ config.csd_no_certificado if config else '' }}">
+      </div>
+      <div class="col-12 d-flex justify-content-end">
+        <button class="btn btn-success">Guardar configuracion</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-light fw-bold">Facturas recientes</div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Folio</th>
+          <th>Fecha</th>
+          <th>Receptor</th>
+          <th>RFC</th>
+          <th>Estado</th>
+          <th class="text-end">Total</th>
+          <th class="text-end">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for factura in facturas %}
+        <tr>
+          <td class="fw-semibold">{{ factura.folio }}</td>
+          <td>{{ factura.fecha.strftime('%d/%m/%Y') if factura.fecha else '' }}</td>
+          <td>{{ factura.receptor_nombre }}</td>
+          <td>{{ factura.receptor_rfc }}</td>
+          <td><span class="badge text-bg-secondary">{{ factura.estatus }}</span></td>
+          <td class="text-end">${{ "{:,.2f}".format(factura.total or 0) }}</td>
+          <td class="text-end">
+            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('facturacion.detalle', factura_id=factura.id) }}">Ver</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted py-4">Todavia no hay facturas.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

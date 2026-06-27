@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}Nueva factura{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center my-4">
+  <div>
+    <h2 class="fw-bold text-primary mb-1">Nueva factura</h2>
+    <div class="text-muted">Borrador CFDI listo para timbrar cuando el PAC este conectado.</div>
+  </div>
+  <a href="{{ url_for('facturacion.index') }}" class="btn btn-outline-secondary">Volver</a>
+</div>
+
+<form method="post" action="{{ url_for('facturacion.crear') }}">
+  <input type="hidden" name="cotizacion_id" value="{{ cotizacion.id if cotizacion else '' }}">
+
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-primary text-white fw-bold">Datos del receptor</div>
+    <div class="card-body row g-3">
+      <div class="col-md-4">
+        <label class="form-label">Cliente del sistema</label>
+        <select name="cliente_id" class="form-select">
+          <option value="">Sin vincular</option>
+          {% for cliente in clientes %}
+          <option value="{{ cliente.id }}" {% if cotizacion and cotizacion.cliente_id == cliente.id %}selected{% endif %}>
+            {{ cliente.empresa or cliente.nombre_cliente }}{% if cliente.rfc %} - {{ cliente.rfc }}{% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Razon social / nombre</label>
+        <input name="receptor_nombre" class="form-control text-uppercase" value="{{ (cotizacion.cliente.empresa or cotizacion.cliente.nombre_cliente) if cotizacion and cotizacion.cliente else '' }}" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">RFC</label>
+        <input name="receptor_rfc" class="form-control text-uppercase" value="{{ cotizacion.cliente.rfc if cotizacion and cotizacion.cliente else '' }}" required>
+      </div>
+      <div class="col-md-1">
+        <label class="form-label">Regimen</label>
+        <input name="receptor_regimen_fiscal" class="form-control" placeholder="601">
+      </div>
+      <div class="col-md-1">
+        <label class="form-label">C.P.</label>
+        <input name="receptor_codigo_postal" class="form-control">
+      </div>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-light fw-bold">Datos CFDI</div>
+    <div class="card-body row g-3">
+      <div class="col-md-2">
+        <label class="form-label">Serie</label>
+        <input name="serie" class="form-control" value="F">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Tipo</label>
+        <select name="tipo_comprobante" class="form-select">
+          <option value="I">Ingreso</option>
+          <option value="E">Egreso</option>
+          <option value="P">Pago</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Uso CFDI</label>
+        <input name="uso_cfdi" class="form-control" value="G03">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Metodo pago</label>
+        <select name="metodo_pago" class="form-select">
+          <option value="PUE">PUE</option>
+          <option value="PPD">PPD</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Forma pago</label>
+        <input name="forma_pago" class="form-control" value="03">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Moneda</label>
+        <input name="moneda" class="form-control" value="MXN">
+      </div>
+      <div class="col-12">
+        <label class="form-label">Notas internas</label>
+        <textarea name="notas" rows="2" class="form-control"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-light fw-bold">Conceptos</div>
+    <div class="card-body">
+      {% if cotizacion %}
+      <div class="alert alert-info">Se tomaran los conceptos de la cotizacion {{ cotizacion.folio }}.</div>
+      <div class="table-responsive">
+        <table class="table table-sm">
+          <thead><tr><th>Cantidad</th><th>Unidad</th><th>Concepto</th><th class="text-end">Importe</th></tr></thead>
+          <tbody>
+            {% for d in cotizacion.detalles %}
+            <tr>
+              <td>{{ d.cantidad }}</td>
+              <td>{{ d.unidad }}</td>
+              <td>{{ d.nombre_concepto }}</td>
+              <td class="text-end">${{ "{:,.2f}".format(d.subtotal or 0) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div id="partidas" class="vstack gap-2">
+        <div class="row g-2 partida">
+          <div class="col-md-2"><input name="cantidad[]" type="number" step="any" min="0" class="form-control" value="1" placeholder="Cant."></div>
+          <div class="col-md-2"><input name="unidad[]" class="form-control" value="Servicio" placeholder="Unidad"></div>
+          <div class="col-md-5"><input name="descripcion[]" class="form-control" placeholder="Descripcion"></div>
+          <div class="col-md-2"><input name="valor_unitario[]" type="number" step="any" min="0" class="form-control" placeholder="Precio"></div>
+          <div class="col-md-1 d-grid"><button type="button" class="btn btn-outline-danger" onclick="this.closest('.partida').remove()">Quitar</button></div>
+        </div>
+      </div>
+      <button type="button" class="btn btn-outline-primary mt-3" onclick="addPartida()">Agregar concepto</button>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="d-flex justify-content-end gap-2 mb-5">
+    <a href="{{ url_for('facturacion.index') }}" class="btn btn-outline-secondary">Cancelar</a>
+    <button class="btn btn-success">Guardar borrador</button>
+  </div>
+</form>
+
+<script>
+function addPartida() {
+  const root = document.getElementById('partidas');
+  const row = root.querySelector('.partida').cloneNode(true);
+  row.querySelectorAll('input').forEach((input) => {
+    if (input.name === 'cantidad[]') input.value = '1';
+    else if (input.name === 'unidad[]') input.value = 'Servicio';
+    else input.value = '';
+  });
+  root.appendChild(row);
+}
+</script>
+{% endblock %}
