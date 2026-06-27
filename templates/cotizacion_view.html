@@ -7,7 +7,9 @@
     <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
       <h5 class="mb-0">Cotización <b>{{ c.folio }}</b></h5>
       <div class="d-flex gap-2">
+        {% if endpoint_exists('facturacion.nueva') %}
         <a href="{{ url_for('facturacion.nueva', cotizacion_id=c.id) }}" class="btn btn-success btn-sm">Facturar</a>
+        {% endif %}
         <a href="{{ url_for('index') }}" class="btn btn-light btn-sm">← Volver</a>
       </div>
     </div>

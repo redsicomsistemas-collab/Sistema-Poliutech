@@ -2612,6 +2612,14 @@ logger = logging.getLogger(__name__)
 db.init_app(app)
 
 
+@app.context_processor
+def inject_endpoint_helpers():
+    def endpoint_exists(endpoint: str) -> bool:
+        return endpoint in current_app.view_functions
+
+    return {"endpoint_exists": endpoint_exists}
+
+
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
