@@ -1946,7 +1946,7 @@ def _send_push_notification(tokens: list[str], title: str, body: str, data: Opti
             failed += 1
             logger.warning("Push fallido para token móvil: %s", exc)
             err = str(exc).lower()
-            if any(fragment in err for fragment in ["registration-token", "not registered", "invalid argument"]):
+            if any(fragment in err for fragment in ["registration-token", "not registered", "invalid argument", "requested entity was not found"]):
                 _deactivate_mobile_device(token)
     return {"sent": sent, "failed": failed}
 
@@ -1985,7 +1985,7 @@ def _send_push_notification_debug(tokens: list[str], title: str, body: str, data
                 "error_type": exc.__class__.__name__,
                 "error": err,
             })
-            if any(fragment in err.lower() for fragment in ["registration-token", "not registered", "invalid argument"]):
+            if any(fragment in err.lower() for fragment in ["registration-token", "not registered", "invalid argument", "requested entity was not found"]):
                 _deactivate_mobile_device(token)
     return {"sent": sent, "failed": failed, "errors": errors}
 
