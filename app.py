@@ -9226,6 +9226,36 @@ def debug_mobile_push_hansel():
         "errors": result.get("errors", []),
     })
 
+@app.route("/debug/mobile_devices_hansel")
+@login_required
+def debug_mobile_devices_hansel():
+    if not is_admin():
+        abort(403)
+    rows = (
+        MobileDevice.query
+        .filter(MobileDevice.usuario_id.in_([18]))
+        .order_by(MobileDevice.updated_at.desc())
+        .all()
+    )
+    return jsonify({
+        "ok": True,
+        "user_id": 18,
+        "devices": [
+            {
+                "id": row.id,
+                "active": bool(row.is_active),
+                "platform": row.plataforma,
+                "device_name": row.device_name,
+                "app_version": row.app_version,
+                "token_prefix": (row.token or "")[:18],
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+                "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+                "last_seen_at": row.last_seen_at.isoformat() if row.last_seen_at else None,
+            }
+            for row in rows
+        ],
+    })
+
 @app.route("/debug/force_reminders")
 @login_required
 def debug_force_reminders():
