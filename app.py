@@ -1731,9 +1731,24 @@ def _mobile_push_tokens_for_users(user_ids: list[int]) -> list[str]:
     return unique_tokens
 
 
+def _mobile_all_active_push_tokens() -> list[str]:
+    rows = MobileDevice.query.filter(MobileDevice.is_active.is_(True)).all()
+    unique_tokens: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        token = (row.token or "").strip()
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        unique_tokens.append(token)
+    return unique_tokens
+
+
 def _mobile_push_user_ids_for_approval_reviewer() -> list[int]:
     review_emails = {email.lower() for email in _parse_email_list(COTIZACION_REVIEW_EMAIL)}
+    review_emails.add("hjaramillo@poliutech.com")
     hansel_aliases = {"hansel", "hansel alejandro", "hansel angel", "hansel ángel"}
+    fixed_reviewer_ids = {18}
     users = Usuario.query.all()
     user_ids: set[int] = set()
     for user in users:
@@ -1743,7 +1758,8 @@ def _mobile_push_user_ids_for_approval_reviewer() -> list[int]:
         user_email = (getattr(user, "correo", "") or "").strip().lower()
         identity_parts = {user_name, visible_name, raw_visible_name, user_email}
         if (
-            any(part in hansel_aliases or part.startswith("hansel ") for part in identity_parts if part)
+            user.id in fixed_reviewer_ids
+            or any(part in hansel_aliases or part.startswith("hansel ") for part in identity_parts if part)
             or user_email in review_emails
         ):
             if user.id:
@@ -1800,10 +1816,19 @@ def _send_quote_status_push(cot: Cotizacion, previous_status: str, new_status: s
 def _send_quote_approval_request_push(cot: Cotizacion) -> dict[str, int]:
     reviewer_ids = _mobile_push_user_ids_for_approval_reviewer()
     tokens = _mobile_push_tokens_for_users(reviewer_ids)
+    using_active_device_fallback = False
     if not reviewer_ids:
         logger.warning("Push aprobación %s: no hay usuario Hansel/revisor configurado.", cot.folio or cot.id)
-    elif not tokens:
+    if not tokens:
         logger.warning("Push aprobación %s: Hansel/revisor %s no tiene token móvil activo.", cot.folio or cot.id, reviewer_ids)
+        tokens = _mobile_all_active_push_tokens()
+        using_active_device_fallback = bool(tokens)
+        if using_active_device_fallback:
+            logger.warning(
+                "Push aprobación %s: usando respaldo a todos los dispositivos activos (%s tokens).",
+                cot.folio or cot.id,
+                len(tokens),
+            )
     result = _send_push_notification(
         tokens,
         title="Cotización pendiente de aprobación",
@@ -1814,15 +1839,18 @@ def _send_quote_approval_request_push(cot: Cotizacion) -> dict[str, int]:
             "folio": str(cot.folio or ""),
             "estatus": str(cot.estatus or ""),
             "pdf_url": _mobile_quote_pdf_url(cot.id),
-            "target_user_id": str(reviewer_ids[0]) if len(reviewer_ids) == 1 else "",
             "target_user": "Hansel",
+            "target_user_name": "Hansel",
+            "recipient_user_name": "Hansel",
+            "approval_reviewer": "Hansel",
         },
     )
     logger.info(
-        "Push aprobación %s: reviewers=%s tokens=%s sent=%s failed=%s",
+        "Push aprobación %s: reviewers=%s tokens=%s fallback=%s sent=%s failed=%s",
         cot.folio or cot.id,
         reviewer_ids,
         len(tokens),
+        using_active_device_fallback,
         result.get("sent", 0),
         result.get("failed", 0),
     )
@@ -9117,6 +9145,38 @@ def debug_send_test():
     msg = "✅ Mensaje de prueba - Sistema Poliutech (debug_send_test)."
     send_whatsapp_multi(ADMIN_LIST, msg)
     return jsonify({"sent": True, "to": ADMIN_LIST})
+
+@app.route("/debug/mobile_push_hansel")
+@login_required
+def debug_mobile_push_hansel():
+    if not is_admin():
+        abort(403)
+    reviewer_ids = _mobile_push_user_ids_for_approval_reviewer()
+    tokens = _mobile_push_tokens_for_users(reviewer_ids)
+    used_fallback = False
+    if not tokens:
+        tokens = _mobile_all_active_push_tokens()
+        used_fallback = bool(tokens)
+    result = _send_push_notification(
+        tokens,
+        title="Prueba de notificación Hansel",
+        body="Si ves esto, el token móvil y Firebase están funcionando.",
+        data={
+            "type": "quote_pending_approval",
+            "target_user": "Hansel",
+            "target_user_name": "Hansel",
+            "recipient_user_name": "Hansel",
+            "approval_reviewer": "Hansel",
+        },
+    )
+    return jsonify({
+        "ok": True,
+        "reviewer_ids": reviewer_ids,
+        "tokens": len(tokens),
+        "used_fallback": used_fallback,
+        "sent": result.get("sent", 0),
+        "failed": result.get("failed", 0),
+    })
 
 @app.route("/debug/force_reminders")
 @login_required
