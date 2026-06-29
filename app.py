@@ -1733,21 +1733,25 @@ def _mobile_push_tokens_for_users(user_ids: list[int]) -> list[str]:
 
 def _mobile_push_user_ids_for_approval_reviewer() -> list[int]:
     review_emails = {email.lower() for email in _parse_email_list(COTIZACION_REVIEW_EMAIL)}
+    hansel_aliases = {"hansel", "hansel alejandro", "hansel angel", "hansel ángel"}
     users = Usuario.query.all()
     user_ids: set[int] = set()
     for user in users:
         user_name = (getattr(user, "nombre", "") or "").strip().lower()
-        visible_name = _mobile_user_responsable(user).strip().lower()
+        visible_name = (_mobile_user_responsable(user) or "").strip().lower()
+        raw_visible_name = (getattr(user, "nombre_visible", "") or "").strip().lower()
         user_email = (getattr(user, "correo", "") or "").strip().lower()
+        identity_parts = {user_name, visible_name, raw_visible_name, user_email}
         if (
-            user_name == "hansel"
-            or visible_name == "hansel"
-            or visible_name.startswith("hansel ")
+            any(part in hansel_aliases or part.startswith("hansel ") for part in identity_parts if part)
             or user_email in review_emails
         ):
             if user.id:
                 user_ids.add(user.id)
-    return list(user_ids)
+    result = list(user_ids)
+    if not result:
+        logger.warning("Push aprobación: no se encontró usuario revisor Hansel ni correo %s.", sorted(review_emails))
+    return result
 
 
 def _mobile_push_user_ids_for_quote_owner(cot: Cotizacion) -> list[int]:
@@ -1796,7 +1800,11 @@ def _send_quote_status_push(cot: Cotizacion, previous_status: str, new_status: s
 def _send_quote_approval_request_push(cot: Cotizacion) -> dict[str, int]:
     reviewer_ids = _mobile_push_user_ids_for_approval_reviewer()
     tokens = _mobile_push_tokens_for_users(reviewer_ids)
-    return _send_push_notification(
+    if not reviewer_ids:
+        logger.warning("Push aprobación %s: no hay usuario Hansel/revisor configurado.", cot.folio or cot.id)
+    elif not tokens:
+        logger.warning("Push aprobación %s: Hansel/revisor %s no tiene token móvil activo.", cot.folio or cot.id, reviewer_ids)
+    result = _send_push_notification(
         tokens,
         title="Cotización pendiente de aprobación",
         body=f"{cot.folio or 'Sin folio'} · {money(cot.total)}",
@@ -1810,6 +1818,15 @@ def _send_quote_approval_request_push(cot: Cotizacion) -> dict[str, int]:
             "target_user": "Hansel",
         },
     )
+    logger.info(
+        "Push aprobación %s: reviewers=%s tokens=%s sent=%s failed=%s",
+        cot.folio or cot.id,
+        reviewer_ids,
+        len(tokens),
+        result.get("sent", 0),
+        result.get("failed", 0),
+    )
+    return result
 
 
 def _send_quote_created_notification(cot: Cotizacion) -> None:
@@ -1876,6 +1893,7 @@ def _send_push_notification(tokens: list[str], title: str, body: str, data: Opti
         return {"sent": 0, "failed": 0}
     app_instance = _get_firebase_app()
     if app_instance is None or firebase_messaging is None:
+        logger.warning("Push no enviado: Firebase no está configurado o firebase_messaging no está disponible.")
         return {"sent": 0, "failed": len(tokens)}
 
     sent = 0
