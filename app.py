@@ -1813,6 +1813,38 @@ def _send_quote_status_push(cot: Cotizacion, previous_status: str, new_status: s
     )
 
 
+def _send_quote_review_result_push(cot: Cotizacion, selected_status: str, reason: str = "") -> dict[str, int]:
+    normalized = (selected_status or "").strip().upper()
+    owner_ids = _mobile_push_user_ids_for_quote_owner(cot)
+    tokens = _mobile_push_tokens_for_users(owner_ids)
+    if normalized in {"APROBADO", "AUTORIZADO"}:
+        title = "Cotización aprobada"
+        body = f"{cot.folio or 'Sin folio'} fue aprobada."
+    elif normalized == "RECHAZADO":
+        title = "Cotización rechazada"
+        reason_text = " ".join((reason or "").split())
+        body = f"{cot.folio or 'Sin folio'} fue rechazada."
+        if reason_text:
+            body = f"{body} Motivo: {reason_text}"
+    else:
+        title = "Cotización en revisión"
+        body = f"{cot.folio or 'Sin folio'} quedó en revisión."
+    return _send_push_notification(
+        tokens,
+        title=title,
+        body=body,
+        data={
+            "type": "quote_review_result",
+            "cotizacion_id": str(cot.id or ""),
+            "folio": str(cot.folio or ""),
+            "estatus": normalized,
+            "reason": str(reason or ""),
+            "pdf_url": _mobile_quote_pdf_url(cot.id),
+            "target_user_id": str(owner_ids[0]) if len(owner_ids) == 1 else "",
+        },
+    )
+
+
 def _send_quote_approval_request_push(cot: Cotizacion) -> dict[str, int]:
     reviewer_ids = _mobile_push_user_ids_for_approval_reviewer()
     hansel_ids = [18]
@@ -1846,6 +1878,7 @@ def _send_quote_approval_request_push(cot: Cotizacion) -> dict[str, int]:
             "target_user_name": "Hansel",
             "recipient_user_name": "Hansel",
             "approval_reviewer": "Hansel",
+            "requires_decision": "true",
         },
     )
     logger.info(
@@ -6519,6 +6552,50 @@ def api_mobile_update_quote_status(cot_id: int):
     })
 
 
+@app.route("/api/mobile/cotizaciones/<int:cot_id>/revision", methods=["POST"])
+@require_mobile_auth
+def api_mobile_quote_review_decision(cot_id: int):
+    user = g.mobile_user
+    user_name = (_mobile_user_responsable(user) or getattr(user, "nombre", "") or "").strip().lower()
+    user_email = (getattr(user, "correo", "") or "").strip().lower()
+    if user.id != 18 and not user_name.startswith("hansel") and user_email != "hjaramillo@poliutech.com":
+        return _mobile_json_error("Solo Hansel puede aprobar o rechazar cotizaciones.", 403)
+
+    cot = _cotizacion_activa_or_404(cot_id)
+    payload = request.get_json(silent=True) or {}
+    action = (payload.get("action") or "").strip().lower()
+    reason = (payload.get("reason") or payload.get("motivo") or "").strip()
+    status_by_action = {
+        "approve": "APROBADO",
+        "approved": "APROBADO",
+        "aprobar": "APROBADO",
+        "reject": "RECHAZADO",
+        "rejected": "RECHAZADO",
+        "rechazar": "RECHAZADO",
+    }
+    selected_status = status_by_action.get(action)
+    if not selected_status:
+        return _mobile_json_error("Acción inválida.", 400)
+    if selected_status == "RECHAZADO" and not reason:
+        return _mobile_json_error("Captura el motivo del rechazo.", 400)
+
+    author = _mobile_user_responsable(user) or getattr(user, "nombre", "") or "Hansel"
+    seg = _apply_quote_review_decision(
+        cot,
+        selected_status,
+        reason,
+        actor=user,
+        author_label=f"Revision movil: {author}",
+    )
+    return jsonify({
+        "ok": True,
+        "cotizacion": _mobile_quote_to_json(cot),
+        "seguimiento_id": seg.id,
+        "estatus": selected_status,
+        "reason": reason,
+    })
+
+
 @app.route("/api/mobile/cotizaciones/<int:cot_id>/seguimiento/<int:seg_id>", methods=["GET"])
 @require_mobile_auth
 def api_mobile_quote_followup_detail(cot_id: int, seg_id: int):
@@ -8247,7 +8324,13 @@ def _send_quote_review_email_safely(c: Cotizacion) -> None:
         print(f"[Cotizaciones] Error enviando revision {c.folio or c.id}: {exc}", file=sys.stderr)
 
 
-def _apply_quote_review_decision(c: Cotizacion, selected_status: str, reason: str = "") -> CotizacionSeguimiento:
+def _apply_quote_review_decision(
+    c: Cotizacion,
+    selected_status: str,
+    reason: str = "",
+    actor: Optional[Usuario] = None,
+    author_label: str = "Revision por correo",
+) -> CotizacionSeguimiento:
     selected_status = (selected_status or "").strip().upper()
     if selected_status not in {"APROBADO", "AUTORIZADO", "RECHAZADO", "EN REVISIÓN"}:
         abort(400)
@@ -8261,8 +8344,8 @@ def _apply_quote_review_decision(c: Cotizacion, selected_status: str, reason: st
         comentario += f"\nMotivo de rechazo: {reason.strip()}"
     seg = CotizacionSeguimiento(
         cotizacion_id=c.id,
-        usuario_id=None,
-        autor="Revision por correo",
+        usuario_id=getattr(actor, "id", None),
+        autor=author_label or "Revision por correo",
         comentario=comentario,
         fecha_seguimiento=now_cdmx_naive(),
         actualizado_en=now_cdmx_naive(),
@@ -8271,7 +8354,7 @@ def _apply_quote_review_decision(c: Cotizacion, selected_status: str, reason: st
     db.session.commit()
     _send_quote_review_response_email(c, selected_status, reason)
     try:
-        _send_quote_status_push(c, previous_status, selected_status)
+        _send_quote_review_result_push(c, selected_status, reason)
     except Exception as exc:
         logger.warning("Push de respuesta de revisión falló: %s", exc)
     return seg
