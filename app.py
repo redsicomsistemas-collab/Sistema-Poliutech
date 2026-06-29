@@ -1815,8 +1815,11 @@ def _send_quote_status_push(cot: Cotizacion, previous_status: str, new_status: s
 
 def _send_quote_approval_request_push(cot: Cotizacion) -> dict[str, int]:
     reviewer_ids = _mobile_push_user_ids_for_approval_reviewer()
-    tokens = _mobile_push_tokens_for_users(reviewer_ids)
+    hansel_ids = [18]
+    tokens = _mobile_push_tokens_for_users(hansel_ids)
     using_active_device_fallback = False
+    if not tokens:
+        tokens = _mobile_push_tokens_for_users(reviewer_ids)
     if not reviewer_ids:
         logger.warning("Push aprobación %s: no hay usuario Hansel/revisor configurado.", cot.folio or cot.id)
     if not tokens:
@@ -1846,8 +1849,9 @@ def _send_quote_approval_request_push(cot: Cotizacion) -> dict[str, int]:
         },
     )
     logger.info(
-        "Push aprobación %s: reviewers=%s tokens=%s fallback=%s sent=%s failed=%s",
+        "Push aprobación %s: hansel_ids=%s reviewers=%s tokens=%s fallback=%s sent=%s failed=%s",
         cot.folio or cot.id,
+        hansel_ids,
         reviewer_ids,
         len(tokens),
         using_active_device_fallback,
@@ -1945,6 +1949,45 @@ def _send_push_notification(tokens: list[str], title: str, body: str, data: Opti
             if any(fragment in err for fragment in ["registration-token", "not registered", "invalid argument"]):
                 _deactivate_mobile_device(token)
     return {"sent": sent, "failed": failed}
+
+
+def _send_push_notification_debug(tokens: list[str], title: str, body: str, data: Optional[dict[str, str]] = None) -> dict:
+    if not tokens:
+        return {"sent": 0, "failed": 0, "errors": []}
+    app_instance = _get_firebase_app()
+    if app_instance is None or firebase_messaging is None:
+        return {
+            "sent": 0,
+            "failed": len(tokens),
+            "errors": [{"error": "Firebase no está configurado o firebase_messaging no está disponible."}],
+        }
+
+    sent = 0
+    failed = 0
+    errors = []
+    payload_data = {str(k): str(v) for k, v in (data or {}).items()}
+    payload_data["title"] = str(title)
+    payload_data["body"] = str(body)
+    for token in tokens:
+        try:
+            message = firebase_messaging.Message(
+                token=token,
+                data=payload_data,
+                android=firebase_messaging.AndroidConfig(priority="high"),
+            )
+            firebase_messaging.send(message, app=app_instance)
+            sent += 1
+        except Exception as exc:
+            failed += 1
+            err = str(exc)
+            errors.append({
+                "token_prefix": token[:18],
+                "error_type": exc.__class__.__name__,
+                "error": err,
+            })
+            if any(fragment in err.lower() for fragment in ["registration-token", "not registered", "invalid argument"]):
+                _deactivate_mobile_device(token)
+    return {"sent": sent, "failed": failed, "errors": errors}
 
 
 def _filter_registro_obras_for_mobile(rows: list[dict], user: Usuario, obra: str = "", responsable: str = "") -> list[dict]:
@@ -9152,12 +9195,15 @@ def debug_mobile_push_hansel():
     if not is_admin():
         abort(403)
     reviewer_ids = _mobile_push_user_ids_for_approval_reviewer()
-    tokens = _mobile_push_tokens_for_users(reviewer_ids)
+    hansel_ids = [18]
+    tokens = _mobile_push_tokens_for_users(hansel_ids)
     used_fallback = False
+    if not tokens:
+        tokens = _mobile_push_tokens_for_users(reviewer_ids)
     if not tokens:
         tokens = _mobile_all_active_push_tokens()
         used_fallback = bool(tokens)
-    result = _send_push_notification(
+    result = _send_push_notification_debug(
         tokens,
         title="Prueba de notificación Hansel",
         body="Si ves esto, el token móvil y Firebase están funcionando.",
@@ -9171,11 +9217,13 @@ def debug_mobile_push_hansel():
     )
     return jsonify({
         "ok": True,
+        "hansel_ids": hansel_ids,
         "reviewer_ids": reviewer_ids,
         "tokens": len(tokens),
         "used_fallback": used_fallback,
         "sent": result.get("sent", 0),
         "failed": result.get("failed", 0),
+        "errors": result.get("errors", []),
     })
 
 @app.route("/debug/force_reminders")
