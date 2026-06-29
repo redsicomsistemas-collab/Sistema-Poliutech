@@ -6267,6 +6267,24 @@ def api_mobile_push_token_register():
     })
 
 
+@app.route("/api/mobile/session-token", methods=["GET"])
+@login_required
+def api_mobile_session_token():
+    user = current_user
+    return jsonify({
+        "ok": True,
+        "token": _issue_mobile_token(user),
+        "user": {
+            "id": user.id,
+            "nombre": user.nombre,
+            "rol": user.rol,
+            "email": user.correo or "",
+            "correo": user.correo or "",
+            "responsable": _mobile_user_responsable(user),
+        },
+    })
+
+
 @app.route("/api/mobile/push-token", methods=["DELETE"])
 @require_mobile_auth
 def api_mobile_push_token_unregister():
