@@ -7277,6 +7277,13 @@ def actualizar_cotizacion(cot_id: int):
     except Exception as e:
         print(f"[Twilio] Error en actualización: {e}", file=sys.stderr)
 
+    try:
+        _send_quote_approval_request_push(c)
+    except Exception as e:
+        logger.warning("Push de aprobación por edición falló: %s", e)
+
+    _send_quote_review_email_safely(c)
+
     pdf_url = url_for("export_cotizacion_pdf", cot_id=c.id)
     detalle = url_for("view_cotizacion", cot_id=c.id)
     return f"""<!DOCTYPE html>
