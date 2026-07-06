@@ -3,6 +3,12 @@
    ========================================================= */
 
 /* === Base general (solo pequeños ajustes visuales globales) === */
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 body {
   background-color: #ffffff;
   font-family: "Inter", "Segoe UI", sans-serif;
@@ -10,7 +16,7 @@ body {
 }
 
 /* Centrado y alineación general */
-.container, main, .row {
+.container {
   margin-left: auto;
   margin-right: auto;
   max-width: 1300px;
@@ -89,10 +95,10 @@ canvas {
 
   /* Centrado general */
   body {
-    padding: 0 10px !important;
+    padding: 0 !important;
   }
 
-  main, .container, .card, .row {
+  main, .container, .card {
     margin-left: auto !important;
     margin-right: auto !important;
     width: 100% !important;
@@ -245,15 +251,15 @@ canvas {
 .dashboard-monthly-chart {
   position: relative !important;
   width: 100% !important;
-  height: 315px !important;
-  min-height: 315px !important;
+  height: calc(100% - 42px) !important;
+  min-height: 0 !important;
 }
 
 .dashboard-status-chart {
   position: relative !important;
   width: 100% !important;
-  height: 315px !important;
-  min-height: 315px !important;
+  height: calc(100% - 42px) !important;
+  min-height: 0 !important;
 }
 
 .dashboard-charts-row #chartMensual,

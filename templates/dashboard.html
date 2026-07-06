@@ -6,6 +6,33 @@
     width: 100%;
   }
 
+  .dashboard-metrics-row,
+  .dashboard-actions-row,
+  .dashboard-charts-row {
+    --bs-gutter-x: 1rem;
+  }
+
+  .dashboard-metric-card .card-body {
+    min-height: 112px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .dashboard-metric-card h3 {
+    font-size: clamp(1.55rem, 2.2vw, 2.15rem);
+    line-height: 1.1;
+    overflow-wrap: anywhere;
+  }
+
+  .dashboard-actions-row .btn {
+    min-height: 58px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: normal;
+  }
+
   .dashboard-filters .filter-actions {
     display: flex;
     flex-wrap: wrap;
@@ -119,17 +146,17 @@
   }
 
   .dashboard-chart-card .card-body {
-    height: 390px;
+    height: clamp(300px, 38vh, 370px);
   }
 
   .dashboard-monthly-chart {
     position: relative;
-    height: 315px;
+    height: calc(100% - 42px);
   }
 
   .dashboard-status-chart {
     position: relative;
-    height: 315px;
+    height: calc(100% - 42px);
   }
 
   .dashboard-charts-row {
@@ -176,37 +203,10 @@
   }
 </style>
 
-<div class="row mb-4 text-center">
-  <div class="col-md-3">
-    <div class="card border-success shadow-sm">
-      <div class="card-body">
-        <h6 class="text-success">Importe Total</h6>
-        <h3 class="fw-bold text-dark" data-summary="importe-total">${{ "{:,.2f}".format(total_importe) }}</h3>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-3">
-    <div class="card border-primary shadow-sm">
-      <div class="card-body">
-        <h6 class="text-primary">Cotizaciones Totales</h6>
-        <h3 class="fw-bold text-dark" data-summary="cotizaciones-total">{{ total_cotizaciones }}</h3>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-3">
-    <div class="card border-info shadow-sm">
-      <div class="card-body">
-        <h6 class="text-info">Conceptos Registrados</h6>
-        <h3 class="fw-bold text-dark" data-summary="conceptos-total">{{ total_catalogo }}</h3>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- 🔢 MÉTRICAS -->
-<div class="row mb-4 text-center">
+<div class="row g-3 mb-4 text-center dashboard-metrics-row">
   <div class="col-md-4">
-    <div class="card border-success shadow-sm">
+    <div class="card border-success shadow-sm dashboard-metric-card h-100">
       <div class="card-body">
         <h6 class="text-success">Importe Total</h6>
         <h3 class="fw-bold text-dark" data-summary="importe-total">${{ "{:,.2f}".format(total_importe) }}</h3>
@@ -214,7 +214,7 @@
     </div>
   </div>
   <div class="col-md-4">
-    <div class="card border-primary shadow-sm">
+    <div class="card border-primary shadow-sm dashboard-metric-card h-100">
       <div class="card-body">
         <h6 class="text-primary">Cotizaciones Totales</h6>
         <h3 class="fw-bold text-dark" data-summary="cotizaciones-total">{{ total_cotizaciones }}</h3>
@@ -222,7 +222,7 @@
     </div>
   </div>
   <div class="col-md-4">
-    <div class="card border-info shadow-sm">
+    <div class="card border-info shadow-sm dashboard-metric-card h-100">
       <div class="card-body">
         <h6 class="text-info">Conceptos Registrados</h6>
         <h3 class="fw-bold text-dark" data-summary="conceptos-total">{{ total_catalogo }}</h3>
@@ -231,7 +231,7 @@
   </div>
 </div>
 
-<div class="row g-3 mb-4">
+<div class="row g-3 mb-4 dashboard-actions-row">
   <div class="col-md-3">
     <a href="{{ url_for('ordenes_compra_index') }}" class="btn btn-primary w-100 shadow-sm py-3 fw-bold">
       Generar Orden de Compra
