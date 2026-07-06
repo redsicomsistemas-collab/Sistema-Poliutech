@@ -2728,6 +2728,8 @@ from models import (
     InventarioMovimiento,
     OrdenCompra,
     OrdenCompraPartida,
+    SolicitudRecurso,
+    SolicitudRecursoPartida,
     MovimientoFinanciero,
     ComprobacionGasto,
     ComprobacionAdjunto,
@@ -9647,6 +9649,8 @@ ORDEN_COMPRA_ESTATUS = (
     "PAGADA",
 )
 ORDEN_COMPRA_UPLOAD_EXTS = {"pdf", "png", "jpg", "jpeg", "webp"}
+SOLICITUD_RECURSO_ESTATUS = ("SOLICITADA", "AUTORIZADA", "RECHAZADA", "ENTREGADA", "CANCELADA")
+SOLICITUD_RECURSO_EMAILS = ("sistemas@poliutech.com", "hjaramillo@poliutech.com")
 
 
 def _parse_date_or_none(raw: str):
@@ -9657,6 +9661,149 @@ def _parse_date_or_none(raw: str):
         return datetime.strptime(raw, "%Y-%m-%d")
     except ValueError:
         return None
+
+
+def _solicitud_recurso_next_folio() -> str:
+    year = now_cdmx_naive().year
+    prefix = f"SR-{year}-"
+    latest = (
+        SolicitudRecurso.query
+        .filter(SolicitudRecurso.folio.like(f"{prefix}%"))
+        .order_by(SolicitudRecurso.id.desc())
+        .first()
+    )
+    if latest and latest.folio:
+        try:
+            seq = int(latest.folio.rsplit("-", 1)[-1]) + 1
+        except Exception:
+            seq = latest.id + 1
+    else:
+        seq = 1
+    return f"{prefix}{seq:04d}"
+
+
+def _solicitud_recurso_recalcular(solicitud: SolicitudRecurso) -> None:
+    total = 0.0
+    for partida in solicitud.partidas:
+        partida.cantidad = fmt(partida.cantidad or 0)
+        partida.importe = fmt(partida.importe or 0)
+        total += partida.importe
+    solicitud.total = fmt(total)
+    solicitud.actualizado_en = now_cdmx_naive()
+
+
+def _mobile_push_user_ids_for_hansel_only() -> list[int]:
+    hansel_aliases = {"hansel", "hansel alejandro", "hansel angel", "hansel ángel"}
+    hansel_emails = {"hjaramillo@poliutech.com"}
+    fixed_hansel_ids = {18}
+    user_ids: set[int] = set()
+    for user in Usuario.query.all():
+        user_name = (getattr(user, "nombre", "") or "").strip().lower()
+        visible_name = (_mobile_user_responsable(user) or "").strip().lower()
+        raw_visible_name = (getattr(user, "nombre_visible", "") or "").strip().lower()
+        user_email = (getattr(user, "correo", "") or "").strip().lower()
+        identity_parts = {user_name, visible_name, raw_visible_name}
+        if (
+            user.id in fixed_hansel_ids
+            or user_email in hansel_emails
+            or any(part in hansel_aliases or part.startswith("hansel ") for part in identity_parts if part)
+        ):
+            if user.id:
+                user_ids.add(user.id)
+    if not user_ids:
+        logger.warning("Push solicitud de recursos: no se encontro usuario Hansel.")
+    return list(user_ids)
+
+
+def _solicitud_recurso_mail_html(solicitud: SolicitudRecurso, detail_url: str) -> str:
+    rows = []
+    for partida in solicitud.partidas:
+        rows.append(
+            "<tr>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;'>{float(partida.cantidad or 0):,.2f}</td>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;'>{escape(partida.concepto or '')}</td>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;'>${float(partida.importe or 0):,.2f}</td>"
+            "</tr>"
+        )
+    partidas_html = "".join(rows) or "<tr><td colspan='3' style='padding:10px;'>Sin partidas.</td></tr>"
+    return f"""
+    <div style="font-family:Arial,sans-serif;color:#0f172a;max-width:760px;margin:0 auto;">
+      <h2 style="margin:0 0 10px;color:#0d47a1;">Nueva solicitud de recursos</h2>
+      <p style="margin:0 0 18px;color:#475569;">Se registro la solicitud <b>{escape(solicitud.folio or str(solicitud.id))}</b>.</p>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:18px;">
+        <tr><td style="padding:8px;color:#64748b;font-weight:700;">Solicitante</td><td style="padding:8px;">{escape(solicitud.solicitante or '-')}</td></tr>
+        <tr><td style="padding:8px;color:#64748b;font-weight:700;">Proyecto / obra</td><td style="padding:8px;">{escape(solicitud.proyecto or '-')}</td></tr>
+        <tr><td style="padding:8px;color:#64748b;font-weight:700;">Fecha</td><td style="padding:8px;">{solicitud.fecha.strftime('%d/%m/%Y %H:%M') if solicitud.fecha else ''}</td></tr>
+        <tr><td style="padding:8px;color:#64748b;font-weight:700;">Total</td><td style="padding:8px;font-weight:700;">${float(solicitud.total or 0):,.2f}</td></tr>
+      </table>
+      <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;">
+        <thead>
+          <tr style="background:#f8fafc;">
+            <th style="padding:10px;text-align:right;">Cantidad</th>
+            <th style="padding:10px;text-align:left;">Concepto</th>
+            <th style="padding:10px;text-align:right;">Importe</th>
+          </tr>
+        </thead>
+        <tbody>{partidas_html}</tbody>
+      </table>
+      <p style="margin:18px 0;"> <a href="{detail_url}" style="background:#0d47a1;color:#fff;text-decoration:none;padding:10px 14px;border-radius:6px;display:inline-block;">Ver solicitud</a></p>
+      <p style="margin:0;color:#64748b;">{escape(solicitud.notas or '')}</p>
+    </div>
+    """
+
+
+def _send_solicitud_recurso_email(solicitud: SolicitudRecurso) -> None:
+    recipients = list(SOLICITUD_RECURSO_EMAILS)
+    detail_url = url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id, _external=True)
+    msg = EmailMessage()
+    msg["Subject"] = f"Nueva solicitud de recursos {solicitud.folio or solicitud.id}"
+    msg["From"] = f"SISTEMA MAR <{SMTP_FROM or SMTP_USERNAME}>"
+    msg["To"] = ", ".join(recipients)
+    msg.set_content(
+        f"Nueva solicitud de recursos {solicitud.folio or solicitud.id}\n"
+        f"Solicitante: {solicitud.solicitante or '-'}\n"
+        f"Proyecto / obra: {solicitud.proyecto or '-'}\n"
+        f"Total: ${float(solicitud.total or 0):,.2f}\n"
+        f"Ver: {detail_url}\n"
+    )
+    msg.add_alternative(_solicitud_recurso_mail_html(solicitud, detail_url), subtype="html")
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
+        smtp.ehlo()
+        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+        smtp.send_message(msg, to_addrs=recipients)
+
+
+def _send_solicitud_recurso_push_hansel(solicitud: SolicitudRecurso) -> dict[str, int]:
+    user_ids = _mobile_push_user_ids_for_hansel_only()
+    tokens = _mobile_push_tokens_for_users(user_ids)
+    if not tokens:
+        logger.warning(
+            "Push solicitud de recursos %s: Hansel no tiene token movil activo.",
+            solicitud.folio or solicitud.id,
+        )
+    return _send_push_notification(
+        tokens,
+        title="Nueva solicitud de recursos",
+        body=f"{solicitud.folio or solicitud.id} - ${float(solicitud.total or 0):,.2f}",
+        data={
+            "type": "solicitud_recurso",
+            "solicitud_id": str(solicitud.id),
+            "folio": solicitud.folio or "",
+            "url": url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id, _external=True),
+        },
+    )
+
+
+def _notify_solicitud_recurso_created(solicitud: SolicitudRecurso) -> None:
+    try:
+        _send_solicitud_recurso_email(solicitud)
+    except Exception as exc:
+        logger.warning("Correo de solicitud de recursos %s fallo: %s", solicitud.folio or solicitud.id, exc)
+
+    try:
+        _send_solicitud_recurso_push_hansel(solicitud)
+    except Exception as exc:
+        logger.warning("Push de solicitud de recursos %s fallo: %s", solicitud.folio or solicitud.id, exc)
 
 
 FINANZAS_CATEGORIA_CREDITO = "CREDITO_RECIBIDO"
@@ -10877,6 +11024,111 @@ def _orden_compra_guardar_archivo(uploaded, orden: OrdenCompra, prefijo: str) ->
     saved_name = f"{folio}_{prefijo}_{stamp}.{ext}"
     uploaded.save(upload_dir / saved_name)
     return f"uploads/ordenes_compra/{saved_name}"
+
+
+@app.route("/solicitudes-recursos")
+@login_required
+def solicitudes_recursos_index():
+    q = (request.args.get("q") or "").strip()
+    estatus = (request.args.get("estatus") or "").strip().upper()
+
+    query = SolicitudRecurso.query
+    if q:
+        like = f"%{q}%"
+        query = query.filter(or_(
+            SolicitudRecurso.folio.ilike(like),
+            SolicitudRecurso.solicitante.ilike(like),
+            SolicitudRecurso.proyecto.ilike(like),
+            SolicitudRecurso.notas.ilike(like),
+            SolicitudRecurso.partidas.any(SolicitudRecursoPartida.concepto.ilike(like)),
+        ))
+    if estatus:
+        query = query.filter(SolicitudRecurso.estatus == estatus)
+
+    solicitudes = query.order_by(SolicitudRecurso.fecha.desc(), SolicitudRecurso.id.desc()).all()
+    status_counts = {status: SolicitudRecurso.query.filter_by(estatus=status).count() for status in SOLICITUD_RECURSO_ESTATUS}
+    total_visible = fmt(sum(float(s.total or 0) for s in solicitudes))
+
+    return render_template(
+        "solicitudes_recursos.html",
+        title="Solicitudes de recursos",
+        solicitudes=solicitudes,
+        estatus_options=SOLICITUD_RECURSO_ESTATUS,
+        status_counts=status_counts,
+        total_visible=total_visible,
+        q=q,
+        estatus=estatus,
+    )
+
+
+@app.route("/solicitudes-recursos/crear", methods=["POST"])
+@login_required
+def solicitud_recurso_crear():
+    f = request.form
+    solicitud = SolicitudRecurso(
+        folio=_solicitud_recurso_next_folio(),
+        fecha=now_cdmx_naive(),
+        solicitante=(f.get("solicitante") or responsable_actual() or "").strip() or None,
+        proyecto=(f.get("proyecto") or "").strip() or None,
+        estatus="SOLICITADA",
+        notas=(f.get("notas") or "").strip() or None,
+        usuario_id=getattr(current_user, "id", None),
+    )
+    db.session.add(solicitud)
+
+    cantidades = f.getlist("cantidad[]")
+    conceptos = f.getlist("concepto[]")
+    importes = f.getlist("importe[]")
+    total_rows = max(len(cantidades), len(conceptos), len(importes))
+    for idx in range(total_rows):
+        concepto = (conceptos[idx] if idx < len(conceptos) else "").strip()
+        cantidad = parse_float(cantidades[idx] if idx < len(cantidades) else 0, 0)
+        importe = parse_float(importes[idx] if idx < len(importes) else 0, 0)
+        if not concepto or cantidad <= 0:
+            continue
+        solicitud.partidas.append(SolicitudRecursoPartida(
+            cantidad=fmt(cantidad),
+            concepto=concepto,
+            importe=fmt(importe),
+        ))
+
+    if not solicitud.partidas:
+        db.session.rollback()
+        flash("Agrega al menos un renglon con cantidad y concepto.", "warning")
+        return redirect(url_for("solicitudes_recursos_index"))
+
+    _solicitud_recurso_recalcular(solicitud)
+    db.session.commit()
+    _notify_solicitud_recurso_created(solicitud)
+    flash(f"Solicitud {solicitud.folio} registrada.", "success")
+    return redirect(url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id))
+
+
+@app.route("/solicitudes-recursos/<int:solicitud_id>")
+@login_required
+def solicitud_recurso_detalle(solicitud_id: int):
+    solicitud = SolicitudRecurso.query.get_or_404(solicitud_id)
+    return render_template(
+        "solicitud_recurso_detalle.html",
+        title=f"Solicitud {solicitud.folio}",
+        solicitud=solicitud,
+        estatus_options=SOLICITUD_RECURSO_ESTATUS,
+    )
+
+
+@app.route("/solicitudes-recursos/<int:solicitud_id>/estatus", methods=["POST"])
+@login_required
+def solicitud_recurso_estatus(solicitud_id: int):
+    solicitud = SolicitudRecurso.query.get_or_404(solicitud_id)
+    nuevo = (request.form.get("estatus") or "").strip().upper()
+    if nuevo not in SOLICITUD_RECURSO_ESTATUS:
+        flash("Estatus no valido.", "warning")
+        return redirect(url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id))
+    solicitud.estatus = nuevo
+    solicitud.actualizado_en = now_cdmx_naive()
+    db.session.commit()
+    flash("Estatus actualizado.", "success")
+    return redirect(url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id))
 
 
 @app.route("/ordenes-compra")

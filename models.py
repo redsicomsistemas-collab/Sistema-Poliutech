@@ -113,6 +113,102 @@ class CotizacionDetalle(db.Model):
         return f"<Detalle {self.nombre_concepto}>"
 
 
+class FacturacionConfig(db.Model):
+    __tablename__ = "facturacion_config"
+
+    id = db.Column(db.Integer, primary_key=True)
+    rfc = db.Column(db.String(13), nullable=False)
+    razon_social = db.Column(db.String(180), nullable=False)
+    regimen_fiscal = db.Column(db.String(10), nullable=False)
+    codigo_postal = db.Column(db.String(10), nullable=False)
+    pac = db.Column(db.String(40), default="FACTURAMA", nullable=False)
+    pac_ambiente = db.Column(db.String(20), default="SANDBOX", nullable=False)
+    pac_usuario = db.Column(db.String(180))
+    csd_cer_path = db.Column(db.String(300))
+    csd_key_path = db.Column(db.String(300))
+    csd_no_certificado = db.Column(db.String(40))
+    activo = db.Column(db.Boolean, default=True, nullable=False)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    def __repr__(self):
+        return f"<FacturacionConfig {self.rfc} {self.pac}>"
+
+
+class Factura(db.Model):
+    __tablename__ = "factura"
+
+    id = db.Column(db.Integer, primary_key=True)
+    folio = db.Column(db.String(40), unique=True, index=True)
+    serie = db.Column(db.String(20), default="F")
+    tipo_comprobante = db.Column(db.String(2), default="I", nullable=False, index=True)
+    estatus = db.Column(db.String(30), default="BORRADOR", nullable=False, index=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey("cliente.id"), nullable=True, index=True)
+    cotizacion_id = db.Column(db.Integer, db.ForeignKey("cotizacion.id"), nullable=True, index=True)
+    uuid = db.Column(db.String(60), unique=True, nullable=True, index=True)
+
+    receptor_rfc = db.Column(db.String(13), nullable=False)
+    receptor_nombre = db.Column(db.String(180), nullable=False)
+    receptor_regimen_fiscal = db.Column(db.String(10))
+    receptor_codigo_postal = db.Column(db.String(10))
+    uso_cfdi = db.Column(db.String(10), default="G03")
+    metodo_pago = db.Column(db.String(10), default="PUE")
+    forma_pago = db.Column(db.String(10), default="03")
+    moneda = db.Column(db.String(10), default="MXN", nullable=False)
+
+    subtotal = db.Column(db.Float, default=0.0, nullable=False)
+    descuento = db.Column(db.Float, default=0.0, nullable=False)
+    iva = db.Column(db.Float, default=0.0, nullable=False)
+    total = db.Column(db.Float, default=0.0, nullable=False)
+    notas = db.Column(db.Text)
+
+    pac = db.Column(db.String(40))
+    pac_ambiente = db.Column(db.String(20))
+    xml_path = db.Column(db.String(300))
+    pdf_path = db.Column(db.String(300))
+    error_timbrado = db.Column(db.Text)
+    fecha = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    fecha_timbrado = db.Column(db.DateTime, nullable=True)
+    creado_por_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    cliente = db.relationship("Cliente", backref=db.backref("facturas", lazy=True))
+    cotizacion = db.relationship("Cotizacion", backref=db.backref("facturas", lazy=True))
+    creado_por = db.relationship("Usuario", backref=db.backref("facturas_creadas", lazy=True))
+    partidas = db.relationship(
+        "FacturaPartida",
+        backref="factura",
+        cascade="all, delete-orphan",
+        order_by="FacturaPartida.id.asc()",
+    )
+
+    def __repr__(self):
+        return f"<Factura {self.folio or self.id} {self.estatus}>"
+
+
+class FacturaPartida(db.Model):
+    __tablename__ = "factura_partida"
+
+    id = db.Column(db.Integer, primary_key=True)
+    factura_id = db.Column(db.Integer, db.ForeignKey("factura.id"), nullable=False, index=True)
+    clave_prod_serv = db.Column(db.String(20), default="72101500", nullable=False)
+    no_identificacion = db.Column(db.String(80))
+    cantidad = db.Column(db.Float, default=1.0, nullable=False)
+    clave_unidad = db.Column(db.String(20), default="E48", nullable=False)
+    unidad = db.Column(db.String(50), default="Servicio")
+    descripcion = db.Column(db.String(1000), nullable=False)
+    valor_unitario = db.Column(db.Float, default=0.0, nullable=False)
+    importe = db.Column(db.Float, default=0.0, nullable=False)
+    descuento = db.Column(db.Float, default=0.0, nullable=False)
+    objeto_imp = db.Column(db.String(10), default="02", nullable=False)
+    iva_tasa = db.Column(db.Float, default=0.16, nullable=False)
+    iva_importe = db.Column(db.Float, default=0.0, nullable=False)
+
+    def __repr__(self):
+        return f"<FacturaPartida factura={self.factura_id} {self.descripcion[:30]}>"
+
+
 class CotizacionSeguimiento(db.Model):
     __tablename__ = "cotizacion_seguimiento"
 
@@ -516,6 +612,46 @@ class OrdenCompraPartida(db.Model):
 
     def __repr__(self):
         return f"<OrdenCompraPartida orden={self.orden_id} {self.descripcion}>"
+
+
+class SolicitudRecurso(db.Model):
+    __tablename__ = "solicitud_recurso"
+
+    id = db.Column(db.Integer, primary_key=True)
+    folio = db.Column(db.String(40), unique=True, index=True)
+    fecha = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    solicitante = db.Column(db.String(120), index=True)
+    proyecto = db.Column(db.String(200), index=True)
+    estatus = db.Column(db.String(30), default="SOLICITADA", nullable=False, index=True)
+    total = db.Column(db.Float, default=0.0, nullable=False)
+    notas = db.Column(db.Text)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    partidas = db.relationship(
+        "SolicitudRecursoPartida",
+        backref="solicitud",
+        cascade="all, delete-orphan",
+        order_by="SolicitudRecursoPartida.id.asc()",
+    )
+    usuario = db.relationship("Usuario", backref=db.backref("solicitudes_recursos", lazy=True))
+
+    def __repr__(self):
+        return f"<SolicitudRecurso {self.folio or self.id}>"
+
+
+class SolicitudRecursoPartida(db.Model):
+    __tablename__ = "solicitud_recurso_partida"
+
+    id = db.Column(db.Integer, primary_key=True)
+    solicitud_id = db.Column(db.Integer, db.ForeignKey("solicitud_recurso.id"), nullable=False, index=True)
+    cantidad = db.Column(db.Float, default=0.0, nullable=False)
+    concepto = db.Column(db.String(360), nullable=False)
+    importe = db.Column(db.Float, default=0.0, nullable=False)
+
+    def __repr__(self):
+        return f"<SolicitudRecursoPartida solicitud={self.solicitud_id} {self.concepto}>"
 
 
 class MovimientoFinanciero(db.Model):

@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}Solicitudes de recursos{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 my-4">
+  <div>
+    <h2 class="fw-bold text-primary mb-1">Solicitudes de recursos</h2>
+    <div class="text-muted">Registro de cantidades, conceptos e importes solicitados.</div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Solicitudes visibles</div>
+        <div class="display-6 fw-bold text-primary">{{ solicitudes|length }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Solicitadas</div>
+        <div class="display-6 fw-bold text-info">{{ status_counts.get("SOLICITADA", 0) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Autorizadas</div>
+        <div class="display-6 fw-bold text-success">{{ status_counts.get("AUTORIZADA", 0) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Total visible</div>
+        <div class="display-6 fw-bold text-dark">${{ "{:,.2f}".format(total_visible or 0) }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-header bg-primary text-white fw-bold">Nueva solicitud</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('solicitud_recurso_crear') }}" id="solicitud-recursos-form">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Solicitante</label>
+          <input name="solicitante" class="form-control" value="{{ current_user.nombre if current_user.is_authenticated else '' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Proyecto / obra</label>
+          <input name="proyecto" class="form-control">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Notas</label>
+          <input name="notas" class="form-control">
+        </div>
+      </div>
+
+      <div class="table-responsive mt-4">
+        <table class="table table-sm align-middle" id="recursos-items-table">
+          <thead class="table-light">
+            <tr>
+              <th style="width: 140px;">Cantidad</th>
+              <th style="min-width: 320px;">Concepto</th>
+              <th style="width: 180px;">Importe</th>
+              <th style="width: 90px;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><input type="number" step="any" min="0" name="cantidad[]" class="form-control form-control-sm js-cantidad"></td>
+              <td><input name="concepto[]" class="form-control form-control-sm js-concepto"></td>
+              <td><input type="number" step="any" min="0" name="importe[]" class="form-control form-control-sm js-importe" value="0"></td>
+              <td><button type="button" class="btn btn-sm btn-outline-danger js-remove">Quitar</button></td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <th colspan="2" class="text-end">Total</th>
+              <th id="recursos-total">$0.00</th>
+              <th></th>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div class="d-flex justify-content-between gap-2">
+        <button type="button" class="btn btn-outline-primary" id="recursos-add-row">Agregar renglon</button>
+        <button class="btn btn-success">Registrar solicitud</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card shadow-sm border-0">
+  <div class="card-header bg-light">
+    <form method="get" action="{{ url_for('solicitudes_recursos_index') }}" class="row g-2 align-items-end">
+      <div class="col-md-6">
+        <label class="form-label">Buscar</label>
+        <input name="q" class="form-control" value="{{ q }}" placeholder="Folio, solicitante, proyecto, concepto o notas">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Estatus</label>
+        <select name="estatus" class="form-select">
+          <option value="">Todos</option>
+          {% for item in estatus_options %}
+          <option value="{{ item }}" {% if estatus == item %}selected{% endif %}>{{ item }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2 d-grid">
+        <button class="btn btn-outline-primary">Filtrar</button>
+      </div>
+    </form>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Folio</th>
+            <th>Fecha</th>
+            <th>Solicitante</th>
+            <th>Proyecto</th>
+            <th>Estatus</th>
+            <th>Total</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for solicitud in solicitudes %}
+          <tr>
+            <td class="fw-bold">{{ solicitud.folio }}</td>
+            <td>{{ solicitud.fecha.strftime("%d/%m/%Y") if solicitud.fecha else "" }}</td>
+            <td>{{ solicitud.solicitante or "" }}</td>
+            <td>{{ solicitud.proyecto or "" }}</td>
+            <td><span class="badge bg-secondary">{{ solicitud.estatus }}</span></td>
+            <td class="fw-bold">${{ "{:,.2f}".format(solicitud.total or 0) }}</td>
+            <td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('solicitud_recurso_detalle', solicitud_id=solicitud.id) }}">Ver</a></td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="7" class="text-center text-muted py-4">No hay solicitudes de recursos con estos filtros.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  const recursosBody = document.querySelector("#recursos-items-table tbody");
+  const recursosAddBtn = document.getElementById("recursos-add-row");
+  const recursosTotal = document.getElementById("recursos-total");
+
+  function money(value) {
+    return Number(value || 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
+  }
+
+  function rowHasData(row) {
+    return ["js-cantidad", "js-concepto", "js-importe"].some((className) => {
+      const input = row.querySelector("." + className);
+      return input && String(input.value || "").trim() !== "" && String(input.value || "").trim() !== "0";
+    });
+  }
+
+  function updateTotal() {
+    let total = 0;
+    recursosBody.querySelectorAll(".js-importe").forEach((input) => {
+      total += Number(input.value || 0);
+    });
+    recursosTotal.textContent = money(total);
+  }
+
+  function addRow(focus = true) {
+    const clone = recursosBody.querySelector("tr").cloneNode(true);
+    clone.querySelectorAll("input").forEach((input) => {
+      input.value = input.classList.contains("js-importe") ? "0" : "";
+    });
+    recursosBody.appendChild(clone);
+    wireRow(clone);
+    if (focus) clone.querySelector(".js-cantidad").focus();
+    return clone;
+  }
+
+  function ensureTrailingRow(row) {
+    const rows = Array.from(recursosBody.querySelectorAll("tr"));
+    if (rows[rows.length - 1] === row && rowHasData(row)) addRow(false);
+  }
+
+  function wireRow(row) {
+    row.querySelectorAll("input").forEach((input) => {
+      input.addEventListener("input", () => {
+        ensureTrailingRow(row);
+        updateTotal();
+      });
+    });
+    row.querySelector(".js-remove").addEventListener("click", () => {
+      if (recursosBody.querySelectorAll("tr").length > 1) {
+        row.remove();
+        updateTotal();
+      }
+    });
+  }
+
+  recursosBody.querySelectorAll("tr").forEach(wireRow);
+  recursosAddBtn.addEventListener("click", () => addRow(true));
+  updateTotal();
+</script>
+{% endblock %}
