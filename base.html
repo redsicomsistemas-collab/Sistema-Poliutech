@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MAR – Sistema de Cotizaciones</title>
+
+  <!-- Bootstrap -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Favicon -->
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
+
+  <style>
+    /* ====== LAYOUT PRINCIPAL ====== */
+    .topbar {
+      background: #0d6efd;
+      color: #fff;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.16);
+    }
+
+    .topbar-inner {
+      min-height: 74px;
+      gap: 1rem;
+    }
+
+    .topbar-brand {
+      min-width: 0;
+      color: #fff;
+      text-decoration: none;
+    }
+
+    .topbar-brand img {
+      height: 50px;
+      width: auto;
+      object-fit: contain;
+    }
+
+    .topbar-brand span {
+      font-size: 1.08rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .quote-cta {
+      min-width: min(260px, 42vw);
+      border: 2px solid rgba(255, 255, 255, 0.75);
+      background: #ffc107;
+      color: #172554;
+      border-radius: 8px;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22);
+      font-size: clamp(1rem, 1.8vw, 1.35rem);
+      letter-spacing: 0;
+      padding: 0.8rem 1.65rem;
+      text-align: center;
+      text-decoration: none;
+    }
+
+    .quote-cta:hover {
+      background: #ffcd39;
+      color: #0f172a;
+      transform: translateY(-1px);
+    }
+
+    .topbar-user {
+      max-width: 240px;
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.38);
+      border-radius: 8px;
+      padding: 0.55rem 0.8rem;
+      text-decoration: none;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .topbar-user:hover,
+    .topbar-user.show {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.14);
+    }
+
+    .app-layout {
+      display: grid;
+      grid-template-columns: 250px minmax(0, 1fr);
+      gap: 1.25rem;
+      align-items: start;
+      width: min(1720px, calc(100vw - 32px));
+      margin: 1.25rem auto 0;
+    }
+
+    .side-menu {
+      position: sticky;
+      top: 1rem;
+      background: #fff;
+      border: 1px solid #d8e0ea;
+      border-radius: 8px;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+      padding: 0.75rem;
+    }
+
+    .side-menu .nav {
+      gap: 0.25rem;
+    }
+
+    .side-menu .nav-link {
+      color: #1f2937;
+      border-radius: 8px;
+      padding: 0.68rem 0.8rem;
+      font-weight: 700;
+      line-height: 1.2;
+      transition: background-color 0.16s, color 0.16s, transform 0.16s;
+    }
+
+    .side-menu .nav-link:hover,
+    .side-menu .nav-link:focus {
+      background: #e9f3ff;
+      color: #0d47a1;
+      transform: translateX(2px);
+    }
+
+    .side-menu .dropdown-menu {
+      min-width: 13rem;
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+    }
+
+    .app-content {
+      min-width: 0;
+    }
+
+    @media (max-width: 991.98px) {
+      .topbar-inner {
+        min-height: auto;
+        flex-wrap: wrap;
+        padding-block: 0.75rem;
+      }
+
+      .topbar-brand {
+        flex: 1 1 calc(100% - 70px);
+      }
+
+      .topbar-brand img {
+        height: 42px;
+      }
+
+      .topbar-brand span {
+        font-size: 0.95rem;
+      }
+
+      .quote-cta {
+        order: 3;
+        flex: 1 1 100%;
+        min-width: 100%;
+      }
+
+      .topbar .dropdown {
+        margin-left: auto;
+      }
+
+      .topbar-user {
+        max-width: 46vw;
+      }
+
+      .app-layout {
+        grid-template-columns: 1fr;
+        width: calc(100vw - 20px);
+        gap: 0.9rem;
+      }
+
+      .side-menu {
+        position: static;
+      }
+    }
+
+    /* ====== INTRO DE ARRANQUE ====== */
+    #mar-splash {
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 50% 58%, rgba(0, 76, 190, 0.18), transparent 30%),
+        radial-gradient(ellipse at 50% 100%, rgba(0, 34, 110, 0.72), transparent 46%),
+        #000;
+      display: none;
+      overflow: hidden;
+      z-index: 9999;
+      perspective: 900px;
+      color: #eaf5ff;
+    }
+
+    #mar-splash .wrap {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      text-align: center;
+      padding: 24px;
+      width: 100%;
+      height: 100%;
+      transform-style: preserve-3d;
+      isolation: isolate;
+    }
+
+    #mar-splash .startup-grid {
+      position: absolute;
+      inset: auto -15vw -8vh -15vw;
+      height: 52vh;
+      background:
+        linear-gradient(to right, rgba(0, 113, 255, 0.18) 1px, transparent 1px),
+        linear-gradient(to top, rgba(0, 113, 255, 0.22) 1px, transparent 1px);
+      background-size: 38px 38px;
+      transform: rotateX(72deg) translateZ(-160px);
+      transform-origin: 50% 100%;
+      animation: marGridTravel 6s cubic-bezier(.2, .75, .18, 1) both;
+      opacity: 0;
+      filter: drop-shadow(0 0 14px rgba(0, 145, 255, 0.42));
+      z-index: 0;
+    }
+
+    #mar-splash .startup-mist {
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(180deg, transparent 0%, rgba(1, 19, 42, 0.24) 45%, rgba(0, 0, 0, 0.92) 100%),
+        radial-gradient(circle at 48% 42%, rgba(0, 117, 255, 0.2), transparent 30%);
+      opacity: 0;
+      animation: marMist 4.8s ease both;
+      z-index: 1;
+    }
+
+    #mar-splash .startup-column {
+      position: absolute;
+      bottom: 28vh;
+      width: clamp(7px, 1.1vw, 15px);
+      height: var(--h);
+      border: 1px solid rgba(70, 165, 255, 0.85);
+      border-radius: 2px;
+      background:
+        linear-gradient(90deg, rgba(160, 225, 255, 0.18), transparent 38%, rgba(180, 232, 255, 0.24)),
+        linear-gradient(180deg, rgba(104, 196, 255, 0.98), rgba(0, 44, 158, 0.28));
+      box-shadow:
+        0 0 12px rgba(0, 108, 255, 0.74),
+        0 0 30px rgba(0, 75, 255, 0.28),
+        inset 0 0 10px rgba(210, 245, 255, 0.38);
+      transform: translate3d(var(--x), 58vh, var(--z)) rotateX(68deg);
+      animation: marColumnRise 5.3s cubic-bezier(.12, .74, .16, 1) both;
+      animation-delay: var(--delay);
+      opacity: 0;
+      z-index: 2;
+    }
+
+    #mar-splash .startup-flare {
+      position: absolute;
+      width: min(72vw, 560px);
+      height: min(72vw, 560px);
+      border-radius: 50%;
+      background:
+        radial-gradient(circle, rgba(255, 255, 255, 0.84) 0%, rgba(92, 190, 255, 0.28) 18%, transparent 62%);
+      opacity: 0;
+      transform: scale(0.12);
+      animation: marFlare 6s ease both;
+      z-index: 3;
+      pointer-events: none;
+    }
+
+    #mar-splash .startup-logo {
+      height: clamp(82px, 19vw, 168px);
+      width: auto;
+      max-width: min(74vw, 440px);
+      object-fit: contain;
+      border-radius: 8px;
+      opacity: 0;
+      filter: drop-shadow(0 0 18px rgba(88, 184, 255, 0.82));
+      transform: translateY(18px) scale(0.92);
+      animation: marLogoReveal 6s cubic-bezier(.16, .8, .24, 1) both;
+      z-index: 4;
+    }
+
+    #mar-splash .startup-title {
+      margin-top: 18px;
+      font-size: clamp(1rem, 3.2vw, 1.45rem);
+      color: #f3fbff;
+      font-weight: 700;
+      letter-spacing: 0;
+      text-transform: uppercase;
+      text-align: center;
+      opacity: 0;
+      text-shadow: 0 0 16px rgba(54, 167, 255, 0.72);
+      animation: marTitleReveal 6s ease both;
+      z-index: 4;
+    }
+
+    #mar-splash .startup-skip {
+      position: absolute;
+      right: 18px;
+      bottom: 18px;
+      border: 1px solid rgba(176, 220, 255, 0.38);
+      background: rgba(0, 16, 36, 0.72);
+      color: #d8f0ff;
+      border-radius: 8px;
+      padding: 7px 12px;
+      font-size: 0.85rem;
+      opacity: 0;
+      animation: marSkipReveal .4s ease forwards 1.2s;
+      z-index: 5;
+    }
+
+    #mar-splash .startup-skip:hover {
+      background: rgba(12, 78, 148, 0.86);
+    }
+
+    @keyframes marGridTravel {
+      0% { opacity: 0; background-position: 0 220px; filter: blur(2px) drop-shadow(0 0 8px rgba(0, 145, 255, 0.2)); }
+      16% { opacity: .88; }
+      72% { opacity: .78; background-position: 0 -70px; }
+      100% { opacity: 0; background-position: 0 -150px; filter: blur(4px) drop-shadow(0 0 22px rgba(0, 145, 255, 0.4)); }
+    }
+
+    @keyframes marMist {
+      0%, 10% { opacity: 0; }
+      34%, 78% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+
+    @keyframes marColumnRise {
+      0% { opacity: 0; transform: translate3d(var(--x), 48vh, var(--z)) rotateX(63deg) scaleY(.35); }
+      32% { opacity: .95; }
+      70% { opacity: .88; transform: translate3d(var(--x), 2vh, var(--z)) rotateX(63deg) scaleY(1); }
+      100% { opacity: 0; transform: translate3d(calc(var(--x) * .52), -9vh, calc(var(--z) + 160px)) rotateX(63deg) scaleY(.5); }
+    }
+
+    @keyframes marFlare {
+      0%, 60% { opacity: 0; transform: scale(0.1); }
+      72% { opacity: .72; transform: scale(1); }
+      100% { opacity: 0; transform: scale(1.3); }
+    }
+
+    @keyframes marLogoReveal {
+      0%, 58% { opacity: 0; transform: translateY(24px) scale(.88); filter: blur(2px) drop-shadow(0 0 4px rgba(88, 184, 255, 0.3)); }
+      76% { opacity: 1; transform: translateY(0) scale(1.03); filter: blur(0) drop-shadow(0 0 24px rgba(88, 184, 255, 0.9)); }
+      92% { opacity: 1; transform: translateY(0) scale(1); }
+      100% { opacity: 0; transform: translateY(-8px) scale(.98); }
+    }
+
+    @keyframes marTitleReveal {
+      0%, 68% { opacity: 0; transform: translateY(12px); }
+      80%, 92% { opacity: 1; transform: translateY(0); }
+      100% { opacity: 0; transform: translateY(-6px); }
+    }
+
+    @keyframes marSkipReveal {
+      to { opacity: .84; }
+    }
+
+    @keyframes splashFadeIn { from { opacity: 0 } to { opacity: 1 } }
+    @keyframes splashFadeOut { from { opacity: 1 } to { opacity: 0; visibility: hidden; } }
+
+    #mar-splash.fade-in { animation: splashFadeIn .25s ease-out both; }
+    #mar-splash.fade-out { animation: splashFadeOut .7s ease-in both; }
+
+    /* ====== FIX SUGERENCIAS DE AUTOCOMPLETAR ====== */
+    .table-responsive { overflow: visible !important; }
+    #tbl-items td { overflow: visible !important; position: relative; }
+    .list-group.item-suggest, #cliente_suggestions {
+      z-index: 3000 !important;
+      position: absolute !important;
+      background-color: #fff;
+      border: 1px solid #dee2e6;
+      border-radius: 0.25rem;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      animation: fadeDown 0.15s ease-in-out;
+    }
+
+    .item-suggest { max-height: 200px; overflow-y: auto; }
+
+    @keyframes fadeDown {
+      0% { opacity: 0; transform: translateY(-5px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+
+    .list-group-item:hover {
+      background-color: #e9f3ff;
+      transition: background-color 0.1s ease-in-out;
+    }
+
+    /* ===== AJUSTES RESPONSIVOS PARA MÓVILES ===== */
+    @media (max-width: 768px) {
+      #mar-splash .wrap {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 20px;
+      }
+
+      #mar-splash .startup-logo {
+        height: clamp(72px, 24vw, 118px);
+        width: auto;
+      }
+
+      #mar-splash .startup-title {
+        font-size: clamp(0.85rem, 4vw, 1.1rem);
+        line-height: 1.3rem;
+        padding: 0 10px;
+      }
+
+      #mar-splash .startup-column {
+        width: clamp(8px, 2.4vw, 16px);
+      }
+    }
+  </style>
+</head>
+
+<body class="bg-light">
+  <!-- ====== Splash solo dashboard ====== -->
+  <div id="mar-splash" aria-hidden="true">
+    <div class="wrap">
+      <div class="startup-grid"></div>
+      <div class="startup-mist"></div>
+      <span class="startup-column" style="--x:-48vw; --z:-330px; --h:58px; --delay:.06s"></span>
+      <span class="startup-column" style="--x:-41vw; --z:-230px; --h:84px; --delay:.18s"></span>
+      <span class="startup-column" style="--x:-34vw; --z:-110px; --h:124px; --delay:.28s"></span>
+      <span class="startup-column" style="--x:-27vw; --z:-285px; --h:74px; --delay:.02s"></span>
+      <span class="startup-column" style="--x:-20vw; --z:-165px; --h:102px; --delay:.22s"></span>
+      <span class="startup-column" style="--x:-12vw; --z:-70px; --h:150px; --delay:.34s"></span>
+      <span class="startup-column" style="--x:-4vw; --z:-245px; --h:92px; --delay:.12s"></span>
+      <span class="startup-column" style="--x:4vw; --z:-125px; --h:138px; --delay:.3s"></span>
+      <span class="startup-column" style="--x:12vw; --z:-315px; --h:66px; --delay:.08s"></span>
+      <span class="startup-column" style="--x:20vw; --z:-190px; --h:114px; --delay:.2s"></span>
+      <span class="startup-column" style="--x:28vw; --z:-80px; --h:144px; --delay:.38s"></span>
+      <span class="startup-column" style="--x:36vw; --z:-260px; --h:78px; --delay:.14s"></span>
+      <span class="startup-column" style="--x:44vw; --z:-145px; --h:108px; --delay:.26s"></span>
+      <span class="startup-column" style="--x:51vw; --z:-340px; --h:62px; --delay:.04s"></span>
+      <div class="startup-flare"></div>
+      <img class="startup-logo" src="{{ url_for('static', filename='logo.png') }}" alt="Poliutech">
+      <div class="startup-title">Sistema M.A.R. Poliutech</div>
+      <button class="startup-skip" type="button" id="mar-splash-skip">Entrar</button>
+      <audio id="mar-splash-audio" preload="auto">
+        <source src="{{ url_for('static', filename='sounds/startup.mp3') }}" type="audio/mpeg">
+      </audio>
+    </div>
+  </div>
+
+  <div id="followup-saving-overlay" class="position-fixed top-0 start-0 w-100 h-100 d-none" style="background: rgba(15, 23, 42, 0.72); z-index: 6000;">
+    <div class="h-100 d-flex align-items-center justify-content-center px-3">
+      <div class="bg-white rounded shadow-lg text-center p-4" style="width: min(420px, 100%);">
+        <div class="spinner-border text-primary mb-3" role="status" aria-hidden="true"></div>
+        <h5 class="mb-1 fw-bold">ESPERE</h5>
+        <div class="text-secondary fw-semibold">GUARDANDO SEGUIMIENTO</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== Barra superior ====== -->
+  <header class="topbar">
+    <div class="container-fluid px-3 d-flex align-items-center justify-content-between topbar-inner">
+      <a class="topbar-brand d-flex align-items-center" href="{{ url_for('index') }}">
+        <img src="{{ url_for('static', filename='logo.jpg') }}" alt="Logo" class="me-2 rounded">
+        <span class="fw-bold">M.A.R — Sistema Poliutech</span>
+      </a>
+
+      <a class="quote-cta fw-bold" href="{{ url_for('cotizador') }}">💰 COTIZAR</a>
+
+      {% if current_user.is_authenticated %}
+      <div class="dropdown">
+        <a class="dropdown-toggle topbar-user d-inline-block fw-semibold" href="#" id="userMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false" title="{{ current_user.nombre }}">
+          👤 {{ current_user.nombre }}
+        </a>
+        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userMenu">
+          <li><span class="dropdown-item-text fw-semibold">{{ current_user.nombre }}</span></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item" href="{{ url_for('logout') }}">🚪 Cerrar sesión</a></li>
+        </ul>
+      </div>
+      {% endif %}
+    </div>
+  </header>
+
+  <div class="app-layout">
+    <!-- ====== Menu lateral ====== -->
+    <aside class="side-menu" aria-label="Menu principal">
+      <nav class="nav flex-column">
+        <a class="nav-link" href="{{ url_for('index') }}">🏠 Inicio</a>
+        <a class="nav-link" href="{{ url_for('proyectos') }}">📁 Proyectos</a>
+        <a class="nav-link" href="{{ url_for('inventario_index') }}">📦 Inventario</a>
+        <a class="nav-link" href="{{ url_for('solicitudes_recursos_index') }}">📋 Recursos</a>
+        <a class="nav-link" href="{{ url_for('ordenes_compra_index') }}">🧾 Compras</a>
+        <a class="nav-link" href="{{ url_for('finanzas_index') }}">🏦 Finanzas</a>
+        {% if endpoint_exists('facturacion.index') %}
+        <a class="nav-link" href="{{ url_for('facturacion.index') }}">🧾 Facturacion</a>
+        {% endif %}
+        <a class="nav-link" href="{{ url_for('gastos_viaticos_index') }}">🧾 Gastos</a>
+        <a class="nav-link" href="{{ url_for('soporte_tickets') }}">🎫 Soporte</a>
+        <a class="nav-link" href="{{ url_for('prospectos') }}">📋 Leads</a>
+        <a class="nav-link" href="{{ url_for('admin_catalogos') }}">📚 Catálogos</a>
+        <a class="nav-link" href="{{ url_for('pu.obras_index') }}">🧮 P. Unitarios</a>
+        <a class="nav-link" href="{{ url_for('registro_obras') }}">🏗️ Prospectos</a>
+        {% if current_user.is_authenticated and ((current_user.rol or "")|upper == "ADMIN" or (current_user.nombre or "")|lower == "admin") %}
+        <div class="dropdown">
+          <a class="nav-link dropdown-toggle" href="#" id="adminMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+            ⚙️ Admin
+          </a>
+          <ul class="dropdown-menu" aria-labelledby="adminMenu">
+            <li><a class="dropdown-item" href="{{ url_for('altas_proveedores') }}">🗂️ Altas</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('papelera_cotizaciones') }}">🗑️ Papelera</a></li>
+            {% if (current_user.nombre or "")|lower == "admin" %}
+            <li><a class="dropdown-item" href="{{ url_for('admin_usuarios') }}">👥 Usuarios</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('admin_bitacora') }}">🧾 Bitácora</a></li>
+            {% endif %}
+          </ul>
+        </div>
+        {% endif %}
+      </nav>
+    </aside>
+
+    <!-- ====== Contenido dinámico ====== -->
+    <main class="app-content mb-5">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div>
+            {% for category, message in messages %}
+              <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <!-- ====== Pie de página ====== -->
+  <footer class="text-center text-muted py-3 border-top small">
+    © 2025 Poliutech - MAR Tercera Temporada
+  </footer>
+
+  <!-- Bootstrap -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- ====== Confirmacion global para acciones destructivas ====== -->
+  <script>
+  (function() {
+    const defaultMessage = "¿Seguro que deseas eliminar este registro? Esta acción puede no deshacerse.";
+
+    function isDestructiveUrl(value) {
+      if (!value) return false;
+      try {
+        const url = new URL(value, window.location.origin);
+        const path = url.pathname.toLowerCase();
+        return path.includes("/eliminar") || path.includes("/delete") || path.includes("/bulk-delete");
+      } catch (_) {
+        const fallback = String(value).toLowerCase();
+        return fallback.includes("/eliminar") || fallback.includes("/delete") || fallback.includes("/bulk-delete");
+      }
+    }
+
+    function confirmDestructive(el, fallbackMessage) {
+      const message = el?.dataset?.confirmMessage || fallbackMessage || defaultMessage;
+      return window.confirm(message);
+    }
+
+    document.addEventListener("click", function(event) {
+      const link = event.target.closest("a[href]");
+      if (link && isDestructiveUrl(link.getAttribute("href"))) {
+        if (!confirmDestructive(link)) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        return;
+      }
+
+      const submitter = event.target.closest('button[type="submit"], input[type="submit"]');
+      const form = submitter?.form;
+      if (!form || form.hasAttribute("onsubmit")) return;
+
+      const action = submitter.getAttribute("formaction") || form.getAttribute("action") || "";
+      if (isDestructiveUrl(action) && !confirmDestructive(submitter)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    });
+
+    document.addEventListener("submit", function(event) {
+      const form = event.target;
+      if (!(form instanceof HTMLFormElement) || form.hasAttribute("onsubmit")) return;
+
+      const action = form.getAttribute("action") || "";
+      if (isDestructiveUrl(action) && !confirmDestructive(form)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    });
+  })();
+  </script>
+
+  <!-- ====== Script del splash ====== -->
+  <script>
+  (function() {
+    const shouldShow = {{ 'true' if show_splash else 'false' }};
+    const alreadyShown = sessionStorage.getItem('marSplashShown') === '1';
+    if (!shouldShow || alreadyShown) return;
+
+    const splash = document.getElementById('mar-splash');
+    const audio  = document.getElementById('mar-splash-audio');
+
+    splash.style.display = 'block';
+    splash.classList.add('fade-in');
+
+    // 🎵 Reproduce el audio inmediatamente (no se detiene al cerrar el splash)
+    function playStartupSound() {
+      if (!audio) return;
+      audio.currentTime = 0;
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {
+          document.body.addEventListener('click', tryAgainOnce, { once: true });
+        });
+      }
+    }
+
+    function tryAgainOnce() {
+      audio.play().catch(() => {});
+    }
+
+    playStartupSound();
+
+    let splashClosed = false;
+
+    function closeSplash() {
+      if (splashClosed) return;
+      splashClosed = true;
+
+      splash.classList.remove('fade-in');
+      splash.classList.add('fade-out');
+
+      setTimeout(() => {
+        splash.remove();
+        sessionStorage.setItem('marSplashShown', '1');
+      }, 700);
+    }
+
+    document.getElementById('mar-splash-skip')?.addEventListener('click', closeSplash);
+
+    // Cierre del splash visual. El audio existente puede continuar si el navegador lo permite.
+    setTimeout(closeSplash, 6400);
+  })();
+  </script>
+<!-- ====== Tooltips globales Bootstrap ====== -->
+<style>
+.mention-dropdown {
+  position: fixed;
+  z-index: 5000;
+  min-width: 260px;
+  max-width: min(420px, calc(100vw - 24px));
+  max-height: 240px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+  padding: 0.35rem;
+  display: none;
+}
+.mention-option {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 0.55rem 0.65rem;
+  border-radius: 6px;
+  line-height: 1.2;
+}
+.mention-option:hover,
+.mention-option.active {
+  background: #e9f3ff;
+}
+.mention-option-name {
+  font-weight: 700;
+  color: #1f2937;
+}
+.mention-option-mail {
+  color: #64748b;
+  font-size: 0.82rem;
+  margin-top: 0.12rem;
+}
+</style>
+<script>
+(function() {
+  function normalizeText(value) {
+    return String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+  }
+
+  function getMentionToken(textarea) {
+    const cursor = textarea.selectionStart || 0;
+    const before = textarea.value.slice(0, cursor);
+    const at = before.lastIndexOf("@");
+    if (at < 0) return null;
+
+    const between = before.slice(at + 1);
+    if (/[\n\r.,;:!?)\]}]/.test(between)) return null;
+    if (at > 0 && /[\wÁÉÍÓÚÜÑáéíóúüñ]/.test(before.charAt(at - 1))) return null;
+    return { start: at, end: cursor, query: between.trimStart() };
+  }
+
+  function positionDropdown(textarea, dropdown) {
+    const rect = textarea.getBoundingClientRect();
+    dropdown.style.left = `${Math.max(12, Math.min(rect.left, window.innerWidth - dropdown.offsetWidth - 12))}px`;
+    dropdown.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - dropdown.offsetHeight - 12)}px`;
+  }
+
+  function installMentionTextarea(textarea) {
+    let users = [];
+    try {
+      users = JSON.parse(textarea.dataset.mentionUsers || "[]");
+    } catch (_) {
+      users = [];
+    }
+    if (!users.length) return;
+
+    const dropdown = document.createElement("div");
+    dropdown.className = "mention-dropdown";
+    document.body.appendChild(dropdown);
+    let activeIndex = 0;
+    let matches = [];
+
+    function hide() {
+      dropdown.style.display = "none";
+      dropdown.innerHTML = "";
+      matches = [];
+      activeIndex = 0;
+    }
+
+    function insertUser(user) {
+      const token = getMentionToken(textarea);
+      if (!token) return;
+      const value = textarea.value;
+      const mention = `@${user.nombre} `;
+      textarea.value = value.slice(0, token.start) + mention + value.slice(token.end);
+      const nextCursor = token.start + mention.length;
+      textarea.focus();
+      textarea.setSelectionRange(nextCursor, nextCursor);
+      hide();
+    }
+
+    function render() {
+      const token = getMentionToken(textarea);
+      if (!token) {
+        hide();
+        return;
+      }
+      const query = normalizeText(token.query);
+      matches = users
+        .filter((user) => normalizeText(user.nombre).includes(query))
+        .slice(0, 8);
+      if (!matches.length) {
+        hide();
+        return;
+      }
+      activeIndex = Math.min(activeIndex, matches.length - 1);
+      dropdown.innerHTML = "";
+      matches.forEach((user, index) => {
+        const option = document.createElement("button");
+        option.type = "button";
+        option.className = `mention-option${index === activeIndex ? " active" : ""}`;
+        option.innerHTML = `
+          <div class="mention-option-name">@${user.nombre}</div>
+          <div class="mention-option-mail">${user.correo || ""}</div>
+        `;
+        option.addEventListener("mousedown", (event) => {
+          event.preventDefault();
+          insertUser(user);
+        });
+        dropdown.appendChild(option);
+      });
+      dropdown.style.display = "block";
+      positionDropdown(textarea, dropdown);
+    }
+
+    textarea.addEventListener("input", render);
+    textarea.addEventListener("click", render);
+    textarea.addEventListener("blur", () => window.setTimeout(hide, 140));
+    textarea.addEventListener("keydown", (event) => {
+      if (dropdown.style.display !== "block" || !matches.length) return;
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        activeIndex = (activeIndex + 1) % matches.length;
+        render();
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        activeIndex = (activeIndex - 1 + matches.length) % matches.length;
+        render();
+      } else if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault();
+        insertUser(matches[activeIndex]);
+      } else if (event.key === "Escape") {
+        hide();
+      }
+    });
+    window.addEventListener("resize", () => positionDropdown(textarea, dropdown));
+    window.addEventListener("scroll", () => hide(), true);
+  }
+
+  document.addEventListener("DOMContentLoaded", function() {
+    document.querySelectorAll(".js-mention-textarea").forEach(installMentionTextarea);
+  });
+})();
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+  tooltipTriggerList.forEach(function (el) {
+    new bootstrap.Tooltip(el);
+  });
+});
+</script> 
+<script>
+(function() {
+  function isFollowupCommentForm(form) {
+    if (!(form instanceof HTMLFormElement)) return false;
+    const commentBox = form.querySelector('textarea[name="comentario"]');
+    if (!commentBox) return false;
+
+    const action = (form.getAttribute("action") || window.location.pathname || "").toLowerCase();
+    const actionInput = (form.querySelector('input[name="action"]')?.value || "").toLowerCase();
+    return form.querySelector(".js-mention-textarea") || action.includes("/seguimiento") || actionInput === "comment";
+  }
+
+  document.addEventListener("submit", function(event) {
+    const form = event.target;
+    if (!isFollowupCommentForm(form)) return;
+    if (event.defaultPrevented) return;
+
+    const overlay = document.getElementById("followup-saving-overlay");
+    overlay?.classList.remove("d-none");
+
+    form.querySelectorAll('button[type="submit"], input[type="submit"]').forEach((button) => {
+      button.disabled = true;
+    });
+  });
+})();
+</script>
+</body>
+</html>
