@@ -95,6 +95,20 @@
       white-space: nowrap;
     }
 
+    .mobile-menu-toggle {
+      display: none;
+      width: 44px;
+      height: 44px;
+      border: 1px solid rgba(255, 255, 255, 0.42);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      font-size: 1.35rem;
+      line-height: 1;
+      align-items: center;
+      justify-content: center;
+    }
+
     .quote-cta {
       min-width: min(260px, 42vw);
       border: 2px solid rgba(255, 255, 255, 0.75);
@@ -162,6 +176,10 @@
       gap: 0.25rem;
     }
 
+    .mobile-menu-tools {
+      display: none;
+    }
+
     .side-menu .nav-link {
       color: #fff;
       border-radius: 8px;
@@ -216,15 +234,19 @@
       background: #fff;
     }
 
+    .mobile-menu-backdrop {
+      display: none;
+    }
+
     @media (max-width: 991.98px) {
       .topbar-inner {
-        min-height: auto;
-        flex-wrap: wrap;
-        padding-block: 0.75rem;
+        min-height: var(--topbar-height);
+        flex-wrap: nowrap;
+        padding-block: 0.5rem;
       }
 
       .topbar-brand {
-        flex: 1 1 calc(100% - 70px);
+        flex: 1 1 auto;
       }
 
       .topbar-brand img {
@@ -235,14 +257,16 @@
         font-size: 0.95rem;
       }
 
-      .quote-cta {
-        order: 3;
-        flex: 1 1 100%;
-        min-width: 100%;
+      .mobile-menu-toggle {
+        display: inline-flex;
       }
 
-      .topbar .dropdown {
-        margin-left: auto;
+      .quote-cta {
+        display: none;
+      }
+
+      .topbar-account {
+        display: none;
       }
 
       .topbar-user {
@@ -255,19 +279,78 @@
       }
 
       .side-menu {
-        position: static;
-        width: 100%;
-        min-height: auto;
+        position: fixed;
+        top: var(--topbar-height);
+        left: 0;
+        bottom: 0;
+        width: min(82vw, 320px);
+        min-height: 0;
         max-height: none;
+        transform: translateX(-100%);
+        transition: transform 0.2s ease;
+        z-index: 1060;
+        box-shadow: 14px 0 32px rgba(15, 23, 42, 0.3);
+      }
+
+      body.mobile-menu-open .side-menu {
+        transform: translateX(0);
+      }
+
+      .mobile-menu-tools {
+        display: grid;
+        gap: 0.75rem;
+        padding: 0.25rem 0 0.9rem;
+        margin-bottom: 0.65rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+      }
+
+      .mobile-menu-tools .quote-cta {
+        display: block;
+        width: 100%;
+        min-width: 0;
+        padding: 0.75rem 1rem;
+        font-size: 1rem;
+      }
+
+      .mobile-user-card {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        color: #fff;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        border-radius: 8px;
+        padding: 0.75rem;
+        font-weight: 700;
+      }
+
+      .mobile-user-card a {
+        color: #fff;
+        text-decoration: none;
+        font-size: 0.9rem;
       }
 
       .app-content {
-        height: auto;
-        min-height: calc(100vh - var(--topbar-height));
+        height: calc(100vh - var(--topbar-height));
+        min-height: 0;
         margin-top: var(--topbar-height);
         margin-left: 0;
         padding: 1rem 0.75rem;
-        overflow: visible;
+        overflow-x: hidden;
+        overflow-y: auto;
+      }
+
+      .mobile-menu-backdrop {
+        position: fixed;
+        inset: var(--topbar-height) 0 0 0;
+        z-index: 1055;
+        border: 0;
+        padding: 0;
+        background: rgba(15, 23, 42, 0.42);
+      }
+
+      body.mobile-menu-open .mobile-menu-backdrop {
+        display: block;
       }
 
       .back-to-top {
@@ -567,6 +650,9 @@
   {% if show_app_shell %}
   <header class="topbar">
     <div class="container-fluid px-3 d-flex align-items-center justify-content-between topbar-inner">
+      <button class="mobile-menu-toggle" type="button" id="mobileMenuToggle" aria-label="Abrir menu" aria-controls="sideMenu" aria-expanded="false">
+        ☰
+      </button>
       <a class="topbar-brand d-flex align-items-center" href="{{ url_for('index') }}">
         <img src="{{ url_for('static', filename='logo.jpg') }}" alt="Logo" class="me-2 rounded">
         <span class="fw-bold">M.A.R — Sistema Poliutech</span>
@@ -575,7 +661,7 @@
       <a class="quote-cta fw-bold" href="{{ url_for('cotizador') }}">💰 COTIZAR</a>
 
       {% if current_user.is_authenticated %}
-      <div class="dropdown">
+      <div class="dropdown topbar-account">
         <a class="dropdown-toggle topbar-user d-inline-block fw-semibold" href="#" id="userMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false" title="{{ current_user.nombre }}">
           👤 {{ current_user.nombre }}
         </a>
@@ -591,7 +677,14 @@
 
   <div class="app-layout">
     <!-- ====== Menu lateral ====== -->
-    <aside class="side-menu" aria-label="Menu principal">
+    <aside class="side-menu" id="sideMenu" aria-label="Menu principal">
+      <div class="mobile-menu-tools">
+        <a class="quote-cta fw-bold" href="{{ url_for('cotizador') }}">💰 COTIZAR</a>
+        <div class="mobile-user-card">
+          <span>👤 {{ current_user.nombre }}</span>
+          <a href="{{ url_for('logout') }}">Salir</a>
+        </div>
+      </div>
       <nav class="nav flex-column">
         <a class="nav-link" href="{{ url_for('index') }}">🏠 Inicio</a>
         <a class="nav-link" href="{{ url_for('proyectos') }}">📁 Proyectos</a>
@@ -648,6 +741,7 @@
   {% if show_app_shell %}
   </div>
 
+  <button class="mobile-menu-backdrop" type="button" id="mobileMenuBackdrop" aria-label="Cerrar menu"></button>
   <button class="back-to-top" type="button" id="backToTop">⬆ Ir arriba</button>
   {% endif %}
 
@@ -660,6 +754,39 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
   <script>
+  (function() {
+    const toggle = document.getElementById("mobileMenuToggle");
+    const backdrop = document.getElementById("mobileMenuBackdrop");
+    const menu = document.getElementById("sideMenu");
+
+    function setMenuOpen(open) {
+      document.body.classList.toggle("mobile-menu-open", open);
+      toggle?.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+
+    toggle?.addEventListener("click", function() {
+      setMenuOpen(!document.body.classList.contains("mobile-menu-open"));
+    });
+
+    backdrop?.addEventListener("click", function() {
+      setMenuOpen(false);
+    });
+
+    menu?.querySelectorAll("a").forEach(function(link) {
+      link.addEventListener("click", function() {
+        setMenuOpen(false);
+      });
+    });
+
+    window.addEventListener("keydown", function(event) {
+      if (event.key === "Escape") setMenuOpen(false);
+    });
+
+    window.addEventListener("resize", function() {
+      if (window.innerWidth >= 992) setMenuOpen(false);
+    });
+  })();
+
   document.getElementById("backToTop")?.addEventListener("click", function() {
     const scrollTarget = document.querySelector(".app-content");
     if (scrollTarget && getComputedStyle(scrollTarget).overflowY !== "visible") {
