@@ -23,7 +23,7 @@ body {
 }
 .card-title {
   font-weight: 600;
-  color: #0d47a1;
+  color: #0C3C78;
 }
 
 /* === TABLAS === */
@@ -57,7 +57,7 @@ body {
   font-weight: 500;
 }
 .btn-outline-primary:hover {
-  background-color: #0d47a1;
+  background-color: #0C3C78;
   color: white;
 }
 .btn-outline-success:hover {
@@ -273,15 +273,15 @@ canvas {
   border: 0;
   border-radius: 1rem;
   padding: 0.9rem 1.25rem;
-  background: linear-gradient(135deg, #0d47a1 0%, #1976d2 55%, #42a5f5 100%);
+  background: linear-gradient(135deg, #0C3C78 0%, #155899 55%, #2f7fc6 100%);
   color: #fff;
-  box-shadow: 0 14px 30px rgba(13, 71, 161, 0.22);
+  box-shadow: 0 14px 30px rgba(12, 60, 120, 0.22);
   transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
 }
 
 .voice-launch-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 18px 36px rgba(13, 71, 161, 0.28);
+  box-shadow: 0 18px 36px rgba(12, 60, 120, 0.28);
   filter: saturate(1.05);
 }
 

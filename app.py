@@ -1,4 +1,4 @@
-# =========================================================
+﻿# =========================================================
 # app.py — MARWHATS (checkpoint) / Poliutech
 # Limpio + Roles (ADMIN / USER) + Filtro por Responsable
 # =========================================================
@@ -2257,14 +2257,14 @@ def _support_ticket_email_html(ticket: "TicketSoporte", detail_url: str) -> str:
     button_style = (
         "display:inline-block;min-width:150px;text-align:center;padding:14px 22px;"
         "border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;"
-        "background:#0d47a1;color:#ffffff;border:1px solid #0d47a1;"
+        "background:#0C3C78;color:#ffffff;border:1px solid #0C3C78;"
     )
     return f"""
     <html>
       <body style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
         <div style="max-width:760px;margin:0 auto;padding:30px 16px;">
           <div style="background:#ffffff;border:1px solid #d9e2ec;border-radius:10px;overflow:hidden;box-shadow:0 8px 24px rgba(15,45,80,.08);">
-            <div style="background:#0d47a1;color:#ffffff;padding:22px 26px;">
+            <div style="background:#0C3C78;color:#ffffff;padding:22px 26px;">
               <div style="font-size:12px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;opacity:.9;">MAR · Soporte</div>
               <div style="font-size:23px;font-weight:800;margin-top:5px;">Nuevo ticket de soporte</div>
               <div style="font-size:14px;opacity:.92;margin-top:6px;">{folio}</div>
@@ -2667,6 +2667,8 @@ def now_cdmx_naive() -> datetime:
 
 DEFAULT_SECRET_KEY = "poliutech_mar_checkpoint_superseguro"
 DEFAULT_DATABASE_URL = "sqlite:///mar3.db"
+MAR_BLUE = "#0C3C78"
+MAR_BLUE_XLSX = "0C3C78"
 
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
 TWILIO_AUTH_TOKEN  = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
@@ -3431,7 +3433,7 @@ def _send_user_created_email(usuario: Usuario, created_by: Usuario | None = None
       <body style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
         <div style="max-width:720px;margin:0 auto;padding:28px 16px;">
           <div style="background:#ffffff;border:1px solid #dbe4ef;border-radius:10px;overflow:hidden;">
-            <div style="background:#0d47a1;color:#ffffff;padding:22px 26px;">
+            <div style="background:#0C3C78;color:#ffffff;padding:22px 26px;">
               <div style="font-size:12px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;">MAR · Poliutech</div>
               <div style="font-size:23px;font-weight:800;margin-top:5px;">Nuevo usuario creado</div>
             </div>
@@ -3529,13 +3531,13 @@ def _send_user_updated_email(
       <body style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
         <div style="max-width:760px;margin:0 auto;padding:28px 16px;">
           <div style="background:#ffffff;border:1px solid #dbe4ef;border-radius:10px;overflow:hidden;">
-            <div style="background:#0d47a1;color:#ffffff;padding:22px 26px;">
+            <div style="background:#0C3C78;color:#ffffff;padding:22px 26px;">
               <div style="font-size:12px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;">MAR · Poliutech</div>
               <div style="font-size:23px;font-weight:800;margin-top:5px;">Usuario actualizado</div>
             </div>
             <div style="padding:24px;">
               <table style="border-collapse:collapse;width:100%;background:#ffffff;margin-bottom:20px;">{detail_rows}</table>
-              <div style="font-size:15px;font-weight:800;color:#0d47a1;margin-bottom:8px;">Cambios realizados</div>
+              <div style="font-size:15px;font-weight:800;color:#0C3C78;margin-bottom:8px;">Cambios realizados</div>
               <table style="border-collapse:collapse;width:100%;background:#ffffff;">
                 <thead>
                   <tr>
@@ -5206,7 +5208,7 @@ def export_altas_proveedores_pdf():
 
     def encabezado(canv, doc_):
         canv.saveState()
-        canv.setFillColor(colors.HexColor("#0d47a1"))
+        canv.setFillColor(colors.HexColor(MAR_BLUE))
         canv.rect(0, A4[1] - 40, A4[0], 40, stroke=0, fill=1)
 
         logo_path = os.path.join(app.static_folder or "static", "logo.png")
@@ -5241,7 +5243,7 @@ def export_altas_proveedores_pdf():
                 pass
 
         canv.setFont("Helvetica-Bold", 9)
-        canv.setFillColor(colors.HexColor("#0d47a1"))
+        canv.setFillColor(colors.HexColor(MAR_BLUE))
         canv.drawCentredString(A4[0] / 2, 35, "POLIUTECH - Recubrimientos Especializados")
 
         canv.setFont("Helvetica", 8)
@@ -5314,7 +5316,7 @@ def export_altas_proveedores_pdf():
         hAlign="CENTER",
     )
     tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0d47a1")),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(MAR_BLUE)),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -5835,7 +5837,7 @@ def export_prospectos_pdf():
 
     def encabezado(canv, doc_):
         canv.saveState()
-        canv.setFillColor(colors.HexColor("#0d47a1"))
+        canv.setFillColor(colors.HexColor(MAR_BLUE))
         canv.rect(0, A4[1] - 40, A4[0], 40, stroke=0, fill=1)
 
         logo_path = os.path.join(app.static_folder or "static", "logo.png")
@@ -5866,7 +5868,7 @@ def export_prospectos_pdf():
                 pass
 
         canv.setFont("Helvetica-Bold", 9)
-        canv.setFillColor(colors.HexColor("#0d47a1"))
+        canv.setFillColor(colors.HexColor(MAR_BLUE))
         canv.drawCentredString(A4[0] / 2, 35, "POLIUTECH - Recubrimientos Especializados")
         canv.setFont("Helvetica", 8)
         canv.setFillColor(colors.HexColor("#333333"))
@@ -5935,7 +5937,7 @@ def export_prospectos_pdf():
         hAlign="CENTER",
     )
     tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0d47a1")),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(MAR_BLUE)),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -7735,7 +7737,7 @@ def export_cotizacion_xlsx(cot_id: int):
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
     right = Alignment(horizontal="right", vertical="center")
     left = Alignment(horizontal="left", vertical="top", wrap_text=True)
-    header_fill = PatternFill("solid", fgColor="0D47A1")
+    header_fill = PatternFill("solid", fgColor=MAR_BLUE_XLSX)
     white = Font(color="FFFFFF", bold=True)
     thin = Side(style="thin", color="DDDDDD")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
@@ -7954,7 +7956,7 @@ def _followup_tag_email_html(
     return f"""
     <div style="font-family:Arial,sans-serif;background:#f5f7fb;padding:24px;color:#172033;">
       <div style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #dde3ea;border-radius:10px;overflow:hidden;">
-        <div style="background:#0d6efd;color:#ffffff;padding:18px 22px;">
+        <div style="background:#0C3C78;color:#ffffff;padding:18px 22px;">
           <h2 style="margin:0;font-size:20px;">Te etiquetaron en un seguimiento</h2>
           <div style="font-size:13px;opacity:.92;margin-top:4px;">{module_label}</div>
         </div>
@@ -7966,8 +7968,8 @@ def _followup_tag_email_html(
           </div>
           <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:28px auto 8px auto;">
             <tr>
-              <td align="center" bgcolor="#0d6efd" style="border-radius:10px;box-shadow:0 8px 18px rgba(13,110,253,0.28);">
-                <a href="{view_url}" target="_blank" style="display:inline-block;min-width:190px;padding:15px 28px;border-radius:10px;background:#0d6efd;color:#ffffff !important;text-decoration:none;font-size:17px;font-weight:800;letter-spacing:.4px;text-align:center;">
+              <td align="center" bgcolor="#0C3C78" style="border-radius:10px;box-shadow:0 8px 18px rgba(12,60,120,0.28);">
+                <a href="{view_url}" target="_blank" style="display:inline-block;min-width:190px;padding:15px 28px;border-radius:10px;background:#0C3C78;color:#ffffff !important;text-decoration:none;font-size:17px;font-weight:800;letter-spacing:.4px;text-align:center;">
                   VER SEGUIMIENTO
                 </a>
               </td>
@@ -8141,7 +8143,7 @@ def _quote_review_mail_html(c: Cotizacion, approve_url: str, reject_url: str, re
       <body style="margin:0;padding:0;background:#f3f6fb;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
         <div style="max-width:760px;margin:0 auto;padding:28px 16px;">
           <div style="background:#ffffff;border:1px solid #dbe4ef;border-radius:10px;overflow:hidden;">
-            <div style="background:#0d47a1;color:#ffffff;padding:22px 26px;">
+            <div style="background:#0C3C78;color:#ffffff;padding:22px 26px;">
               <div style="font-size:12px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;">MAR · Poliutech</div>
               <div style="font-size:23px;font-weight:800;margin-top:5px;">Cotizacion pendiente de revision</div>
               <div style="font-size:14px;opacity:.92;margin-top:6px;">{folio}</div>
@@ -8153,7 +8155,7 @@ def _quote_review_mail_html(c: Cotizacion, approve_url: str, reject_url: str, re
                 <tr><td style="padding:10px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:700;">Empresa</td><td style="padding:10px;border-bottom:1px solid #edf2f7;">{empresa}</td></tr>
                 <tr><td style="padding:10px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:700;">Proyecto</td><td style="padding:10px;border-bottom:1px solid #edf2f7;">{proyecto}</td></tr>
                 <tr><td style="padding:10px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:700;">Responsable</td><td style="padding:10px;border-bottom:1px solid #edf2f7;">{responsable}</td></tr>
-                <tr><td style="padding:10px;color:#64748b;font-weight:700;">Total</td><td style="padding:10px;font-size:20px;font-weight:900;color:#0d47a1;">{total}</td></tr>
+                <tr><td style="padding:10px;color:#64748b;font-weight:700;">Total</td><td style="padding:10px;font-size:20px;font-weight:900;color:#0C3C78;">{total}</td></tr>
               </table>
               <div>
                 <a href="{reject_url}" style="{button_base}background:#c62828;border:1px solid #c62828;">RECHAZADO</a>
@@ -8552,7 +8554,7 @@ def export_dashboard_cotizaciones_xlsx():
     bold = Font(bold=True)
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
     left = Alignment(horizontal="left", vertical="top", wrap_text=True)
-    header_fill = PatternFill("solid", fgColor="0D47A1")
+    header_fill = PatternFill("solid", fgColor=MAR_BLUE_XLSX)
     white = Font(color="FFFFFF", bold=True)
     thin = Side(style="thin", color="DDDDDD")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
@@ -8688,7 +8690,7 @@ def export_dashboard_followups_pdf():
         bottomMargin=16 * mm,
     )
     styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name="FollowupHeading", fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=colors.HexColor("#0d47a1"), spaceAfter=4))
+    styles.add(ParagraphStyle(name="FollowupHeading", fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=colors.HexColor(MAR_BLUE), spaceAfter=4))
     styles.add(ParagraphStyle(name="FollowupBody", fontName="Helvetica", fontSize=9, leading=12, textColor=colors.HexColor("#222222"), spaceAfter=2))
     styles.add(ParagraphStyle(name="FollowupMeta", fontName="Helvetica", fontSize=8.3, leading=10.5, textColor=colors.HexColor("#5f6b7a"), spaceAfter=2))
     styles.add(ParagraphStyle(name="FollowupComment", fontName="Helvetica", fontSize=9, leading=12, textColor=colors.HexColor("#222222"), spaceAfter=4))
@@ -8697,7 +8699,7 @@ def export_dashboard_followups_pdf():
 
     def _header_footer(canv, doc_):
         canv.saveState()
-        canv.setFillColor(colors.HexColor("#0d47a1"))
+        canv.setFillColor(colors.HexColor(MAR_BLUE))
         canv.rect(0, A4[1] - 34, A4[0], 34, stroke=0, fill=1)
 
         logo_path = os.path.join(app.static_folder or "static", "logo.png")
@@ -8914,7 +8916,7 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
 
     def encabezado(canv, doc_):
         canv.saveState()
-        canv.setFillColor(colors.HexColor("#0d47a1"))
+        canv.setFillColor(colors.HexColor(MAR_BLUE))
         canv.rect(0, A4[1]-40, A4[0], 40, stroke=0, fill=1)
 
         logo_path = os.path.join(app.static_folder or "static", "logo.png")
@@ -8958,7 +8960,7 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
                 pass
 
         canv.setFont("Helvetica-Bold", 9)
-        canv.setFillColor(colors.HexColor("#0d47a1"))
+        canv.setFillColor(colors.HexColor(MAR_BLUE))
         canv.drawCentredString(A4[0]/2, 35, "POLIUTECH – Recubrimientos Especializados")
 
         canv.setFont("Helvetica", 8)
@@ -9042,7 +9044,7 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
         hAlign="CENTER"
     )
     tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0d47a1")),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(MAR_BLUE)),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("ALIGN", (0, 1), (-1, -1), "CENTER"),
@@ -9735,7 +9737,7 @@ def _solicitud_recurso_mail_html(solicitud: SolicitudRecurso, detail_url: str) -
     partidas_html = "".join(rows) or "<tr><td colspan='3' style='padding:10px;'>Sin partidas.</td></tr>"
     return f"""
     <div style="font-family:Arial,sans-serif;color:#0f172a;max-width:760px;margin:0 auto;">
-      <h2 style="margin:0 0 10px;color:#0d47a1;">Nueva solicitud de recursos</h2>
+      <h2 style="margin:0 0 10px;color:#0C3C78;">Nueva solicitud de recursos</h2>
       <p style="margin:0 0 18px;color:#475569;">Se registro la solicitud <b>{escape(solicitud.folio or str(solicitud.id))}</b>.</p>
       <table style="width:100%;border-collapse:collapse;margin-bottom:18px;">
         <tr><td style="padding:8px;color:#64748b;font-weight:700;">Solicitante</td><td style="padding:8px;">{escape(solicitud.solicitante or '-')}</td></tr>
@@ -9753,7 +9755,7 @@ def _solicitud_recurso_mail_html(solicitud: SolicitudRecurso, detail_url: str) -
         </thead>
         <tbody>{partidas_html}</tbody>
       </table>
-      <p style="margin:18px 0;"> <a href="{detail_url}" style="background:#0d47a1;color:#fff;text-decoration:none;padding:10px 14px;border-radius:6px;display:inline-block;">Ver solicitud</a></p>
+      <p style="margin:18px 0;"> <a href="{detail_url}" style="background:#0C3C78;color:#fff;text-decoration:none;padding:10px 14px;border-radius:6px;display:inline-block;">Ver solicitud</a></p>
       <p style="margin:0;color:#64748b;">{escape(solicitud.notas or '')}</p>
     </div>
     """
@@ -10218,7 +10220,7 @@ def _gastos_mail_html(gasto: "ComprobacionGasto", view_url: str, approve_url: st
       <body style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
         <div style="max-width:760px;margin:0 auto;padding:30px 16px;">
           <div style="background:#ffffff;border:1px solid #d9e2ec;border-radius:10px;overflow:hidden;box-shadow:0 8px 24px rgba(15,45,80,.08);">
-            <div style="background:#0d47a1;color:#ffffff;padding:22px 26px;">
+            <div style="background:#0C3C78;color:#ffffff;padding:22px 26px;">
               <div style="font-size:12px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;opacity:.9;">MAR · Poliutech</div>
               <div style="font-size:23px;font-weight:800;margin-top:5px;">Comprobante pendiente de revision</div>
               <div style="font-size:14px;opacity:.92;margin-top:6px;">Gastos y viaticos</div>
@@ -10229,7 +10231,7 @@ def _gastos_mail_html(gasto: "ComprobacionGasto", view_url: str, approve_url: st
               <div style="border:1px solid #dbe4ef;border-radius:10px;overflow:hidden;margin-bottom:22px;">
                 <div style="background:#f8fafc;padding:14px 18px;border-bottom:1px solid #dbe4ef;">
                   <div style="font-size:12px;text-transform:uppercase;letter-spacing:.7px;color:#64748b;font-weight:700;">Folio</div>
-                  <div style="font-size:20px;font-weight:800;color:#0d47a1;margin-top:2px;">{folio}</div>
+                  <div style="font-size:20px;font-weight:800;color:#0C3C78;margin-top:2px;">{folio}</div>
                 </div>
                 <table style="border-collapse:collapse;width:100%;background:#ffffff;">
                   <tr>
@@ -10260,12 +10262,12 @@ def _gastos_mail_html(gasto: "ComprobacionGasto", view_url: str, approve_url: st
               </div>
 
               <div style="background:#f0f7ff;border:1px solid #cfe3ff;border-radius:10px;padding:16px 18px;margin-bottom:24px;">
-                <div style="font-size:12px;text-transform:uppercase;letter-spacing:.7px;color:#0d47a1;font-weight:800;">Total del comprobante</div>
-                <div style="font-size:30px;font-weight:900;color:#0d47a1;margin-top:3px;">{total}</div>
+                <div style="font-size:12px;text-transform:uppercase;letter-spacing:.7px;color:#0C3C78;font-weight:800;">Total del comprobante</div>
+                <div style="font-size:30px;font-weight:900;color:#0C3C78;margin-top:3px;">{total}</div>
               </div>
 
               <div style="margin-top:4px;">
-                <a href="{view_url}" style="{button_base}background:#0d47a1;color:#ffffff;border:1px solid #0d47a1;">Ver Detalle</a>
+                <a href="{view_url}" style="{button_base}background:#0C3C78;color:#ffffff;border:1px solid #0C3C78;">Ver Detalle</a>
                 <a href="{approve_url}" style="{button_base}background:#16854f;color:#ffffff;border:1px solid #16854f;">Aprobar</a>
               </div>
 
@@ -10932,7 +10934,7 @@ def finanzas_export_xlsx():
     for sheet in (ws, ws_pagos):
         for cell in sheet[1]:
             cell.font = Font(bold=True, color="FFFFFF")
-            cell.fill = PatternFill("solid", fgColor="0D47A1")
+            cell.fill = PatternFill("solid", fgColor=MAR_BLUE_XLSX)
             cell.alignment = Alignment(horizontal="center")
     for col in ("I", "J", "K"):
         for cell in ws[col][1:]:
@@ -11461,7 +11463,7 @@ def ordenes_compra_export_xlsx():
         ])
     for cell in ws[1]:
         cell.font = Font(bold=True, color="FFFFFF")
-        cell.fill = PatternFill("solid", fgColor="0D47A1")
+        cell.fill = PatternFill("solid", fgColor=MAR_BLUE_XLSX)
         cell.alignment = Alignment(horizontal="center")
     for col in ("G", "I", "J"):
         for cell in ws[col][1:]:
@@ -11501,7 +11503,7 @@ def orden_compra_pdf(orden_id: int):
 
     def encabezado(canv, doc_):
         canv.saveState()
-        canv.setFillColor(colors.HexColor("#0d47a1"))
+        canv.setFillColor(colors.HexColor(MAR_BLUE))
         canv.rect(0, A4[1] - 40, A4[0], 40, stroke=0, fill=1)
         logo_path = os.path.join(app.static_folder or "static", "logo.png")
         if os.path.exists(logo_path):
@@ -11568,7 +11570,7 @@ def orden_compra_pdf(orden_id: int):
         ])
     tbl = Table(data, colWidths=[20 * mm, 66 * mm, 18 * mm, 20 * mm, 20 * mm, 24 * mm, 24 * mm], repeatRows=1)
     tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0d47a1")),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(MAR_BLUE)),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
@@ -11587,7 +11589,7 @@ def orden_compra_pdf(orden_id: int):
     totals_tbl.setStyle(TableStyle([
         ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
         ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-        ("LINEABOVE", (0, -1), (-1, -1), 0.5, colors.HexColor("#0d47a1")),
+        ("LINEABOVE", (0, -1), (-1, -1), 0.5, colors.HexColor(MAR_BLUE)),
     ]))
     elems.append(totals_tbl)
     if orden.condiciones or orden.notas:
@@ -11971,7 +11973,7 @@ def inventario_export_xlsx():
 
     for cell in ws[1]:
         cell.font = Font(bold=True, color="FFFFFF")
-        cell.fill = PatternFill("solid", fgColor="0D47A1")
+        cell.fill = PatternFill("solid", fgColor=MAR_BLUE_XLSX)
         cell.alignment = Alignment(horizontal="center")
     for col in ("E", "F", "G"):
         for cell in ws[col][1:]:
@@ -12025,3 +12027,5 @@ if __name__ == "__main__":
     except Exception:
         pass
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True)
+
+

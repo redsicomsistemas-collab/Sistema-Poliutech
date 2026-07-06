@@ -14,9 +14,36 @@
   <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
 
   <style>
+    :root {
+      --mar-blue: #0C3C78;
+      --mar-blue-rgb: 12, 60, 120;
+      --bs-primary: var(--mar-blue);
+      --bs-primary-rgb: var(--mar-blue-rgb);
+      --bs-link-color: var(--mar-blue);
+      --bs-link-hover-color: #082a54;
+    }
+
+    .btn-primary {
+      --bs-btn-bg: var(--mar-blue);
+      --bs-btn-border-color: var(--mar-blue);
+      --bs-btn-hover-bg: #082f60;
+      --bs-btn-hover-border-color: #082f60;
+      --bs-btn-active-bg: #06264e;
+      --bs-btn-active-border-color: #06264e;
+    }
+
+    .btn-outline-primary {
+      --bs-btn-color: var(--mar-blue);
+      --bs-btn-border-color: var(--mar-blue);
+      --bs-btn-hover-bg: var(--mar-blue);
+      --bs-btn-hover-border-color: var(--mar-blue);
+      --bs-btn-active-bg: var(--mar-blue);
+      --bs-btn-active-border-color: var(--mar-blue);
+    }
+
     /* ====== LAYOUT PRINCIPAL ====== */
     .topbar {
-      background: #0d6efd;
+      background: var(--mar-blue);
       color: #fff;
       box-shadow: 0 6px 18px rgba(15, 23, 42, 0.16);
     }
@@ -95,8 +122,8 @@
     .side-menu {
       position: sticky;
       top: 1rem;
-      background: #0d6efd;
-      border: 1px solid #0b5ed7;
+      background: var(--mar-blue);
+      border: 1px solid #082f60;
       border-radius: 8px;
       box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
       padding: 0.75rem;
