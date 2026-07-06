@@ -36,6 +36,11 @@
       overflow: hidden;
     }
 
+    body.auth-page {
+      background: #fff;
+      overflow: auto;
+    }
+
     .btn-primary {
       --bs-btn-bg: var(--mar-blue);
       --bs-btn-border-color: var(--mar-blue);
@@ -516,7 +521,7 @@
   </style>
 </head>
 
-<body class="bg-light">
+<body class="{{ 'auth-page' if request.endpoint == 'login' or not current_user.is_authenticated else '' }}">
   <!-- ====== Splash solo dashboard ====== -->
   <div id="mar-splash" aria-hidden="true">
     <div class="wrap">
@@ -556,7 +561,10 @@
     </div>
   </div>
 
+  {% set show_app_shell = current_user.is_authenticated and request.endpoint != "login" %}
+
   <!-- ====== Barra superior ====== -->
+  {% if show_app_shell %}
   <header class="topbar">
     <div class="container-fluid px-3 d-flex align-items-center justify-content-between topbar-inner">
       <a class="topbar-brand d-flex align-items-center" href="{{ url_for('index') }}">
@@ -620,6 +628,9 @@
 
     <!-- ====== Contenido dinámico ====== -->
     <main class="app-content mb-5">
+  {% else %}
+    <main class="auth-content">
+  {% endif %}
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
           <div>
@@ -634,9 +645,11 @@
       {% endwith %}
       {% block content %}{% endblock %}
     </main>
+  {% if show_app_shell %}
   </div>
 
   <button class="back-to-top" type="button" id="backToTop">⬆ Ir arriba</button>
+  {% endif %}
 
   <!-- ====== Pie de página ====== -->
   <footer class="text-center text-muted py-3 border-top small">
