@@ -1794,6 +1794,27 @@ def _mobile_push_user_ids_for_quote_owner(cot: Cotizacion) -> list[int]:
     return list(user_ids)
 
 
+def _mobile_push_user_ids_for_aazcona() -> list[int]:
+    aliases = {"aazcona", "azcona"}
+    target_email = COTIZACION_REVIEW_RESULT_AAZCONA_EMAIL.lower()
+    user_ids: set[int] = set()
+    for user in Usuario.query.all():
+        user_name = (getattr(user, "nombre", "") or "").strip().lower()
+        visible_name = (_mobile_user_responsable(user) or "").strip().lower()
+        raw_visible_name = (getattr(user, "nombre_visible", "") or "").strip().lower()
+        user_email = (getattr(user, "correo", "") or "").strip().lower()
+        identity_parts = {user_name, visible_name, raw_visible_name}
+        if (
+            user_email == target_email
+            or any(part in aliases or part.startswith("aazcona ") or part.startswith("azcona ") for part in identity_parts if part)
+        ):
+            if user.id:
+                user_ids.add(user.id)
+    if not user_ids:
+        logger.warning("Push resultado cotizacion: no se encontro usuario Aazcona con correo %s.", target_email)
+    return list(user_ids)
+
+
 def _send_quote_status_push(cot: Cotizacion, previous_status: str, new_status: str) -> dict[str, int]:
     if (new_status or "").strip().upper() == "FINALIZADA":
         return {"sent": 0, "failed": 0}
@@ -1818,8 +1839,11 @@ def _send_quote_status_push(cot: Cotizacion, previous_status: str, new_status: s
 
 def _send_quote_review_result_push(cot: Cotizacion, selected_status: str, reason: str = "") -> dict[str, int]:
     normalized = (selected_status or "").strip().upper()
-    owner_ids = _mobile_push_user_ids_for_quote_owner(cot)
-    tokens = _mobile_push_tokens_for_users(owner_ids)
+    target_ids = list(dict.fromkeys([
+        *_mobile_push_user_ids_for_quote_owner(cot),
+        *_mobile_push_user_ids_for_aazcona(),
+    ]))
+    tokens = _mobile_push_tokens_for_users(target_ids)
     if normalized in {"APROBADO", "APROBADA", "AUTORIZADO"}:
         title = "Cotización aprobada"
         body = f"{cot.folio or 'Sin folio'} fue aprobada."
@@ -1843,7 +1867,7 @@ def _send_quote_review_result_push(cot: Cotizacion, selected_status: str, reason
             "estatus": normalized,
             "reason": str(reason or ""),
             "pdf_url": _mobile_quote_pdf_url(cot.id),
-            "target_user_id": str(owner_ids[0]) if len(owner_ids) == 1 else "",
+            "target_user_id": str(target_ids[0]) if len(target_ids) == 1 else "",
         },
     )
 
@@ -2697,6 +2721,7 @@ COTIZACION_REVIEW_EMAIL = "hjaramillo@poliutech.com"
 COTIZACION_REVIEW_BCC_EMAIL = "sistemas@poliutech.com"
 COTIZACION_RESPONSE_EMAIL = (os.getenv("COTIZACION_RESPONSE_EMAIL") or "umorales@poliutech.com").strip()
 COTIZACION_APPROVALS_EMAIL = "aprobaciones@poliutech.com"
+COTIZACION_REVIEW_RESULT_AAZCONA_EMAIL = "aazcona@poliutech.com"
 GASTOS_REVIEW_EMAIL = "hjaramillo@poliutech.com"
 GASTOS_REVIEW_BCC_EMAIL = "sistemas@poliutech.com"
 SUPPORT_TICKET_EMAIL = (os.getenv("SUPPORT_TICKET_EMAIL") or "sistemas@poliutech.com").strip()
@@ -8545,6 +8570,7 @@ def _send_quote_review_response_email(c: Cotizacion, selected_status: str, reaso
         _quote_responsible_email(c),
         _parse_email_list(COTIZACION_RESPONSE_EMAIL),
         _parse_email_list(COTIZACION_APPROVALS_EMAIL),
+        _parse_email_list(COTIZACION_REVIEW_RESULT_AAZCONA_EMAIL),
     )
     if not recipients:
         raise ValueError("No hay correo configurado para respuesta de cotizaciones.")
