@@ -62,27 +62,28 @@ body {
 
 .horizontal-scroll-button {
   position: absolute;
-  top: 50%;
+  top: var(--horizontal-scroll-button-top, 50%);
   z-index: 20;
   display: none;
-  width: 42px;
-  height: 54px;
+  width: 46px;
+  height: 112px;
   align-items: center;
   justify-content: center;
   border: 1px solid rgba(12, 60, 120, 0.28);
   border-radius: 8px;
-  background: rgba(255, 193, 7, 0.96);
+  background: rgba(255, 193, 7, 0.74);
   color: #0c3c78;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22);
-  font-size: 1.8rem;
+  font-size: 2.2rem;
   font-weight: 800;
   line-height: 1;
   transform: translateY(-50%);
+  backdrop-filter: blur(3px);
 }
 
 .horizontal-scroll-button:hover,
 .horizontal-scroll-button:focus {
-  background: #ffcd39;
+  background: rgba(255, 205, 57, 0.92);
   color: #082a54;
 }
 

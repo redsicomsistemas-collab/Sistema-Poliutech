@@ -837,12 +837,31 @@
         return Math.max(240, Math.floor(scroller.clientWidth * 0.72));
       }
 
+      function updateVerticalPosition() {
+        const shellRect = shell.getBoundingClientRect();
+        const viewportTop = 0;
+        const viewportBottom = window.innerHeight || document.documentElement.clientHeight;
+        const visibleTop = Math.max(shellRect.top, viewportTop);
+        const visibleBottom = Math.min(shellRect.bottom, viewportBottom);
+        const hasVisibleArea = visibleBottom > visibleTop;
+        const fallbackTop = Math.min(Math.max(scroller.clientHeight / 2, 72), Math.max(shellRect.height - 72, 72));
+        const visibleMiddle = hasVisibleArea
+          ? ((visibleTop + visibleBottom) / 2) - shellRect.top
+          : fallbackTop;
+        const buttonHalfHeight = 56;
+        const minTop = Math.min(buttonHalfHeight + 8, Math.max(shellRect.height / 2, buttonHalfHeight));
+        const maxTop = Math.max(minTop, shellRect.height - buttonHalfHeight - 8);
+        const top = Math.min(Math.max(visibleMiddle, minTop), maxTop);
+        shell.style.setProperty("--horizontal-scroll-button-top", `${top}px`);
+      }
+
       function update() {
         const overflow = scroller.scrollWidth - scroller.clientWidth;
         const hasOverflow = overflow > MIN_OVERFLOW;
         const atStart = scroller.scrollLeft <= MIN_OVERFLOW;
         const atEnd = scroller.scrollLeft >= overflow - MIN_OVERFLOW;
 
+        updateVerticalPosition();
         left.classList.toggle("is-visible", hasOverflow && !atStart);
         right.classList.toggle("is-visible", hasOverflow && !atEnd);
         hint.classList.toggle("is-visible", hasOverflow && atStart && !atEnd);
@@ -859,6 +878,7 @@
       });
 
       scroller.addEventListener("scroll", update, { passive: true });
+      window.addEventListener("scroll", update, { passive: true });
       window.addEventListener("resize", update);
       window.setTimeout(update, 50);
       window.setTimeout(update, 400);
