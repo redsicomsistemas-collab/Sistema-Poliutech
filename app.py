@@ -35,11 +35,7 @@ except Exception:
 # Ya no se agregan condiciones por defecto. Solo se exporta lo capturado
 # por el usuario y, cuando aplique, la trazabilidad de la zona.
 DEFAULT_CONDICIONES: list[str] = []
-VALID_ESTATUS = [
-    "EN REVISIÓN",
-    "APROBADO",
-    "AUTORIZADO",
-    "RECHAZADO",
+VALID_ESTATUS_SEGUIMIENTO = [
     "ENVIADA",
     "PENDIENTE",
     "EN CURSO",
@@ -48,6 +44,12 @@ VALID_ESTATUS = [
     "GANADA",
     "PERDIDA",
 ]
+VALID_ESTATUS_APROBACION = [
+    "APROBADA",
+    "RECHAZADA",
+    "EN REVISIÓN",
+]
+VALID_ESTATUS = VALID_ESTATUS_SEGUIMIENTO
 PROSPECT_STATUS_OPTIONS = [
     "PENDIENTE",
     "CONTACTADO",
@@ -1597,7 +1599,8 @@ def _create_mobile_voice_quote(preview: dict, user: Usuario) -> Cotizacion:
         folio=generar_folio(),
         fecha=now_cdmx_naive(),
         cliente_id=cliente.id if cliente else None,
-        estatus="EN REVISIÓN",
+        estatus="PENDIENTE",
+        estatus_aprobacion="EN REVISIÓN",
         notas="\n".join(part for part in notes_parts if part).strip() or None,
         responsable=responsible,
         proyecto=(header_data.get("proyecto") or preview.get("proyecto") or "").strip() or None,
@@ -1817,10 +1820,10 @@ def _send_quote_review_result_push(cot: Cotizacion, selected_status: str, reason
     normalized = (selected_status or "").strip().upper()
     owner_ids = _mobile_push_user_ids_for_quote_owner(cot)
     tokens = _mobile_push_tokens_for_users(owner_ids)
-    if normalized in {"APROBADO", "AUTORIZADO"}:
+    if normalized in {"APROBADO", "APROBADA", "AUTORIZADO"}:
         title = "Cotización aprobada"
         body = f"{cot.folio or 'Sin folio'} fue aprobada."
-    elif normalized == "RECHAZADO":
+    elif normalized in {"RECHAZADO", "RECHAZADA"}:
         title = "Cotización rechazada"
         reason_text = " ".join((reason or "").split())
         body = f"{cot.folio or 'Sin folio'} fue rechazada."
@@ -1872,7 +1875,7 @@ def _send_quote_approval_request_push(cot: Cotizacion) -> dict[str, int]:
             "type": "quote_pending_approval",
             "cotizacion_id": str(cot.id or ""),
             "folio": str(cot.folio or ""),
-            "estatus": str(cot.estatus or ""),
+            "estatus": str(cot.estatus_aprobacion or "EN REVISIÓN"),
             "pdf_url": _mobile_quote_pdf_url(cot.id),
             "target_user": "Hansel",
             "target_user_name": "Hansel",
@@ -1896,11 +1899,13 @@ def _send_quote_approval_request_push(cot: Cotizacion) -> dict[str, int]:
 
 def _send_quote_created_notification(cot: Cotizacion) -> None:
     estatus_actual = (cot.estatus or "").strip().upper()
+    aprobacion_actual = (cot.estatus_aprobacion or "EN REVISIÓN").strip().upper()
     try:
         msg = (
             "🧾 *Nueva Cotización Creada*\\n"
             f"Folio: *{cot.folio or 'Sin folio'}*\\n"
-            f"Estatus: *{estatus_actual or 'SIN ESTATUS'}*\\n"
+            f"Estatus seguimiento: *{estatus_actual or 'SIN ESTATUS'}*\\n"
+            f"Estatus aprobación: *{aprobacion_actual}*\\n"
             f"Fecha (CDMX): {cot.fecha.strftime('%d/%m/%Y %H:%M') if cot.fecha else ''}\\n"
             f"Total: {money(cot.total)}"
         )
@@ -3139,6 +3144,8 @@ def ensure_schema():
             ("iva_monto", "ALTER TABLE cotizacion ADD COLUMN iva_monto FLOAT DEFAULT 0.0"),
             ("total", "ALTER TABLE cotizacion ADD COLUMN total FLOAT DEFAULT 0.0"),
             ("moneda", "ALTER TABLE cotizacion ADD COLUMN moneda VARCHAR(10) DEFAULT 'MXN'"),
+            ("estatus_aprobacion", "ALTER TABLE cotizacion ADD COLUMN estatus_aprobacion VARCHAR(20) DEFAULT 'EN REVISIÓN'"),
+            ("especialidad", "ALTER TABLE cotizacion ADD COLUMN especialidad VARCHAR(160)"),
             ("notas", "ALTER TABLE cotizacion ADD COLUMN notas VARCHAR(3000)"),
             ("last_whatsapp_at", "ALTER TABLE cotizacion ADD COLUMN last_whatsapp_at TIMESTAMP NULL"),
             ("proyecto", "ALTER TABLE cotizacion ADD COLUMN proyecto VARCHAR(200)"),
@@ -3153,6 +3160,26 @@ def ensure_schema():
                 except Exception:
                     pass
         db.session.commit()
+        cols = _table_columns("cotizacion")
+        if "estatus_aprobacion" in cols and "estatus" in cols:
+            db.session.execute(text("""
+                UPDATE cotizacion
+                SET estatus_aprobacion = CASE
+                    WHEN UPPER(COALESCE(estatus, '')) IN ('APROBADO', 'APROBADA', 'AUTORIZADO') THEN 'APROBADA'
+                    WHEN UPPER(COALESCE(estatus, '')) IN ('RECHAZADO', 'RECHAZADA') THEN 'RECHAZADA'
+                    WHEN UPPER(COALESCE(estatus, '')) IN ('EN REVISIÓN', 'EN REVISION') THEN 'EN REVISIÓN'
+                    ELSE COALESCE(NULLIF(TRIM(estatus_aprobacion), ''), 'EN REVISIÓN')
+                END
+                WHERE estatus_aprobacion IS NULL OR TRIM(estatus_aprobacion) = ''
+                   OR UPPER(COALESCE(estatus, '')) IN ('APROBADO', 'APROBADA', 'AUTORIZADO', 'RECHAZADO', 'RECHAZADA', 'EN REVISIÓN', 'EN REVISION')
+            """))
+            db.session.execute(text("""
+                UPDATE cotizacion
+                SET estatus = 'PENDIENTE'
+                WHERE UPPER(COALESCE(estatus, '')) IN ('APROBADO', 'APROBADA', 'AUTORIZADO', 'RECHAZADO', 'RECHAZADA', 'EN REVISIÓN', 'EN REVISION')
+                   OR estatus IS NULL OR TRIM(estatus) = ''
+            """))
+            db.session.commit()
     except Exception as e:
         print("⚠️ ensure_schema(cotizacion extras):", e)
 
@@ -3681,6 +3708,7 @@ def _build_dashboard_cotizaciones_query(
             db.func.lower(db.func.coalesce(Cliente.nombre_cliente, "")).like(pattern),
             db.func.lower(db.func.coalesce(Cliente.empresa, "")).like(pattern),
             db.func.lower(db.func.coalesce(Cotizacion.proyecto, "")).like(pattern),
+            db.func.lower(db.func.coalesce(Cotizacion.especialidad, "")).like(pattern),
         ))
 
     return q
@@ -4580,12 +4608,32 @@ def _normalize_import_payload(payload: dict) -> dict:
             "subtotal_pdf": parse_float(item.get("subtotal_pdf", item.get("importe")), 0.0),
         })
 
+    raw_estatus = (payload.get("estatus") or "").strip().upper()
+    raw_aprobacion = (payload.get("estatus_aprobacion") or "").strip().upper()
+    if raw_estatus in {"APROBADO", "APROBADA", "AUTORIZADO"}:
+        raw_aprobacion = "APROBADA"
+        raw_estatus = "PENDIENTE"
+    elif raw_estatus in {"RECHAZADO", "RECHAZADA"}:
+        raw_aprobacion = "RECHAZADA"
+        raw_estatus = "PENDIENTE"
+    elif raw_estatus in {"EN REVISION", "EN REVISIÓN"}:
+        raw_aprobacion = "EN REVISIÓN"
+        raw_estatus = "PENDIENTE"
+    if raw_aprobacion == "APROBADO" or raw_aprobacion == "AUTORIZADO":
+        raw_aprobacion = "APROBADA"
+    elif raw_aprobacion == "RECHAZADO":
+        raw_aprobacion = "RECHAZADA"
+    elif raw_aprobacion == "EN REVISION":
+        raw_aprobacion = "EN REVISIÓN"
+
     return {
         "folio": (payload.get("folio") or payload.get("folio_externo") or "").strip() or None,
         "fecha": parse_datetime_flexible(payload.get("fecha")) or now_cdmx_naive(),
-        "estatus": (payload.get("estatus") or "EN REVISIÓN").strip().upper(),
+        "estatus": raw_estatus if raw_estatus in VALID_ESTATUS_SEGUIMIENTO else "PENDIENTE",
+        "estatus_aprobacion": raw_aprobacion if raw_aprobacion in VALID_ESTATUS_APROBACION else "EN REVISIÓN",
         "responsable": (payload.get("responsable") or "").strip() or None,
         "proyecto": (payload.get("proyecto") or payload.get("obra") or "").strip() or None,
+        "especialidad": (payload.get("especialidad") or "").strip() or None,
         "cliente": cliente,
         "zona": (payload.get("zona") or "").strip(),
         "iva_porc": parse_float(payload.get("iva_porc"), 16.0),
@@ -4666,6 +4714,7 @@ def import_external_quote_payload(payload: dict, source_label: Optional[str] = N
         fecha=normalized["fecha"],
         cliente_id=cliente.id,
         estatus=normalized["estatus"],
+        estatus_aprobacion=normalized.get("estatus_aprobacion") or "EN REVISIÓN",
         subtotal=fmt(subtotal),
         descuento_total=fmt(descuento_total),
         iva_porc=fmt(normalized["iva_porc"]),
@@ -4675,6 +4724,7 @@ def import_external_quote_payload(payload: dict, source_label: Optional[str] = N
         last_whatsapp_at=None,
         responsable=responsable_final,
         proyecto=normalized["proyecto"],
+        especialidad=normalized.get("especialidad"),
     )
     db.session.add(cot)
     db.session.flush()
@@ -4899,7 +4949,8 @@ def index():
         cotizaciones=cotizaciones,
         pagination=pagination,
         dashboard_filters=dashboard_filters,
-        valid_estatus=VALID_ESTATUS,
+        valid_estatus=VALID_ESTATUS_SEGUIMIENTO,
+        valid_estatus_aprobacion=VALID_ESTATUS_APROBACION,
         show_splash=True
     )
 
@@ -6352,7 +6403,7 @@ def api_mobile_registro_obras_list():
 def api_mobile_pending_quotes():
     query = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
     query = query.filter(Cotizacion.eliminada_en.is_(None))
-    query = query.filter(db.func.upper(Cotizacion.estatus).in_(["PENDIENTE", "EN REVISIÓN", "EN REVISION"]))
+    query = query.filter(db.func.upper(Cotizacion.estatus_aprobacion).in_(["EN REVISIÓN", "EN REVISION"]))
 
     items = []
     for cot in query.order_by(Cotizacion.fecha.desc()).limit(100).all():
@@ -6361,6 +6412,8 @@ def api_mobile_pending_quotes():
             "folio": cot.folio or "",
             "fecha": cot.fecha.isoformat() if cot.fecha else "",
             "estatus": cot.estatus or "",
+            "estatus_aprobacion": cot.estatus_aprobacion or "EN REVISIÓN",
+            "especialidad": cot.especialidad or "",
             "total": cot.total or 0,
             "responsable": cot.responsable or "",
             "proyecto": cot.proyecto or "",
@@ -6415,6 +6468,8 @@ def api_mobile_quotes():
             "folio": cot.folio or "",
             "fecha": cot.fecha.isoformat() if cot.fecha else "",
             "estatus": cot.estatus or "",
+            "estatus_aprobacion": cot.estatus_aprobacion or "EN REVISIÓN",
+            "especialidad": cot.especialidad or "",
             "total": cot.total or 0,
             "responsable": cot.responsable or "",
             "proyecto": cot.proyecto or "",
@@ -6469,6 +6524,8 @@ def api_mobile_voice_quote():
             "id": cot.id,
             "folio": cot.folio or "",
             "estatus": cot.estatus or "",
+            "estatus_aprobacion": cot.estatus_aprobacion or "EN REVISIÓN",
+            "especialidad": cot.especialidad or "",
             "total": float(cot.total or 0),
             "cliente": cot.cliente.nombre_cliente if cot.cliente else "",
             "pdf_url": _mobile_quote_pdf_url(cot.id),
@@ -6570,17 +6627,17 @@ def api_mobile_quote_review_decision(cot_id: int):
     action = (payload.get("action") or "").strip().lower()
     reason = (payload.get("reason") or payload.get("motivo") or "").strip()
     status_by_action = {
-        "approve": "APROBADO",
-        "approved": "APROBADO",
-        "aprobar": "APROBADO",
-        "reject": "RECHAZADO",
-        "rejected": "RECHAZADO",
-        "rechazar": "RECHAZADO",
+        "approve": "APROBADA",
+        "approved": "APROBADA",
+        "aprobar": "APROBADA",
+        "reject": "RECHAZADA",
+        "rejected": "RECHAZADA",
+        "rechazar": "RECHAZADA",
     }
     selected_status = status_by_action.get(action)
     if not selected_status:
         return _mobile_json_error("Acción inválida.", 400)
-    if selected_status == "RECHAZADO" and not reason:
+    if selected_status == "RECHAZADA" and not reason:
         return _mobile_json_error("Captura el motivo del rechazo.", 400)
 
     author = _mobile_user_responsable(user) or getattr(user, "nombre", "") or "Hansel"
@@ -6618,6 +6675,8 @@ def api_mobile_quote_followup_detail(cot_id: int, seg_id: int):
             "id": cot.id,
             "folio": cot.folio or "",
             "estatus": cot.estatus or "",
+            "estatus_aprobacion": cot.estatus_aprobacion or "EN REVISIÓN",
+            "especialidad": cot.especialidad or "",
             "responsable": cot.responsable or "",
             "cliente": cot.cliente.nombre_cliente if cot.cliente else "",
         },
@@ -6972,7 +7031,9 @@ def crear_cotizacion():
         folio=generar_folio(),
         fecha=now_cdmx_naive(),
         cliente_id=cliente.id if cliente else None,
-        estatus=(f.get("estatus") or "EN REVISIÓN").upper(),
+        estatus=(f.get("estatus") or "PENDIENTE").upper(),
+        estatus_aprobacion=(f.get("estatus_aprobacion") or "EN REVISIÓN").upper(),
+        especialidad=(f.get("especialidad") or "").strip() or None,
         notas=(f.get("notas") or "").strip() or None,
         last_whatsapp_at=None,
         responsable=responsable_final,
@@ -7111,7 +7172,7 @@ def editar_cotizacion(cot_id: int):
     descuento_porc_actual = 0.0
     if float(c.subtotal or 0) > 0:
         descuento_porc_actual = (float(c.descuento_total or 0) / float(c.subtotal or 0)) * 100.0
-    return render_template("cotizacion_edit.html", c=c, zona_actual=zona_actual, notas_adicionales=notas_adicionales, descuento_porc_actual=descuento_porc_actual, proyectos=_known_project_names(), valid_estatus=VALID_ESTATUS, title=f"Editar {c.folio}")
+    return render_template("cotizacion_edit.html", c=c, zona_actual=zona_actual, notas_adicionales=notas_adicionales, descuento_porc_actual=descuento_porc_actual, proyectos=_known_project_names(), valid_estatus=VALID_ESTATUS_SEGUIMIENTO, valid_estatus_aprobacion=VALID_ESTATUS_APROBACION, title=f"Editar {c.folio}")
 
 @app.route("/cotizaciones/<int:cot_id>/actualizar", methods=["POST"])
 @login_required
@@ -7170,7 +7231,23 @@ def actualizar_cotizacion(cot_id: int):
         c.cliente_id = cliente.id
 
     # === ENCABEZADO ===
-    c.estatus = (f.get("estatus") or c.estatus).upper()
+    estatus_form = (f.get("estatus") or c.estatus or "PENDIENTE").upper()
+    estatus_aprobacion_form = (f.get("estatus_aprobacion") or c.estatus_aprobacion or "EN REVISIÓN").upper()
+    if estatus_aprobacion_form == "APROBADO":
+        estatus_aprobacion_form = "APROBADA"
+    elif estatus_aprobacion_form == "RECHAZADO":
+        estatus_aprobacion_form = "RECHAZADA"
+    elif estatus_aprobacion_form == "EN REVISION":
+        estatus_aprobacion_form = "EN REVISIÓN"
+    if estatus_form not in VALID_ESTATUS_SEGUIMIENTO:
+        flash("Selecciona un estatus de seguimiento válido.", "danger")
+        return redirect(url_for("editar_cotizacion", cot_id=c.id))
+    if estatus_aprobacion_form not in VALID_ESTATUS_APROBACION:
+        flash("Selecciona un estatus de aprobación válido.", "danger")
+        return redirect(url_for("editar_cotizacion", cot_id=c.id))
+    c.estatus = estatus_form
+    c.estatus_aprobacion = estatus_aprobacion_form
+    c.especialidad = (f.get("especialidad") or "").strip() or None
     c.notas = (f.get("notas") or "").strip()
     c.responsable = (responsable_final or c.responsable)
     c.proyecto = (f.get("proyecto") or "").strip() or None
@@ -7687,6 +7764,54 @@ def api_update_estatus(cot_id):
         "mensaje": f"Estatus de la cotización {c.folio} actualizado a {nuevo}."
     })
 
+@app.route("/api/cotizaciones/<int:cot_id>/estatus-aprobacion", methods=["POST"])
+@login_required
+def api_update_estatus_aprobacion(cot_id):
+    c = _cotizacion_activa_or_404(cot_id)
+    require_owner_or_admin(c)
+
+    ct = request.headers.get("Content-Type", "")
+    if "application/json" in ct:
+        data = request.get_json(silent=True) or {}
+        nuevo = (data.get("estatus_aprobacion") or data.get("estatus") or "").upper().strip()
+    else:
+        nuevo = (request.form.get("estatus_aprobacion") or request.form.get("estatus") or "").upper().strip()
+    if nuevo == "APROBADO":
+        nuevo = "APROBADA"
+    elif nuevo == "RECHAZADO":
+        nuevo = "RECHAZADA"
+    elif nuevo == "EN REVISION":
+        nuevo = "EN REVISIÓN"
+
+    if nuevo not in VALID_ESTATUS_APROBACION:
+        return jsonify({"ok": False, "error": "Estatus de aprobación inválido"}), 400
+
+    anterior = (c.estatus_aprobacion or "EN REVISIÓN").strip().upper()
+    if anterior == "EN REVISION":
+        anterior = "EN REVISIÓN"
+    if nuevo == anterior:
+        return jsonify({"ok": True, "folio": c.folio, "estatus_aprobacion": nuevo, "mensaje": "Sin cambios."})
+
+    c.estatus_aprobacion = nuevo
+    db.session.commit()
+
+    try:
+        _send_quote_review_response_email(c, nuevo)
+    except Exception as e:
+        logger.warning("Correo de respuesta de aprobación de cotizacion fallido: %s", e)
+
+    try:
+        _send_quote_review_result_push(c, nuevo)
+    except Exception as e:
+        logger.warning("Push de aprobación fallida: %s", e)
+
+    return jsonify({
+        "ok": True,
+        "folio": c.folio,
+        "estatus_aprobacion": nuevo,
+        "mensaje": f"Estatus de aprobación de {c.folio} actualizado a {nuevo}."
+    })
+
 # ---------------------------------------------------------
 # Exportaciones CSV / Excel
 # ---------------------------------------------------------
@@ -8116,9 +8241,9 @@ def _quote_review_load_from_token(cot_id: int, token: str, action: str) -> Cotiz
 
 def _quote_status_flag_class(status: str) -> str:
     normalized = (status or "").strip().upper()
-    if normalized in {"AUTORIZADO", "APROBADO", "GANADA", "FINALIZADA"}:
+    if normalized in {"APROBADA"}:
         return "quote-flag-green"
-    if normalized in {"RECHAZADO", "PERDIDA"}:
+    if normalized in {"RECHAZADA"}:
         return "quote-flag-red"
     if normalized in {"EN REVISIÓN", "EN REVISION"}:
         return "quote-flag-yellow"
@@ -8158,8 +8283,8 @@ def _quote_review_mail_html(c: Cotizacion, approve_url: str, reject_url: str, re
                 <tr><td style="padding:10px;color:#64748b;font-weight:700;">Total</td><td style="padding:10px;font-size:20px;font-weight:900;color:#0C3C78;">{total}</td></tr>
               </table>
               <div>
-                <a href="{reject_url}" style="{button_base}background:#c62828;border:1px solid #c62828;">RECHAZADO</a>
-                <a href="{approve_url}" style="{button_base}background:#16854f;border:1px solid #16854f;">APROBAR</a>
+                <a href="{reject_url}" style="{button_base}background:#c62828;border:1px solid #c62828;">RECHAZADA</a>
+                <a href="{approve_url}" style="{button_base}background:#16854f;border:1px solid #16854f;">APROBADA</a>
                 <a href="{review_url}" style="{button_base}background:#f0ad00;border:1px solid #f0ad00;color:#1f2937;">EN REVISIÓN</a>
               </div>
               <p style="margin:16px 0 0 0;color:#64748b;font-size:12px;">Si un boton no abre, copia el enlace desde el correo en tu navegador.</p>
@@ -8212,11 +8337,11 @@ def _send_quote_review_email(c: Cotizacion) -> None:
 
 def _quote_review_response_mail_html(c: Cotizacion, selected_status: str, reason: str = "") -> str:
     normalized = (selected_status or "").strip().upper()
-    if normalized in {"APROBADO", "AUTORIZADO"}:
+    if normalized in {"APROBADO", "APROBADA", "AUTORIZADO"}:
         accent = "#16854f"
         bg_soft = "#eaf7f0"
         title = "Cotizacion autorizada"
-    elif normalized == "RECHAZADO":
+    elif normalized in {"RECHAZADO", "RECHAZADA"}:
         accent = "#c62828"
         bg_soft = "#fdecee"
         title = "Cotizacion rechazada"
@@ -8343,13 +8468,19 @@ def _apply_quote_review_decision(
     author_label: str = "Revision por correo",
 ) -> CotizacionSeguimiento:
     selected_status = (selected_status or "").strip().upper()
-    if selected_status not in {"APROBADO", "AUTORIZADO", "RECHAZADO", "EN REVISIÓN"}:
+    if selected_status == "APROBADO":
+        selected_status = "APROBADA"
+    elif selected_status == "RECHAZADO":
+        selected_status = "RECHAZADA"
+    elif selected_status == "EN REVISION":
+        selected_status = "EN REVISIÓN"
+    if selected_status not in set(VALID_ESTATUS_APROBACION):
         abort(400)
-    if selected_status == "RECHAZADO" and not reason.strip():
+    if selected_status == "RECHAZADA" and not reason.strip():
         abort(400)
 
-    previous_status = c.estatus
-    c.estatus = selected_status
+    previous_status = c.estatus_aprobacion
+    c.estatus_aprobacion = selected_status
     comentario = f"Revision de cotizacion: {selected_status}."
     if reason.strip():
         comentario += f"\nMotivo de rechazo: {reason.strip()}"
@@ -8380,9 +8511,9 @@ def cotizacion_revision_decidir(cot_id: int, action: str):
     token = request.args.get("token") or ""
 
     status_by_action = {
-        "approve": "APROBADO",
+        "approve": "APROBADA",
         "review": "EN REVISIÓN",
-        "reject": "RECHAZADO",
+        "reject": "RECHAZADA",
     }
     selected_status = status_by_action[action]
 
@@ -8576,11 +8707,11 @@ def export_dashboard_cotizaciones_xlsx():
     if not filtros_texto:
         filtros_texto.append("Sin filtros")
 
-    ws.merge_cells("A2:K2")
+    ws.merge_cells("A2:M2")
     ws["A2"] = " | ".join(filtros_texto)
     ws["A2"].alignment = left
 
-    headers = ["Folio", "Fecha", "Cliente", "Empresa", "Telefono", "Responsable", "Estatus", "Subtotal", "IVA %", "IVA $", "Total"]
+    headers = ["Folio", "Fecha", "Cliente", "Empresa", "Telefono", "Responsable", "Especialidad", "Aprobacion", "Seguimiento", "Subtotal", "IVA %", "IVA $", "Total"]
     ws.append([])
     ws.append(headers)
 
@@ -8600,6 +8731,8 @@ def export_dashboard_cotizaciones_xlsx():
             c.cliente.empresa if c.cliente else "",
             c.cliente.telefono if c.cliente and c.cliente.telefono else "",
             c.responsable or "",
+            c.especialidad or "",
+            c.estatus_aprobacion or "EN REVISIÓN",
             c.estatus or "",
             float(c.subtotal or 0),
             float(c.iva_porc or 0),
@@ -8609,9 +8742,9 @@ def export_dashboard_cotizaciones_xlsx():
         row = ws.max_row
         for col in range(1, len(headers) + 1):
             ws.cell(row=row, column=col).border = border
-        for col in (8, 10, 11):
+        for col in (10, 12, 13):
             ws.cell(row=row, column=col).number_format = '"$"#,##0.00'
-        ws.cell(row=row, column=9).number_format = '0.00'
+        ws.cell(row=row, column=11).number_format = '0.00'
         ws.cell(row=row, column=1).alignment = left
         ws.cell(row=row, column=2).alignment = center
         ws.cell(row=row, column=3).alignment = left
@@ -8619,12 +8752,12 @@ def export_dashboard_cotizaciones_xlsx():
         ws.cell(row=row, column=5).alignment = left
 
     total_row = ws.max_row + 2
-    ws.cell(row=total_row, column=10, value="Total exportado:").font = bold
-    ws.cell(row=total_row, column=11, value=f"=SUM(K{header_row + 1}:K{ws.max_row})")
-    ws.cell(row=total_row, column=11).font = bold
-    ws.cell(row=total_row, column=11).number_format = '"$"#,##0.00'
+    ws.cell(row=total_row, column=12, value="Total exportado:").font = bold
+    ws.cell(row=total_row, column=13, value=f"=SUM(M{header_row + 1}:M{ws.max_row})")
+    ws.cell(row=total_row, column=13).font = bold
+    ws.cell(row=total_row, column=13).number_format = '"$"#,##0.00'
 
-    ws.auto_filter.ref = f"A{header_row}:K{max(header_row, ws.max_row)}"
+    ws.auto_filter.ref = f"A{header_row}:M{max(header_row, ws.max_row)}"
     ws.freeze_panes = f"A{header_row + 1}"
     ws.column_dimensions["A"].width = 18
     ws.column_dimensions["B"].width = 18
@@ -8634,9 +8767,11 @@ def export_dashboard_cotizaciones_xlsx():
     ws.column_dimensions["F"].width = 18
     ws.column_dimensions["G"].width = 14
     ws.column_dimensions["H"].width = 14
-    ws.column_dimensions["I"].width = 10
+    ws.column_dimensions["I"].width = 14
     ws.column_dimensions["J"].width = 14
-    ws.column_dimensions["K"].width = 14
+    ws.column_dimensions["K"].width = 10
+    ws.column_dimensions["L"].width = 14
+    ws.column_dimensions["M"].width = 14
 
     bio = io.BytesIO()
     wb.save(bio)
@@ -9206,6 +9341,8 @@ def api_cotizaciones_search():
             "empresa": c.cliente.empresa if c.cliente else "",
             "fecha": c.fecha.strftime("%Y-%m-%d %H:%M"),
             "estatus": c.estatus,
+            "estatus_aprobacion": c.estatus_aprobacion or "EN REVISIÓN",
+            "especialidad": c.especialidad or "",
             "proyecto": c.proyecto or "",
             "total": round(c.total or 0, 2),
             "export_csv": url_for("export_cotizacion_csv", cot_id=c.id),

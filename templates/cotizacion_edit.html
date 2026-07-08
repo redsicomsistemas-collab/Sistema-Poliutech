@@ -28,6 +28,7 @@
               {% endfor %}
             </datalist>
           </div>
+          <div class="col-md-4 mt-3"><label class="form-label">Especialidad</label><input type="text" name="especialidad" class="form-control" value="{{ c.especialidad or '' }}" placeholder="Especialidad de la cotizacion"></div>
           <div class="col-md-4 mt-3"><label class="form-label">Ciudad</label><input type="text" name="ciudad_trabajo" class="form-control text-uppercase" value="{{ c.ciudad_trabajo or '' }}" placeholder="CIUDAD DE MÉXICO"></div>
           <div class="col-md-4 mt-3">
             <label class="form-label">Moneda</label>
@@ -85,10 +86,18 @@
             <input type="number" step="0.01" min="0" max="100" name="descuento_total" class="form-control text-end" value="{{ '%.2f'|format(descuento_porc_actual or 0) }}">
           </div>
           <div class="col-md-4">
-            <label class="form-label fw-bold">Estatus actual</label>
+            <label class="form-label fw-bold">Estatus seguimiento</label>
             <select class="form-select" name="estatus">
               {% for estado in valid_estatus %}
               <option value="{{ estado }}" {% if c.estatus == estado %}selected{% endif %}>{{ estado }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4 mt-3">
+            <label class="form-label fw-bold">Estatus aprobación</label>
+            <select class="form-select" name="estatus_aprobacion">
+              {% for estado in valid_estatus_aprobacion %}
+              <option value="{{ estado }}" {% if (c.estatus_aprobacion or 'EN REVISIÓN') == estado %}selected{% endif %}>{{ estado }}</option>
               {% endfor %}
             </select>
           </div>

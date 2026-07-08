@@ -76,6 +76,7 @@
 
   .dashboard-quotes-table .cell-cliente,
   .dashboard-quotes-table .cell-empresa,
+  .dashboard-quotes-table .cell-especialidad,
   .dashboard-quotes-table .cell-proyecto {
     min-width: 12rem;
     white-space: normal !important;
@@ -279,7 +280,7 @@
   <div class="col-lg-4">
     <div class="card shadow-sm h-100 dashboard-chart-card">
       <div class="card-body">
-        <h5 class="card-title">Distribución por Estatus</h5>
+        <h5 class="card-title">Distribución por Seguimiento</h5>
         <div class="dashboard-status-chart">
           <canvas id="chartEstatus"></canvas>
         </div>
@@ -305,7 +306,7 @@
           <input type="date" id="filtro-hasta" class="form-control form-control-sm" value="{{ dashboard_filters.hasta }}">
         </div>
         <div class="col-xl-2 col-lg-3 col-md-6">
-          <label class="form-label small fw-bold text-secondary mb-1">Estatus</label>
+          <label class="form-label small fw-bold text-secondary mb-1">Seguimiento</label>
           <select id="filtro-estatus" class="form-select form-select-sm">
             <option value="">Todos</option>
             {% for estado in valid_estatus %}
@@ -353,9 +354,11 @@
               <th>Fecha</th>
               <th>Cliente</th>
               <th>Empresa</th>
+              <th>Especialidad</th>
               <th>Proyecto</th>
               <th>Total</th>
-              <th>Estatus</th>
+              <th>Aprobación</th>
+              <th>Seguimiento</th>
               <th>Acciones</th>
             </tr>
           </thead>
@@ -364,23 +367,24 @@
             <tr data-id="{{ c.id }}" 
                 data-fecha="{{ c.fecha.strftime('%Y-%m-%d') }}"
                 data-estatus="{{ c.estatus }}"
+                data-estatus-aprobacion="{{ c.estatus_aprobacion or 'EN REVISIÓN' }}"
                 data-total="{{ '%.2f'|format(c.total or 0) }}"
                 data-cliente="{{ (c.cliente.nombre_cliente if c.cliente else '')|lower }}"
                 data-empresa="{{ (c.cliente.empresa if c.cliente else '')|lower }}"
                 data-proyecto="{{ (c.proyecto or '')|lower }}">
               {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
               <td class="text-center quote-select-cell">
-                {% set estatus_flag = (c.estatus or '')|upper %}
-                {% if estatus_flag in ['AUTORIZADO', 'APROBADO', 'GANADA', 'FINALIZADA'] %}
+                {% set estatus_flag = (c.estatus_aprobacion or 'EN REVISIÓN')|upper %}
+                {% if estatus_flag in ['APROBADA'] %}
                   {% set flag_class = 'quote-flag-green' %}
-                {% elif estatus_flag in ['RECHAZADO', 'PERDIDA'] %}
+                {% elif estatus_flag in ['RECHAZADA'] %}
                   {% set flag_class = 'quote-flag-red' %}
                 {% elif estatus_flag in ['EN REVISIÓN', 'EN REVISION'] %}
                   {% set flag_class = 'quote-flag-yellow' %}
                 {% else %}
                   {% set flag_class = 'quote-flag-muted' %}
                 {% endif %}
-                <span class="quote-status-flag {{ flag_class }}" title="{{ c.estatus or 'Sin estatus' }}"></span>
+                <span class="quote-status-flag {{ flag_class }}" title="{{ c.estatus_aprobacion or 'EN REVISIÓN' }}"></span>
                 <input type="checkbox" class="chk-cot" value="{{ c.id }}" aria-label="Seleccionar {{ c.folio }}">
                 <button
                   type="button"
@@ -400,8 +404,16 @@
               <td>{{ c.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
               <td class="cell-cliente">{{ c.cliente.nombre_cliente if c.cliente else '' }}</td>
               <td class="cell-empresa">{{ c.cliente.empresa if c.cliente else '' }}</td>
+              <td class="cell-especialidad">{{ c.especialidad or '' }}</td>
               <td class="cell-proyecto">{{ c.proyecto or 'Sin proyecto' }}</td>
               <td>${{ "{:,.2f}".format(c.total) }}</td>
+              <td class="cell-estatus">
+                <select class="status-select" onchange="cambiarEstatusAprobacion({{ c.id }}, this)">
+                  {% for estado in valid_estatus_aprobacion %}
+                    <option value="{{ estado }}" {% if (c.estatus_aprobacion or 'EN REVISIÓN') == estado %}selected{% endif %}>{{ estado }}</option>
+                  {% endfor %}
+                </select>
+              </td>
               <td class="cell-estatus">
                 <select class="status-select" onchange="cambiarEstatus({{ c.id }}, this)">
                   {% for estado in valid_estatus %}
@@ -1085,8 +1097,8 @@ document.addEventListener("DOMContentLoaded", () => {
 <script>
 function quoteFlagClass(estatus) {
     const normalized = (estatus || "").trim().toUpperCase();
-    if (["AUTORIZADO", "APROBADO", "GANADA", "FINALIZADA"].includes(normalized)) return "quote-flag-green";
-    if (["RECHAZADO", "PERDIDA"].includes(normalized)) return "quote-flag-red";
+    if (["APROBADA"].includes(normalized)) return "quote-flag-green";
+    if (["RECHAZADA"].includes(normalized)) return "quote-flag-red";
     if (["EN REVISIÓN", "EN REVISION"].includes(normalized)) return "quote-flag-yellow";
     return "quote-flag-muted";
 }
@@ -1135,6 +1147,40 @@ function cambiarEstatus(id, selectElem) {
     })
     .catch(err => {
         Swal.fire("Error", "No se pudo actualizar el estatus.", "error");
+        console.error(err);
+    });
+}
+
+function cambiarEstatusAprobacion(id, selectElem) {
+    const nuevo = selectElem.value;
+
+    fetch(`/api/cotizaciones/${id}/estatus-aprobacion`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estatus_aprobacion: nuevo })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            Swal.fire({
+                icon: "success",
+                title: "Aprobación actualizada",
+                text: data.mensaje,
+                timer: 1500,
+                showConfirmButton: false
+            });
+
+            const fila = selectElem.closest("tr");
+            if (fila) {
+                fila.dataset.estatusAprobacion = nuevo;
+                updateQuoteFlag(fila, nuevo);
+            }
+        } else {
+            Swal.fire("Error", data.error, "error");
+        }
+    })
+    .catch(err => {
+        Swal.fire("Error", "No se pudo actualizar la aprobación.", "error");
         console.error(err);
     });
 }
