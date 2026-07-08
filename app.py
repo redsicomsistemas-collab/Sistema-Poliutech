@@ -3670,6 +3670,88 @@ def require_registro_obra_followup_author_or_admin(seg: RegistroObraSeguimiento)
     abort(403)
 
 
+def _clean_cliente_value(value) -> str:
+    return str(value or "").strip()
+
+
+def _find_cliente_for_seguimiento(
+    *,
+    nombre: str = "",
+    empresa: str = "",
+    correo: str = "",
+    telefono: str = "",
+) -> Optional[Cliente]:
+    correo = _clean_cliente_value(correo)
+    telefono = _clean_cliente_value(telefono)
+    nombre = _clean_cliente_value(nombre)
+    empresa = _clean_cliente_value(empresa)
+
+    if correo:
+        cliente = Cliente.query.filter(db.func.lower(Cliente.correo) == correo.lower()).first()
+        if cliente:
+            return cliente
+    if telefono:
+        cliente = Cliente.query.filter(Cliente.telefono == telefono).first()
+        if cliente:
+            return cliente
+    if nombre:
+        query = Cliente.query.filter(db.func.lower(Cliente.nombre_cliente) == nombre.lower())
+        if empresa:
+            query = query.filter(db.func.lower(db.func.coalesce(Cliente.empresa, "")) == empresa.lower())
+        cliente = query.first()
+        if cliente:
+            return cliente
+    return None
+
+
+def _cliente_seguimiento_payload(
+    *,
+    cliente: Optional[Cliente] = None,
+    nombre: str = "",
+    empresa: str = "",
+    responsable: str = "",
+    correo: str = "",
+    telefono: str = "",
+    direccion: str = "",
+    rfc: str = "",
+    titulo: str = "Datos del cliente",
+    extras: Optional[list[dict]] = None,
+) -> dict:
+    if cliente is None:
+        cliente = _find_cliente_for_seguimiento(
+            nombre=nombre,
+            empresa=empresa,
+            correo=correo,
+            telefono=telefono,
+        )
+
+    base = {
+        "titulo": titulo,
+        "nombre_cliente": _clean_cliente_value(getattr(cliente, "nombre_cliente", "")) if cliente else "",
+        "empresa": _clean_cliente_value(getattr(cliente, "empresa", "")) if cliente else "",
+        "responsable": _clean_cliente_value(getattr(cliente, "responsable", "")) if cliente else "",
+        "correo": _clean_cliente_value(getattr(cliente, "correo", "")) if cliente else "",
+        "telefono": _clean_cliente_value(getattr(cliente, "telefono", "")) if cliente else "",
+        "direccion": _clean_cliente_value(getattr(cliente, "direccion", "")) if cliente else "",
+        "rfc": _clean_cliente_value(getattr(cliente, "rfc", "")) if cliente else "",
+        "extras": extras or [],
+    }
+    fallbacks = {
+        "nombre_cliente": nombre,
+        "empresa": empresa,
+        "responsable": responsable,
+        "correo": correo,
+        "telefono": telefono,
+        "direccion": direccion,
+        "rfc": rfc,
+    }
+    for key, value in fallbacks.items():
+        value = _clean_cliente_value(value)
+        if value:
+            base[key] = value
+    return base
+
+
 
 def _build_dashboard_cotizaciones_query(
     *,
@@ -5613,6 +5695,14 @@ def prospecto_seguimiento(prospecto_id: int):
     return render_template(
         "prospecto_seguimiento.html",
         prospecto=prospecto,
+        cliente_info=_cliente_seguimiento_payload(
+            nombre=prospecto.contacto or prospecto.titulo,
+            correo=prospecto.correo,
+            telefono=prospecto.telefono,
+            responsable=prospecto.responsable,
+            titulo="Datos del cliente / prospecto",
+            extras=[{"label": "Prospecto", "value": prospecto.titulo}],
+        ),
         seguimientos=prospecto.seguimientos,
         mention_users=_usuarios_menciones_payload(),
         title=f"Seguimiento prospecto {prospecto.titulo}",
@@ -5854,6 +5944,15 @@ def soporte_ticket_detalle(ticket_id: int):
         "soporte_ticket_detalle.html",
         title=f"Ticket {ticket.folio or ticket.id}",
         ticket=ticket,
+        cliente_info=_cliente_seguimiento_payload(
+            nombre=ticket.solicitante,
+            empresa=ticket.empresa,
+            correo=ticket.correo,
+            telefono=ticket.telefono,
+            responsable=ticket.responsable,
+            titulo="Datos del cliente / solicitante",
+            extras=[{"label": "Asunto", "value": ticket.asunto}],
+        ),
         comentarios=ticket.comentarios,
         adjuntos=ticket.adjuntos,
         status_options=TICKET_STATUS_OPTIONS,
@@ -6190,6 +6289,18 @@ def registro_obra_seguimiento(registro_id: int):
     return render_template(
         "registro_obra_seguimiento.html",
         registro=registro,
+        cliente_info=_cliente_seguimiento_payload(
+            nombre=registro.encargado or registro.obra,
+            correo=registro.correo,
+            telefono=registro.telefono,
+            direccion=registro.ubicacion,
+            responsable=registro.responsable,
+            titulo="Datos del cliente / obra",
+            extras=[
+                {"label": "Obra", "value": registro.obra},
+                {"label": "Puesto", "value": registro.puesto},
+            ],
+        ),
         seguimientos=registro.seguimientos,
         mention_users=_usuarios_menciones_payload(),
         title=f"Seguimiento obra {registro.obra}",
@@ -7587,6 +7698,14 @@ def cotizacion_seguimiento(cot_id: int):
     return render_template(
         "cotizacion_seguimiento.html",
         c=c,
+        cliente_info=_cliente_seguimiento_payload(
+            cliente=c.cliente,
+            responsable=c.responsable,
+            extras=[
+                {"label": "Proyecto", "value": c.proyecto},
+                {"label": "Ciudad de trabajo", "value": c.ciudad_trabajo},
+            ],
+        ),
         seguimientos=c.seguimientos,
         valid_estatus=VALID_ESTATUS,
         mention_users=_usuarios_menciones_payload(),
@@ -11258,6 +11377,12 @@ def solicitud_recurso_detalle(solicitud_id: int):
         "solicitud_recurso_detalle.html",
         title=f"Solicitud {solicitud.folio}",
         solicitud=solicitud,
+        cliente_info=_cliente_seguimiento_payload(
+            nombre=solicitud.solicitante,
+            responsable=solicitud.solicitante,
+            titulo="Datos del cliente / solicitud",
+            extras=[{"label": "Proyecto / obra", "value": solicitud.proyecto}],
+        ),
         estatus_options=SOLICITUD_RECURSO_ESTATUS,
     )
 

@@ -1,0 +1,56 @@
+{% set cliente_info = cliente_info or {} %}
+<section class="border rounded p-3 mb-4 bg-white">
+  <h6 class="fw-bold mb-3">{{ cliente_info.get("titulo") or "Datos del cliente" }}</h6>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="border rounded p-3 h-100">
+          <div class="small text-muted">{{ cliente_info.get("nombre_label") or "Cliente" }}</div>
+          <div class="fw-semibold">{{ cliente_info.get("nombre_cliente") or "-" }}</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="border rounded p-3 h-100">
+          <div class="small text-muted">Empresa</div>
+          <div class="fw-semibold">{{ cliente_info.get("empresa") or "-" }}</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="border rounded p-3 h-100">
+          <div class="small text-muted">Responsable</div>
+          <div class="fw-semibold">{{ cliente_info.get("responsable") or "-" }}</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="border rounded p-3 h-100">
+          <div class="small text-muted">Correo</div>
+          <div class="fw-semibold text-break">{{ cliente_info.get("correo") or "-" }}</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="border rounded p-3 h-100">
+          <div class="small text-muted">Telefono</div>
+          <div class="fw-semibold">{{ cliente_info.get("telefono") or "-" }}</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="border rounded p-3 h-100">
+          <div class="small text-muted">RFC</div>
+          <div class="fw-semibold">{{ cliente_info.get("rfc") or "-" }}</div>
+        </div>
+      </div>
+      <div class="col-12">
+        <div class="border rounded p-3 h-100">
+          <div class="small text-muted">Direccion</div>
+          <div class="fw-semibold">{{ cliente_info.get("direccion") or "-" }}</div>
+        </div>
+      </div>
+      {% for extra in cliente_info.get("extras") or [] %}
+      <div class="col-md-4">
+        <div class="border rounded p-3 h-100">
+          <div class="small text-muted">{{ extra.label }}</div>
+          <div class="fw-semibold">{{ extra.value or "-" }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+</section>

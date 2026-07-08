@@ -31,26 +31,7 @@
       </div>
     </div>
     <div class="card-body">
-      <div class="row g-3 mb-3">
-        <div class="col-md-4">
-          <div class="border rounded p-3 h-100">
-            <div class="small text-muted">Contacto</div>
-            <div class="fw-semibold">{{ prospecto.contacto or "Sin contacto" }}</div>
-          </div>
-        </div>
-        <div class="col-md-4">
-          <div class="border rounded p-3 h-100">
-            <div class="small text-muted">Correo</div>
-            <div class="fw-semibold">{{ prospecto.correo or "Sin correo" }}</div>
-          </div>
-        </div>
-        <div class="col-md-4">
-          <div class="border rounded p-3 h-100">
-            <div class="small text-muted">Teléfono</div>
-            <div class="fw-semibold">{{ prospecto.telefono or "Sin teléfono" }}</div>
-          </div>
-        </div>
-      </div>
+      {% include "_cliente_seguimiento_card.html" %}
 
       <div class="border rounded p-3 mb-4 bg-light">
         <div class="small text-muted mb-1">Descripción</div>

@@ -146,13 +146,7 @@
         </div>
       </div>
 
-      <div class="card shadow-sm border-0 mb-4">
-        <div class="card-header bg-white fw-bold">Solicitante</div>
-        <div class="card-body small">
-          <div class="mb-2"><span class="text-muted">Nombre:</span> <strong>{{ ticket.solicitante }}</strong></div>
-          <div class="mb-2"><span class="text-muted">Correo:</span> {{ ticket.correo or "Sin correo" }}</div>
-        </div>
-      </div>
+      {% include "_cliente_seguimiento_card.html" %}
 
       <div class="card shadow-sm border-0">
         <div class="card-header bg-white fw-bold">Adjuntos del ticket</div>

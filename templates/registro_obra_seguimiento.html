@@ -29,41 +29,7 @@
       <a href="{{ url_for('registro_obras') }}" class="btn btn-outline-light btn-sm">Volver a registro</a>
     </div>
     <div class="card-body">
-      <div class="row g-3 mb-3">
-        <div class="col-md-4">
-          <div class="border rounded p-3 h-100">
-            <div class="small text-muted">Ubicación</div>
-            <div class="fw-semibold">{{ registro.ubicacion or "Sin ubicación" }}</div>
-          </div>
-        </div>
-        <div class="col-md-4">
-          <div class="border rounded p-3 h-100">
-            <div class="small text-muted">Encargado</div>
-            <div class="fw-semibold">{{ registro.encargado or "Sin encargado" }}</div>
-          </div>
-        </div>
-        <div class="col-md-4">
-          <div class="border rounded p-3 h-100">
-            <div class="small text-muted">Responsable</div>
-            <div class="fw-semibold">{{ registro.responsable or "Sin responsable" }}</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="row g-3 mb-4">
-        <div class="col-md-6">
-          <div class="border rounded p-3 h-100 bg-light">
-            <div class="small text-muted">Teléfono</div>
-            <div class="fw-semibold">{{ registro.telefono or "Sin teléfono" }}</div>
-          </div>
-        </div>
-        <div class="col-md-6">
-          <div class="border rounded p-3 h-100 bg-light">
-            <div class="small text-muted">Correo</div>
-            <div class="fw-semibold">{{ registro.correo or "Sin correo" }}</div>
-          </div>
-        </div>
-      </div>
+      {% include "_cliente_seguimiento_card.html" %}
 
       <form method="post" action="{{ url_for('crear_registro_obra_seguimiento', registro_id=registro.id) }}">
         <label for="comentario" class="form-label fw-bold text-primary">Nuevo comentario de seguimiento</label>
