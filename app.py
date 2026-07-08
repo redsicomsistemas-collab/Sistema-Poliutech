@@ -1882,17 +1882,27 @@ def _send_quote_updated_push(cot: Cotizacion) -> dict[str, int]:
     if not tokens:
         logger.warning("Push edición %s: destinatarios configurados sin token móvil activo.", cot.folio or cot.id)
         tokens = _mobile_all_active_push_tokens()
+    approve_url = url_for("cotizacion_revision_decidir", cot_id=cot.id, action="approve", token=_quote_review_token(cot, "approve"), _external=True)
+    reject_url = url_for("cotizacion_revision_decidir", cot_id=cot.id, action="reject", token=_quote_review_token(cot, "reject"), _external=True)
     return _send_push_notification(
         tokens,
-        title="Cotización editada",
-        body=f"{cot.folio or 'Sin folio'} · {money(cot.total)}",
+        title="Cotización editada pendiente de aprobación",
+        body=f"{cot.folio or 'Sin folio'} · {money(cot.total)} · Aprobar o rechazar",
         data={
-            "type": "quote_updated",
+            "type": "quote_pending_approval",
             "cotizacion_id": str(cot.id or ""),
             "folio": str(cot.folio or ""),
             "estatus": str(cot.estatus or ""),
             "estatus_aprobacion": str(cot.estatus_aprobacion or ""),
             "pdf_url": _mobile_quote_pdf_url(cot.id),
+            "approve_url": approve_url,
+            "reject_url": reject_url,
+            "target_user": "Hansel",
+            "target_user_name": "Hansel",
+            "recipient_user_name": "Hansel",
+            "approval_reviewer": "Hansel",
+            "requires_decision": "true",
+            "source": "quote_updated",
             "target_user_id": str(target_ids[0]) if len(target_ids) == 1 else "",
         },
     )
@@ -7394,21 +7404,11 @@ def actualizar_cotizacion(cot_id: int):
 
     # === ENCABEZADO ===
     estatus_form = (f.get("estatus") or c.estatus or "PENDIENTE").upper()
-    estatus_aprobacion_form = (f.get("estatus_aprobacion") or c.estatus_aprobacion or "EN REVISIÓN").upper()
-    if estatus_aprobacion_form == "APROBADO":
-        estatus_aprobacion_form = "APROBADA"
-    elif estatus_aprobacion_form == "RECHAZADO":
-        estatus_aprobacion_form = "RECHAZADA"
-    elif estatus_aprobacion_form == "EN REVISION":
-        estatus_aprobacion_form = "EN REVISIÓN"
     if estatus_form not in VALID_ESTATUS_SEGUIMIENTO:
         flash("Selecciona un estatus de seguimiento válido.", "danger")
         return redirect(url_for("editar_cotizacion", cot_id=c.id))
-    if estatus_aprobacion_form not in VALID_ESTATUS_APROBACION:
-        flash("Selecciona un estatus de aprobación válido.", "danger")
-        return redirect(url_for("editar_cotizacion", cot_id=c.id))
     c.estatus = estatus_form
-    c.estatus_aprobacion = estatus_aprobacion_form
+    c.estatus_aprobacion = "EN REVISIÓN"
     c.especialidad = (f.get("especialidad") or "").strip() or None
     c.notas = (f.get("notas") or "").strip()
     c.responsable = (responsable_final or c.responsable)
@@ -7511,7 +7511,8 @@ def actualizar_cotizacion(cot_id: int):
         body = (
             "🔄 *Actualización de Cotización*\\n"
             f"Folio: *{c.folio}*\\n"
-            f"Estatus: *{c.estatus}*\\n"
+            f"Estatus seguimiento: *{c.estatus}*\\n"
+            f"Estatus aprobación: *{c.estatus_aprobacion}*\\n"
             f"Total: {money(c.total)}"
         )
         send_whatsapp_multi(ADMIN_LIST, body)
@@ -7527,8 +7528,6 @@ def actualizar_cotizacion(cot_id: int):
         _send_quote_updated_push(c)
     except Exception as e:
         logger.warning("Push de edición de cotizacion falló: %s", e)
-
-    _send_quote_review_email_safely(c)
 
     pdf_url = url_for("export_cotizacion_pdf", cot_id=c.id)
     detalle = url_for("view_cotizacion", cot_id=c.id)
@@ -8393,7 +8392,7 @@ def _send_cotizacion_email(c: Cotizacion, recipients: list[str], cc: list[str] |
         smtp.send_message(msg, to_addrs=[*recipients, *cc, *bcc])
 
 
-def _quote_updated_mail_html(c: Cotizacion, view_url: str) -> str:
+def _quote_updated_mail_html(c: Cotizacion, view_url: str, approve_url: str, reject_url: str) -> str:
     cli = c.cliente
     folio = escape(c.folio or f"#{c.id}")
     cliente = escape(cli.nombre_cliente if cli else "Sin cliente")
@@ -8403,6 +8402,11 @@ def _quote_updated_mail_html(c: Cotizacion, view_url: str) -> str:
     estatus = escape(c.estatus or "Sin estatus")
     aprobacion = escape(c.estatus_aprobacion or "Sin estatus")
     total = f"{money(c.total)} {escape(c.moneda or 'MXN')}"
+    button_base = (
+        "display:inline-block;min-width:142px;text-align:center;padding:13px 18px;"
+        "border-radius:8px;text-decoration:none;font-weight:800;font-size:15px;"
+        "margin:0 8px 10px 0;"
+    )
     return f"""
     <html>
       <body style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
@@ -8414,7 +8418,7 @@ def _quote_updated_mail_html(c: Cotizacion, view_url: str) -> str:
               <div style="font-size:14px;opacity:.95;margin-top:7px;">{folio}</div>
             </div>
             <div style="padding:28px;">
-              <p style="margin:0 0 22px 0;font-size:15px;color:#475569;">Se guardaron cambios en esta cotizacion. Se adjunta el PDF actualizado.</p>
+              <p style="margin:0 0 22px 0;font-size:15px;color:#475569;">Se guardaron cambios en esta cotizacion y vuelve a quedar pendiente de aprobacion. Se adjunta el PDF actualizado.</p>
               <table style="border-collapse:collapse;width:100%;background:#ffffff;border:1px solid #dbe4ef;border-radius:10px;overflow:hidden;">
                 <tr><td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:800;">Cliente</td><td style="padding:13px 16px;border-bottom:1px solid #edf2f7;">{cliente}</td></tr>
                 <tr><td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:800;">Empresa</td><td style="padding:13px 16px;border-bottom:1px solid #edf2f7;">{empresa}</td></tr>
@@ -8425,7 +8429,9 @@ def _quote_updated_mail_html(c: Cotizacion, view_url: str) -> str:
                 <tr><td style="padding:13px 16px;color:#64748b;font-weight:800;">Total</td><td style="padding:13px 16px;color:#0C3C78;font-size:20px;font-weight:900;">{total}</td></tr>
               </table>
               <div style="margin-top:24px;">
-                <a href="{view_url}" style="display:inline-block;background:#0C3C78;color:#ffffff;text-decoration:none;font-weight:800;padding:13px 18px;border-radius:8px;">VER COTIZACION</a>
+                <a href="{approve_url}" style="{button_base}background:#16854f;color:#ffffff;border:1px solid #16854f;">APROBAR</a>
+                <a href="{reject_url}" style="{button_base}background:#c62828;color:#ffffff;border:1px solid #c62828;">RECHAZAR</a>
+                <a href="{view_url}" style="{button_base}background:#0C3C78;color:#ffffff;border:1px solid #0C3C78;">VER COTIZACION</a>
               </div>
             </div>
           </div>
@@ -8451,6 +8457,8 @@ def _send_quote_updated_email(c: Cotizacion) -> None:
     pdf_response.direct_passthrough = False
     pdf_bytes = pdf_response.get_data()
     view_url = url_for("view_cotizacion", cot_id=c.id, _external=True)
+    approve_url = url_for("cotizacion_revision_decidir", cot_id=c.id, action="approve", token=_quote_review_token(c, "approve"), _external=True)
+    reject_url = url_for("cotizacion_revision_decidir", cot_id=c.id, action="reject", token=_quote_review_token(c, "reject"), _external=True)
 
     msg = EmailMessage()
     msg["Subject"] = f"Cotizacion editada {c.folio or c.id}"
@@ -8463,9 +8471,11 @@ def _send_quote_updated_email(c: Cotizacion) -> None:
         f"Estatus seguimiento: {c.estatus or 'Sin estatus'}\n"
         f"Estatus aprobacion: {c.estatus_aprobacion or 'Sin estatus'}\n"
         f"Total: {money(c.total)} {c.moneda or 'MXN'}\n\n"
+        f"Aprobar: {approve_url}\n"
+        f"Rechazar: {reject_url}\n"
         f"Ver cotizacion: {view_url}\n"
     )
-    msg.add_alternative(_quote_updated_mail_html(c, view_url), subtype="html")
+    msg.add_alternative(_quote_updated_mail_html(c, view_url, approve_url, reject_url), subtype="html")
     msg.add_attachment(
         pdf_bytes,
         maintype="application",
