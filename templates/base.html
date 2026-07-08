@@ -797,6 +797,82 @@
   });
   </script>
 
+  <script>
+  (function() {
+    const MIN_OVERFLOW = 12;
+
+    function installHorizontalScrollControls(scroller) {
+      if (!(scroller instanceof HTMLElement)) return;
+      if (scroller.dataset.horizontalControls === "1") return;
+      if (scroller.closest("#frm-cotizacion")) return;
+
+      scroller.dataset.horizontalControls = "1";
+
+      const shell = document.createElement("div");
+      shell.className = "horizontal-scroll-shell";
+      scroller.parentNode.insertBefore(shell, scroller);
+      shell.appendChild(scroller);
+
+      const left = document.createElement("button");
+      left.type = "button";
+      left.className = "horizontal-scroll-button is-left";
+      left.setAttribute("aria-label", "Desplazar tabla a la izquierda");
+      left.textContent = "<";
+
+      const right = document.createElement("button");
+      right.type = "button";
+      right.className = "horizontal-scroll-button is-right";
+      right.setAttribute("aria-label", "Desplazar tabla a la derecha");
+      right.textContent = ">";
+
+      const hint = document.createElement("span");
+      hint.className = "horizontal-scroll-hint";
+      hint.textContent = "Desliza horizontal";
+
+      shell.appendChild(left);
+      shell.appendChild(right);
+      shell.appendChild(hint);
+
+      function scrollAmount() {
+        return Math.max(240, Math.floor(scroller.clientWidth * 0.72));
+      }
+
+      function update() {
+        const overflow = scroller.scrollWidth - scroller.clientWidth;
+        const hasOverflow = overflow > MIN_OVERFLOW;
+        const atStart = scroller.scrollLeft <= MIN_OVERFLOW;
+        const atEnd = scroller.scrollLeft >= overflow - MIN_OVERFLOW;
+
+        left.classList.toggle("is-visible", hasOverflow && !atStart);
+        right.classList.toggle("is-visible", hasOverflow && !atEnd);
+        hint.classList.toggle("is-visible", hasOverflow && atStart && !atEnd);
+        left.disabled = !hasOverflow || atStart;
+        right.disabled = !hasOverflow || atEnd;
+      }
+
+      left.addEventListener("click", function() {
+        scroller.scrollBy({ left: -scrollAmount(), behavior: "smooth" });
+      });
+
+      right.addEventListener("click", function() {
+        scroller.scrollBy({ left: scrollAmount(), behavior: "smooth" });
+      });
+
+      scroller.addEventListener("scroll", update, { passive: true });
+      window.addEventListener("resize", update);
+      window.setTimeout(update, 50);
+      window.setTimeout(update, 400);
+    }
+
+    function installAll() {
+      document.querySelectorAll(".table-responsive").forEach(installHorizontalScrollControls);
+    }
+
+    document.addEventListener("DOMContentLoaded", installAll);
+    window.addEventListener("load", installAll);
+  })();
+  </script>
+
   <!-- ====== Confirmacion global para acciones destructivas ====== -->
   <script>
   (function() {
