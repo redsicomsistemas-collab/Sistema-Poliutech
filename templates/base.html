@@ -837,22 +837,27 @@
         return Math.max(240, Math.floor(scroller.clientWidth * 0.72));
       }
 
-      function updateVerticalPosition() {
+      function updateControlPosition() {
         const shellRect = shell.getBoundingClientRect();
-        const viewportTop = 0;
-        const viewportBottom = window.innerHeight || document.documentElement.clientHeight;
+        const scrollerRect = scroller.getBoundingClientRect();
+        const appContent = document.querySelector(".app-content");
+        const appRect = appContent?.getBoundingClientRect();
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+        const viewportTop = Math.max(0, appRect ? appRect.top : 0);
+        const viewportBottom = Math.min(window.innerHeight || document.documentElement.clientHeight, appRect ? appRect.bottom : Infinity);
         const visibleTop = Math.max(shellRect.top, viewportTop);
         const visibleBottom = Math.min(shellRect.bottom, viewportBottom);
         const hasVisibleArea = visibleBottom > visibleTop;
-        const fallbackTop = Math.min(Math.max(scroller.clientHeight / 2, 72), Math.max(shellRect.height - 72, 72));
-        const visibleMiddle = hasVisibleArea
-          ? ((visibleTop + visibleBottom) / 2) - shellRect.top
-          : fallbackTop;
-        const buttonHalfHeight = 56;
-        const minTop = Math.min(buttonHalfHeight + 8, Math.max(shellRect.height / 2, buttonHalfHeight));
-        const maxTop = Math.max(minTop, shellRect.height - buttonHalfHeight - 8);
-        const top = Math.min(Math.max(visibleMiddle, minTop), maxTop);
+        const visibleMiddle = hasVisibleArea ? (visibleTop + visibleBottom) / 2 : viewportTop + 120;
+        const top = Math.min(Math.max(visibleMiddle, viewportTop + 72), viewportBottom - 72);
+        const leftPos = Math.max(scrollerRect.left + 8, (appRect ? appRect.left : 0) + 8, 8);
+        const visibleRight = Math.min(scrollerRect.right - 8, appRect ? appRect.right - 8 : viewportWidth - 8, viewportWidth - 8);
+        const rightPos = Math.max(8, viewportWidth - visibleRight);
+
         shell.style.setProperty("--horizontal-scroll-button-top", `${top}px`);
+        shell.style.setProperty("--horizontal-scroll-button-left", `${leftPos}px`);
+        shell.style.setProperty("--horizontal-scroll-button-right", `${rightPos}px`);
+        return hasVisibleArea;
       }
 
       function update() {
@@ -860,13 +865,13 @@
         const hasOverflow = overflow > MIN_OVERFLOW;
         const atStart = scroller.scrollLeft <= MIN_OVERFLOW;
         const atEnd = scroller.scrollLeft >= overflow - MIN_OVERFLOW;
+        const isVisible = updateControlPosition();
 
-        updateVerticalPosition();
-        left.classList.toggle("is-visible", hasOverflow && !atStart);
-        right.classList.toggle("is-visible", hasOverflow && !atEnd);
-        hint.classList.toggle("is-visible", hasOverflow && atStart && !atEnd);
-        left.disabled = !hasOverflow || atStart;
-        right.disabled = !hasOverflow || atEnd;
+        left.classList.toggle("is-visible", isVisible && hasOverflow && !atStart);
+        right.classList.toggle("is-visible", isVisible && hasOverflow && !atEnd);
+        hint.classList.toggle("is-visible", isVisible && hasOverflow && atStart && !atEnd);
+        left.disabled = !isVisible || !hasOverflow || atStart;
+        right.disabled = !isVisible || !hasOverflow || atEnd;
       }
 
       left.addEventListener("click", function() {
@@ -879,6 +884,7 @@
 
       scroller.addEventListener("scroll", update, { passive: true });
       window.addEventListener("scroll", update, { passive: true });
+      document.querySelector(".app-content")?.addEventListener("scroll", update, { passive: true });
       window.addEventListener("resize", update);
       window.setTimeout(update, 50);
       window.setTimeout(update, 400);

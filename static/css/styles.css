@@ -61,9 +61,9 @@ body {
 }
 
 .horizontal-scroll-button {
-  position: absolute;
+  position: fixed;
   top: var(--horizontal-scroll-button-top, 50%);
-  z-index: 20;
+  z-index: 4400;
   display: none;
   width: 46px;
   height: 112px;
@@ -71,20 +71,22 @@ body {
   justify-content: center;
   border: 1px solid rgba(12, 60, 120, 0.28);
   border-radius: 8px;
-  background: rgba(255, 193, 7, 0.74);
+  background: rgba(255, 193, 7, 0.58);
   color: #0c3c78;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22);
   font-size: 2.2rem;
   font-weight: 800;
   line-height: 1;
   transform: translateY(-50%);
+  opacity: 0.72;
   backdrop-filter: blur(3px);
 }
 
 .horizontal-scroll-button:hover,
 .horizontal-scroll-button:focus {
-  background: rgba(255, 205, 57, 0.92);
+  background: rgba(255, 205, 57, 0.82);
   color: #082a54;
+  opacity: 0.96;
 }
 
 .horizontal-scroll-button.is-visible {
@@ -92,11 +94,11 @@ body {
 }
 
 .horizontal-scroll-button.is-left {
-  left: 8px;
+  left: var(--horizontal-scroll-button-left, 8px);
 }
 
 .horizontal-scroll-button.is-right {
-  right: 8px;
+  right: var(--horizontal-scroll-button-right, 8px);
 }
 
 .horizontal-scroll-button:disabled {
