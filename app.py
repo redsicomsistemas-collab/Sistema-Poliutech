@@ -1872,6 +1872,32 @@ def _send_quote_review_result_push(cot: Cotizacion, selected_status: str, reason
     )
 
 
+def _send_quote_updated_push(cot: Cotizacion) -> dict[str, int]:
+    target_ids = list(dict.fromkeys([
+        *_mobile_push_user_ids_for_quote_owner(cot),
+        *_mobile_push_user_ids_for_approval_reviewer(),
+        *_mobile_push_user_ids_for_aazcona(),
+    ]))
+    tokens = _mobile_push_tokens_for_users(target_ids)
+    if not tokens:
+        logger.warning("Push edición %s: destinatarios configurados sin token móvil activo.", cot.folio or cot.id)
+        tokens = _mobile_all_active_push_tokens()
+    return _send_push_notification(
+        tokens,
+        title="Cotización editada",
+        body=f"{cot.folio or 'Sin folio'} · {money(cot.total)}",
+        data={
+            "type": "quote_updated",
+            "cotizacion_id": str(cot.id or ""),
+            "folio": str(cot.folio or ""),
+            "estatus": str(cot.estatus or ""),
+            "estatus_aprobacion": str(cot.estatus_aprobacion or ""),
+            "pdf_url": _mobile_quote_pdf_url(cot.id),
+            "target_user_id": str(target_ids[0]) if len(target_ids) == 1 else "",
+        },
+    )
+
+
 def _send_quote_approval_request_push(cot: Cotizacion) -> dict[str, int]:
     reviewer_ids = _mobile_push_user_ids_for_approval_reviewer()
     hansel_ids = [18]
@@ -7493,9 +7519,14 @@ def actualizar_cotizacion(cot_id: int):
         print(f"[Twilio] Error en actualización: {e}", file=sys.stderr)
 
     try:
-        _send_quote_approval_request_push(c)
+        _send_quote_updated_email(c)
     except Exception as e:
-        logger.warning("Push de aprobación por edición falló: %s", e)
+        logger.warning("Correo de edición de cotizacion falló: %s", e)
+
+    try:
+        _send_quote_updated_push(c)
+    except Exception as e:
+        logger.warning("Push de edición de cotizacion falló: %s", e)
 
     _send_quote_review_email_safely(c)
 
@@ -8360,6 +8391,92 @@ def _send_cotizacion_email(c: Cotizacion, recipients: list[str], cc: list[str] |
         smtp.ehlo()
         smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
         smtp.send_message(msg, to_addrs=[*recipients, *cc, *bcc])
+
+
+def _quote_updated_mail_html(c: Cotizacion, view_url: str) -> str:
+    cli = c.cliente
+    folio = escape(c.folio or f"#{c.id}")
+    cliente = escape(cli.nombre_cliente if cli else "Sin cliente")
+    empresa = escape(cli.empresa if cli and cli.empresa else "Sin empresa")
+    proyecto = escape(c.proyecto or "Sin proyecto")
+    responsable = escape(c.responsable or "Sin responsable")
+    estatus = escape(c.estatus or "Sin estatus")
+    aprobacion = escape(c.estatus_aprobacion or "Sin estatus")
+    total = f"{money(c.total)} {escape(c.moneda or 'MXN')}"
+    return f"""
+    <html>
+      <body style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+        <div style="max-width:760px;margin:0 auto;padding:30px 16px;">
+          <div style="background:#ffffff;border:1px solid #d9e2ec;border-radius:10px;overflow:hidden;">
+            <div style="background:#0C3C78;color:#ffffff;padding:24px 28px;">
+              <div style="font-size:12px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;">MAR · Poliutech</div>
+              <div style="font-size:24px;font-weight:900;margin-top:6px;">Cotizacion editada</div>
+              <div style="font-size:14px;opacity:.95;margin-top:7px;">{folio}</div>
+            </div>
+            <div style="padding:28px;">
+              <p style="margin:0 0 22px 0;font-size:15px;color:#475569;">Se guardaron cambios en esta cotizacion. Se adjunta el PDF actualizado.</p>
+              <table style="border-collapse:collapse;width:100%;background:#ffffff;border:1px solid #dbe4ef;border-radius:10px;overflow:hidden;">
+                <tr><td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:800;">Cliente</td><td style="padding:13px 16px;border-bottom:1px solid #edf2f7;">{cliente}</td></tr>
+                <tr><td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:800;">Empresa</td><td style="padding:13px 16px;border-bottom:1px solid #edf2f7;">{empresa}</td></tr>
+                <tr><td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:800;">Proyecto</td><td style="padding:13px 16px;border-bottom:1px solid #edf2f7;">{proyecto}</td></tr>
+                <tr><td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:800;">Responsable</td><td style="padding:13px 16px;border-bottom:1px solid #edf2f7;">{responsable}</td></tr>
+                <tr><td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:800;">Seguimiento</td><td style="padding:13px 16px;border-bottom:1px solid #edf2f7;">{estatus}</td></tr>
+                <tr><td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:800;">Aprobacion</td><td style="padding:13px 16px;border-bottom:1px solid #edf2f7;">{aprobacion}</td></tr>
+                <tr><td style="padding:13px 16px;color:#64748b;font-weight:800;">Total</td><td style="padding:13px 16px;color:#0C3C78;font-size:20px;font-weight:900;">{total}</td></tr>
+              </table>
+              <div style="margin-top:24px;">
+                <a href="{view_url}" style="display:inline-block;background:#0C3C78;color:#ffffff;text-decoration:none;font-weight:800;padding:13px 18px;border-radius:8px;">VER COTIZACION</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+    """.strip()
+
+
+def _send_quote_updated_email(c: Cotizacion) -> None:
+    recipients = _unique_emails(
+        _quote_responsible_email(c),
+        _parse_email_list(COTIZACION_REVIEW_EMAIL),
+        _parse_email_list(COTIZACION_RESPONSE_EMAIL),
+        _parse_email_list(COTIZACION_APPROVALS_EMAIL),
+        _parse_email_list(COTIZACION_REVIEW_RESULT_AAZCONA_EMAIL),
+    )
+    bcc = _parse_email_list(COTIZACION_REVIEW_BCC_EMAIL)
+    if not recipients:
+        raise ValueError("No hay correo configurado para edición de cotizaciones.")
+
+    pdf_response = export_cotizacion_pdf(c.id)
+    pdf_response.direct_passthrough = False
+    pdf_bytes = pdf_response.get_data()
+    view_url = url_for("view_cotizacion", cot_id=c.id, _external=True)
+
+    msg = EmailMessage()
+    msg["Subject"] = f"Cotizacion editada {c.folio or c.id}"
+    msg["From"] = f"COTIZACIONES POLIUTECH <{SMTP_FROM or SMTP_USERNAME}>"
+    msg["To"] = ", ".join(recipients)
+    msg.set_content(
+        f"Se edito la cotizacion {c.folio or c.id}.\n"
+        f"Cliente: {c.cliente.nombre_cliente if c.cliente else 'Sin cliente'}\n"
+        f"Proyecto: {c.proyecto or 'Sin proyecto'}\n"
+        f"Estatus seguimiento: {c.estatus or 'Sin estatus'}\n"
+        f"Estatus aprobacion: {c.estatus_aprobacion or 'Sin estatus'}\n"
+        f"Total: {money(c.total)} {c.moneda or 'MXN'}\n\n"
+        f"Ver cotizacion: {view_url}\n"
+    )
+    msg.add_alternative(_quote_updated_mail_html(c, view_url), subtype="html")
+    msg.add_attachment(
+        pdf_bytes,
+        maintype="application",
+        subtype="pdf",
+        filename=f"{c.folio or c.id}.pdf",
+    )
+
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
+        smtp.ehlo()
+        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+        smtp.send_message(msg, to_addrs=[*recipients, *bcc])
 
 
 def _quote_review_serializer() -> URLSafeTimedSerializer:
