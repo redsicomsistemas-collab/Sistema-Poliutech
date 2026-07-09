@@ -3276,6 +3276,20 @@ def ensure_schema():
         print("⚠️ ensure_schema(orden_compra):", e)
 
     try:
+        sr_partida_cols = _table_columns("solicitud_recurso_partida")
+        if "total" not in sr_partida_cols:
+            db.session.execute(text("ALTER TABLE solicitud_recurso_partida ADD COLUMN total FLOAT DEFAULT 0.0"))
+            db.session.execute(text("""
+                UPDATE solicitud_recurso_partida
+                SET total = COALESCE(importe, 0.0)
+                WHERE total IS NULL OR total = 0
+            """))
+            db.session.commit()
+            print("✅ Campo 'total' agregado en 'solicitud_recurso_partida'.")
+    except Exception as e:
+        print("⚠️ ensure_schema(solicitud_recurso_partida):", e)
+
+    try:
         dcols = _table_columns("cotizacion_detalle")
         if "sistema" not in dcols:
             db.session.execute(text("ALTER TABLE cotizacion_detalle ADD COLUMN sistema VARCHAR(200)"))
@@ -10105,7 +10119,11 @@ def _solicitud_recurso_recalcular(solicitud: SolicitudRecurso) -> None:
     for partida in solicitud.partidas:
         partida.cantidad = fmt(partida.cantidad or 0)
         partida.importe = fmt(partida.importe or 0)
-        total += partida.importe
+        row_total = getattr(partida, "total", None)
+        if row_total is None or float(row_total or 0) <= 0:
+            row_total = partida.cantidad * partida.importe
+        partida.total = fmt(row_total)
+        total += partida.total
     solicitud.total = fmt(total)
     solicitud.actualizado_en = now_cdmx_naive()
 
@@ -10135,15 +10153,20 @@ def _mobile_push_user_ids_for_hansel_only() -> list[int]:
 
 def _solicitud_recurso_mail_html(solicitud: SolicitudRecurso, detail_url: str) -> str:
     rows = []
-    for partida in solicitud.partidas:
+    for idx, partida in enumerate(solicitud.partidas, start=1):
+        row_total = getattr(partida, "total", None)
+        if row_total is None:
+            row_total = float(partida.cantidad or 0) * float(partida.importe or 0)
         rows.append(
             "<tr>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;'>{idx}</td>"
             f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;'>{float(partida.cantidad or 0):,.2f}</td>"
             f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;'>{escape(partida.concepto or '')}</td>"
-            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;'>${float(partida.importe or 0):,.2f}</td>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;'>${float(partida.importe or 0):,.2f}</td>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;'>${float(row_total or 0):,.2f}</td>"
             "</tr>"
         )
-    partidas_html = "".join(rows) or "<tr><td colspan='3' style='padding:10px;'>Sin partidas.</td></tr>"
+    partidas_html = "".join(rows) or "<tr><td colspan='5' style='padding:10px;'>Sin partidas.</td></tr>"
     return f"""
     <div style="font-family:Arial,sans-serif;color:#0f172a;max-width:760px;margin:0 auto;">
       <h2 style="margin:0 0 10px;color:#0C3C78;">Nueva solicitud de recursos</h2>
@@ -10157,9 +10180,11 @@ def _solicitud_recurso_mail_html(solicitud: SolicitudRecurso, detail_url: str) -
       <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;">
         <thead>
           <tr style="background:#f8fafc;">
+            <th style="padding:10px;text-align:right;">Partida</th>
             <th style="padding:10px;text-align:right;">Cantidad</th>
-            <th style="padding:10px;text-align:left;">Concepto</th>
+            <th style="padding:10px;text-align:left;">Descripcion</th>
             <th style="padding:10px;text-align:right;">Importe</th>
+            <th style="padding:10px;text-align:right;">Total</th>
           </tr>
         </thead>
         <tbody>{partidas_html}</tbody>
@@ -11495,7 +11520,7 @@ def solicitud_recurso_crear():
     db.session.add(solicitud)
 
     cantidades = f.getlist("cantidad[]")
-    conceptos = f.getlist("concepto[]")
+    conceptos = f.getlist("descripcion[]") or f.getlist("concepto[]")
     importes = f.getlist("importe[]")
     total_rows = max(len(cantidades), len(conceptos), len(importes))
     for idx in range(total_rows):
@@ -11504,15 +11529,17 @@ def solicitud_recurso_crear():
         importe = parse_float(importes[idx] if idx < len(importes) else 0, 0)
         if not concepto or cantidad <= 0:
             continue
+        total_partida = fmt(cantidad * importe)
         solicitud.partidas.append(SolicitudRecursoPartida(
             cantidad=fmt(cantidad),
             concepto=concepto,
             importe=fmt(importe),
+            total=total_partida,
         ))
 
     if not solicitud.partidas:
         db.session.rollback()
-        flash("Agrega al menos un renglon con cantidad y concepto.", "warning")
+        flash("Agrega al menos un renglon con cantidad y descripcion.", "warning")
         return redirect(url_for("solicitudes_recursos_index"))
 
     _solicitud_recurso_recalcular(solicitud)

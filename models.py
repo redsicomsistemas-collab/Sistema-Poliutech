@@ -651,6 +651,7 @@ class SolicitudRecursoPartida(db.Model):
     cantidad = db.Column(db.Float, default=0.0, nullable=False)
     concepto = db.Column(db.String(360), nullable=False)
     importe = db.Column(db.Float, default=0.0, nullable=False)
+    total = db.Column(db.Float, default=0.0, nullable=False)
 
     def __repr__(self):
         return f"<SolicitudRecursoPartida solicitud={self.solicitud_id} {self.concepto}>"

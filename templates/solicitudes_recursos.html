@@ -5,7 +5,7 @@
 <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 my-4">
   <div>
     <h2 class="fw-bold text-primary mb-1">Solicitudes de recursos</h2>
-    <div class="text-muted">Registro de cantidades, conceptos e importes solicitados.</div>
+    <div class="text-muted">Registro de partidas, cantidades, descripciones e importes solicitados.</div>
   </div>
 </div>
 
@@ -67,23 +67,27 @@
         <table class="table table-sm align-middle" id="recursos-items-table">
           <thead class="table-light">
             <tr>
+              <th style="width: 90px;">Partida</th>
               <th style="width: 140px;">Cantidad</th>
-              <th style="min-width: 320px;">Concepto</th>
+              <th style="min-width: 320px;">Descripcion</th>
               <th style="width: 180px;">Importe</th>
+              <th style="width: 180px;">Total</th>
               <th style="width: 90px;"></th>
             </tr>
           </thead>
           <tbody>
             <tr>
+              <td class="fw-bold text-center js-partida">1</td>
               <td><input type="number" step="any" min="0" name="cantidad[]" class="form-control form-control-sm js-cantidad"></td>
-              <td><input name="concepto[]" class="form-control form-control-sm js-concepto"></td>
+              <td><input name="descripcion[]" class="form-control form-control-sm js-descripcion"></td>
               <td><input type="number" step="any" min="0" name="importe[]" class="form-control form-control-sm js-importe" value="0"></td>
+              <td class="fw-bold js-total">$0.00</td>
               <td><button type="button" class="btn btn-sm btn-outline-danger js-remove">Quitar</button></td>
             </tr>
           </tbody>
           <tfoot>
             <tr>
-              <th colspan="2" class="text-end">Total</th>
+              <th colspan="4" class="text-end">Importe total</th>
               <th id="recursos-total">$0.00</th>
               <th></th>
             </tr>
@@ -103,7 +107,7 @@
     <form method="get" action="{{ url_for('solicitudes_recursos_index') }}" class="row g-2 align-items-end">
       <div class="col-md-6">
         <label class="form-label">Buscar</label>
-        <input name="q" class="form-control" value="{{ q }}" placeholder="Folio, solicitante, proyecto, concepto o notas">
+        <input name="q" class="form-control" value="{{ q }}" placeholder="Folio, solicitante, proyecto, descripcion o notas">
       </div>
       <div class="col-md-4">
         <label class="form-label">Estatus</label>
@@ -165,18 +169,35 @@
   }
 
   function rowHasData(row) {
-    return ["js-cantidad", "js-concepto", "js-importe"].some((className) => {
+    return ["js-cantidad", "js-descripcion", "js-importe"].some((className) => {
       const input = row.querySelector("." + className);
       return input && String(input.value || "").trim() !== "" && String(input.value || "").trim() !== "0";
     });
   }
 
+  function rowTotal(row) {
+    const cantidad = Number(row.querySelector(".js-cantidad")?.value || 0);
+    const importe = Number(row.querySelector(".js-importe")?.value || 0);
+    return cantidad * importe;
+  }
+
+  function updatePartidas() {
+    recursosBody.querySelectorAll("tr").forEach((row, idx) => {
+      const partida = row.querySelector(".js-partida");
+      if (partida) partida.textContent = idx + 1;
+    });
+  }
+
   function updateTotal() {
     let total = 0;
-    recursosBody.querySelectorAll(".js-importe").forEach((input) => {
-      total += Number(input.value || 0);
+    recursosBody.querySelectorAll("tr").forEach((row) => {
+      const current = rowTotal(row);
+      const totalCell = row.querySelector(".js-total");
+      if (totalCell) totalCell.textContent = money(current);
+      total += current;
     });
     recursosTotal.textContent = money(total);
+    updatePartidas();
   }
 
   function addRow(focus = true) {
@@ -184,8 +205,10 @@
     clone.querySelectorAll("input").forEach((input) => {
       input.value = input.classList.contains("js-importe") ? "0" : "";
     });
+    clone.querySelector(".js-total").textContent = money(0);
     recursosBody.appendChild(clone);
     wireRow(clone);
+    updateTotal();
     if (focus) clone.querySelector(".js-cantidad").focus();
     return clone;
   }

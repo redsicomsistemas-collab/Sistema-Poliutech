@@ -54,23 +54,27 @@
       <table class="table table-hover align-middle mb-0">
         <thead>
           <tr>
+            <th>Partida</th>
             <th>Cantidad</th>
-            <th>Concepto</th>
+            <th>Descripcion</th>
             <th>Importe</th>
+            <th>Total</th>
           </tr>
         </thead>
         <tbody>
           {% for partida in solicitud.partidas %}
           <tr>
+            <td class="fw-bold">{{ loop.index }}</td>
             <td>{{ "{:,.2f}".format(partida.cantidad or 0) }}</td>
             <td>{{ partida.concepto }}</td>
-            <td class="fw-bold">${{ "{:,.2f}".format(partida.importe or 0) }}</td>
+            <td>${{ "{:,.2f}".format(partida.importe or 0) }}</td>
+            <td class="fw-bold">${{ "{:,.2f}".format(partida.total or ((partida.cantidad or 0) * (partida.importe or 0))) }}</td>
           </tr>
           {% endfor %}
         </tbody>
         <tfoot>
           <tr>
-            <th colspan="2" class="text-end">Total</th>
+            <th colspan="4" class="text-end">Importe total</th>
             <th>${{ "{:,.2f}".format(solicitud.total or 0) }}</th>
           </tr>
         </tfoot>
