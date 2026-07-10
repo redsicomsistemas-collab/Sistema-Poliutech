@@ -1750,7 +1750,9 @@ def _mobile_all_active_push_tokens() -> list[str]:
 def _mobile_push_user_ids_for_approval_reviewer() -> list[int]:
     review_emails = {email.lower() for email in _parse_email_list(COTIZACION_REVIEW_EMAIL)}
     review_emails.add("hjaramillo@poliutech.com")
+    review_emails.add("mescalera@poliutech.com")
     hansel_aliases = {"hansel", "hansel alejandro", "hansel angel", "hansel ángel"}
+    mescalera_aliases = {"mescalera", "mesacalera"}
     fixed_reviewer_ids = {18}
     users = Usuario.query.all()
     user_ids: set[int] = set()
@@ -1763,13 +1765,14 @@ def _mobile_push_user_ids_for_approval_reviewer() -> list[int]:
         if (
             user.id in fixed_reviewer_ids
             or any(part in hansel_aliases or part.startswith("hansel ") for part in identity_parts if part)
+            or any(part in mescalera_aliases or part.startswith("mescalera ") or part.startswith("mesacalera ") for part in identity_parts if part)
             or user_email in review_emails
         ):
             if user.id:
                 user_ids.add(user.id)
     result = list(user_ids)
     if not result:
-        logger.warning("Push aprobación: no se encontró usuario revisor Hansel ni correo %s.", sorted(review_emails))
+        logger.warning("Push aprobación: no se encontró usuario revisor Hansel/Mescalera ni correo %s.", sorted(review_emails))
     return result
 
 
@@ -1911,14 +1914,12 @@ def _send_quote_updated_push(cot: Cotizacion) -> dict[str, int]:
 def _send_quote_approval_request_push(cot: Cotizacion) -> dict[str, int]:
     reviewer_ids = _mobile_push_user_ids_for_approval_reviewer()
     hansel_ids = [18]
-    tokens = _mobile_push_tokens_for_users(hansel_ids)
+    tokens = _mobile_push_tokens_for_users(reviewer_ids)
     using_active_device_fallback = False
-    if not tokens:
-        tokens = _mobile_push_tokens_for_users(reviewer_ids)
     if not reviewer_ids:
-        logger.warning("Push aprobación %s: no hay usuario Hansel/revisor configurado.", cot.folio or cot.id)
+        logger.warning("Push aprobación %s: no hay usuario Hansel/Mescalera/revisor configurado.", cot.folio or cot.id)
     if not tokens:
-        logger.warning("Push aprobación %s: Hansel/revisor %s no tiene token móvil activo.", cot.folio or cot.id, reviewer_ids)
+        logger.warning("Push aprobación %s: Hansel/Mescalera/revisor %s no tiene token móvil activo.", cot.folio or cot.id, reviewer_ids)
         tokens = _mobile_all_active_push_tokens()
         using_active_device_fallback = bool(tokens)
         if using_active_device_fallback:
@@ -1937,10 +1938,10 @@ def _send_quote_approval_request_push(cot: Cotizacion) -> dict[str, int]:
             "folio": str(cot.folio or ""),
             "estatus": str(cot.estatus_aprobacion or "EN REVISIÓN"),
             "pdf_url": _mobile_quote_pdf_url(cot.id),
-            "target_user": "Hansel",
-            "target_user_name": "Hansel",
-            "recipient_user_name": "Hansel",
-            "approval_reviewer": "Hansel",
+            "target_user": "Hansel/Mescalera",
+            "target_user_name": "Hansel/Mescalera",
+            "recipient_user_name": "Hansel/Mescalera",
+            "approval_reviewer": "Hansel/Mescalera",
             "requires_decision": "true",
         },
     )
@@ -2753,10 +2754,10 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "26"))
 SMTP_USERNAME = os.getenv("SMTP_USERNAME", "cotizaciones@poliutech.com").strip()
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "Cotizaciones2025@").strip()
 SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USERNAME).strip()
-COTIZACION_REVIEW_EMAIL = "hjaramillo@poliutech.com"
+COTIZACION_REVIEW_EMAIL = "hjaramillo@poliutech.com,mescalera@poliutech.com"
 COTIZACION_REVIEW_BCC_EMAIL = "sistemas@poliutech.com"
 COTIZACION_RESPONSE_EMAIL = (os.getenv("COTIZACION_RESPONSE_EMAIL") or "umorales@poliutech.com").strip()
-COTIZACION_APPROVALS_EMAIL = "aprobaciones@poliutech.com"
+COTIZACION_APPROVALS_EMAIL = "aprobaciones@poliutech.com,mescalera@poliutech.com"
 COTIZACION_REVIEW_RESULT_AAZCONA_EMAIL = "aazcona@poliutech.com"
 GASTOS_REVIEW_EMAIL = "hjaramillo@poliutech.com"
 GASTOS_REVIEW_BCC_EMAIL = "sistemas@poliutech.com"
@@ -11565,6 +11566,17 @@ def solicitud_recurso_detalle(solicitud_id: int):
         ),
         estatus_options=SOLICITUD_RECURSO_ESTATUS,
     )
+
+
+@app.route("/solicitudes-recursos/<int:solicitud_id>/eliminar", methods=["POST"])
+@login_required
+def solicitud_recurso_eliminar(solicitud_id: int):
+    solicitud = SolicitudRecurso.query.get_or_404(solicitud_id)
+    folio = solicitud.folio or str(solicitud.id)
+    db.session.delete(solicitud)
+    db.session.commit()
+    flash(f"Solicitud {folio} eliminada.", "success")
+    return redirect(url_for("solicitudes_recursos_index"))
 
 
 @app.route("/solicitudes-recursos/<int:solicitud_id>/estatus", methods=["POST"])
