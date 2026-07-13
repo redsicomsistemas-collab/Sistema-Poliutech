@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Salida de gastos{% endblock %}
+
+{% block content %}
+<style>
+  .salida-detail {
+    max-width: 1180px;
+  }
+  .salida-summary {
+    border: 1px solid #dfe5ec;
+    border-radius: 8px;
+    background: #fff;
+    padding: 1rem;
+    height: 100%;
+  }
+  .receipt-attachment-img {
+    max-width: 100%;
+    max-height: 340px;
+    object-fit: contain;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    background: #f8f9fa;
+  }
+</style>
+
+<div class="container py-4 salida-detail">
+  {% if approved_now %}
+  <div class="alert alert-success">Salida aprobada correctamente. Todos los comprobantes quedaron aprobados.</div>
+  {% endif %}
+
+  <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+    <div>
+      <h2 class="fw-bold mb-1">{{ grupo }}</h2>
+      <div class="text-muted">Salida agrupada de gastos y viaticos</div>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      {% if not approved_now and gastos|selectattr("estatus", "ne", "APROBADO")|list %}
+      <a href="{{ approve_url }}" class="btn btn-success">Aprobar salida</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <div class="salida-summary">
+        <div class="small text-muted">Fecha</div>
+        <div class="fw-semibold">{{ fecha.strftime("%d/%m/%Y") if fecha else "-" }}</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="salida-summary">
+        <div class="small text-muted">Comprobantes</div>
+        <div class="fw-semibold">{{ gastos|length }}</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="salida-summary">
+        <div class="small text-muted">Quien hizo la compra</div>
+        <div class="fw-semibold">{{ gastos[0].responsable or "-" }}</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="salida-summary">
+        <div class="small text-muted">Total salida</div>
+        <div class="fw-bold text-primary">${{ "{:,.2f}".format(total_salida or 0) }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-light fw-bold">Comprobantes incluidos</div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Folio</th>
+              <th>Proveedor</th>
+              <th>Concepto(s)</th>
+              <th>Fecha</th>
+              <th>Total</th>
+              <th>Estatus</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for gasto in gastos %}
+            <tr>
+              <td class="fw-bold">{{ gasto.folio or ("#" ~ gasto.id) }}</td>
+              <td>{{ gasto.proveedor or "Sin proveedor" }}</td>
+              <td style="white-space: normal; overflow-wrap: anywhere;">{{ gasto.concepto }}</td>
+              <td>{{ gasto.fecha_comprobante.strftime("%d/%m/%Y") if gasto.fecha_comprobante else "-" }}</td>
+              <td class="fw-bold">${{ "{:,.2f}".format(gasto.total or 0) }} {{ gasto.moneda }}</td>
+              <td><span class="badge bg-{{ gastos_badge_class(gasto.estatus) }}">{{ gasto.estatus }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {% for gasto in gastos %}
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center gap-2 flex-wrap">
+      <div class="fw-bold">{{ gasto.folio or ("#" ~ gasto.id) }} · {{ gasto.proveedor or "Sin proveedor" }}</div>
+      <div class="fw-bold">${{ "{:,.2f}".format(gasto.total or 0) }} {{ gasto.moneda }}</div>
+    </div>
+    <div class="card-body">
+      <div class="mb-3" style="white-space: pre-wrap; overflow-wrap: anywhere;">{{ gasto.concepto }}</div>
+      {% for adj in gasto.adjuntos %}
+      <div class="mb-4">
+        <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
+          <div class="fw-semibold">{{ adj.nombre_original }}</div>
+          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('static', filename=adj.ruta) }}" target="_blank">Abrir archivo</a>
+        </div>
+        {% if (adj.mime_type or "").startswith("image/") %}
+        <img src="{{ url_for('static', filename=adj.ruta) }}" alt="{{ adj.nombre_original }}" class="receipt-attachment-img">
+        {% else %}
+        <div class="ratio ratio-4x3 border rounded bg-light">
+          <iframe src="{{ url_for('static', filename=adj.ruta) }}" title="{{ adj.nombre_original }}"></iframe>
+        </div>
+        {% endif %}
+      </div>
+      {% else %}
+      <div class="text-muted">Este registro no tiene comprobante adjunto.</div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

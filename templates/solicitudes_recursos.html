@@ -146,7 +146,18 @@
             <td>{{ solicitud.proyecto or "" }}</td>
             <td><span class="badge bg-secondary">{{ solicitud.estatus }}</span></td>
             <td class="fw-bold">${{ "{:,.2f}".format(solicitud.total or 0) }}</td>
-            <td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('solicitud_recurso_detalle', solicitud_id=solicitud.id) }}">Ver</a></td>
+            <td>
+              <div class="d-flex gap-2 justify-content-center">
+                <a class="btn btn-sm btn-outline-primary" href="{{ url_for('solicitud_recurso_detalle', solicitud_id=solicitud.id) }}">Ver</a>
+                <form method="post" action="{{ url_for('solicitud_recurso_eliminar', solicitud_id=solicitud.id) }}" class="m-0">
+                  <button
+                    type="submit"
+                    class="btn btn-sm btn-outline-danger"
+                    data-confirm-message="¿Seguro que deseas eliminar la solicitud {{ solicitud.folio }}? Esta accion no se puede deshacer."
+                  >Eliminar</button>
+                </form>
+              </div>
+            </td>
           </tr>
           {% else %}
           <tr>

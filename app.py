@@ -10620,6 +10620,11 @@ def _gastos_review_token(gasto: "ComprobacionGasto", action: str = "view") -> st
     return _gastos_review_serializer().dumps({"gasto_id": gasto.id, "action": action})
 
 
+def _gastos_group_review_token(gastos: list["ComprobacionGasto"], action: str = "view") -> str:
+    ids = [int(gasto.id) for gasto in gastos if getattr(gasto, "id", None)]
+    return _gastos_review_serializer().dumps({"gasto_ids": ids, "action": action})
+
+
 def _gastos_load_from_token(gasto_id: int, token: str, action: str = "view") -> "ComprobacionGasto":
     try:
         payload = _gastos_review_serializer().loads(token or "", max_age=60 * 60 * 24 * 45)
@@ -10634,6 +10639,68 @@ def _gastos_load_from_token(gasto_id: int, token: str, action: str = "view") -> 
     elif token_action not in {action, "approve"}:
         abort(403)
     return ComprobacionGasto.query.get_or_404(gasto_id)
+
+
+def _gastos_load_group_from_token(token: str, action: str = "view") -> list["ComprobacionGasto"]:
+    try:
+        payload = _gastos_review_serializer().loads(token or "", max_age=60 * 60 * 24 * 45)
+    except (BadSignature, SignatureExpired):
+        abort(403)
+    ids = [int(item) for item in (payload.get("gasto_ids") or []) if str(item).isdigit()]
+    if not ids:
+        abort(403)
+    token_action = (payload.get("action") or "").strip()
+    if action == "approve":
+        if token_action != "approve":
+            abort(403)
+    elif token_action not in {action, "approve"}:
+        abort(403)
+    gastos = (
+        ComprobacionGasto.query
+        .filter(ComprobacionGasto.id.in_(ids))
+        .order_by(ComprobacionGasto.fecha_comprobante.asc(), ComprobacionGasto.id.asc())
+        .all()
+    )
+    by_id = {gasto.id: gasto for gasto in gastos}
+    return [by_id[item_id] for item_id in ids if item_id in by_id]
+
+
+def _gastos_fecha_base(gasto: "ComprobacionGasto") -> datetime:
+    return gasto.fecha_comprobante or gasto.fecha_registro or gasto.creado_en or now_cdmx_naive()
+
+
+def _gastos_fecha_key(gasto: "ComprobacionGasto") -> str:
+    return _gastos_fecha_base(gasto).strftime("%Y-%m-%d")
+
+
+def _gastos_group_name(gasto: "ComprobacionGasto") -> str:
+    if (gasto.tipo_agrupacion or "").upper() == "PROYECTO":
+        return (gasto.proyecto or "").strip() or "Sin proyecto"
+    return (gasto.evento or "").strip() or "Sin evento"
+
+
+def _gastos_group_query(tipo_agrupacion: str, grupo: str, fecha: str, responsable: str):
+    fecha_dt = _parse_date_or_none(fecha)
+    if not fecha_dt:
+        abort(400)
+    tipo_agrupacion = (tipo_agrupacion or "").strip().upper()
+    if tipo_agrupacion not in GASTOS_AGRUPACIONES:
+        abort(400)
+    field = ComprobacionGasto.proyecto if tipo_agrupacion == "PROYECTO" else ComprobacionGasto.evento
+    query = ComprobacionGasto.query.filter(
+        ComprobacionGasto.tipo_agrupacion == tipo_agrupacion,
+        ComprobacionGasto.estatus.in_(("PENDIENTE", "EN REVISION")),
+        field == (grupo or "").strip(),
+    )
+    if (responsable or "").strip():
+        query = query.filter(ComprobacionGasto.responsable == responsable.strip())
+    else:
+        query = query.filter(or_(ComprobacionGasto.responsable.is_(None), ComprobacionGasto.responsable == ""))
+    next_day = fecha_dt + timedelta(days=1)
+    return query.filter(or_(
+        and_(ComprobacionGasto.fecha_comprobante >= fecha_dt, ComprobacionGasto.fecha_comprobante < next_day),
+        and_(ComprobacionGasto.fecha_comprobante.is_(None), ComprobacionGasto.fecha_registro >= fecha_dt, ComprobacionGasto.fecha_registro < next_day),
+    ))
 
 
 def _gastos_mail_html(gasto: "ComprobacionGasto", view_url: str, approve_url: str) -> str:
@@ -10717,6 +10784,71 @@ def _gastos_mail_html(gasto: "ComprobacionGasto", view_url: str, approve_url: st
     """.strip()
 
 
+def _gastos_group_mail_html(gastos: list["ComprobacionGasto"], view_url: str, approve_url: str) -> str:
+    first = gastos[0]
+    grupo = escape(_gastos_group_name(first))
+    tipo = escape(first.tipo_agrupacion or "")
+    responsable = escape(first.responsable or "Sin responsable")
+    fecha = escape(_gastos_fecha_base(first).strftime("%d/%m/%Y"))
+    total = sum(float(gasto.total or 0) for gasto in gastos)
+    rows = []
+    for gasto in gastos:
+        rows.append(
+            "<tr>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;font-weight:700;color:#0C3C78;'>{escape(gasto.folio or f'#{gasto.id}')}</td>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;'>{escape(gasto.proveedor or 'Sin proveedor')}</td>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;'>{escape(gasto.concepto or '')}</td>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;'>${float(gasto.total or 0):,.2f} {escape(gasto.moneda or 'MXN')}</td>"
+            "</tr>"
+        )
+    button_base = (
+        "display:inline-block;min-width:156px;text-align:center;padding:15px 24px;"
+        "border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;"
+        "letter-spacing:.2px;margin:0 8px 10px 0;"
+    )
+    return f"""
+    <html>
+      <body style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+        <div style="max-width:860px;margin:0 auto;padding:30px 16px;">
+          <div style="background:#ffffff;border:1px solid #d9e2ec;border-radius:10px;overflow:hidden;box-shadow:0 8px 24px rgba(15,45,80,.08);">
+            <div style="background:#0C3C78;color:#ffffff;padding:22px 26px;">
+              <div style="font-size:12px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;opacity:.9;">MAR · Poliutech</div>
+              <div style="font-size:23px;font-weight:800;margin-top:5px;">Salida agrupada pendiente de revision</div>
+              <div style="font-size:14px;opacity:.92;margin-top:6px;">Gastos y viaticos</div>
+            </div>
+            <div style="padding:26px;">
+              <p style="margin:0 0 20px 0;font-size:15px;color:#475569;">Se envio una salida agrupada con {len(gastos)} comprobante(s) para validacion administrativa.</p>
+              <div style="background:#f8fafc;border:1px solid #dbe4ef;border-radius:10px;padding:16px 18px;margin-bottom:20px;">
+                <div style="font-size:20px;font-weight:900;color:#0C3C78;">{grupo}</div>
+                <div style="margin-top:6px;color:#475569;">{tipo} · {fecha} · {responsable}</div>
+              </div>
+              <table style="border-collapse:collapse;width:100%;background:#ffffff;border:1px solid #dbe4ef;margin-bottom:22px;">
+                <thead>
+                  <tr style="background:#f1f5f9;color:#334155;">
+                    <th style="padding:10px;text-align:left;">Folio</th>
+                    <th style="padding:10px;text-align:left;">Proveedor</th>
+                    <th style="padding:10px;text-align:left;">Concepto(s)</th>
+                    <th style="padding:10px;text-align:right;">Total</th>
+                  </tr>
+                </thead>
+                <tbody>{''.join(rows)}</tbody>
+              </table>
+              <div style="background:#f0f7ff;border:1px solid #cfe3ff;border-radius:10px;padding:16px 18px;margin-bottom:24px;">
+                <div style="font-size:12px;text-transform:uppercase;letter-spacing:.7px;color:#0C3C78;font-weight:800;">Total de la salida</div>
+                <div style="font-size:30px;font-weight:900;color:#0C3C78;margin-top:3px;">${total:,.2f}</div>
+              </div>
+              <div style="margin-top:4px;">
+                <a href="{view_url}" style="{button_base}background:#0C3C78;color:#ffffff;border:1px solid #0C3C78;">Ver Salida</a>
+                <a href="{approve_url}" style="{button_base}background:#16854f;color:#ffffff;border:1px solid #16854f;">Aprobar Salida</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+    """.strip()
+
+
 def _send_gastos_review_email(gasto: "ComprobacionGasto") -> None:
     recipients = _parse_email_list(GASTOS_REVIEW_EMAIL)
     bcc = _parse_email_list(GASTOS_REVIEW_BCC_EMAIL)
@@ -10739,6 +10871,44 @@ def _send_gastos_review_email(gasto: "ComprobacionGasto") -> None:
         f"Aprobar: {approve_url}\n"
     )
     msg.add_alternative(_gastos_mail_html(gasto, view_url, approve_url), subtype="html")
+
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
+        smtp.ehlo()
+        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+        smtp.send_message(msg, to_addrs=[*recipients, *bcc])
+
+
+def _send_gastos_group_review_email(gastos: list["ComprobacionGasto"]) -> None:
+    recipients = _parse_email_list(GASTOS_REVIEW_EMAIL)
+    bcc = _parse_email_list(GASTOS_REVIEW_BCC_EMAIL)
+    if not recipients:
+        raise ValueError("No hay correo configurado para revision de gastos.")
+    if not gastos:
+        raise ValueError("No hay gastos para enviar a revision.")
+
+    view_url = url_for("gastos_viaticos_revision_grupo", token=_gastos_group_review_token(gastos, "view"), _external=True)
+    approve_url = url_for("gastos_viaticos_revision_grupo_aprobar", token=_gastos_group_review_token(gastos, "approve"), _external=True)
+    first = gastos[0]
+    grupo = _gastos_group_name(first)
+    fecha = _gastos_fecha_base(first).strftime("%d/%m/%Y")
+    total = sum(float(gasto.total or 0) for gasto in gastos)
+    lines = [
+        f"Salida agrupada: {grupo}",
+        f"Fecha: {fecha}",
+        f"Comprobantes: {len(gastos)}",
+        f"Total: ${total:,.2f}",
+        "",
+    ]
+    for gasto in gastos:
+        lines.append(f"- {gasto.folio or gasto.id}: {gasto.proveedor or 'Sin proveedor'} | {gasto.concepto or ''} | ${float(gasto.total or 0):,.2f} {gasto.moneda or 'MXN'}")
+    lines.extend(["", "Abre este correo en vista HTML para usar los botones Ver y Aprobar.", f"Ver: {view_url}", f"Aprobar: {approve_url}"])
+
+    msg = EmailMessage()
+    msg["Subject"] = f"Revision de salida {grupo} - {fecha} ({len(gastos)} comprobantes)"
+    msg["From"] = f"REGISTRO DE GASTOS Y/O VIATICOS <{SMTP_FROM or SMTP_USERNAME}>"
+    msg["To"] = ", ".join(recipients)
+    msg.set_content("\n".join(lines))
+    msg.add_alternative(_gastos_group_mail_html(gastos, view_url, approve_url), subtype="html")
 
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
         smtp.ehlo()
@@ -10779,19 +10949,31 @@ def gastos_viaticos_index():
     total_pendiente = sum(float(g.total or 0) for g in comprobaciones if (g.estatus or "") in {"PENDIENTE", "EN REVISION"})
     total_aprobado = sum(float(g.total or 0) for g in comprobaciones if (g.estatus or "") in {"APROBADO", "REEMBOLSADO"})
 
-    grupos: dict[str, dict] = {}
+    grupos: dict[tuple[str, str, str, str], dict] = {}
     for gasto in comprobaciones:
-        key = gasto.proyecto if gasto.tipo_agrupacion == "PROYECTO" else gasto.evento
-        key = key or "Sin clasificar"
-        item = grupos.setdefault(key, {"nombre": key, "conteo": 0, "total": 0.0, "tipo": gasto.tipo_agrupacion})
+        nombre = _gastos_group_name(gasto)
+        fecha = _gastos_fecha_key(gasto)
+        responsable = (gasto.responsable or "").strip()
+        key = (gasto.tipo_agrupacion or "PROYECTO", nombre, fecha, responsable)
+        item = grupos.setdefault(key, {
+            "nombre": nombre,
+            "conteo": 0,
+            "pendientes": 0,
+            "total": 0.0,
+            "tipo": gasto.tipo_agrupacion,
+            "fecha": fecha,
+            "responsable": responsable,
+        })
         item["conteo"] += 1
         item["total"] += float(gasto.total or 0)
+        if (gasto.estatus or "") in {"PENDIENTE", "EN REVISION"}:
+            item["pendientes"] += 1
 
     return render_template(
         "gastos_viaticos.html",
         title="Gastos y viaticos",
         comprobaciones=comprobaciones,
-        grupos=sorted(grupos.values(), key=lambda item: item["total"], reverse=True),
+        grupos=sorted(grupos.values(), key=lambda item: (item["fecha"], item["total"]), reverse=True),
         total_general=total_general,
         total_pendiente=total_pendiente,
         total_aprobado=total_aprobado,
@@ -10927,7 +11109,7 @@ def gastos_viaticos_crear():
         proveedor=(f.get("proveedor") or "").strip() or None,
         concepto=concepto,
         referencia=(f.get("referencia") or "").strip() or None,
-        fecha_comprobante=_parse_date_or_none(f.get("fecha_comprobante")),
+        fecha_comprobante=_parse_date_or_none(f.get("fecha_comprobante")) or now_cdmx_naive().replace(hour=0, minute=0, second=0, microsecond=0),
         fecha_registro=now_cdmx_naive(),
         subtotal=fmt(parse_float(f.get("subtotal"), 0)),
         iva=fmt(parse_float(f.get("iva"), 0)),
@@ -10953,15 +11135,38 @@ def gastos_viaticos_crear():
         return _gastos_redirect()
 
     db.session.commit()
+    flash(f"Comprobacion {gasto.folio} registrada. Quedo lista para enviarse dentro de su salida agrupada.", "success")
+    return _gastos_redirect()
+
+
+@app.route("/gastos-viaticos/enviar-grupo", methods=["POST"])
+@login_required
+def gastos_viaticos_enviar_grupo():
+    tipo_agrupacion = (request.form.get("tipo_agrupacion") or "").strip().upper()
+    grupo = (request.form.get("grupo") or "").strip()
+    fecha = (request.form.get("fecha") or "").strip()
+    responsable = (request.form.get("responsable") or "").strip()
+    gastos = (
+        _gastos_group_query(tipo_agrupacion, grupo, fecha, responsable)
+        .order_by(ComprobacionGasto.fecha_comprobante.asc(), ComprobacionGasto.id.asc())
+        .all()
+    )
+    if not gastos:
+        flash("No hay gastos pendientes en esa salida para enviar a revision.", "info")
+        return _gastos_redirect()
+    for gasto in gastos:
+        gasto.estatus = "EN REVISION"
+        gasto.actualizado_en = now_cdmx_naive()
+    db.session.commit()
     try:
-        _send_gastos_review_email(gasto)
-        flash(f"Comprobacion {gasto.folio} registrada y enviada a revision.", "success")
+        _send_gastos_group_review_email(gastos)
+        flash(f"Salida '{grupo}' enviada a revision con {len(gastos)} comprobante(s).", "success")
     except Exception as exc:
         try:
-            logger.exception("No se pudo enviar correo de revision de gastos %s", gasto.folio or gasto.id)
+            logger.exception("No se pudo enviar correo de revision agrupada de gastos %s", grupo)
         except Exception:
             pass
-        flash(f"Comprobacion {gasto.folio} registrada, pero no se pudo enviar el correo: {exc}", "warning")
+        flash(f"La salida quedo en revision, pero no se pudo enviar el correo: {exc}", "warning")
     return _gastos_redirect()
 
 
@@ -11017,6 +11222,51 @@ def gastos_viaticos_revision_aprobar(gasto_id: int):
         public_view=True,
         approved_now=True,
         approve_url=url_for("gastos_viaticos_revision_aprobar", gasto_id=gasto.id, token=request.args.get("token") or ""),
+        gastos_badge_class=_gastos_badge_class,
+    )
+
+
+@app.route("/gastos-viaticos/revision-grupo")
+def gastos_viaticos_revision_grupo():
+    token = request.args.get("token") or ""
+    gastos = _gastos_load_group_from_token(token, "view")
+    if not gastos:
+        abort(404)
+    return render_template(
+        "gastos_viaticos_revision_grupo.html",
+        title="Salida de gastos",
+        gastos=gastos,
+        public_view=True,
+        approved_now=False,
+        grupo=_gastos_group_name(gastos[0]),
+        fecha=_gastos_fecha_base(gastos[0]),
+        total_salida=sum(float(gasto.total or 0) for gasto in gastos),
+        approve_url=url_for("gastos_viaticos_revision_grupo_aprobar", token=token),
+        gastos_badge_class=_gastos_badge_class,
+    )
+
+
+@app.route("/gastos-viaticos/revision-grupo/aprobar")
+def gastos_viaticos_revision_grupo_aprobar():
+    token = request.args.get("token") or ""
+    gastos = _gastos_load_group_from_token(token, "approve")
+    if not gastos:
+        abort(404)
+    now = now_cdmx_naive()
+    for gasto in gastos:
+        gasto.estatus = "APROBADO"
+        gasto.actualizado_en = now
+    db.session.commit()
+    return render_template(
+        "gastos_viaticos_revision_grupo.html",
+        title="Salida de gastos",
+        gastos=gastos,
+        public_view=True,
+        approved_now=True,
+        grupo=_gastos_group_name(gastos[0]),
+        fecha=_gastos_fecha_base(gastos[0]),
+        total_salida=sum(float(gasto.total or 0) for gasto in gastos),
+        approve_url=url_for("gastos_viaticos_revision_grupo_aprobar", token=token),
         gastos_badge_class=_gastos_badge_class,
     )
 

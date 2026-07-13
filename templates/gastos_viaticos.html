@@ -188,7 +188,7 @@
 
   <div class="col-xl-4">
     <div class="card border-0 shadow-sm h-100">
-      <div class="card-header bg-light fw-bold">Resumen por grupo</div>
+      <div class="card-header bg-light fw-bold">Salidas agrupadas</div>
       <div class="card-body p-0">
         <div class="table-responsive">
           <table class="table table-sm align-middle mb-0">
@@ -196,20 +196,39 @@
               <tr>
                 <th>Grupo</th>
                 <th>Tipo</th>
-                <th>Comprob.</th>
+                <th>Fecha</th>
+                <th>Comp.</th>
                 <th>Total</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {% for grupo in grupos %}
               <tr>
-                <td class="fw-semibold">{{ grupo.nombre }}</td>
+                <td>
+                  <div class="fw-semibold">{{ grupo.nombre }}</div>
+                  <div class="small text-muted">{{ grupo.responsable or "Sin comprador" }}</div>
+                </td>
                 <td><span class="badge bg-secondary">{{ grupo.tipo }}</span></td>
+                <td>{{ grupo.fecha }}</td>
                 <td>{{ grupo.conteo }}</td>
                 <td class="fw-bold">${{ "{:,.2f}".format(grupo.total or 0) }}</td>
+                <td>
+                  {% if grupo.pendientes %}
+                  <form method="post" action="{{ url_for('gastos_viaticos_enviar_grupo') }}">
+                    <input type="hidden" name="tipo_agrupacion" value="{{ grupo.tipo }}">
+                    <input type="hidden" name="grupo" value="{{ grupo.nombre }}">
+                    <input type="hidden" name="fecha" value="{{ grupo.fecha }}">
+                    <input type="hidden" name="responsable" value="{{ grupo.responsable }}">
+                    <button class="btn btn-sm btn-primary">Enviar salida</button>
+                  </form>
+                  {% else %}
+                  <span class="badge bg-success">Cerrada</span>
+                  {% endif %}
+                </td>
               </tr>
               {% else %}
-              <tr><td colspan="4" class="text-center text-muted py-4">Sin comprobaciones todavia.</td></tr>
+              <tr><td colspan="6" class="text-center text-muted py-4">Sin comprobaciones todavia.</td></tr>
               {% endfor %}
             </tbody>
           </table>
