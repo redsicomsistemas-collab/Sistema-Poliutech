@@ -126,7 +126,7 @@
           </div>
           <div class="col-md-3">
             <label class="form-label">Responsable de la salida</label>
-            <input name="responsable" id="responsable" class="form-control" value="{{ responsable_default }}" placeholder="Nombre">
+            <input name="responsable" id="responsable" class="form-control" value="{{ responsable_default }}" placeholder="Nombre" {% if not gastos_can_view_all %}readonly{% endif %}>
           </div>
           <div class="col-md-2">
             <label class="form-label">Estatus</label>
@@ -364,7 +364,7 @@
             <div class="col-md-4"><label class="form-label">Proveedor</label><input name="proveedor" class="form-control" value="{{ gasto.proveedor or '' }}"></div>
             <div class="col-md-5"><label class="form-label">Concepto(s)</label><input name="concepto" class="form-control" value="{{ gasto.concepto or '' }}"></div>
             <div class="col-md-3"><label class="form-label">Fecha</label><input type="date" name="fecha_comprobante" class="form-control" value="{{ fecha_input(gasto.fecha_comprobante) }}"></div>
-            <div class="col-md-4"><label class="form-label">Quien hizo la compra</label><input name="responsable" class="form-control" value="{{ gasto.responsable or '' }}"></div>
+            <div class="col-md-4"><label class="form-label">Quien hizo la compra</label><input name="responsable" class="form-control" value="{{ gasto.responsable or '' }}" {% if not gastos_can_view_all %}readonly{% endif %}></div>
             <div class="col-md-2"><label class="form-label">Subtotal</label><input type="number" step="any" min="0" name="subtotal" class="form-control js-subtotal" value="{{ gasto.subtotal or 0 }}"></div>
             <div class="col-md-2"><label class="form-label">IVA</label><input type="number" step="any" min="0" name="iva" class="form-control js-iva" value="{{ gasto.iva or 0 }}"></div>
             <div class="col-md-2"><label class="form-label">Total</label><input type="number" step="any" min="0" name="total" class="form-control js-total" value="{{ gasto.total or 0 }}"></div>

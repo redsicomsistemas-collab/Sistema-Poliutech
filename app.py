@@ -10605,6 +10605,40 @@ def _gastos_status_row_class(estatus: str) -> str:
     }.get((estatus or "").upper(), "")
 
 
+def _gastos_user_scope_filter():
+    if is_admin():
+        return None
+    current_user_id = getattr(current_user, "id", None)
+    responsable = responsable_actual()
+    filters = []
+    if current_user_id:
+        filters.append(ComprobacionGasto.usuario_id == current_user_id)
+    if responsable:
+        filters.append(ComprobacionGasto.responsable == responsable)
+    if not filters:
+        return ComprobacionGasto.id == -1
+    return or_(*filters)
+
+
+def _gastos_apply_user_scope(query):
+    scope = _gastos_user_scope_filter()
+    if scope is not None:
+        query = query.filter(scope)
+    return query
+
+
+def require_gasto_owner_or_admin(gasto: "ComprobacionGasto") -> None:
+    if is_admin():
+        return
+    current_user_id = getattr(current_user, "id", None)
+    if current_user_id and gasto.usuario_id == current_user_id:
+        return
+    responsable = responsable_actual()
+    if responsable and (gasto.responsable or "") == responsable:
+        return
+    abort(403)
+
+
 def _gastos_file_ext(filename: str) -> str:
     return (filename or "").rsplit(".", 1)[-1].lower() if "." in (filename or "") else ""
 
@@ -10905,7 +10939,7 @@ def _gastos_group_query(tipo_agrupacion: str, grupo: str, fecha: str, responsabl
     if tipo_agrupacion not in GASTOS_AGRUPACIONES:
         abort(400)
     field = ComprobacionGasto.proyecto if tipo_agrupacion == "PROYECTO" else ComprobacionGasto.evento
-    query = ComprobacionGasto.query.filter(
+    query = _gastos_apply_user_scope(ComprobacionGasto.query).filter(
         ComprobacionGasto.tipo_agrupacion == tipo_agrupacion,
         ComprobacionGasto.estatus.in_(("PENDIENTE", "EN REVISION")),
         field == (grupo or "").strip(),
@@ -11139,7 +11173,7 @@ def _gastos_query_from_request():
     agrupacion = (request.args.get("agrupacion") or "").strip().upper()
     estatus = (request.args.get("estatus") or "").strip().upper()
 
-    query = ComprobacionGasto.query
+    query = _gastos_apply_user_scope(ComprobacionGasto.query)
     if q:
         like = f"%{q}%"
         query = query.filter(or_(
@@ -11205,6 +11239,7 @@ def gastos_viaticos_index():
         gastos_row_class=_gastos_status_row_class,
         fecha_input=_finanzas_fecha_input,
         responsable_default=responsable_actual() or "",
+        gastos_can_view_all=is_admin(),
     )
 
 
@@ -11322,7 +11357,7 @@ def gastos_viaticos_crear():
     tipos_gasto = f.getlist("tipo_gasto[]") or [f.get("tipo_gasto")]
     comprobantes = request.files.getlist("comprobante[]")
     fecha_salida = _parse_date_or_none(f.get("fecha_salida")) or now_cdmx_naive().replace(hour=0, minute=0, second=0, microsecond=0)
-    responsable_salida = (f.get("responsable") or "").strip() or responsable_actual() or None
+    responsable_salida = ((f.get("responsable") or "").strip() if is_admin() else "") or responsable_actual() or None
     proyecto = (f.get("proyecto") or "").strip() or None
     evento = (f.get("evento") or "").strip() or None
 
@@ -11422,6 +11457,7 @@ def gastos_viaticos_enviar_grupo():
 @login_required
 def gastos_viaticos_detalle(gasto_id: int):
     gasto = ComprobacionGasto.query.get_or_404(gasto_id)
+    require_gasto_owner_or_admin(gasto)
     return render_template(
         "gastos_viaticos_detalle.html",
         title=f"Comprobante {gasto.folio or gasto.id}",
@@ -11436,6 +11472,7 @@ def gastos_viaticos_detalle(gasto_id: int):
 @login_required
 def gastos_viaticos_marcar_aprobado(gasto_id: int):
     gasto = ComprobacionGasto.query.get_or_404(gasto_id)
+    require_gasto_owner_or_admin(gasto)
     gasto.estatus = "APROBADO"
     gasto.actualizado_en = now_cdmx_naive()
     db.session.commit()
@@ -11523,6 +11560,7 @@ def gastos_viaticos_revision_grupo_aprobar():
 @login_required
 def gastos_viaticos_actualizar(gasto_id: int):
     gasto = ComprobacionGasto.query.get_or_404(gasto_id)
+    require_gasto_owner_or_admin(gasto)
     f = request.form
     estatus = (f.get("estatus") or gasto.estatus or "PENDIENTE").strip().upper()
     if estatus not in GASTOS_ESTATUS:
@@ -11542,7 +11580,10 @@ def gastos_viaticos_actualizar(gasto_id: int):
     gasto.moneda = (f.get("moneda") or "MXN").strip().upper()[:10] or "MXN"
     gasto.metodo_pago = (f.get("metodo_pago") or "").strip() or None
     gasto.notas = (f.get("notas") or "").strip() or None
-    gasto.responsable = (f.get("responsable") or "").strip() or gasto.responsable
+    if is_admin():
+        gasto.responsable = (f.get("responsable") or "").strip() or gasto.responsable
+    else:
+        gasto.responsable = responsable_actual() or gasto.responsable
     gasto.actualizado_en = now_cdmx_naive()
     db.session.commit()
     flash(f"Comprobacion {gasto.folio} actualizada.", "success")
@@ -11553,6 +11594,7 @@ def gastos_viaticos_actualizar(gasto_id: int):
 @login_required
 def gastos_viaticos_eliminar(gasto_id: int):
     gasto = ComprobacionGasto.query.get_or_404(gasto_id)
+    require_gasto_owner_or_admin(gasto)
     folio = gasto.folio or f"#{gasto.id}"
     db.session.delete(gasto)
     db.session.commit()
@@ -11973,7 +12015,13 @@ def _reportes_diarios_can_view_all() -> bool:
         return True
     email = (getattr(current_user, "correo", "") or "").strip().lower()
     nombre = (getattr(current_user, "nombre", "") or "").strip().lower()
-    return email == "hjaramillo@poliutech.com" or nombre.startswith("hansel")
+    visible = (getattr(current_user, "nombre_visible", "") or "").strip().lower()
+    return (
+        email == "hjaramillo@poliutech.com"
+        or nombre in {"hjaramillo", "hansel", "admin"}
+        or nombre.startswith("hansel")
+        or visible.startswith("hansel")
+    )
 
 
 def _reportes_diarios_query():
