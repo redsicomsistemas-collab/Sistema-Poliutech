@@ -313,21 +313,41 @@
       }
 
       .mobile-user-card {
+        display: grid;
+        gap: 0.5rem;
+        color: #fff;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        border-radius: 8px;
+        padding: 0.65rem 0.75rem;
+        font-weight: 700;
+      }
+
+      .mobile-user-toggle {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        color: #fff;
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 0.75rem;
-        color: #fff;
-        border: 1px solid rgba(255, 255, 255, 0.28);
-        border-radius: 8px;
-        padding: 0.75rem;
-        font-weight: 700;
+        padding: 0.15rem 0;
+        font: inherit;
+        text-align: left;
+      }
+
+      .mobile-user-actions {
+        display: grid;
+        gap: 0.35rem;
+        padding-top: 0.5rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.18);
       }
 
       .mobile-user-card a {
         color: #fff;
         text-decoration: none;
-        font-size: 0.9rem;
+        font-size: 0.95rem;
+        padding: 0.35rem 0;
       }
 
       .app-content {
@@ -683,8 +703,14 @@
       <div class="mobile-menu-tools">
         <a class="quote-cta fw-bold" href="{{ url_for('cotizador') }}">💰 COTIZAR</a>
         <div class="mobile-user-card">
-          <span>👤 {{ current_user.nombre }}</span>
-          <a href="{{ url_for('logout') }}">Salir</a>
+          <button class="mobile-user-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#mobileUserActions" aria-expanded="false" aria-controls="mobileUserActions">
+            <span>👤 {{ current_user.nombre }}</span>
+            <span>▾</span>
+          </button>
+          <div class="collapse mobile-user-actions" id="mobileUserActions">
+            <a href="{{ url_for('reportes_diarios_index') }}">🗓️ Reportes diarios</a>
+            <a href="{{ url_for('logout') }}">Salir</a>
+          </div>
         </div>
       </div>
       <nav class="nav flex-column">
