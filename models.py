@@ -657,6 +657,35 @@ class SolicitudRecursoPartida(db.Model):
         return f"<SolicitudRecursoPartida solicitud={self.solicitud_id} {self.concepto}>"
 
 
+class ReporteDiario(db.Model):
+    __tablename__ = "reporte_diario"
+
+    id = db.Column(db.Integer, primary_key=True)
+    folio = db.Column(db.String(40), unique=True, index=True)
+    colaborador = db.Column(db.String(120), nullable=False, index=True)
+    puesto = db.Column(db.String(120))
+    fecha = db.Column(db.DateTime, nullable=False, index=True)
+    hora_envio = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    estatus = db.Column(db.String(30), default="ENVIADO", nullable=False, index=True)
+    cumplimiento = db.Column(db.String(30), index=True)
+    semaforo = db.Column(db.String(40), default="SIN INCIDENCIAS", nullable=False, index=True)
+    actividades_json = db.Column(db.Text)
+    puntos_importantes_json = db.Column(db.Text)
+    prioridades_siguientes_json = db.Column(db.Text)
+    tiempos_json = db.Column(db.Text)
+    problemas_riesgos_json = db.Column(db.Text)
+    apoyo_direccion = db.Column(db.Text)
+    observaciones = db.Column(db.Text)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    usuario = db.relationship("Usuario", backref=db.backref("reportes_diarios", lazy=True))
+
+    def __repr__(self):
+        return f"<ReporteDiario {self.folio or self.id} {self.colaborador}>"
+
+
 class MovimientoFinanciero(db.Model):
     __tablename__ = "movimiento_financiero"
 

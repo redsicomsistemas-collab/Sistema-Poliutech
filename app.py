@@ -2799,6 +2799,7 @@ from models import (
     OrdenCompraPartida,
     SolicitudRecurso,
     SolicitudRecursoPartida,
+    ReporteDiario,
     MovimientoFinanciero,
     ComprobacionGasto,
     ComprobacionAdjunto,
@@ -10084,6 +10085,11 @@ ORDEN_COMPRA_ESTATUS = (
 ORDEN_COMPRA_UPLOAD_EXTS = {"pdf", "png", "jpg", "jpeg", "webp"}
 SOLICITUD_RECURSO_ESTATUS = ("SOLICITADA", "AUTORIZADA", "RECHAZADA", "ENTREGADA", "CANCELADA")
 SOLICITUD_RECURSO_EMAILS = ("sistemas@poliutech.com", "hjaramillo@poliutech.com")
+REPORTE_DIARIO_TO_EMAIL = "hjaramillo@poliutech.com"
+REPORTE_DIARIO_BCC_EMAIL = "sistemas@poliutech.com"
+REPORTE_DIARIO_CUMPLIMIENTO = ("100%", "80-99%", "60-79%", "MENOR A 60%")
+REPORTE_DIARIO_ACTIVIDAD_ESTATUS = ("TERMINADA", "EN PROCESO", "PENDIENTE")
+REPORTE_DIARIO_SEMAFORO = ("SIN INCIDENCIAS", "RIESGOS IDENTIFICADOS", "REQUIERE INTERVENCION INMEDIATA")
 
 
 def _parse_date_or_none(raw: str):
@@ -10113,6 +10119,218 @@ def _solicitud_recurso_next_folio() -> str:
     else:
         seq = 1
     return f"{prefix}{seq:04d}"
+
+
+def _reporte_diario_next_folio() -> str:
+    year = now_cdmx_naive().year
+    prefix = f"RD-{year}-"
+    latest = (
+        ReporteDiario.query
+        .filter(ReporteDiario.folio.like(f"{prefix}%"))
+        .order_by(ReporteDiario.id.desc())
+        .first()
+    )
+    if latest and latest.folio:
+        try:
+            seq = int(latest.folio.rsplit("-", 1)[-1]) + 1
+        except Exception:
+            seq = latest.id + 1
+    else:
+        seq = 1
+    return f"{prefix}{seq:04d}"
+
+
+def _json_dumps(value) -> str:
+    return json.dumps(value or [], ensure_ascii=False)
+
+
+def _json_loads_list(value: str | None) -> list:
+    if not value:
+        return []
+    try:
+        data = json.loads(value)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _reporte_diario_payload(reporte: ReporteDiario) -> dict:
+    return {
+        "actividades": _json_loads_list(reporte.actividades_json),
+        "puntos": _json_loads_list(reporte.puntos_importantes_json),
+        "prioridades": _json_loads_list(reporte.prioridades_siguientes_json),
+        "tiempos": _json_loads_list(reporte.tiempos_json),
+        "riesgos": _json_loads_list(reporte.problemas_riesgos_json),
+    }
+
+
+def _clean_parallel_rows(*columns: list[str]) -> list[tuple[str, ...]]:
+    total = max((len(col) for col in columns), default=0)
+    rows = []
+    for idx in range(total):
+        row = tuple((col[idx] if idx < len(col) else "").strip() for col in columns)
+        if any(row):
+            rows.append(row)
+    return rows
+
+
+def _reporte_diario_from_form(f) -> ReporteDiario:
+    fecha = _parse_date_or_none(f.get("fecha")) or now_cdmx_naive()
+    colaborador = (f.get("colaborador") or responsable_actual() or "").strip()
+    puesto = (f.get("puesto") or "").strip()
+    cumplimiento = (f.get("cumplimiento") or "").strip().upper()
+    if cumplimiento not in REPORTE_DIARIO_CUMPLIMIENTO:
+        cumplimiento = ""
+    semaforo = (f.get("semaforo") or "SIN INCIDENCIAS").strip().upper()
+    if semaforo not in REPORTE_DIARIO_SEMAFORO:
+        semaforo = "SIN INCIDENCIAS"
+
+    actividades = []
+    for idx, (actividad, estatus, avance) in enumerate(_clean_parallel_rows(
+        f.getlist("actividad[]"),
+        f.getlist("actividad_estatus[]"),
+        f.getlist("actividad_avance[]"),
+    ), start=1):
+        estatus = estatus.upper()
+        actividades.append({
+            "no": idx,
+            "actividad": actividad,
+            "estatus": estatus if estatus in REPORTE_DIARIO_ACTIVIDAD_ESTATUS else "PENDIENTE",
+            "avance": avance,
+        })
+
+    puntos = []
+    for idx, (prioridad, resultado, impacto) in enumerate(_clean_parallel_rows(
+        f.getlist("punto_prioridad[]"),
+        f.getlist("punto_resultado[]"),
+        f.getlist("punto_impacto[]"),
+    ), start=1):
+        puntos.append({"no": idx, "prioridad": prioridad, "resultado": resultado, "impacto": impacto})
+
+    prioridades = []
+    for idx, (actividad, objetivo) in enumerate(_clean_parallel_rows(
+        f.getlist("prioridad_actividad[]"),
+        f.getlist("prioridad_objetivo[]"),
+    ), start=1):
+        prioridades.append({"no": idx, "actividad": actividad, "objetivo": objetivo})
+
+    tiempos = []
+    for tipo, horas in _clean_parallel_rows(f.getlist("tiempo_tipo[]"), f.getlist("tiempo_horas[]")):
+        tiempos.append({"tipo": tipo, "horas": horas})
+
+    riesgos = []
+    for situacion, impacto, apoyo in _clean_parallel_rows(
+        f.getlist("riesgo_situacion[]"),
+        f.getlist("riesgo_impacto[]"),
+        f.getlist("riesgo_apoyo[]"),
+    ):
+        riesgos.append({"situacion": situacion, "impacto": impacto, "apoyo": apoyo})
+
+    return ReporteDiario(
+        folio=_reporte_diario_next_folio(),
+        colaborador=colaborador,
+        puesto=puesto or None,
+        fecha=fecha,
+        hora_envio=now_cdmx_naive(),
+        estatus="ENVIADO",
+        cumplimiento=cumplimiento or None,
+        semaforo=semaforo,
+        actividades_json=_json_dumps(actividades),
+        puntos_importantes_json=_json_dumps(puntos),
+        prioridades_siguientes_json=_json_dumps(prioridades),
+        tiempos_json=_json_dumps(tiempos),
+        problemas_riesgos_json=_json_dumps(riesgos),
+        apoyo_direccion=(f.get("apoyo_direccion") or "").strip() or None,
+        observaciones=(f.get("observaciones") or "").strip() or None,
+        usuario_id=getattr(current_user, "id", None),
+    )
+
+
+def _reporte_diario_mail_html(reporte: ReporteDiario, detail_url: str) -> str:
+    payload = _reporte_diario_payload(reporte)
+
+    def rows(items, cols):
+        body = []
+        for item in items:
+            body.append("<tr>" + "".join(
+                f"<td style='padding:9px;border-bottom:1px solid #e5e7eb;vertical-align:top;'>{escape(str(item.get(col, '') or ''))}</td>"
+                for col in cols
+            ) + "</tr>")
+        return "".join(body) or f"<tr><td colspan='{len(cols)}' style='padding:9px;color:#64748b;'>Sin registros.</td></tr>"
+
+    return f"""
+    <div style="font-family:Arial,sans-serif;color:#0f172a;max-width:820px;margin:0 auto;">
+      <h2 style="margin:0 0 8px;color:#0C3C78;">Reporte diario de actividades</h2>
+      <p style="margin:0 0 18px;color:#475569;"><b>{escape(reporte.folio or str(reporte.id))}</b> enviado por {escape(reporte.colaborador or '')}.</p>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+        <tr><td style="padding:7px;color:#64748b;font-weight:700;">Colaborador</td><td style="padding:7px;">{escape(reporte.colaborador or '-')}</td></tr>
+        <tr><td style="padding:7px;color:#64748b;font-weight:700;">Puesto</td><td style="padding:7px;">{escape(reporte.puesto or '-')}</td></tr>
+        <tr><td style="padding:7px;color:#64748b;font-weight:700;">Fecha</td><td style="padding:7px;">{reporte.fecha.strftime('%d/%m/%Y') if reporte.fecha else ''}</td></tr>
+        <tr><td style="padding:7px;color:#64748b;font-weight:700;">Cumplimiento</td><td style="padding:7px;">{escape(reporte.cumplimiento or '-')}</td></tr>
+        <tr><td style="padding:7px;color:#64748b;font-weight:700;">Semaforo</td><td style="padding:7px;font-weight:700;">{escape(reporte.semaforo or '-')}</td></tr>
+      </table>
+      <h3 style="font-size:16px;color:#0C3C78;">Actividades realizadas</h3>
+      <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;margin-bottom:16px;">{rows(payload['actividades'], ['no', 'actividad', 'estatus', 'avance'])}</table>
+      <h3 style="font-size:16px;color:#0C3C78;">Puntos importantes</h3>
+      <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;margin-bottom:16px;">{rows(payload['puntos'], ['no', 'prioridad', 'resultado', 'impacto'])}</table>
+      <h3 style="font-size:16px;color:#0C3C78;">Prioridades siguiente dia</h3>
+      <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;margin-bottom:16px;">{rows(payload['prioridades'], ['no', 'actividad', 'objetivo'])}</table>
+      <p><b>Apoyo requerido:</b> {escape(reporte.apoyo_direccion or '-')}</p>
+      <p><b>Observaciones:</b> {escape(reporte.observaciones or '-')}</p>
+      <p style="margin:18px 0;"><a href="{detail_url}" style="background:#0C3C78;color:#fff;text-decoration:none;padding:10px 14px;border-radius:6px;display:inline-block;">Ver reporte</a></p>
+    </div>
+    """
+
+
+def _send_reporte_diario_email(reporte: ReporteDiario) -> None:
+    recipients = _parse_email_list(REPORTE_DIARIO_TO_EMAIL)
+    bcc = _parse_email_list(REPORTE_DIARIO_BCC_EMAIL)
+    detail_url = url_for("reporte_diario_detalle", reporte_id=reporte.id, _external=True)
+    msg = EmailMessage()
+    msg["Subject"] = f"Reporte diario {reporte.folio or reporte.id} - {reporte.colaborador}"
+    msg["From"] = f"SISTEMA MAR <{SMTP_FROM or SMTP_USERNAME}>"
+    msg["To"] = ", ".join(recipients)
+    msg.set_content(
+        f"Reporte diario {reporte.folio or reporte.id}\n"
+        f"Colaborador: {reporte.colaborador}\n"
+        f"Fecha: {reporte.fecha.strftime('%d/%m/%Y') if reporte.fecha else ''}\n"
+        f"Cumplimiento: {reporte.cumplimiento or '-'}\n"
+        f"Semaforo: {reporte.semaforo or '-'}\n"
+        f"Ver: {detail_url}\n"
+    )
+    msg.add_alternative(_reporte_diario_mail_html(reporte, detail_url), subtype="html")
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
+        smtp.ehlo()
+        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+        smtp.send_message(msg, to_addrs=[*recipients, *bcc])
+
+
+def _send_reporte_diario_push_hansel(reporte: ReporteDiario) -> dict[str, int]:
+    tokens = _mobile_push_tokens_for_users(_mobile_push_user_ids_for_hansel_only())
+    if not tokens:
+        logger.warning("Push reporte diario %s: Hjaramillo no tiene token movil activo.", reporte.folio or reporte.id)
+    return _send_push_notification(
+        tokens,
+        title="Nuevo reporte diario",
+        body=f"{reporte.colaborador} - {reporte.semaforo}",
+        data={
+            "type": "reporte_diario",
+            "reporte_id": str(reporte.id),
+            "folio": reporte.folio or "",
+            "url": url_for("reporte_diario_detalle", reporte_id=reporte.id, _external=True),
+        },
+    )
+
+
+def _notify_reporte_diario_created(reporte: ReporteDiario) -> None:
+    try:
+        _send_reporte_diario_email(reporte)
+    except Exception as exc:
+        logger.warning("Correo de reporte diario %s fallo: %s", reporte.folio or reporte.id, exc)
+    try:
+        _send_reporte_diario_push_hansel(reporte)
+    except Exception as exc:
+        logger.warning("Push de reporte diario %s fallo: %s", reporte.folio or reporte.id, exc)
 
 
 def _solicitud_recurso_recalcular(solicitud: SolicitudRecurso) -> None:
@@ -11748,6 +11966,129 @@ def _orden_compra_guardar_archivo(uploaded, orden: OrdenCompra, prefijo: str) ->
     saved_name = f"{folio}_{prefijo}_{stamp}.{ext}"
     uploaded.save(upload_dir / saved_name)
     return f"uploads/ordenes_compra/{saved_name}"
+
+
+def _reportes_diarios_can_view_all() -> bool:
+    if is_admin():
+        return True
+    email = (getattr(current_user, "correo", "") or "").strip().lower()
+    nombre = (getattr(current_user, "nombre", "") or "").strip().lower()
+    return email == "hjaramillo@poliutech.com" or nombre.startswith("hansel")
+
+
+def _reportes_diarios_query():
+    query = ReporteDiario.query
+    if not _reportes_diarios_can_view_all():
+        query = query.filter(ReporteDiario.usuario_id == getattr(current_user, "id", None))
+    return query
+
+
+@app.route("/reportes-diarios")
+@login_required
+def reportes_diarios_index():
+    q = (request.args.get("q") or "").strip()
+    semaforo = (request.args.get("semaforo") or "").strip().upper()
+    fecha_raw = (request.args.get("fecha") or "").strip()
+    fecha = _parse_date_or_none(fecha_raw)
+
+    query = _reportes_diarios_query()
+    if q:
+        like = f"%{q}%"
+        query = query.filter(or_(
+            ReporteDiario.folio.ilike(like),
+            ReporteDiario.colaborador.ilike(like),
+            ReporteDiario.puesto.ilike(like),
+            ReporteDiario.actividades_json.ilike(like),
+            ReporteDiario.observaciones.ilike(like),
+        ))
+    if semaforo in REPORTE_DIARIO_SEMAFORO:
+        query = query.filter(ReporteDiario.semaforo == semaforo)
+    if fecha:
+        start = fecha.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = start + timedelta(days=1)
+        query = query.filter(ReporteDiario.fecha >= start, ReporteDiario.fecha < end)
+
+    reportes = query.order_by(ReporteDiario.fecha.desc(), ReporteDiario.hora_envio.desc(), ReporteDiario.id.desc()).all()
+    kanban = {status: [] for status in REPORTE_DIARIO_SEMAFORO}
+    for reporte in reportes:
+        kanban.setdefault(reporte.semaforo or "SIN INCIDENCIAS", []).append(reporte)
+
+    hoy = now_cdmx_naive().replace(hour=0, minute=0, second=0, microsecond=0)
+    ya_envio_hoy = ReporteDiario.query.filter(
+        ReporteDiario.usuario_id == getattr(current_user, "id", None),
+        ReporteDiario.fecha >= hoy,
+        ReporteDiario.fecha < hoy + timedelta(days=1),
+    ).first()
+
+    return render_template(
+        "reportes_diarios.html",
+        title="Reportes diarios",
+        reportes=reportes,
+        kanban=kanban,
+        q=q,
+        semaforo=semaforo,
+        fecha=fecha_raw,
+        semaforo_options=REPORTE_DIARIO_SEMAFORO,
+        cumplimiento_options=REPORTE_DIARIO_CUMPLIMIENTO,
+        actividad_estatus_options=REPORTE_DIARIO_ACTIVIDAD_ESTATUS,
+        fecha_hoy=now_cdmx_naive().strftime("%Y-%m-%d"),
+        responsable_default=responsable_actual() or "",
+        ya_envio_hoy=ya_envio_hoy,
+        can_view_all=_reportes_diarios_can_view_all(),
+    )
+
+
+@app.route("/reportes-diarios/crear", methods=["POST"])
+@login_required
+def reporte_diario_crear():
+    reporte = _reporte_diario_from_form(request.form)
+    if not reporte.colaborador:
+        flash("Captura el colaborador del reporte.", "warning")
+        return redirect(url_for("reportes_diarios_index"))
+    if not _json_loads_list(reporte.actividades_json):
+        flash("Agrega al menos una actividad realizada.", "warning")
+        return redirect(url_for("reportes_diarios_index"))
+
+    start = reporte.fecha.replace(hour=0, minute=0, second=0, microsecond=0)
+    existing = ReporteDiario.query.filter(
+        ReporteDiario.usuario_id == getattr(current_user, "id", None),
+        ReporteDiario.fecha >= start,
+        ReporteDiario.fecha < start + timedelta(days=1),
+    ).first()
+    if existing:
+        flash(f"Ya existe un reporte diario para esa fecha: {existing.folio}.", "warning")
+        return redirect(url_for("reporte_diario_detalle", reporte_id=existing.id))
+
+    db.session.add(reporte)
+    db.session.commit()
+    _notify_reporte_diario_created(reporte)
+    flash(f"Reporte {reporte.folio} enviado correctamente.", "success")
+    return redirect(url_for("reporte_diario_detalle", reporte_id=reporte.id))
+
+
+@app.route("/reportes-diarios/<int:reporte_id>")
+@login_required
+def reporte_diario_detalle(reporte_id: int):
+    reporte = _reportes_diarios_query().filter(ReporteDiario.id == reporte_id).first_or_404()
+    return render_template(
+        "reporte_diario_detalle.html",
+        title=f"Reporte {reporte.folio}",
+        reporte=reporte,
+        payload=_reporte_diario_payload(reporte),
+    )
+
+
+@app.route("/reportes-diarios/<int:reporte_id>/eliminar", methods=["POST"])
+@login_required
+def reporte_diario_eliminar(reporte_id: int):
+    reporte = _reportes_diarios_query().filter(ReporteDiario.id == reporte_id).first_or_404()
+    if not (_reportes_diarios_can_view_all() or reporte.usuario_id == getattr(current_user, "id", None)):
+        abort(403)
+    folio = reporte.folio or f"#{reporte.id}"
+    db.session.delete(reporte)
+    db.session.commit()
+    flash(f"Reporte {folio} eliminado.", "success")
+    return redirect(url_for("reportes_diarios_index"))
 
 
 @app.route("/solicitudes-recursos")

@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+{% block title %}Reportes diarios{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 my-4">
+  <div>
+    <h2 class="fw-bold text-primary mb-1">Reportes diarios</h2>
+    <div class="text-muted">Captura diaria por colaborador con seguimiento tipo Kanban/Scrum.</div>
+  </div>
+  {% if ya_envio_hoy %}
+  <a class="btn btn-outline-primary" href="{{ url_for('reporte_diario_detalle', reporte_id=ya_envio_hoy.id) }}">Ver reporte de hoy</a>
+  {% endif %}
+</div>
+
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-header bg-primary text-white fw-bold">Formato de reporte diario de actividades</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('reporte_diario_crear') }}" id="reporte-diario-form">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Colaborador</label>
+          <input name="colaborador" class="form-control" value="{{ responsable_default }}" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Puesto</label>
+          <input name="puesto" class="form-control">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Fecha</label>
+          <input type="date" name="fecha" class="form-control" value="{{ fecha_hoy }}" required>
+        </div>
+      </div>
+
+      <hr class="my-4">
+      <h5 class="fw-bold text-primary">1. Actividades realizadas</h5>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle" id="actividades-table">
+          <thead class="table-light">
+            <tr>
+              <th style="width:70px;">No.</th>
+              <th>Actividad</th>
+              <th style="width:180px;">Estatus</th>
+              <th style="width:150px;">Avance (%)</th>
+              <th style="width:90px;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for i in range(1, 6) %}
+            <tr>
+              <td class="fw-bold text-center js-index">{{ i }}</td>
+              <td><input name="actividad[]" class="form-control form-control-sm"></td>
+              <td>
+                <select name="actividad_estatus[]" class="form-select form-select-sm">
+                  {% for item in actividad_estatus_options %}
+                  <option value="{{ item }}">{{ item }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td><input type="number" min="0" max="100" step="1" name="actividad_avance[]" class="form-control form-control-sm"></td>
+              <td><button type="button" class="btn btn-sm btn-outline-danger js-remove-row">Quitar</button></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <button type="button" class="btn btn-outline-primary btn-sm js-add-row" data-table="actividades-table">Agregar actividad</button>
+
+      <hr class="my-4">
+      <h5 class="fw-bold text-primary">2. Los 3 puntos mas importantes del dia</h5>
+      <div class="row g-3">
+        {% for i in range(1, 4) %}
+        <div class="col-lg-4">
+          <div class="border rounded p-3 h-100">
+            <label class="form-label fw-bold">Prioridad {{ i }}</label>
+            <textarea name="punto_prioridad[]" class="form-control mb-2" rows="2"></textarea>
+            <label class="form-label">Resultado obtenido</label>
+            <textarea name="punto_resultado[]" class="form-control mb-2" rows="2"></textarea>
+            <label class="form-label">Impacto para Poliutech</label>
+            <textarea name="punto_impacto[]" class="form-control" rows="2"></textarea>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <hr class="my-4">
+      <h5 class="fw-bold text-primary">3. Tres prioridades para el dia siguiente</h5>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle" id="prioridades-table">
+          <thead class="table-light">
+            <tr><th style="width:70px;">No.</th><th>Actividad</th><th>Objetivo esperado</th></tr>
+          </thead>
+          <tbody>
+            {% for i in range(1, 4) %}
+            <tr>
+              <td class="fw-bold text-center">{{ i }}</td>
+              <td><input name="prioridad_actividad[]" class="form-control form-control-sm"></td>
+              <td><input name="prioridad_objetivo[]" class="form-control form-control-sm"></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <hr class="my-4">
+      <div class="row g-3">
+        <div class="col-lg-5">
+          <h5 class="fw-bold text-primary">4. Indicadores del dia</h5>
+          <label class="form-label">Cumplimiento de actividades</label>
+          <select name="cumplimiento" class="form-select mb-3" required>
+            <option value="">Seleccionar</option>
+            {% for item in cumplimiento_options %}
+            <option value="{{ item }}">{{ item }}</option>
+            {% endfor %}
+          </select>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead class="table-light"><tr><th>Tipo</th><th style="width:120px;">Horas</th></tr></thead>
+              <tbody>
+                {% for tipo in ["Actividades productivas", "Reuniones", "Seguimiento a clientes", "Administracion", "Traslados", "Otros"] %}
+                <tr>
+                  <td><input name="tiempo_tipo[]" class="form-control form-control-sm" value="{{ tipo }}"></td>
+                  <td><input type="number" min="0" step="0.25" name="tiempo_horas[]" class="form-control form-control-sm"></td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="col-lg-7">
+          <h5 class="fw-bold text-primary">5. Problemas o riesgos detectados</h5>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle" id="riesgos-table">
+              <thead class="table-light"><tr><th>Situacion</th><th>Impacto</th><th>Apoyo requerido</th><th style="width:90px;"></th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><input name="riesgo_situacion[]" class="form-control form-control-sm"></td>
+                  <td><input name="riesgo_impacto[]" class="form-control form-control-sm"></td>
+                  <td><input name="riesgo_apoyo[]" class="form-control form-control-sm"></td>
+                  <td><button type="button" class="btn btn-sm btn-outline-danger js-remove-row">Quitar</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <button type="button" class="btn btn-outline-primary btn-sm js-add-row" data-table="riesgos-table">Agregar riesgo</button>
+        </div>
+      </div>
+
+      <hr class="my-4">
+      <div class="row g-3">
+        <div class="col-lg-6">
+          <label class="form-label fw-bold">6. Decisiones o apoyo requerido de direccion</label>
+          <textarea name="apoyo_direccion" class="form-control" rows="4"></textarea>
+        </div>
+        <div class="col-lg-6">
+          <label class="form-label fw-bold">7. Observaciones</label>
+          <textarea name="observaciones" class="form-control" rows="4"></textarea>
+        </div>
+        <div class="col-lg-6">
+          <label class="form-label fw-bold">Semaforo del dia</label>
+          <select name="semaforo" class="form-select" required>
+            {% for item in semaforo_options %}
+            <option value="{{ item }}">{{ item }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="d-flex justify-content-end mt-4">
+        <button class="btn btn-success btn-lg">Enviar reporte diario</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-header bg-light">
+    <form method="get" action="{{ url_for('reportes_diarios_index') }}" class="row g-2 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label">Buscar</label>
+        <input name="q" class="form-control" value="{{ q }}" placeholder="Folio, colaborador, actividad u observacion">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Fecha</label>
+        <input type="date" name="fecha" class="form-control" value="{{ fecha }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Semaforo</label>
+        <select name="semaforo" class="form-select">
+          <option value="">Todos</option>
+          {% for item in semaforo_options %}
+          <option value="{{ item }}" {% if semaforo == item %}selected{% endif %}>{{ item }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2 d-grid"><button class="btn btn-outline-primary">Filtrar</button></div>
+    </form>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  {% for status, items in kanban.items() %}
+  <div class="col-lg-4">
+    <div class="border rounded h-100 bg-light">
+      <div class="p-3 border-bottom bg-white d-flex justify-content-between align-items-center">
+        <span class="fw-bold">{{ status }}</span>
+        <span class="badge bg-primary">{{ items|length }}</span>
+      </div>
+      <div class="p-2">
+        {% for reporte in items %}
+        <a class="d-block text-decoration-none text-dark bg-white border rounded p-3 mb-2" href="{{ url_for('reporte_diario_detalle', reporte_id=reporte.id) }}">
+          <div class="fw-bold">{{ reporte.folio }}</div>
+          <div>{{ reporte.colaborador }}</div>
+          <div class="small text-muted">{{ reporte.fecha.strftime("%d/%m/%Y") if reporte.fecha else "" }} · {{ reporte.cumplimiento or "Sin indicador" }}</div>
+        </a>
+        {% else %}
+        <div class="text-muted small p-3">Sin reportes en esta columna.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+(function() {
+  function renumber(table) {
+    table.querySelectorAll("tbody tr").forEach((row, index) => {
+      const cell = row.querySelector(".js-index");
+      if (cell) cell.textContent = index + 1;
+    });
+  }
+
+  function wireRemove(row) {
+    row.querySelectorAll(".js-remove-row").forEach((button) => {
+      button.addEventListener("click", () => {
+        const tbody = row.closest("tbody");
+        if (tbody.querySelectorAll("tr").length > 1) {
+          row.remove();
+          renumber(tbody.closest("table"));
+        }
+      });
+    });
+  }
+
+  document.querySelectorAll("tbody tr").forEach(wireRemove);
+  document.querySelectorAll(".js-add-row").forEach((button) => {
+    button.addEventListener("click", () => {
+      const table = document.getElementById(button.dataset.table);
+      const tbody = table.querySelector("tbody");
+      const clone = tbody.querySelector("tr").cloneNode(true);
+      clone.querySelectorAll("input, textarea").forEach((input) => input.value = "");
+      tbody.appendChild(clone);
+      wireRemove(clone);
+      renumber(table);
+    });
+  });
+})();
+</script>
+{% endblock %}

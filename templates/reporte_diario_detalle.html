@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}{{ reporte.folio }}{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 my-4">
+  <div>
+    <h2 class="fw-bold text-primary mb-1">{{ reporte.folio }}</h2>
+    <div class="text-muted">Reporte diario de actividades</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-primary" href="{{ url_for('reportes_diarios_index') }}">Volver</a>
+    <form method="post" action="{{ url_for('reporte_diario_eliminar', reporte_id=reporte.id) }}" class="m-0">
+      <button class="btn btn-outline-danger" data-confirm-message="¿Seguro que deseas eliminar el reporte {{ reporte.folio }}?">Eliminar</button>
+    </form>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3"><div class="border rounded p-3 h-100"><div class="text-muted small">Colaborador</div><div class="fw-bold">{{ reporte.colaborador }}</div></div></div>
+  <div class="col-md-3"><div class="border rounded p-3 h-100"><div class="text-muted small">Puesto</div><div class="fw-bold">{{ reporte.puesto or "-" }}</div></div></div>
+  <div class="col-md-2"><div class="border rounded p-3 h-100"><div class="text-muted small">Fecha</div><div class="fw-bold">{{ reporte.fecha.strftime("%d/%m/%Y") if reporte.fecha else "" }}</div></div></div>
+  <div class="col-md-2"><div class="border rounded p-3 h-100"><div class="text-muted small">Cumplimiento</div><div class="fw-bold">{{ reporte.cumplimiento or "-" }}</div></div></div>
+  <div class="col-md-2"><div class="border rounded p-3 h-100"><div class="text-muted small">Semaforo</div><div class="fw-bold">{{ reporte.semaforo }}</div></div></div>
+</div>
+
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-header bg-primary text-white fw-bold">Actividades realizadas</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light"><tr><th>No.</th><th>Actividad</th><th>Estatus</th><th>Avance</th></tr></thead>
+        <tbody>
+          {% for item in payload.actividades %}
+          <tr><td>{{ item.no }}</td><td>{{ item.actividad }}</td><td><span class="badge bg-secondary">{{ item.estatus }}</span></td><td>{{ item.avance }}</td></tr>
+          {% else %}
+          <tr><td colspan="4" class="text-center text-muted py-4">Sin actividades.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="card shadow-sm border-0 h-100">
+      <div class="card-header bg-light fw-bold">Puntos importantes del dia</div>
+      <div class="card-body">
+        {% for item in payload.puntos %}
+        <div class="border-bottom pb-3 mb-3">
+          <div class="fw-bold">Prioridad {{ item.no }}: {{ item.prioridad or "-" }}</div>
+          <div><span class="text-muted">Resultado:</span> {{ item.resultado or "-" }}</div>
+          <div><span class="text-muted">Impacto:</span> {{ item.impacto or "-" }}</div>
+        </div>
+        {% else %}
+        <div class="text-muted">Sin puntos capturados.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card shadow-sm border-0 h-100">
+      <div class="card-header bg-light fw-bold">Prioridades para el dia siguiente</div>
+      <div class="card-body">
+        {% for item in payload.prioridades %}
+        <div class="border-bottom pb-3 mb-3">
+          <div class="fw-bold">{{ item.no }}. {{ item.actividad or "-" }}</div>
+          <div><span class="text-muted">Objetivo:</span> {{ item.objetivo or "-" }}</div>
+        </div>
+        {% else %}
+        <div class="text-muted">Sin prioridades capturadas.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4 mt-1">
+  <div class="col-lg-5">
+    <div class="card shadow-sm border-0 h-100">
+      <div class="card-header bg-light fw-bold">Tiempo invertido</div>
+      <div class="card-body p-0">
+        <table class="table mb-0">
+          <tbody>
+            {% for item in payload.tiempos %}
+            <tr><td>{{ item.tipo }}</td><td class="text-end fw-bold">{{ item.horas or "0" }}</td></tr>
+            {% else %}
+            <tr><td class="text-muted">Sin tiempos capturados.</td><td></td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card shadow-sm border-0 h-100">
+      <div class="card-header bg-light fw-bold">Problemas o riesgos detectados</div>
+      <div class="card-body">
+        {% for item in payload.riesgos %}
+        <div class="border-bottom pb-3 mb-3">
+          <div class="fw-bold">{{ item.situacion or "-" }}</div>
+          <div><span class="text-muted">Impacto:</span> {{ item.impacto or "-" }}</div>
+          <div><span class="text-muted">Apoyo requerido:</span> {{ item.apoyo or "-" }}</div>
+        </div>
+        {% else %}
+        <div class="text-muted">Sin riesgos capturados.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4 mt-1 mb-4">
+  <div class="col-lg-6">
+    <div class="card shadow-sm border-0 h-100">
+      <div class="card-header bg-light fw-bold">Decisiones o apoyo requerido de direccion</div>
+      <div class="card-body">{{ reporte.apoyo_direccion or "Sin comentarios." }}</div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card shadow-sm border-0 h-100">
+      <div class="card-header bg-light fw-bold">Observaciones</div>
+      <div class="card-body">{{ reporte.observaciones or "Sin observaciones." }}</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
