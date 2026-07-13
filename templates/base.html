@@ -668,6 +668,8 @@
         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userMenu">
           <li><span class="dropdown-item-text fw-semibold">{{ current_user.nombre }}</span></li>
           <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item" href="{{ url_for('reportes_diarios_index') }}">🗓️ Reportes diarios</a></li>
+          <li><hr class="dropdown-divider"></li>
           <li><a class="dropdown-item" href="{{ url_for('logout') }}">🚪 Cerrar sesión</a></li>
         </ul>
       </div>
@@ -690,7 +692,6 @@
         <a class="nav-link" href="{{ url_for('proyectos') }}">📁 Proyectos</a>
         <a class="nav-link" href="{{ url_for('inventario_index') }}">📦 Inventario</a>
         <a class="nav-link" href="{{ url_for('solicitudes_recursos_index') }}">📋 Recursos</a>
-        <a class="nav-link" href="{{ url_for('reportes_diarios_index') }}">🗓️ Reportes diarios</a>
         <a class="nav-link" href="{{ url_for('ordenes_compra_index') }}">🧾 Compras</a>
         <a class="nav-link" href="{{ url_for('finanzas_index') }}">🏦 Finanzas</a>
         {% if endpoint_exists('facturacion.index') %}
