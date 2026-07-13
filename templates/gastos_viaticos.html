@@ -46,6 +46,14 @@
   .gasto-row-rechazado > td { background: #fdecec; }
   .gasto-row-revision > td { background: #fff7df; }
   .gasto-row-reembolsado > td { background: #e8f1ff; }
+  .salida-lines-table th,
+  .salida-lines-table td {
+    min-width: 130px;
+    vertical-align: top;
+  }
+  .salida-lines-table .line-concepto { min-width: 240px; }
+  .salida-lines-table .line-archivo { min-width: 190px; }
+  .salida-lines-table .line-action { min-width: 64px; }
 </style>
 <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 my-4">
   <div>
@@ -89,7 +97,7 @@
 <div class="row g-4 mb-4">
   <div class="col-xl-8">
     <div class="card border-0 shadow-sm h-100">
-      <div class="card-header bg-primary text-white fw-bold">Nueva comprobacion</div>
+      <div class="card-header bg-primary text-white fw-bold">Nueva salida / visita</div>
       <div class="card-body">
         <div id="aiStatus" class="alert alert-info d-none mb-3"></div>
         <form method="post" action="{{ url_for('gastos_viaticos_crear') }}" enctype="multipart/form-data" class="row g-3" id="gastoForm">
@@ -98,7 +106,7 @@
           <input type="file" name="comprobante" id="comprobanteFile" class="d-none" accept="application/pdf,image/png,image/jpeg,image/webp" capture="environment">
 
           <div class="col-md-3">
-            <label class="form-label">Agrupar por</label>
+            <label class="form-label">La salida es por</label>
             <select name="tipo_agrupacion" id="tipoAgrupacion" class="form-select">
               <option value="PROYECTO">Proyecto</option>
               <option value="EVENTO">Evento</option>
@@ -112,54 +120,13 @@
             <label class="form-label">Evento</label>
             <input name="evento" id="evento" class="form-control" placeholder="Evento, viaje o actividad">
           </div>
-          <div class="col-md-3 d-grid align-self-end">
-            <button type="button" class="btn btn-outline-secondary receipt-attach-btn" id="btnArchivo">Adjuntar comprobante</button>
-          </div>
-
           <div class="col-md-3">
-            <label class="form-label">Tipo</label>
-            <select name="tipo_gasto" id="tipo_gasto" class="form-select">
-              {% for item in gasto_tipos %}
-              <option value="{{ item }}">{{ item }}</option>
-              {% endfor %}
-            </select>
+            <label class="form-label">Fecha salida</label>
+            <input type="date" name="fecha_salida" id="fecha_salida" class="form-control">
           </div>
           <div class="col-md-3">
-            <label class="form-label">Proveedor</label>
-            <input name="proveedor" id="proveedor" class="form-control" placeholder="Restaurante, hotel, proveedor">
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Concepto(s)</label>
-            <input name="concepto" id="manualConcepto" class="form-control" placeholder="Alimentos, hospedaje, gasolina" required>
-          </div>
-          <div class="col-md-2">
-            <label class="form-label">Fecha comprobante</label>
-            <input type="date" name="fecha_comprobante" id="fecha_comprobante" class="form-control">
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">Quien hizo la compra</label>
+            <label class="form-label">Responsable de la salida</label>
             <input name="responsable" id="responsable" class="form-control" value="{{ responsable_default }}" placeholder="Nombre">
-          </div>
-
-          <div class="col-md-2">
-            <label class="form-label">Subtotal</label>
-            <input type="number" step="any" min="0" name="subtotal" id="subtotal" class="form-control js-subtotal">
-          </div>
-          <div class="col-md-2">
-            <label class="form-label">IVA</label>
-            <input type="number" step="any" min="0" name="iva" id="iva" class="form-control js-iva">
-          </div>
-          <div class="col-md-2">
-            <label class="form-label">Total</label>
-            <input type="number" step="any" min="0" name="total" id="total" class="form-control js-total" required>
-          </div>
-          <div class="col-md-2">
-            <label class="form-label">Moneda</label>
-            <input name="moneda" id="moneda" class="form-control" value="MXN">
-          </div>
-          <div class="col-md-2">
-            <label class="form-label">Metodo pago</label>
-            <input name="metodo_pago" id="metodo_pago" class="form-control" placeholder="Tarjeta, efectivo">
           </div>
           <div class="col-md-2">
             <label class="form-label">Estatus</label>
@@ -170,16 +137,58 @@
             </select>
           </div>
 
-          <div class="col-md-3">
-            <label class="form-label">Referencia</label>
-            <input name="referencia" id="referencia" class="form-control" placeholder="Factura, ticket, UUID">
+          <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+              <div class="fw-bold">Gastos de esta salida</div>
+              <button type="button" class="btn btn-outline-primary btn-sm" id="addGastoRow">Agregar renglon</button>
+            </div>
+            <div class="table-responsive border rounded">
+              <table class="table table-sm mb-0 salida-lines-table">
+                <thead class="table-light">
+                  <tr>
+                    <th>Tipo</th>
+                    <th>Proveedor</th>
+                    <th class="line-concepto">Concepto(s)</th>
+                    <th>Fecha</th>
+                    <th>Subtotal</th>
+                    <th>IVA</th>
+                    <th>Total</th>
+                    <th>Moneda</th>
+                    <th>Metodo pago</th>
+                    <th>Referencia</th>
+                    <th>Notas</th>
+                    <th class="line-archivo">Comprobante</th>
+                    <th class="line-action"></th>
+                  </tr>
+                </thead>
+                <tbody id="gastoRows">
+                  <tr class="gasto-line">
+                    <td>
+                      <select name="tipo_gasto[]" class="form-select form-select-sm">
+                        {% for item in gasto_tipos %}
+                        <option value="{{ item }}">{{ item }}</option>
+                        {% endfor %}
+                      </select>
+                    </td>
+                    <td><input name="proveedor[]" class="form-control form-control-sm" placeholder="Proveedor"></td>
+                    <td><input name="concepto[]" id="manualConcepto" class="form-control form-control-sm" placeholder="Alimentos, gasolina, hospedaje" required></td>
+                    <td><input type="date" name="fecha_comprobante[]" class="form-control form-control-sm js-line-date"></td>
+                    <td><input type="number" step="any" min="0" name="subtotal[]" class="form-control form-control-sm js-subtotal"></td>
+                    <td><input type="number" step="any" min="0" name="iva[]" class="form-control form-control-sm js-iva"></td>
+                    <td><input type="number" step="any" min="0" name="total[]" class="form-control form-control-sm js-total" required></td>
+                    <td><input name="moneda[]" class="form-control form-control-sm" value="MXN"></td>
+                    <td><input name="metodo_pago[]" class="form-control form-control-sm" placeholder="Tarjeta, efectivo"></td>
+                    <td><input name="referencia[]" class="form-control form-control-sm" placeholder="Ticket, factura"></td>
+                    <td><input name="notas[]" class="form-control form-control-sm"></td>
+                    <td><input type="file" name="comprobante[]" class="form-control form-control-sm" accept="application/pdf,image/png,image/jpeg,image/webp" capture="environment"></td>
+                    <td><button type="button" class="btn btn-sm btn-outline-danger remove-gasto-row">Quitar</button></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
-          <div class="col-md-7">
-            <label class="form-label">Notas</label>
-            <input name="notas" id="notas" class="form-control">
-          </div>
-          <div class="col-md-2 d-grid align-self-end">
-            <button class="btn btn-success">Guardar</button>
+          <div class="col-md-3 ms-auto d-grid">
+            <button class="btn btn-success">Guardar salida</button>
           </div>
         </form>
       </div>
@@ -400,6 +409,8 @@
   const notasModalEl = document.getElementById("aiNotasModal");
   const notasTextoEl = document.getElementById("aiNotasTexto");
   let fileMode = "attach";
+  const gastoRows = document.getElementById("gastoRows");
+  const firstLine = () => gastoRows?.querySelector(".gasto-line");
   const money = value => {
     const n = Number.parseFloat(String(value || "").replace(/,/g, ""));
     return Number.isFinite(n) ? n : 0;
@@ -427,8 +438,54 @@
     subtotalEl.addEventListener("input", () => updateTotalsFromSubtotal(subtotalEl, ivaEl, totalEl));
     subtotalEl.addEventListener("change", () => updateTotalsFromSubtotal(subtotalEl, ivaEl, totalEl));
   };
-  bindTotals(document.getElementById("gastoForm"));
+  document.querySelectorAll("#gastoRows .gasto-line").forEach(bindTotals);
   document.querySelectorAll(".modal form").forEach(bindTotals);
+  const syncLineDates = () => {
+    const salidaDate = document.getElementById("fecha_salida")?.value || "";
+    document.querySelectorAll("#gastoRows .js-line-date").forEach(input => {
+      if (!input.value) input.value = salidaDate;
+    });
+  };
+  document.getElementById("fecha_salida")?.addEventListener("change", syncLineDates);
+  const addRow = () => {
+    const base = firstLine();
+    if (!base || !gastoRows) return;
+    const clone = base.cloneNode(true);
+    clone.querySelectorAll("input").forEach(input => {
+      if (input.type === "file") {
+        input.value = "";
+      } else if (input.name === "moneda[]") {
+        input.value = "MXN";
+      } else if (input.classList.contains("js-line-date")) {
+        input.value = document.getElementById("fecha_salida")?.value || "";
+      } else {
+        input.value = "";
+      }
+    });
+    clone.querySelectorAll("select").forEach(select => {
+      select.selectedIndex = 0;
+    });
+    clone.querySelector("#manualConcepto")?.removeAttribute("id");
+    gastoRows.appendChild(clone);
+    bindTotals(clone);
+    clone.querySelector('input[name="proveedor[]"]')?.focus();
+  };
+  document.getElementById("addGastoRow")?.addEventListener("click", addRow);
+  gastoRows?.addEventListener("click", event => {
+    const button = event.target.closest(".remove-gasto-row");
+    if (!button) return;
+    const rows = gastoRows.querySelectorAll(".gasto-line");
+    if (rows.length <= 1) {
+      const row = rows[0];
+      row.querySelectorAll("input").forEach(input => {
+        if (input.type !== "file" && input.name !== "moneda[]") input.value = "";
+      });
+      row.querySelector('input[name="moneda[]"]').value = "MXN";
+      row.querySelector('input[name="concepto[]"]')?.focus();
+      return;
+    }
+    button.closest(".gasto-line")?.remove();
+  });
   const setStatus = (text, cls = "info") => {
     statusBox.className = `alert alert-${cls} mb-3`;
     statusBox.textContent = text;
@@ -436,6 +493,11 @@
   };
   const fill = (id, value) => {
     const el = document.getElementById(id);
+    if (el && value !== undefined && value !== null && value !== "") el.value = value;
+  };
+  const fillLine = (name, value) => {
+    const row = firstLine();
+    const el = row?.querySelector(`[name="${name}[]"]`);
     if (el && value !== undefined && value !== null && value !== "") el.value = value;
   };
   const analyzeSelectedFile = async () => {
@@ -457,18 +519,16 @@
       const payload = await resp.json();
       if (!payload.ok) throw new Error(payload.error || "No se pudo analizar el archivo.");
       const data = payload.data || {};
-      fill("proveedor", data.proveedor);
-      fill("manualConcepto", data.concepto);
-      fill("referencia", data.referencia);
-      fill("fecha_comprobante", data.fecha_comprobante);
-      fill("subtotal", data.subtotal);
-      fill("iva", data.iva);
-      fill("total", data.total);
-      fill("moneda", data.moneda);
-      fill("metodo_pago", data.metodo_pago);
-      fill("tipo_gasto", data.tipo_gasto);
-      const notas = document.getElementById("notas");
-      if (notas) notas.value = "";
+      fillLine("proveedor", data.proveedor);
+      fillLine("concepto", data.concepto);
+      fillLine("referencia", data.referencia);
+      fillLine("fecha_comprobante", data.fecha_comprobante);
+      fillLine("subtotal", data.subtotal);
+      fillLine("iva", data.iva);
+      fillLine("total", data.total);
+      fillLine("moneda", data.moneda);
+      fillLine("metodo_pago", data.metodo_pago);
+      fillLine("tipo_gasto", data.tipo_gasto);
       fill("ai_confianza", data.confianza || 0);
       fill("ai_resultado", JSON.stringify(data));
       if (notasTextoEl) notasTextoEl.textContent = data.observaciones || "Sin observaciones.";
@@ -482,10 +542,6 @@
   };
   document.getElementById("btnPorImagen").addEventListener("click", () => {
     fileMode = "analyze";
-    fileInput.click();
-  });
-  document.getElementById("btnArchivo").addEventListener("click", () => {
-    fileMode = "attach";
     fileInput.click();
   });
   fileInput.addEventListener("change", analyzeSelectedFile);

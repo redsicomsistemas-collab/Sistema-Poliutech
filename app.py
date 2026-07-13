@@ -11080,18 +11080,10 @@ def gastos_viaticos_crear():
     tipo_agrupacion = (f.get("tipo_agrupacion") or "PROYECTO").strip().upper()
     if tipo_agrupacion not in GASTOS_AGRUPACIONES:
         tipo_agrupacion = "PROYECTO"
-    tipo_gasto = (f.get("tipo_gasto") or "GASTO").strip().upper()
-    if tipo_gasto not in GASTOS_TIPOS:
-        tipo_gasto = "GASTO"
     estatus = (f.get("estatus") or "PENDIENTE").strip().upper()
     if estatus not in GASTOS_ESTATUS:
         estatus = "PENDIENTE"
 
-    concepto = (f.get("concepto") or "").strip()
-    total = fmt(parse_float(f.get("total"), 0))
-    if not concepto or total <= 0:
-        flash("Captura concepto y total mayor a cero antes de guardar.", "warning")
-        return _gastos_redirect()
     if tipo_agrupacion == "PROYECTO" and not (f.get("proyecto") or "").strip():
         flash("Captura el proyecto para agrupar la comprobacion.", "warning")
         return _gastos_redirect()
@@ -11099,43 +11091,81 @@ def gastos_viaticos_crear():
         flash("Captura el evento para agrupar la comprobacion.", "warning")
         return _gastos_redirect()
 
-    gasto = ComprobacionGasto(
-        folio=_gastos_next_folio(),
-        tipo_agrupacion=tipo_agrupacion,
-        proyecto=(f.get("proyecto") or "").strip() or None,
-        evento=(f.get("evento") or "").strip() or None,
-        tipo_gasto=tipo_gasto,
-        estatus=estatus,
-        proveedor=(f.get("proveedor") or "").strip() or None,
-        concepto=concepto,
-        referencia=(f.get("referencia") or "").strip() or None,
-        fecha_comprobante=_parse_date_or_none(f.get("fecha_comprobante")) or now_cdmx_naive().replace(hour=0, minute=0, second=0, microsecond=0),
-        fecha_registro=now_cdmx_naive(),
-        subtotal=fmt(parse_float(f.get("subtotal"), 0)),
-        iva=fmt(parse_float(f.get("iva"), 0)),
-        total=total,
-        moneda=(f.get("moneda") or "MXN").strip().upper()[:10] or "MXN",
-        metodo_pago=(f.get("metodo_pago") or "").strip() or None,
-        notas=(f.get("notas") or "").strip() or None,
-        ai_confianza=min(1.0, max(0.0, parse_float(f.get("ai_confianza"), 0))),
-        ai_resultado=(f.get("ai_resultado") or "").strip() or None,
-        responsable=(f.get("responsable") or "").strip() or responsable_actual() or None,
-        usuario_id=getattr(current_user, "id", None),
-    )
-    db.session.add(gasto)
-    db.session.flush()
+    conceptos = f.getlist("concepto[]") or [f.get("concepto")]
+    proveedores = f.getlist("proveedor[]") or [f.get("proveedor")]
+    fechas = f.getlist("fecha_comprobante[]") or [f.get("fecha_comprobante")]
+    subtotales = f.getlist("subtotal[]") or [f.get("subtotal")]
+    ivas = f.getlist("iva[]") or [f.get("iva")]
+    totales = f.getlist("total[]") or [f.get("total")]
+    monedas = f.getlist("moneda[]") or [f.get("moneda")]
+    metodos_pago = f.getlist("metodo_pago[]") or [f.get("metodo_pago")]
+    referencias = f.getlist("referencia[]") or [f.get("referencia")]
+    notas_rows = f.getlist("notas[]") or [f.get("notas")]
+    tipos_gasto = f.getlist("tipo_gasto[]") or [f.get("tipo_gasto")]
+    comprobantes = request.files.getlist("comprobante[]")
+    fecha_salida = _parse_date_or_none(f.get("fecha_salida")) or now_cdmx_naive().replace(hour=0, minute=0, second=0, microsecond=0)
+    responsable_salida = (f.get("responsable") or "").strip() or responsable_actual() or None
+    proyecto = (f.get("proyecto") or "").strip() or None
+    evento = (f.get("evento") or "").strip() or None
 
-    try:
-        adjunto = _gastos_save_upload(request.files.get("comprobante"), gasto.id)
-        if adjunto:
-            db.session.add(adjunto)
-    except ValueError as exc:
-        db.session.rollback()
-        flash(str(exc), "warning")
+    gastos_creados: list[ComprobacionGasto] = []
+    max_rows = max(len(conceptos), len(totales), 1)
+    now = now_cdmx_naive()
+    for idx in range(max_rows):
+        concepto = (conceptos[idx] if idx < len(conceptos) else "").strip()
+        total = fmt(parse_float(totales[idx] if idx < len(totales) else 0, 0))
+        if not concepto and total <= 0:
+            continue
+        if not concepto or total <= 0:
+            db.session.rollback()
+            flash(f"Revisa el renglon {idx + 1}: captura concepto y total mayor a cero.", "warning")
+            return _gastos_redirect()
+        tipo_gasto = ((tipos_gasto[idx] if idx < len(tipos_gasto) else "") or "GASTO").strip().upper()
+        if tipo_gasto not in GASTOS_TIPOS:
+            tipo_gasto = "GASTO"
+        gasto = ComprobacionGasto(
+            folio=_gastos_next_folio(),
+            tipo_agrupacion=tipo_agrupacion,
+            proyecto=proyecto,
+            evento=evento,
+            tipo_gasto=tipo_gasto,
+            estatus=estatus,
+            proveedor=((proveedores[idx] if idx < len(proveedores) else "") or "").strip() or None,
+            concepto=concepto,
+            referencia=((referencias[idx] if idx < len(referencias) else "") or "").strip() or None,
+            fecha_comprobante=_parse_date_or_none(fechas[idx] if idx < len(fechas) else "") or fecha_salida,
+            fecha_registro=now,
+            subtotal=fmt(parse_float(subtotales[idx] if idx < len(subtotales) else 0, 0)),
+            iva=fmt(parse_float(ivas[idx] if idx < len(ivas) else 0, 0)),
+            total=total,
+            moneda=(((monedas[idx] if idx < len(monedas) else "") or "MXN").strip().upper()[:10] or "MXN"),
+            metodo_pago=((metodos_pago[idx] if idx < len(metodos_pago) else "") or "").strip() or None,
+            notas=((notas_rows[idx] if idx < len(notas_rows) else "") or "").strip() or None,
+            ai_confianza=0,
+            ai_resultado=None,
+            responsable=responsable_salida,
+            usuario_id=getattr(current_user, "id", None),
+        )
+        db.session.add(gasto)
+        db.session.flush()
+        try:
+            uploaded = comprobantes[idx] if idx < len(comprobantes) else None
+            adjunto = _gastos_save_upload(uploaded, gasto.id)
+            if adjunto:
+                db.session.add(adjunto)
+        except ValueError as exc:
+            db.session.rollback()
+            flash(f"Renglon {idx + 1}: {exc}", "warning")
+            return _gastos_redirect()
+        gastos_creados.append(gasto)
+
+    if not gastos_creados:
+        flash("Captura al menos un renglon con concepto y total mayor a cero.", "warning")
         return _gastos_redirect()
 
     db.session.commit()
-    flash(f"Comprobacion {gasto.folio} registrada. Quedo lista para enviarse dentro de su salida agrupada.", "success")
+    grupo = proyecto if tipo_agrupacion == "PROYECTO" else evento
+    flash(f"Salida '{grupo}' registrada con {len(gastos_creados)} gasto(s). Quedo lista para enviarse a revision.", "success")
     return _gastos_redirect()
 
 
