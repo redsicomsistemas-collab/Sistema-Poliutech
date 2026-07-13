@@ -12011,14 +12011,13 @@ def _orden_compra_guardar_archivo(uploaded, orden: OrdenCompra, prefijo: str) ->
 
 
 def _reportes_diarios_can_view_all() -> bool:
-    if is_admin():
-        return True
     email = (getattr(current_user, "correo", "") or "").strip().lower()
     nombre = (getattr(current_user, "nombre", "") or "").strip().lower()
     visible = (getattr(current_user, "nombre_visible", "") or "").strip().lower()
     return (
-        email == "hjaramillo@poliutech.com"
-        or nombre in {"hjaramillo", "hansel", "admin"}
+        nombre == "admin"
+        or email == "hjaramillo@poliutech.com"
+        or nombre in {"hjaramillo", "hansel"}
         or nombre.startswith("hansel")
         or visible.startswith("hansel")
     )
