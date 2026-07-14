@@ -114,7 +114,12 @@
           </div>
           <div class="col-md-3">
             <label class="form-label">Proyecto</label>
-            <input name="proyecto" id="proyecto" class="form-control" placeholder="Nombre del proyecto">
+            <input name="proyecto" id="proyecto" class="form-control" placeholder="Nombre del proyecto" list="proyectos-gastos-list">
+            <datalist id="proyectos-gastos-list">
+              {% for proyecto in project_options %}
+              <option value="{{ proyecto }}"></option>
+              {% endfor %}
+            </datalist>
           </div>
           <div class="col-md-3">
             <label class="form-label">Evento</label>
@@ -358,7 +363,7 @@
         </div>
         <div class="modal-body">
           <div class="row g-3">
-            <div class="col-md-4"><label class="form-label">Proyecto</label><input name="proyecto" class="form-control" value="{{ gasto.proyecto or '' }}"></div>
+            <div class="col-md-4"><label class="form-label">Proyecto</label><input name="proyecto" class="form-control" value="{{ gasto.proyecto or '' }}" list="proyectos-gastos-list"></div>
             <div class="col-md-4"><label class="form-label">Evento</label><input name="evento" class="form-control" value="{{ gasto.evento or '' }}"></div>
             <div class="col-md-4"><label class="form-label">Estatus</label><select name="estatus" class="form-select">{% for item in estatus_options %}<option value="{{ item }}" {% if gasto.estatus == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></div>
             <div class="col-md-4"><label class="form-label">Proveedor</label><input name="proveedor" class="form-control" value="{{ gasto.proveedor or '' }}"></div>

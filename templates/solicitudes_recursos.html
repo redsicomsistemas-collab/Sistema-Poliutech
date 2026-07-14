@@ -55,7 +55,12 @@
         </div>
         <div class="col-md-4">
           <label class="form-label">Proyecto / obra</label>
-          <input name="proyecto" class="form-control">
+          <input name="proyecto" class="form-control" list="proyectos-recursos-list" required>
+          <datalist id="proyectos-recursos-list">
+            {% for proyecto in project_options %}
+            <option value="{{ proyecto }}"></option>
+            {% endfor %}
+          </datalist>
         </div>
         <div class="col-md-4">
           <label class="form-label">Notas</label>

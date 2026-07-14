@@ -627,6 +627,8 @@ class SolicitudRecurso(db.Model):
     estatus = db.Column(db.String(30), default="SOLICITADA", nullable=False, index=True)
     total = db.Column(db.Float, default=0.0, nullable=False)
     notas = db.Column(db.Text)
+    gasto_generado_id = db.Column(db.Integer, db.ForeignKey("comprobacion_gasto.id"), nullable=True, index=True)
+    gasto_generado_en = db.Column(db.DateTime, nullable=True)
     usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
     creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -638,6 +640,7 @@ class SolicitudRecurso(db.Model):
         order_by="SolicitudRecursoPartida.id.asc()",
     )
     usuario = db.relationship("Usuario", backref=db.backref("solicitudes_recursos", lazy=True))
+    gasto_generado = db.relationship("ComprobacionGasto", foreign_keys=[gasto_generado_id])
 
     def __repr__(self):
         return f"<SolicitudRecurso {self.folio or self.id}>"

@@ -3278,6 +3278,18 @@ def ensure_schema():
         print("⚠️ ensure_schema(orden_compra):", e)
 
     try:
+        sr_cols = _table_columns("solicitud_recurso")
+        for col, stmt in [
+            ("gasto_generado_id", "ALTER TABLE solicitud_recurso ADD COLUMN gasto_generado_id INTEGER"),
+            ("gasto_generado_en", "ALTER TABLE solicitud_recurso ADD COLUMN gasto_generado_en TIMESTAMP"),
+        ]:
+            if col not in sr_cols:
+                db.session.execute(text(stmt))
+        db.session.commit()
+    except Exception as e:
+        print("⚠️ ensure_schema(solicitud_recurso):", e)
+
+    try:
         sr_partida_cols = _table_columns("solicitud_recurso_partida")
         if "total" not in sr_partida_cols:
             db.session.execute(text("ALTER TABLE solicitud_recurso_partida ADD COLUMN total FLOAT DEFAULT 0.0"))
@@ -3934,17 +3946,41 @@ def _project_display_expr():
     )
 
 def _known_project_names(limit: int = 100) -> list[str]:
+    names: dict[str, str] = {}
+
+    def add(value: str | None) -> None:
+        value = (value or "").strip()
+        if not value or value.lower() == "sin proyecto":
+            return
+        names.setdefault(value.lower(), value)
+
     key_expr = _project_key_expr()
     name_expr = _project_display_expr()
-    rows = (
+    for row in (
         _cotizaciones_base_query()
         .with_entities(key_expr.label("key"), name_expr.label("proyecto"))
         .group_by(key_expr)
         .order_by(name_expr.asc())
         .limit(limit)
         .all()
-    )
-    return [r.proyecto for r in rows if r.proyecto and r.proyecto != "Sin proyecto"]
+    ):
+        add(row.proyecto)
+
+    for model in (ComprobacionGasto, SolicitudRecurso, MovimientoFinanciero):
+        try:
+            rows = (
+                db.session.query(model.proyecto)
+                .filter(model.proyecto.isnot(None), db.func.trim(model.proyecto) != "")
+                .distinct()
+                .limit(limit)
+                .all()
+            )
+            for row in rows:
+                add(row[0])
+        except Exception:
+            continue
+
+    return sorted(names.values(), key=str.lower)[:limit]
 
 def generar_folio() -> str:
     prefix = "PTCH-"
@@ -10586,6 +10622,63 @@ def _gastos_next_folio() -> str:
     return f"{prefix}{seq:04d}"
 
 
+def _solicitud_recurso_gasto_referencia(solicitud: SolicitudRecurso) -> str:
+    return f"SR:{solicitud.folio or solicitud.id}"
+
+
+def _solicitud_recurso_concepto_gasto(solicitud: SolicitudRecurso) -> str:
+    conceptos = []
+    for idx, partida in enumerate(solicitud.partidas, start=1):
+        cantidad = float(partida.cantidad or 0)
+        conceptos.append(f"{idx}. {cantidad:,.2f} x {partida.concepto}")
+    return "Solicitud de recursos " + (solicitud.folio or f"#{solicitud.id}") + (": " + "; ".join(conceptos) if conceptos else "")
+
+
+def _solicitud_recurso_registrar_gasto(solicitud: SolicitudRecurso) -> ComprobacionGasto:
+    _solicitud_recurso_recalcular(solicitud)
+    referencia = _solicitud_recurso_gasto_referencia(solicitud)
+    gasto = None
+    if getattr(solicitud, "gasto_generado_id", None):
+        gasto = ComprobacionGasto.query.get(solicitud.gasto_generado_id)
+    if gasto is None:
+        gasto = ComprobacionGasto.query.filter_by(referencia=referencia).first()
+
+    now = now_cdmx_naive()
+    if gasto is None:
+        gasto = ComprobacionGasto(
+            folio=_gastos_next_folio(),
+            fecha_registro=now,
+            creado_en=now,
+        )
+        db.session.add(gasto)
+
+    gasto.tipo_agrupacion = "PROYECTO"
+    gasto.proyecto = (solicitud.proyecto or "").strip() or None
+    gasto.evento = None
+    gasto.tipo_gasto = "GASTO"
+    gasto.estatus = "APROBADO"
+    gasto.proveedor = "Solicitud de recursos"
+    gasto.concepto = _solicitud_recurso_concepto_gasto(solicitud)[:260]
+    gasto.referencia = referencia
+    gasto.fecha_comprobante = solicitud.fecha or now
+    gasto.subtotal = fmt(solicitud.total or 0)
+    gasto.iva = 0.0
+    gasto.total = fmt(solicitud.total or 0)
+    gasto.moneda = "MXN"
+    gasto.metodo_pago = None
+    gasto.notas = (f"Generado automaticamente al autorizar {solicitud.folio or solicitud.id}. " + (solicitud.notas or "")).strip()
+    gasto.ai_confianza = 0
+    gasto.ai_resultado = None
+    gasto.responsable = (solicitud.solicitante or "").strip() or responsable_actual() or None
+    gasto.usuario_id = solicitud.usuario_id or getattr(current_user, "id", None)
+    gasto.actualizado_en = now
+    db.session.flush()
+
+    solicitud.gasto_generado_id = gasto.id
+    solicitud.gasto_generado_en = solicitud.gasto_generado_en or now
+    return gasto
+
+
 def _gastos_badge_class(estatus: str) -> str:
     return {
         "APROBADO": "success",
@@ -11240,6 +11333,7 @@ def gastos_viaticos_index():
         fecha_input=_finanzas_fecha_input,
         responsable_default=responsable_actual() or "",
         gastos_can_view_all=is_admin(),
+        project_options=_known_project_names(),
     )
 
 
@@ -12170,6 +12264,7 @@ def solicitudes_recursos_index():
         total_visible=total_visible,
         q=q,
         estatus=estatus,
+        project_options=_known_project_names(),
     )
 
 
@@ -12177,11 +12272,16 @@ def solicitudes_recursos_index():
 @login_required
 def solicitud_recurso_crear():
     f = request.form
+    proyecto = (f.get("proyecto") or "").strip()
+    if not proyecto:
+        flash("Selecciona o captura el proyecto para agrupar la solicitud de recursos.", "warning")
+        return redirect(url_for("solicitudes_recursos_index"))
+
     solicitud = SolicitudRecurso(
         folio=_solicitud_recurso_next_folio(),
         fecha=now_cdmx_naive(),
         solicitante=(f.get("solicitante") or responsable_actual() or "").strip() or None,
-        proyecto=(f.get("proyecto") or "").strip() or None,
+        proyecto=proyecto,
         estatus="SOLICITADA",
         notas=(f.get("notas") or "").strip() or None,
         usuario_id=getattr(current_user, "id", None),
@@ -12255,10 +12355,17 @@ def solicitud_recurso_estatus(solicitud_id: int):
     if nuevo not in SOLICITUD_RECURSO_ESTATUS:
         flash("Estatus no valido.", "warning")
         return redirect(url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id))
+    if nuevo == "AUTORIZADA" and not (solicitud.proyecto or "").strip():
+        flash("La solicitud necesita proyecto para registrarse automaticamente en gastos.", "warning")
+        return redirect(url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id))
     solicitud.estatus = nuevo
     solicitud.actualizado_en = now_cdmx_naive()
+    gasto = _solicitud_recurso_registrar_gasto(solicitud) if nuevo == "AUTORIZADA" else None
     db.session.commit()
-    flash("Estatus actualizado.", "success")
+    if gasto:
+        flash(f"Estatus actualizado. Se registro en gastos como {gasto.folio}.", "success")
+    else:
+        flash("Estatus actualizado.", "success")
     return redirect(url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id))
 
 

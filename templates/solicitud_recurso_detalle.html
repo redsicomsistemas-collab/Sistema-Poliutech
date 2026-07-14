@@ -45,6 +45,16 @@
   </div>
 </div>
 
+{% if solicitud.gasto_generado %}
+<div class="alert alert-success d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+  <div>
+    <div class="fw-bold">Registrada en gastos</div>
+    <div>{{ solicitud.gasto_generado.folio }} · ${{ "{:,.2f}".format(solicitud.gasto_generado.total or 0) }} {{ solicitud.gasto_generado.moneda or "MXN" }}</div>
+  </div>
+  <a class="btn btn-outline-success" href="{{ url_for('gastos_viaticos_detalle', gasto_id=solicitud.gasto_generado.id) }}">Ver gasto</a>
+</div>
+{% endif %}
+
 {% include "_cliente_seguimiento_card.html" %}
 
 <div class="card shadow-sm border-0 mb-4">
