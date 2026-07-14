@@ -756,6 +756,7 @@ class ComprobacionGasto(db.Model):
     proveedor = db.Column(db.String(180), index=True)
     concepto = db.Column(db.String(260), nullable=False)
     referencia = db.Column(db.String(120))
+    solicitud_recurso_id = db.Column(db.Integer, db.ForeignKey("solicitud_recurso.id"), nullable=True, index=True)
     fecha_comprobante = db.Column(db.DateTime, nullable=True, index=True)
     fecha_registro = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
     subtotal = db.Column(db.Float, default=0.0, nullable=False)
@@ -772,6 +773,7 @@ class ComprobacionGasto(db.Model):
     actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     usuario = db.relationship("Usuario", backref=db.backref("comprobaciones_gastos", lazy=True))
+    solicitud_recurso = db.relationship("SolicitudRecurso", foreign_keys=[solicitud_recurso_id])
     adjuntos = db.relationship(
         "ComprobacionAdjunto",
         backref="comprobacion",

@@ -3304,6 +3304,26 @@ def ensure_schema():
         print("⚠️ ensure_schema(solicitud_recurso_partida):", e)
 
     try:
+        comprobacion_cols = _table_columns("comprobacion_gasto")
+        if "solicitud_recurso_id" not in comprobacion_cols:
+            db.session.execute(text("ALTER TABLE comprobacion_gasto ADD COLUMN solicitud_recurso_id INTEGER"))
+            db.session.execute(text("""
+                UPDATE comprobacion_gasto
+                SET solicitud_recurso_id = (
+                    SELECT solicitud_recurso.id
+                    FROM solicitud_recurso
+                    WHERE comprobacion_gasto.referencia = 'SR:' || solicitud_recurso.folio
+                    LIMIT 1
+                )
+                WHERE solicitud_recurso_id IS NULL
+                  AND referencia LIKE 'SR:%'
+            """))
+            db.session.commit()
+            print("✅ Campo 'solicitud_recurso_id' agregado en 'comprobacion_gasto'.")
+    except Exception as e:
+        print("⚠️ ensure_schema(comprobacion_gasto.solicitud_recurso_id):", e)
+
+    try:
         dcols = _table_columns("cotizacion_detalle")
         if "sistema" not in dcols:
             db.session.execute(text("ALTER TABLE cotizacion_detalle ADD COLUMN sistema VARCHAR(200)"))
@@ -10660,6 +10680,7 @@ def _solicitud_recurso_registrar_gasto(solicitud: SolicitudRecurso) -> Comprobac
     gasto.proveedor = "Solicitud de dinero aprobada"
     gasto.concepto = _solicitud_recurso_concepto_gasto(solicitud)[:260]
     gasto.referencia = referencia
+    gasto.solicitud_recurso_id = solicitud.id
     gasto.fecha_comprobante = solicitud.fecha or now
     gasto.subtotal = fmt(solicitud.total or 0)
     gasto.iva = 0.0
@@ -10709,6 +10730,47 @@ def _gastos_monto_saldo(gasto: "ComprobacionGasto") -> float:
         return 0.0
     total = float(gasto.total or 0)
     return total if _gastos_es_recurso(gasto) else -total
+
+
+def _solicitudes_recurso_saldos(comprobaciones: list["ComprobacionGasto"]) -> list[dict]:
+    by_id: dict[int, dict] = {}
+    for solicitud in (
+        SolicitudRecurso.query
+        .filter(SolicitudRecurso.estatus == "AUTORIZADA")
+        .order_by(SolicitudRecurso.fecha.desc(), SolicitudRecurso.id.desc())
+        .all()
+    ):
+        if not solicitud.id:
+            continue
+        by_id[solicitud.id] = {
+            "id": solicitud.id,
+            "folio": solicitud.folio or f"#{solicitud.id}",
+            "proyecto": (solicitud.proyecto or "").strip() or "Sin proyecto",
+            "solicitante": solicitud.solicitante or "",
+            "aprobado": float(solicitud.total or 0),
+            "comprobado": 0.0,
+            "pendiente_revision": 0.0,
+            "saldo": float(solicitud.total or 0),
+            "movimientos": 0,
+        }
+
+    for gasto in comprobaciones:
+        solicitud_id = getattr(gasto, "solicitud_recurso_id", None)
+        if not solicitud_id and (gasto.referencia or "").startswith("SR:"):
+            folio = (gasto.referencia or "")[3:]
+            solicitud = SolicitudRecurso.query.filter_by(folio=folio).first()
+            solicitud_id = solicitud.id if solicitud else None
+        if not solicitud_id or solicitud_id not in by_id or _gastos_es_recurso(gasto):
+            continue
+        by_id[solicitud_id]["movimientos"] += 1
+        if (gasto.estatus or "") == "RECHAZADO":
+            continue
+        by_id[solicitud_id]["comprobado"] += float(gasto.total or 0)
+        by_id[solicitud_id]["saldo"] -= float(gasto.total or 0)
+        if (gasto.estatus or "") in {"PENDIENTE", "EN REVISION"}:
+            by_id[solicitud_id]["pendiente_revision"] += float(gasto.total or 0)
+
+    return list(by_id.values())
 
 
 def _gastos_user_scope_filter():
@@ -11310,6 +11372,7 @@ def gastos_viaticos_index():
     total_general = total_gastos
     total_pendiente = sum(float(g.total or 0) for g in comprobaciones if not _gastos_es_recurso(g) and (g.estatus or "") in {"PENDIENTE", "EN REVISION"})
     total_aprobado = sum(float(g.total or 0) for g in comprobaciones if not _gastos_es_recurso(g) and (g.estatus or "") in {"APROBADO", "REEMBOLSADO"})
+    solicitudes_saldo = _solicitudes_recurso_saldos(comprobaciones)
 
     proyectos_saldo: dict[str, dict] = {}
     grupos: dict[tuple[str, str, str, str], dict] = {}
@@ -11371,6 +11434,8 @@ def gastos_viaticos_index():
         total_gastos=total_gastos,
         saldo_total=saldo_total,
         proyectos_saldo=sorted(proyectos_saldo.values(), key=lambda item: item["nombre"].lower()),
+        solicitudes_saldo=solicitudes_saldo,
+        solicitud_options=solicitudes_saldo,
         q=q,
         agrupacion=agrupacion,
         estatus=estatus,
@@ -11545,6 +11610,15 @@ def gastos_viaticos_crear():
     responsable_salida = ((f.get("responsable") or "").strip() if is_admin() else "") or responsable_actual() or None
     proyecto = (f.get("proyecto") or "").strip() or None
     evento = (f.get("evento") or "").strip() or None
+    solicitud_recurso_id = int(parse_float(f.get("solicitud_recurso_id"), 0) or 0)
+    solicitud_recurso = None
+    if solicitud_recurso_id:
+        solicitud_recurso = SolicitudRecurso.query.filter_by(id=solicitud_recurso_id, estatus="AUTORIZADA").first()
+        if not solicitud_recurso:
+            flash("Selecciona una solicitud de recurso autorizada para comprobar.", "warning")
+            return _gastos_redirect()
+        tipo_agrupacion = "PROYECTO"
+        proyecto = (solicitud_recurso.proyecto or "").strip() or proyecto
 
     gastos_creados: list[ComprobacionGasto] = []
     max_rows = max(len(conceptos), len(totales), 1)
@@ -11570,7 +11644,8 @@ def gastos_viaticos_crear():
             estatus=estatus,
             proveedor=((proveedores[idx] if idx < len(proveedores) else "") or "").strip() or None,
             concepto=concepto,
-            referencia=((referencias[idx] if idx < len(referencias) else "") or "").strip() or None,
+            referencia=((referencias[idx] if idx < len(referencias) else "") or "").strip() or (_solicitud_recurso_gasto_referencia(solicitud_recurso) if solicitud_recurso else None),
+            solicitud_recurso_id=solicitud_recurso.id if solicitud_recurso else None,
             fecha_comprobante=_parse_date_or_none(fechas[idx] if idx < len(fechas) else "") or fecha_salida,
             fecha_registro=now,
             subtotal=fmt(parse_float(subtotales[idx] if idx < len(subtotales) else 0, 0)),
