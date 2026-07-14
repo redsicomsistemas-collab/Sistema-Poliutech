@@ -106,37 +106,42 @@
 </div>
 
 <div class="card border-0 shadow-sm mb-4">
-  <div class="card-header bg-light fw-bold">Saldos por proyecto</div>
+  <div class="card-header bg-light fw-bold">Solicitudes aprobadas por comprobar</div>
   <div class="card-body p-0">
     <div class="table-responsive">
       <table class="table table-hover align-middle mb-0">
         <thead>
           <tr>
+            <th>Solicitud</th>
             <th>Proyecto</th>
             <th>Dinero aprobado</th>
-            <th>Gastos registrados</th>
+            <th>Comprobado</th>
             <th>Pendiente / revision</th>
             <th>Saldo</th>
             <th>Mov.</th>
           </tr>
         </thead>
         <tbody>
-          {% for proyecto in proyectos_saldo %}
+          {% for solicitud in solicitudes_saldo %}
           <tr>
-            <td class="fw-semibold">{{ proyecto.nombre }}</td>
-            <td class="fw-bold text-success">+${{ "{:,.2f}".format(proyecto.recursos or 0) }}</td>
-            <td class="fw-bold text-primary">-${{ "{:,.2f}".format(proyecto.gastos or 0) }}</td>
-            <td class="fw-bold text-warning">${{ "{:,.2f}".format(proyecto.pendientes or 0) }}</td>
+            <td class="fw-bold">{{ solicitud.folio }}</td>
             <td>
-              <div class="fw-bold {{ 'text-success' if (proyecto.saldo or 0) >= 0 else 'text-danger' }}">
-                {{ '+' if (proyecto.saldo or 0) >= 0 else '-' }}${{ "{:,.2f}".format((proyecto.saldo or 0)|abs) }}
-              </div>
-              <div class="small text-muted">{{ "A favor" if (proyecto.saldo or 0) >= 0 else "En contra" }}</div>
+              <div class="fw-semibold">{{ solicitud.proyecto }}</div>
+              <div class="small text-muted">{{ solicitud.solicitante or "" }}</div>
             </td>
-            <td>{{ proyecto.movimientos }}</td>
+            <td class="fw-bold text-success">+${{ "{:,.2f}".format(solicitud.aprobado or 0) }}</td>
+            <td class="fw-bold text-primary">-${{ "{:,.2f}".format(solicitud.comprobado or 0) }}</td>
+            <td class="fw-bold text-warning">${{ "{:,.2f}".format(solicitud.pendiente_revision or 0) }}</td>
+            <td>
+              <div class="fw-bold {{ 'text-success' if (solicitud.saldo or 0) >= 0 else 'text-danger' }}">
+                {{ '+' if (solicitud.saldo or 0) >= 0 else '-' }}${{ "{:,.2f}".format((solicitud.saldo or 0)|abs) }}
+              </div>
+              <div class="small text-muted">{{ "A favor" if (solicitud.saldo or 0) >= 0 else "En contra" }}</div>
+            </td>
+            <td>{{ solicitud.movimientos }}</td>
           </tr>
           {% else %}
-          <tr><td colspan="6" class="text-center text-muted py-4">Todavia no hay solicitudes o gastos por proyecto.</td></tr>
+          <tr><td colspan="7" class="text-center text-muted py-4">Todavia no hay solicitudes aprobadas por comprobar.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -283,6 +288,7 @@
                   <div class="small text-muted">Rec. ${{ "{:,.2f}".format(grupo.recursos or 0) }} · Gto. ${{ "{:,.2f}".format(grupo.gastos or 0) }}</div>
                 </td>
                 <td>
+                  <a class="btn btn-sm btn-outline-secondary mb-1" href="{{ url_for('gastos_viaticos_grupo_detalle', tipo_agrupacion=grupo.tipo, grupo=grupo.nombre, fecha=grupo.fecha, responsable=grupo.responsable) }}">Abrir</a>
                   {% if grupo.pendientes %}
                   <form method="post" action="{{ url_for('gastos_viaticos_enviar_grupo') }}">
                     <input type="hidden" name="tipo_agrupacion" value="{{ grupo.tipo }}">

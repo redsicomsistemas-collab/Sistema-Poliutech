@@ -11124,6 +11124,29 @@ def _gastos_group_query(tipo_agrupacion: str, grupo: str, fecha: str, responsabl
     ))
 
 
+def _gastos_group_all_query(tipo_agrupacion: str, grupo: str, fecha: str, responsable: str):
+    fecha_dt = _parse_date_or_none(fecha)
+    if not fecha_dt:
+        abort(400)
+    tipo_agrupacion = (tipo_agrupacion or "").strip().upper()
+    if tipo_agrupacion not in GASTOS_AGRUPACIONES:
+        abort(400)
+    field = ComprobacionGasto.proyecto if tipo_agrupacion == "PROYECTO" else ComprobacionGasto.evento
+    query = _gastos_apply_user_scope(ComprobacionGasto.query).filter(
+        ComprobacionGasto.tipo_agrupacion == tipo_agrupacion,
+        field == (grupo or "").strip(),
+    )
+    if (responsable or "").strip():
+        query = query.filter(ComprobacionGasto.responsable == responsable.strip())
+    else:
+        query = query.filter(or_(ComprobacionGasto.responsable.is_(None), ComprobacionGasto.responsable == ""))
+    next_day = fecha_dt + timedelta(days=1)
+    return query.filter(or_(
+        and_(ComprobacionGasto.fecha_comprobante >= fecha_dt, ComprobacionGasto.fecha_comprobante < next_day),
+        and_(ComprobacionGasto.fecha_comprobante.is_(None), ComprobacionGasto.fecha_registro >= fecha_dt, ComprobacionGasto.fecha_registro < next_day),
+    ))
+
+
 def _gastos_mail_html(gasto: "ComprobacionGasto", view_url: str, approve_url: str) -> str:
     concepto = escape(gasto.concepto or "")
     proveedor = escape(gasto.proveedor or "Sin proveedor")
@@ -11711,6 +11734,67 @@ def gastos_viaticos_enviar_grupo():
             pass
         flash(f"La salida quedo en revision, pero no se pudo enviar el correo: {exc}", "warning")
     return _gastos_redirect()
+
+
+@app.route("/gastos-viaticos/grupo")
+@login_required
+def gastos_viaticos_grupo_detalle():
+    tipo_agrupacion = (request.args.get("tipo_agrupacion") or "").strip().upper()
+    grupo = (request.args.get("grupo") or "").strip()
+    fecha = (request.args.get("fecha") or "").strip()
+    responsable = (request.args.get("responsable") or "").strip()
+    gastos = (
+        _gastos_group_all_query(tipo_agrupacion, grupo, fecha, responsable)
+        .order_by(ComprobacionGasto.tipo_gasto.desc(), ComprobacionGasto.fecha_comprobante.asc(), ComprobacionGasto.id.asc())
+        .all()
+    )
+    if not gastos:
+        abort(404)
+
+    solicitud = None
+    for gasto in gastos:
+        if getattr(gasto, "solicitud_recurso", None):
+            solicitud = gasto.solicitud_recurso
+            break
+    if solicitud is None:
+        for gasto in gastos:
+            if _gastos_es_recurso(gasto) and (gasto.referencia or "").startswith("SR:"):
+                solicitud = SolicitudRecurso.query.filter_by(folio=(gasto.referencia or "")[3:]).first()
+                break
+    if solicitud:
+        gastos = (
+            _gastos_apply_user_scope(ComprobacionGasto.query)
+            .filter(ComprobacionGasto.solicitud_recurso_id == solicitud.id)
+            .order_by(ComprobacionGasto.tipo_gasto.desc(), ComprobacionGasto.fecha_comprobante.asc(), ComprobacionGasto.id.asc())
+            .all()
+        )
+
+    aprobado = float(solicitud.total or 0) if solicitud else sum(float(g.total or 0) for g in gastos if _gastos_es_recurso(g) and (g.estatus or "") != "RECHAZADO")
+    comprobado = sum(float(g.total or 0) for g in gastos if not _gastos_es_recurso(g) and (g.estatus or "") != "RECHAZADO")
+    pendiente_revision = sum(float(g.total or 0) for g in gastos if not _gastos_es_recurso(g) and (g.estatus or "") in {"PENDIENTE", "EN REVISION"})
+    saldo = aprobado - comprobado
+
+    return render_template(
+        "gastos_viaticos_grupo.html",
+        title=f"Salida {grupo}",
+        gastos=gastos,
+        grupo=grupo,
+        tipo_agrupacion=tipo_agrupacion,
+        fecha=fecha,
+        responsable=responsable,
+        solicitud=solicitud,
+        aprobado=aprobado,
+        comprobado=comprobado,
+        pendiente_revision=pendiente_revision,
+        saldo=saldo,
+        estatus_options=GASTOS_ESTATUS,
+        gasto_tipos=tuple(item for item in GASTOS_TIPOS if item != "RECURSO"),
+        gastos_badge_class=_gastos_badge_class,
+        gastos_es_recurso=_gastos_es_recurso,
+        gastos_monto_saldo=_gastos_monto_saldo,
+        fecha_input=_finanzas_fecha_input,
+        gastos_can_view_all=is_admin(),
+    )
 
 
 @app.route("/gastos-viaticos/<int:gasto_id>/detalle")

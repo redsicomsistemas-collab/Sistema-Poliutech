@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}{{ grupo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 my-4">
+  <div>
+    <h2 class="fw-bold text-primary mb-1">{{ grupo }}</h2>
+    <div class="text-muted">
+      {{ tipo_agrupacion }} · {{ fecha }} · {{ responsable or "Sin comprador" }}
+      {% if solicitud %} · {{ solicitud.folio }}{% endif %}
+    </div>
+  </div>
+  <a href="{{ url_for('gastos_viaticos_index') }}" class="btn btn-outline-secondary">Volver</a>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Dinero aprobado</div>
+        <div class="h3 fw-bold text-success mb-0">+${{ "{:,.2f}".format(aprobado or 0) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Comprobado</div>
+        <div class="h3 fw-bold text-primary mb-0">-${{ "{:,.2f}".format(comprobado or 0) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Pendiente / revision</div>
+        <div class="h3 fw-bold text-warning mb-0">${{ "{:,.2f}".format(pendiente_revision or 0) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Saldo</div>
+        <div class="h3 fw-bold {{ 'text-success' if (saldo or 0) >= 0 else 'text-danger' }} mb-0">
+          {{ '+' if (saldo or 0) >= 0 else '-' }}${{ "{:,.2f}".format((saldo or 0)|abs) }}
+        </div>
+        <div class="small text-muted">{{ "A favor" if (saldo or 0) >= 0 else "En contra" }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-primary text-white fw-bold">Agregar comprobacion</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('gastos_viaticos_crear') }}" enctype="multipart/form-data" class="row g-3">
+      <input type="hidden" name="tipo_agrupacion" value="{{ tipo_agrupacion }}">
+      <input type="hidden" name="proyecto" value="{{ grupo if tipo_agrupacion == 'PROYECTO' else '' }}">
+      <input type="hidden" name="evento" value="{{ grupo if tipo_agrupacion == 'EVENTO' else '' }}">
+      <input type="hidden" name="fecha_salida" value="{{ fecha }}">
+      <input type="hidden" name="responsable" value="{{ responsable }}">
+      <input type="hidden" name="estatus" value="PENDIENTE">
+      {% if solicitud %}
+      <input type="hidden" name="solicitud_recurso_id" value="{{ solicitud.id }}">
+      {% endif %}
+
+      <div class="col-md-2">
+        <label class="form-label">Tipo</label>
+        <select name="tipo_gasto[]" class="form-select">
+          {% for item in gasto_tipos %}
+          <option value="{{ item }}">{{ item }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Proveedor</label>
+        <input name="proveedor[]" class="form-control" placeholder="Proveedor">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Concepto</label>
+        <input name="concepto[]" class="form-control" placeholder="Hojas, plumas, gasolina" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Fecha comprobante</label>
+        <input type="date" name="fecha_comprobante[]" class="form-control" value="{{ fecha }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Subtotal</label>
+        <input type="number" step="any" min="0" name="subtotal[]" class="form-control">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">IVA</label>
+        <input type="number" step="any" min="0" name="iva[]" class="form-control">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Total</label>
+        <input type="number" step="any" min="0" name="total[]" class="form-control" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Moneda</label>
+        <input name="moneda[]" class="form-control" value="MXN">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Comprobante</label>
+        <input type="file" name="comprobante[]" class="form-control" accept="application/pdf,image/png,image/jpeg,image/webp" capture="environment">
+      </div>
+      <div class="col-md-8">
+        <label class="form-label">Notas</label>
+        <input name="notas[]" class="form-control">
+      </div>
+      <div class="col-md-4 d-grid align-self-end">
+        <button class="btn btn-success">Guardar comprobacion</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-light fw-bold">Movimientos de la salida</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Folio</th>
+            <th>Tipo</th>
+            <th>Comprobante</th>
+            <th>Fecha</th>
+            <th>Movimiento</th>
+            <th>Estatus</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for gasto in gastos %}
+          <tr>
+            <td class="fw-bold">{{ gasto.folio or ("#" ~ gasto.id) }}</td>
+            <td>{{ gasto.tipo_gasto }}</td>
+            <td>
+              <div class="fw-semibold">{{ gasto.proveedor or "Sin proveedor" }}</div>
+              <div style="white-space: normal; overflow-wrap: anywhere;">{{ gasto.concepto }}</div>
+            </td>
+            <td>{{ gasto.fecha_comprobante.strftime("%d/%m/%Y") if gasto.fecha_comprobante else "-" }}</td>
+            <td class="fw-bold {{ 'text-success' if gastos_monto_saldo(gasto) >= 0 else 'text-danger' }}">
+              {{ '+' if gastos_monto_saldo(gasto) >= 0 else '-' }}${{ "{:,.2f}".format((gastos_monto_saldo(gasto))|abs) }} {{ gasto.moneda }}
+            </td>
+            <td><span class="badge bg-{{ gastos_badge_class(gasto.estatus) }}">{{ gasto.estatus }}</span></td>
+            <td><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('gastos_viaticos_detalle', gasto_id=gasto.id) }}">Detalle</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
