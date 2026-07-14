@@ -68,15 +68,23 @@
 </div>
 
 <div class="row g-3 mb-4">
-  <div class="col-md-4">
+  <div class="col-md-3">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-body">
-        <div class="text-muted small">Total comprobado</div>
-        <div class="h3 fw-bold text-primary mb-0">${{ "{:,.2f}".format(total_general or 0) }}</div>
+        <div class="text-muted small">Dinero aprobado</div>
+        <div class="h3 fw-bold text-success mb-0">+${{ "{:,.2f}".format(total_recursos or 0) }}</div>
       </div>
     </div>
   </div>
-  <div class="col-md-4">
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Gastos registrados</div>
+        <div class="h3 fw-bold text-primary mb-0">-${{ "{:,.2f}".format(total_gastos or 0) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-body">
         <div class="text-muted small">Pendiente / revision</div>
@@ -84,12 +92,54 @@
       </div>
     </div>
   </div>
-  <div class="col-md-4">
+  <div class="col-md-3">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-body">
-        <div class="text-muted small">Aprobado / reembolsado</div>
-        <div class="h3 fw-bold text-success mb-0">${{ "{:,.2f}".format(total_aprobado or 0) }}</div>
+        <div class="text-muted small">Saldo total</div>
+        <div class="h3 fw-bold {{ 'text-success' if (saldo_total or 0) >= 0 else 'text-danger' }} mb-0">
+          {{ '+' if (saldo_total or 0) >= 0 else '-' }}${{ "{:,.2f}".format((saldo_total or 0)|abs) }}
+        </div>
+        <div class="small text-muted">{{ "A favor" if (saldo_total or 0) >= 0 else "En contra" }}</div>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-light fw-bold">Saldos por proyecto</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Proyecto</th>
+            <th>Dinero aprobado</th>
+            <th>Gastos registrados</th>
+            <th>Pendiente / revision</th>
+            <th>Saldo</th>
+            <th>Mov.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for proyecto in proyectos_saldo %}
+          <tr>
+            <td class="fw-semibold">{{ proyecto.nombre }}</td>
+            <td class="fw-bold text-success">+${{ "{:,.2f}".format(proyecto.recursos or 0) }}</td>
+            <td class="fw-bold text-primary">-${{ "{:,.2f}".format(proyecto.gastos or 0) }}</td>
+            <td class="fw-bold text-warning">${{ "{:,.2f}".format(proyecto.pendientes or 0) }}</td>
+            <td>
+              <div class="fw-bold {{ 'text-success' if (proyecto.saldo or 0) >= 0 else 'text-danger' }}">
+                {{ '+' if (proyecto.saldo or 0) >= 0 else '-' }}${{ "{:,.2f}".format((proyecto.saldo or 0)|abs) }}
+              </div>
+              <div class="small text-muted">{{ "A favor" if (proyecto.saldo or 0) >= 0 else "En contra" }}</div>
+            </td>
+            <td>{{ proyecto.movimientos }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center text-muted py-4">Todavia no hay solicitudes o gastos por proyecto.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   </div>
 </div>
@@ -211,8 +261,8 @@
                 <th>Grupo</th>
                 <th>Tipo</th>
                 <th>Fecha</th>
-                <th>Comp.</th>
-                <th>Total</th>
+                <th>Mov.</th>
+                <th>Saldo</th>
                 <th></th>
               </tr>
             </thead>
@@ -226,7 +276,12 @@
                 <td><span class="badge bg-secondary">{{ grupo.tipo }}</span></td>
                 <td>{{ grupo.fecha }}</td>
                 <td>{{ grupo.conteo }}</td>
-                <td class="fw-bold">${{ "{:,.2f}".format(grupo.total or 0) }}</td>
+                <td>
+                  <div class="fw-bold {{ 'text-success' if (grupo.saldo or 0) >= 0 else 'text-danger' }}">
+                    {{ '+' if (grupo.saldo or 0) >= 0 else '-' }}${{ "{:,.2f}".format((grupo.saldo or 0)|abs) }}
+                  </div>
+                  <div class="small text-muted">Rec. ${{ "{:,.2f}".format(grupo.recursos or 0) }} · Gto. ${{ "{:,.2f}".format(grupo.gastos or 0) }}</div>
+                </td>
                 <td>
                   {% if grupo.pendientes %}
                   <form method="post" action="{{ url_for('gastos_viaticos_enviar_grupo') }}">
@@ -295,7 +350,7 @@
             <th class="col-comprobante">Comprobante</th>
             <th class="col-compra">Compra</th>
             <th class="col-fecha">Fecha</th>
-            <th class="col-total">Total</th>
+            <th class="col-total">Saldo</th>
             <th class="col-ia">IA</th>
             <th class="col-estatus">Estatus</th>
             <th class="col-adjuntos">Adjuntos</th>
@@ -317,7 +372,9 @@
             </td>
             <td class="cell-wrap">{{ gasto.responsable or "-" }}</td>
             <td>{{ gasto.fecha_comprobante.strftime("%d/%m/%Y") if gasto.fecha_comprobante else "-" }}</td>
-            <td class="fw-bold">${{ "{:,.2f}".format(gasto.total or 0) }} {{ gasto.moneda }}</td>
+            <td class="fw-bold {{ 'text-success' if gastos_monto_saldo(gasto) >= 0 else 'text-danger' }}">
+              {{ '+' if gastos_monto_saldo(gasto) >= 0 else '-' }}${{ "{:,.2f}".format((gastos_monto_saldo(gasto))|abs) }} {{ gasto.moneda }}
+            </td>
             <td>
               {% if gasto.ai_confianza %}
               <span class="badge bg-info">{{ "{:.0f}".format((gasto.ai_confianza or 0) * 100) }}%</span>

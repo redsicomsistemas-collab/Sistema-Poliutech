@@ -10507,7 +10507,7 @@ def _notify_solicitud_recurso_created(solicitud: SolicitudRecurso) -> None:
 FINANZAS_CATEGORIA_CREDITO = "CREDITO_RECIBIDO"
 FINANZAS_ESTATUS = ("PENDIENTE", "PARCIAL", "PAGADO", "VENCIDO", "CANCELADO")
 GASTOS_ESTATUS = ("PENDIENTE", "EN REVISION", "APROBADO", "RECHAZADO", "REEMBOLSADO")
-GASTOS_TIPOS = ("GASTO", "VIATICO")
+GASTOS_TIPOS = ("GASTO", "VIATICO", "RECURSO")
 GASTOS_AGRUPACIONES = ("PROYECTO", "EVENTO")
 GASTOS_UPLOAD_EXTS = {"pdf", "png", "jpg", "jpeg", "webp"}
 
@@ -10655,9 +10655,9 @@ def _solicitud_recurso_registrar_gasto(solicitud: SolicitudRecurso) -> Comprobac
     gasto.tipo_agrupacion = "PROYECTO"
     gasto.proyecto = (solicitud.proyecto or "").strip() or None
     gasto.evento = None
-    gasto.tipo_gasto = "GASTO"
+    gasto.tipo_gasto = "RECURSO"
     gasto.estatus = "APROBADO"
-    gasto.proveedor = "Solicitud de recursos"
+    gasto.proveedor = "Solicitud de dinero aprobada"
     gasto.concepto = _solicitud_recurso_concepto_gasto(solicitud)[:260]
     gasto.referencia = referencia
     gasto.fecha_comprobante = solicitud.fecha or now
@@ -10696,6 +10696,19 @@ def _gastos_status_row_class(estatus: str) -> str:
         "PENDIENTE": "gasto-row-revision",
         "REEMBOLSADO": "gasto-row-reembolsado",
     }.get((estatus or "").upper(), "")
+
+
+def _gastos_es_recurso(gasto: "ComprobacionGasto") -> bool:
+    tipo = (getattr(gasto, "tipo_gasto", "") or "").strip().upper()
+    referencia = (getattr(gasto, "referencia", "") or "").strip().upper()
+    return tipo == "RECURSO" or referencia.startswith("SR:")
+
+
+def _gastos_monto_saldo(gasto: "ComprobacionGasto") -> float:
+    if (gasto.estatus or "").upper() == "RECHAZADO":
+        return 0.0
+    total = float(gasto.total or 0)
+    return total if _gastos_es_recurso(gasto) else -total
 
 
 def _gastos_user_scope_filter():
@@ -11035,6 +11048,7 @@ def _gastos_group_query(tipo_agrupacion: str, grupo: str, fecha: str, responsabl
     query = _gastos_apply_user_scope(ComprobacionGasto.query).filter(
         ComprobacionGasto.tipo_agrupacion == tipo_agrupacion,
         ComprobacionGasto.estatus.in_(("PENDIENTE", "EN REVISION")),
+        ComprobacionGasto.tipo_gasto != "RECURSO",
         field == (grupo or "").strip(),
     )
     if (responsable or "").strip():
@@ -11290,12 +11304,35 @@ def _gastos_query_from_request():
 def gastos_viaticos_index():
     query, q, agrupacion, estatus = _gastos_query_from_request()
     comprobaciones = query.order_by(ComprobacionGasto.fecha_registro.desc(), ComprobacionGasto.id.desc()).all()
-    total_general = sum(float(g.total or 0) for g in comprobaciones)
-    total_pendiente = sum(float(g.total or 0) for g in comprobaciones if (g.estatus or "") in {"PENDIENTE", "EN REVISION"})
-    total_aprobado = sum(float(g.total or 0) for g in comprobaciones if (g.estatus or "") in {"APROBADO", "REEMBOLSADO"})
+    total_recursos = sum(float(g.total or 0) for g in comprobaciones if _gastos_es_recurso(g) and (g.estatus or "") != "RECHAZADO")
+    total_gastos = sum(float(g.total or 0) for g in comprobaciones if not _gastos_es_recurso(g) and (g.estatus or "") != "RECHAZADO")
+    saldo_total = sum(_gastos_monto_saldo(g) for g in comprobaciones)
+    total_general = total_gastos
+    total_pendiente = sum(float(g.total or 0) for g in comprobaciones if not _gastos_es_recurso(g) and (g.estatus or "") in {"PENDIENTE", "EN REVISION"})
+    total_aprobado = sum(float(g.total or 0) for g in comprobaciones if not _gastos_es_recurso(g) and (g.estatus or "") in {"APROBADO", "REEMBOLSADO"})
 
+    proyectos_saldo: dict[str, dict] = {}
     grupos: dict[tuple[str, str, str, str], dict] = {}
     for gasto in comprobaciones:
+        if (gasto.tipo_agrupacion or "").upper() == "PROYECTO":
+            proyecto_nombre = (gasto.proyecto or "").strip() or "Sin proyecto"
+            proyecto_item = proyectos_saldo.setdefault(proyecto_nombre.lower(), {
+                "nombre": proyecto_nombre,
+                "recursos": 0.0,
+                "gastos": 0.0,
+                "saldo": 0.0,
+                "movimientos": 0,
+                "pendientes": 0.0,
+            })
+            proyecto_item["movimientos"] += 1
+            proyecto_item["saldo"] += _gastos_monto_saldo(gasto)
+            if _gastos_es_recurso(gasto) and (gasto.estatus or "") != "RECHAZADO":
+                proyecto_item["recursos"] += float(gasto.total or 0)
+            elif not _gastos_es_recurso(gasto) and (gasto.estatus or "") != "RECHAZADO":
+                proyecto_item["gastos"] += float(gasto.total or 0)
+                if (gasto.estatus or "") in {"PENDIENTE", "EN REVISION"}:
+                    proyecto_item["pendientes"] += float(gasto.total or 0)
+
         nombre = _gastos_group_name(gasto)
         fecha = _gastos_fecha_key(gasto)
         responsable = (gasto.responsable or "").strip()
@@ -11305,13 +11342,21 @@ def gastos_viaticos_index():
             "conteo": 0,
             "pendientes": 0,
             "total": 0.0,
+            "recursos": 0.0,
+            "gastos": 0.0,
+            "saldo": 0.0,
             "tipo": gasto.tipo_agrupacion,
             "fecha": fecha,
             "responsable": responsable,
         })
         item["conteo"] += 1
         item["total"] += float(gasto.total or 0)
-        if (gasto.estatus or "") in {"PENDIENTE", "EN REVISION"}:
+        item["saldo"] += _gastos_monto_saldo(gasto)
+        if _gastos_es_recurso(gasto) and (gasto.estatus or "") != "RECHAZADO":
+            item["recursos"] += float(gasto.total or 0)
+        elif not _gastos_es_recurso(gasto) and (gasto.estatus or "") != "RECHAZADO":
+            item["gastos"] += float(gasto.total or 0)
+        if not _gastos_es_recurso(gasto) and (gasto.estatus or "") in {"PENDIENTE", "EN REVISION"}:
             item["pendientes"] += 1
 
     return render_template(
@@ -11322,6 +11367,10 @@ def gastos_viaticos_index():
         total_general=total_general,
         total_pendiente=total_pendiente,
         total_aprobado=total_aprobado,
+        total_recursos=total_recursos,
+        total_gastos=total_gastos,
+        saldo_total=saldo_total,
+        proyectos_saldo=sorted(proyectos_saldo.values(), key=lambda item: item["nombre"].lower()),
         q=q,
         agrupacion=agrupacion,
         estatus=estatus,
@@ -11330,6 +11379,8 @@ def gastos_viaticos_index():
         agrupaciones=GASTOS_AGRUPACIONES,
         gastos_badge_class=_gastos_badge_class,
         gastos_row_class=_gastos_status_row_class,
+        gastos_es_recurso=_gastos_es_recurso,
+        gastos_monto_saldo=_gastos_monto_saldo,
         fecha_input=_finanzas_fecha_input,
         responsable_default=responsable_actual() or "",
         gastos_can_view_all=is_admin(),
@@ -11352,7 +11403,7 @@ def gastos_viaticos_export_xlsx():
     headers = [
         "Folio", "Agrupacion", "Proyecto", "Evento", "Tipo", "Estatus",
         "Quien hizo la compra", "Proveedor", "Concepto(s)", "Referencia",
-        "Fecha comprobante", "Subtotal", "IVA", "Total", "Moneda",
+        "Fecha comprobante", "Subtotal", "IVA", "Total", "Movimiento saldo", "Moneda",
         "Metodo pago", "Notas", "Confianza IA", "Adjuntos",
     ]
     ws.append(headers)
@@ -11372,6 +11423,7 @@ def gastos_viaticos_export_xlsx():
             float(gasto.subtotal or 0),
             float(gasto.iva or 0),
             float(gasto.total or 0),
+            float(_gastos_monto_saldo(gasto)),
             gasto.moneda or "",
             gasto.metodo_pago or "",
             gasto.notas or "",
@@ -11379,11 +11431,50 @@ def gastos_viaticos_export_xlsx():
             len(gasto.adjuntos or []),
         ])
 
+    proyectos_saldo: dict[str, dict] = {}
+    for gasto in comprobaciones:
+        if (gasto.tipo_agrupacion or "").upper() != "PROYECTO":
+            continue
+        proyecto_nombre = (gasto.proyecto or "").strip() or "Sin proyecto"
+        item = proyectos_saldo.setdefault(proyecto_nombre.lower(), {
+            "nombre": proyecto_nombre,
+            "recursos": 0.0,
+            "gastos": 0.0,
+            "pendientes": 0.0,
+            "saldo": 0.0,
+            "movimientos": 0,
+        })
+        item["movimientos"] += 1
+        item["saldo"] += _gastos_monto_saldo(gasto)
+        if _gastos_es_recurso(gasto) and (gasto.estatus or "") != "RECHAZADO":
+            item["recursos"] += float(gasto.total or 0)
+        elif not _gastos_es_recurso(gasto) and (gasto.estatus or "") != "RECHAZADO":
+            item["gastos"] += float(gasto.total or 0)
+            if (gasto.estatus or "") in {"PENDIENTE", "EN REVISION"}:
+                item["pendientes"] += float(gasto.total or 0)
+
+    ws_proyectos = wb.create_sheet("Saldos por proyecto")
+    ws_proyectos.append(["Proyecto", "Dinero aprobado", "Gastos registrados", "Pendiente / revision", "Saldo", "Movimientos"])
+    for item in sorted(proyectos_saldo.values(), key=lambda row: row["nombre"].lower()):
+        ws_proyectos.append([
+            item["nombre"],
+            float(item["recursos"] or 0),
+            float(item["gastos"] or 0),
+            float(item["pendientes"] or 0),
+            float(item["saldo"] or 0),
+            int(item["movimientos"] or 0),
+        ])
+
     for idx, header in enumerate(headers, start=1):
         cell = ws.cell(row=1, column=idx)
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor="0D6EFD")
         ws.column_dimensions[get_column_letter(idx)].width = min(max(len(header) + 3, 14), 28)
+    for idx, header in enumerate(["Proyecto", "Dinero aprobado", "Gastos registrados", "Pendiente / revision", "Saldo", "Movimientos"], start=1):
+        cell = ws_proyectos.cell(row=1, column=idx)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="0D6EFD")
+        ws_proyectos.column_dimensions[get_column_letter(idx)].width = min(max(len(header) + 4, 16), 34)
 
     out = io.BytesIO()
     wb.save(out)
