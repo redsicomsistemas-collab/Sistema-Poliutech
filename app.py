@@ -12614,6 +12614,55 @@ def _departamento_reporte_diario(reporte: ReporteDiario) -> str:
     return "Sin departamento"
 
 
+def _evaluacion_nivel(score: int, alertas: int = 0) -> str:
+    if alertas >= 2 and score < 80:
+        return "Atencion prioritaria"
+    if score >= 90:
+        return "Sobresaliente"
+    if score >= 80:
+        return "Fuerte"
+    if score >= 70:
+        return "Estable con seguimiento"
+    if score >= 60:
+        return "En riesgo"
+    return "Critico"
+
+
+def _evaluacion_reportes_filtrados():
+    fecha_ini_raw = (request.args.get("fecha_ini") or "").strip()
+    fecha_fin_raw = (request.args.get("fecha_fin") or "").strip()
+    departamento = (request.args.get("departamento") or "").strip()
+    colaborador = (request.args.get("colaborador") or "").strip()
+    fecha_fin = _parse_date_or_none(fecha_fin_raw) or now_cdmx_naive()
+    fecha_ini = _parse_date_or_none(fecha_ini_raw) or (fecha_fin - timedelta(days=30))
+    start = fecha_ini.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = fecha_fin.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+
+    query = ReporteDiario.query.filter(ReporteDiario.fecha >= start, ReporteDiario.fecha < end)
+    if departamento:
+        query = query.filter(ReporteDiario.puesto.ilike(f"%{departamento}%"))
+    if colaborador:
+        query = query.filter(ReporteDiario.colaborador.ilike(f"%{colaborador}%"))
+
+    reportes = query.order_by(ReporteDiario.fecha.desc(), ReporteDiario.id.desc()).all()
+    evaluacion = _evaluacion_departamentos(reportes)
+    empleado_seleccionado = None
+    if colaborador:
+        colaborador_l = colaborador.lower()
+        exactos = [item for item in evaluacion["colaboradores"] if item["nombre"].lower() == colaborador_l]
+        empleado_seleccionado = exactos[0] if exactos else (evaluacion["colaboradores"][0] if len(evaluacion["colaboradores"]) == 1 else None)
+
+    return {
+        "fecha_ini": start,
+        "fecha_fin": end - timedelta(days=1),
+        "departamento": departamento,
+        "colaborador": colaborador,
+        "reportes": reportes,
+        "evaluacion": evaluacion,
+        "empleado_seleccionado": empleado_seleccionado,
+    }
+
+
 def _evaluacion_departamentos(reportes: list[ReporteDiario]) -> dict:
     departamentos: dict[str, dict] = {}
     colaboradores: dict[str, dict] = {}
@@ -12697,12 +12746,14 @@ def _evaluacion_departamentos(reportes: list[ReporteDiario]) -> dict:
 
     for dep in departamentos.values():
         dep["score"] = round(dep["score_total"] / dep["reportes"]) if dep["reportes"] else 0
+        dep["nivel"] = _evaluacion_nivel(dep["score"], dep["riesgos"] + dep["intervenciones"])
         dep["colaboradores_count"] = len(dep["colaboradores"])
         dep["fortalezas_top"] = sorted(dep["fortalezas"].items(), key=lambda item: item[1], reverse=True)[:4]
         dep["debilidades_top"] = sorted(dep["debilidades"].items(), key=lambda item: item[1], reverse=True)[:4]
 
     for col in colaboradores.values():
         col["score"] = round(col["score_total"] / col["reportes"]) if col["reportes"] else 0
+        col["nivel"] = _evaluacion_nivel(col["score"], col["alertas"])
         col["fortalezas_top"] = sorted(col["fortalezas"].items(), key=lambda item: item[1], reverse=True)[:5]
         col["debilidades_top"] = sorted(col["debilidades"].items(), key=lambda item: item[1], reverse=True)[:5]
         col["reportes_rows"] = sorted(col["reportes_rows"], key=lambda item: item["fecha"] or datetime.min)
@@ -12729,28 +12780,12 @@ def reportes_diarios_evaluacion():
     if not _reportes_diarios_can_view_all():
         abort(403)
 
-    fecha_ini_raw = (request.args.get("fecha_ini") or "").strip()
-    fecha_fin_raw = (request.args.get("fecha_fin") or "").strip()
-    departamento = (request.args.get("departamento") or "").strip()
-    colaborador = (request.args.get("colaborador") or "").strip()
-    fecha_fin = _parse_date_or_none(fecha_fin_raw) or now_cdmx_naive()
-    fecha_ini = _parse_date_or_none(fecha_ini_raw) or (fecha_fin - timedelta(days=30))
-    start = fecha_ini.replace(hour=0, minute=0, second=0, microsecond=0)
-    end = fecha_fin.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-
-    query = ReporteDiario.query.filter(ReporteDiario.fecha >= start, ReporteDiario.fecha < end)
-    if departamento:
-        query = query.filter(ReporteDiario.puesto.ilike(f"%{departamento}%"))
-    if colaborador:
-        query = query.filter(ReporteDiario.colaborador.ilike(f"%{colaborador}%"))
-
-    reportes = query.order_by(ReporteDiario.fecha.desc(), ReporteDiario.id.desc()).all()
-    evaluacion = _evaluacion_departamentos(reportes)
-    empleado_seleccionado = None
-    if colaborador:
-        colaborador_l = colaborador.lower()
-        exactos = [item for item in evaluacion["colaboradores"] if item["nombre"].lower() == colaborador_l]
-        empleado_seleccionado = exactos[0] if exactos else (evaluacion["colaboradores"][0] if len(evaluacion["colaboradores"]) == 1 else None)
+    contexto = _evaluacion_reportes_filtrados()
+    reportes = contexto["reportes"]
+    evaluacion = contexto["evaluacion"]
+    empleado_seleccionado = contexto["empleado_seleccionado"]
+    departamento = contexto["departamento"]
+    colaborador = contexto["colaborador"]
     departamentos_options = [
         row[0] or "Sin departamento"
         for row in db.session.query(ReporteDiario.puesto).distinct().order_by(ReporteDiario.puesto.asc()).all()
@@ -12766,15 +12801,194 @@ def reportes_diarios_evaluacion():
         title="Evaluacion departamental",
         reportes=reportes,
         evaluacion=evaluacion,
-        fecha_ini=start.strftime("%Y-%m-%d"),
-        fecha_fin=(end - timedelta(days=1)).strftime("%Y-%m-%d"),
+        fecha_ini=contexto["fecha_ini"].strftime("%Y-%m-%d"),
+        fecha_fin=contexto["fecha_fin"].strftime("%Y-%m-%d"),
         departamento=departamento,
         colaborador=colaborador,
         empleado_seleccionado=empleado_seleccionado,
+        evaluacion_nivel=_evaluacion_nivel,
         departamentos_options=departamentos_options,
         colaboradores_options=colaboradores_options,
         semaforo_options=REPORTE_DIARIO_SEMAFORO,
         cumplimiento_options=REPORTE_DIARIO_CUMPLIMIENTO,
+    )
+
+
+@app.route("/reportes-diarios/evaluacion/export.xlsx")
+@login_required
+def reportes_diarios_evaluacion_export_xlsx():
+    if not _reportes_diarios_can_view_all():
+        abort(403)
+    if Workbook is None:
+        abort(501, description="openpyxl no instalado en el servidor.")
+
+    contexto = _evaluacion_reportes_filtrados()
+    reportes = contexto["reportes"]
+    evaluacion = contexto["evaluacion"]
+    empleado = contexto["empleado_seleccionado"]
+    fecha_ini = contexto["fecha_ini"].strftime("%d/%m/%Y")
+    fecha_fin = contexto["fecha_fin"].strftime("%d/%m/%Y")
+    vista = empleado["nombre"] if empleado else "Global"
+    total_reportes = len(reportes)
+    total_departamentos = len(evaluacion["departamentos"])
+    promedio = round(sum(dep["score"] for dep in evaluacion["departamentos"]) / total_departamentos) if total_departamentos else 0
+    score_vista = empleado["score"] if empleado else promedio
+    alertas = evaluacion["semaforo_counts"].get("RIESGOS IDENTIFICADOS", 0) + evaluacion["semaforo_counts"].get("REQUIERE INTERVENCION INMEDIATA", 0)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Resumen"
+    header_fill = PatternFill("solid", fgColor=MAR_BLUE_XLSX)
+    light_fill = PatternFill("solid", fgColor="EAF1FB")
+    danger_fill = PatternFill("solid", fgColor="FCE4E4")
+    border = Border(
+        left=Side(style="thin", color="D9E2EF"),
+        right=Side(style="thin", color="D9E2EF"),
+        top=Side(style="thin", color="D9E2EF"),
+        bottom=Side(style="thin", color="D9E2EF"),
+    )
+
+    def style_header(row_idx: int):
+        for cell in ws[row_idx]:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center")
+            cell.border = border
+
+    def append_kv(sheet, key: str, value: object):
+        sheet.append([key, value])
+        sheet.cell(sheet.max_row, 1).font = Font(bold=True)
+        sheet.cell(sheet.max_row, 1).fill = light_fill
+        for cell in sheet[sheet.max_row]:
+            cell.border = border
+
+    ws.append(["Reporte de evaluacion por reportes diarios"])
+    ws["A1"].font = Font(bold=True, size=16, color=MAR_BLUE_XLSX)
+    ws.merge_cells("A1:D1")
+    ws.append([])
+    append_kv(ws, "Periodo", f"{fecha_ini} - {fecha_fin}")
+    append_kv(ws, "Vista", vista)
+    append_kv(ws, "Departamento / puesto", contexto["departamento"] or "Todos")
+    append_kv(ws, "Reportes analizados", total_reportes)
+    append_kv(ws, "Score", f"{score_vista}%")
+    append_kv(ws, "Nivel", _evaluacion_nivel(score_vista, alertas if not empleado else empleado["alertas"]))
+    append_kv(ws, "Alertas", alertas if not empleado else empleado["alertas"])
+    ws.append([])
+    ws.append(["Criterio", "Peso", "Como se interpreta"])
+    style_header(ws.max_row)
+    criterios = [
+        ["Cumplimiento del dia", "35%", "Indicador declarado en el reporte: 100%, 80-99%, 60-79% o menor a 60%."],
+        ["Avance de actividades", "40%", "Promedio de avances capturados y actividades terminadas/pendientes."],
+        ["Riesgo operativo", "25%", "Semaforo del reporte: sin incidencias, riesgos identificados o intervencion inmediata."],
+        ["Fortalezas", "Cualitativo", "Impactos positivos, resultados obtenidos y actividades terminadas recurrentes."],
+        ["Debilidades", "Cualitativo", "Pendientes, riesgos, apoyos requeridos y alertas recurrentes."],
+    ]
+    for row in criterios:
+        ws.append(row)
+        for cell in ws[ws.max_row]:
+            cell.border = border
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+
+    ws_dep = wb.create_sheet("Departamentos")
+    ws_dep.append(["Departamento", "Reportes", "Colaboradores", "Score", "Nivel", "Riesgos", "Intervenciones", "Fortalezas", "Debilidades"])
+    for cell in ws_dep[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = header_fill
+        cell.border = border
+    for dep in evaluacion["departamentos"]:
+        ws_dep.append([
+            dep["nombre"],
+            dep["reportes"],
+            dep["colaboradores_count"],
+            dep["score"],
+            dep["nivel"],
+            dep["riesgos"],
+            dep["intervenciones"],
+            "; ".join(item for item, count in dep["fortalezas_top"]),
+            "; ".join(item for item, count in dep["debilidades_top"]),
+        ])
+        for cell in ws_dep[ws_dep.max_row]:
+            cell.border = border
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+
+    ws_emp = wb.create_sheet("Empleados")
+    ws_emp.append(["Empleado", "Departamento", "Reportes", "Score", "Nivel", "Alertas", "Fortalezas", "Debilidades", "Ultimo reporte"])
+    for cell in ws_emp[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = header_fill
+        cell.border = border
+    for col in evaluacion["colaboradores"]:
+        ultimo = col["ultimo_reporte"]
+        ws_emp.append([
+            col["nombre"],
+            col["departamento"],
+            col["reportes"],
+            col["score"],
+            col["nivel"],
+            col["alertas"],
+            "; ".join(item for item, count in col["fortalezas_top"]),
+            "; ".join(item for item, count in col["debilidades_top"]),
+            f"{ultimo.folio or ultimo.id} - {ultimo.fecha.strftime('%d/%m/%Y') if ultimo.fecha else ''}",
+        ])
+        for cell in ws_emp[ws_emp.max_row]:
+            cell.border = border
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+        if col["alertas"]:
+            ws_emp.cell(ws_emp.max_row, 6).fill = danger_fill
+
+    ws_rep = wb.create_sheet("Reportes")
+    ws_rep.append(["Fecha", "Folio", "Empleado", "Departamento", "Score", "Nivel", "Cumplimiento", "Semaforo", "Fortalezas", "Debilidades"])
+    for cell in ws_rep[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = header_fill
+        cell.border = border
+    for reporte in reportes:
+        score, fortalezas, debilidades = _reporte_diario_score(reporte)
+        alerta_reporte = 1 if (reporte.semaforo or "").upper() != "SIN INCIDENCIAS" else 0
+        ws_rep.append([
+            reporte.fecha.strftime("%d/%m/%Y") if reporte.fecha else "",
+            reporte.folio or reporte.id,
+            reporte.colaborador or "",
+            _departamento_reporte_diario(reporte),
+            score,
+            _evaluacion_nivel(score, alerta_reporte),
+            reporte.cumplimiento or "",
+            reporte.semaforo or "",
+            "; ".join(fortalezas),
+            "; ".join(debilidades),
+        ])
+        for cell in ws_rep[ws_rep.max_row]:
+            cell.border = border
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+        if alerta_reporte:
+            ws_rep.cell(ws_rep.max_row, 8).fill = danger_fill
+
+    for sheet in wb.worksheets:
+        widths = {
+            1: 24,
+            2: 22,
+            3: 16,
+            4: 18,
+            5: 16,
+            6: 16,
+            7: 34,
+            8: 34,
+            9: 34,
+            10: 34,
+        }
+        for col_idx, width in widths.items():
+            sheet.column_dimensions[get_column_letter(col_idx)].width = width
+        sheet.freeze_panes = "A2"
+
+    bio = io.BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    stamp = now_cdmx_naive().strftime("%Y%m%d_%H%M%S")
+    filename = f"evaluacion_reportes_diarios_{stamp}.xlsx"
+    return Response(
+        bio.getvalue(),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

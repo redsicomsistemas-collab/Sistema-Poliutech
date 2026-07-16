@@ -22,6 +22,7 @@
     {% if vista_empleado or colaborador %}
     <a class="btn btn-outline-primary" href="{{ url_for('reportes_diarios_evaluacion', fecha_ini=fecha_ini, fecha_fin=fecha_fin, departamento=departamento) }}">Vista global</a>
     {% endif %}
+    <a class="btn btn-success" href="{{ url_for('reportes_diarios_evaluacion_export_xlsx', fecha_ini=fecha_ini, fecha_fin=fecha_fin, departamento=departamento, colaborador=colaborador) }}">Descargar reporte</a>
     <a class="btn btn-outline-primary" href="{{ url_for('reportes_diarios_index') }}">Ver reportes diarios</a>
   </div>
 </div>
@@ -63,6 +64,20 @@
 </div>
 
 <div class="border rounded p-3 mb-4">
+  <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+    <div>
+      <h5 class="fw-bold text-primary mb-2">Criterio sugerido de evaluacion</h5>
+      <div class="text-muted small">Score operativo calculado con los reportes diarios; fortalezas y debilidades quedan como lectura cualitativa para seguimiento.</div>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <span class="badge bg-primary p-2">Cumplimiento 35%</span>
+      <span class="badge bg-primary p-2">Avance 40%</span>
+      <span class="badge bg-primary p-2">Riesgo 25%</span>
+    </div>
+  </div>
+</div>
+
+<div class="border rounded p-3 mb-4">
   <form method="get" action="{{ url_for('reportes_diarios_evaluacion') }}" class="row g-2 align-items-end">
     <input type="hidden" name="fecha_ini" value="{{ fecha_ini }}">
     <input type="hidden" name="fecha_fin" value="{{ fecha_fin }}">
@@ -100,6 +115,7 @@
     <div class="border rounded p-3 h-100">
       <div class="text-muted small">{% if vista_empleado %}Score empleado{% else %}Promedio general{% endif %}</div>
       <div class="display-6 fw-bold text-primary">{% if vista_empleado %}{{ empleado_seleccionado.score }}{% else %}{{ promedio_general }}{% endif %}%</div>
+      <div class="small text-muted">{% if vista_empleado %}{{ empleado_seleccionado.nivel }}{% else %}{{ evaluacion_nivel(promedio_general, evaluacion.semaforo_counts["RIESGOS IDENTIFICADOS"] + evaluacion.semaforo_counts["REQUIERE INTERVENCION INMEDIATA"]) }}{% endif %}</div>
     </div>
   </div>
   <div class="col-md-3">
@@ -118,6 +134,7 @@
         <div>
           <h5 class="fw-bold text-primary mb-1">{{ empleado_seleccionado.nombre }}</h5>
           <div class="text-muted small">{{ empleado_seleccionado.departamento }} · {{ empleado_seleccionado.reportes }} reportes</div>
+          <div class="small text-muted">{{ empleado_seleccionado.nivel }}</div>
         </div>
         <span class="badge {% if empleado_seleccionado.score >= 85 %}bg-success{% elif empleado_seleccionado.score >= 70 %}bg-warning text-dark{% else %}bg-danger{% endif %} fs-6">{{ empleado_seleccionado.score }}%</span>
       </div>
@@ -212,6 +229,7 @@
         <div>
           <h5 class="fw-bold mb-1">{{ dep.nombre }}</h5>
           <div class="text-muted small">{{ dep.reportes }} reportes · {{ dep.colaboradores_count }} colaboradores</div>
+          <div class="small text-muted">{{ dep.nivel }}</div>
         </div>
         <span class="badge {% if dep.score >= 85 %}bg-success{% elif dep.score >= 70 %}bg-warning text-dark{% else %}bg-danger{% endif %} fs-6">{{ dep.score }}%</span>
       </div>
@@ -261,6 +279,7 @@
           <th>Departamento</th>
           <th class="text-center">Reportes</th>
           <th class="text-center">Score</th>
+          <th>Nivel</th>
           <th class="text-center">Alertas</th>
           <th>Ultimo reporte</th>
           <th class="text-end">Vista</th>
@@ -273,6 +292,7 @@
           <td>{{ col.departamento }}</td>
           <td class="text-center">{{ col.reportes }}</td>
           <td class="text-center">{{ col.score }}%</td>
+          <td>{{ col.nivel }}</td>
           <td class="text-center">
             <span class="badge {% if col.alertas %}bg-danger{% else %}bg-success{% endif %}">{{ col.alertas }}</span>
           </td>
@@ -285,7 +305,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="7" class="text-muted text-center py-4">Sin colaboradores en el periodo.</td></tr>
+        <tr><td colspan="8" class="text-muted text-center py-4">Sin colaboradores en el periodo.</td></tr>
         {% endfor %}
       </tbody>
     </table>
