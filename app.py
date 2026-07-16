@@ -2841,7 +2841,10 @@ def inject_endpoint_helpers():
     def endpoint_exists(endpoint: str) -> bool:
         return endpoint in current_app.view_functions
 
-    return {"endpoint_exists": endpoint_exists}
+    return {
+        "endpoint_exists": endpoint_exists,
+        "gastos_admin_can_view": lambda: _gastos_admin_can_view(),
+    }
 
 
 login_manager = LoginManager()
@@ -3510,6 +3513,21 @@ def is_admin() -> bool:
 def is_admin_account() -> bool:
     nombre = (getattr(current_user, "nombre", "") or "").strip().lower()
     return bool(getattr(current_user, "is_authenticated", False) and nombre == "admin")
+
+def _gastos_admin_can_view() -> bool:
+    if not getattr(current_user, "is_authenticated", False):
+        return False
+    nombre = (getattr(current_user, "nombre", "") or "").strip().lower()
+    visible = (getattr(current_user, "nombre_visible", "") or "").strip().lower()
+    correo = (getattr(current_user, "correo", "") or "").strip().lower()
+    return (
+        is_admin()
+        or getattr(current_user, "id", None) == 18
+        or correo == "hjaramillo@poliutech.com"
+        or nombre in {"hansel", "hjaramillo"}
+        or nombre.startswith("hansel")
+        or visible.startswith("hansel")
+    )
 
 def normalize_user_role(value: str) -> str:
     rol = (value or "").strip().upper()
@@ -11520,6 +11538,96 @@ def gastos_viaticos_index():
     )
 
 
+def _gastos_admin_query():
+    if not _gastos_admin_can_view():
+        abort(403)
+    return ComprobacionGasto.query.filter(ComprobacionGasto.tipo_gasto != "RECURSO")
+
+
+def _gastos_empleado_nombre(gasto: "ComprobacionGasto") -> str:
+    responsable = (getattr(gasto, "responsable", "") or "").strip()
+    if responsable:
+        return responsable
+    usuario = getattr(gasto, "usuario", None)
+    if usuario:
+        return (getattr(usuario, "nombre_visible", "") or getattr(usuario, "nombre", "") or "").strip() or "Sin empleado"
+    return "Sin empleado"
+
+
+@app.route("/gastos-viaticos/admin")
+@login_required
+def gastos_admin_panel():
+    gastos = _gastos_admin_query().order_by(ComprobacionGasto.fecha_registro.desc(), ComprobacionGasto.id.desc()).all()
+    empleados: dict[str, dict] = {}
+    for gasto in gastos:
+        nombre = _gastos_empleado_nombre(gasto)
+        item = empleados.setdefault(nombre.lower(), {
+            "nombre": nombre,
+            "total": 0.0,
+            "pendiente": 0.0,
+            "aprobado": 0.0,
+            "rechazado": 0.0,
+            "conteo": 0,
+            "adjuntos": 0,
+            "ultimo": None,
+        })
+        total = float(gasto.total or 0)
+        estatus_gasto = (gasto.estatus or "").upper()
+        item["conteo"] += 1
+        item["adjuntos"] += len(gasto.adjuntos or [])
+        if estatus_gasto == "RECHAZADO":
+            item["rechazado"] += total
+        else:
+            item["total"] += total
+            if estatus_gasto in {"PENDIENTE", "EN REVISION"}:
+                item["pendiente"] += total
+            elif estatus_gasto in {"APROBADO", "REEMBOLSADO"}:
+                item["aprobado"] += total
+        fecha_base = gasto.fecha_comprobante or gasto.fecha_registro or gasto.creado_en
+        if fecha_base and (item["ultimo"] is None or fecha_base > item["ultimo"]):
+            item["ultimo"] = fecha_base
+
+    empleados_list = sorted(empleados.values(), key=lambda item: (item["pendiente"], item["total"], item["nombre"]), reverse=True)
+    return render_template(
+        "gastos_admin_panel.html",
+        title="Panel admin de gastos",
+        empleados=empleados_list,
+        total_general=sum(item["total"] for item in empleados_list),
+        total_pendiente=sum(item["pendiente"] for item in empleados_list),
+        total_aprobado=sum(item["aprobado"] for item in empleados_list),
+        total_comprobantes=sum(item["conteo"] for item in empleados_list),
+    )
+
+
+@app.route("/gastos-viaticos/admin/empleado")
+@login_required
+def gastos_admin_empleado():
+    empleado = (request.args.get("empleado") or "").strip()
+    if not empleado:
+        abort(404)
+    gastos = _gastos_admin_query().order_by(ComprobacionGasto.fecha_registro.desc(), ComprobacionGasto.id.desc()).all()
+    gastos = [gasto for gasto in gastos if _gastos_empleado_nombre(gasto).strip().lower() == empleado.lower()]
+    if not gastos:
+        abort(404)
+
+    total = sum(float(gasto.total or 0) for gasto in gastos if (gasto.estatus or "").upper() != "RECHAZADO")
+    pendiente = sum(float(gasto.total or 0) for gasto in gastos if (gasto.estatus or "").upper() in {"PENDIENTE", "EN REVISION"})
+    aprobado = sum(float(gasto.total or 0) for gasto in gastos if (gasto.estatus or "").upper() in {"APROBADO", "REEMBOLSADO"})
+    rechazado = sum(float(gasto.total or 0) for gasto in gastos if (gasto.estatus or "").upper() == "RECHAZADO")
+    return render_template(
+        "gastos_admin_empleado.html",
+        title=f"Gastos de {empleado}",
+        empleado=empleado,
+        gastos=gastos,
+        total=total,
+        pendiente=pendiente,
+        aprobado=aprobado,
+        rechazado=rechazado,
+        gastos_badge_class=_gastos_badge_class,
+        fecha_input=_finanzas_fecha_input,
+    )
+
+
 @app.route("/gastos-viaticos/export.xlsx")
 @login_required
 def gastos_viaticos_export_xlsx():
@@ -11753,18 +11861,19 @@ def gastos_viaticos_crear():
     db.session.commit()
     notified = 0
     notify_errors: list[str] = []
-    if solicitud_recurso:
-        for gasto in gastos_creados:
-            try:
-                _notify_gasto_created_for_review(gasto)
-                notified += 1
-            except Exception as exc:
-                notify_errors.append(str(exc))
+    for gasto in gastos_creados:
+        if _gastos_es_recurso(gasto):
+            continue
+        try:
+            _notify_gasto_created_for_review(gasto)
+            notified += 1
+        except Exception as exc:
+            notify_errors.append(str(exc))
     grupo = proyecto if tipo_agrupacion == "PROYECTO" else evento
     if notify_errors:
         flash(f"Salida '{grupo}' registrada, pero no se pudo notificar revision: {notify_errors[0]}", "warning")
     elif notified:
-        flash(f"Comprobacion registrada y enviada a revision por correo y notificacion movil.", "success")
+        flash(f"Comprobacion registrada y notificada por correo y movil.", "success")
     else:
         flash(f"Salida '{grupo}' registrada con {len(gastos_creados)} gasto(s). Quedo lista para enviarse a revision.", "success")
     return _gastos_redirect()

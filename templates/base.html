@@ -724,6 +724,9 @@
         <a class="nav-link" href="{{ url_for('facturacion.index') }}">🧾 Facturacion</a>
         {% endif %}
         <a class="nav-link" href="{{ url_for('gastos_viaticos_index') }}">🧾 Gastos</a>
+        {% if gastos_admin_can_view() %}
+        <a class="nav-link" href="{{ url_for('gastos_admin_panel') }}">📊 Gastos admin</a>
+        {% endif %}
         <a class="nav-link" href="{{ url_for('soporte_tickets') }}">🎫 Soporte</a>
         <a class="nav-link" href="{{ url_for('prospectos') }}">📋 Leads</a>
         <a class="nav-link" href="{{ url_for('admin_catalogos') }}">📚 Catálogos</a>

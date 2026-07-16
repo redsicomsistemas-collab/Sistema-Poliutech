@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Panel admin de gastos{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 my-4">
+  <div>
+    <h2 class="fw-bold text-primary mb-1">Panel admin de gastos</h2>
+    <div class="text-muted">Comprobantes agrupados por empleado.</div>
+  </div>
+  <a class="btn btn-outline-secondary" href="{{ url_for('gastos_viaticos_index') }}">Volver a gastos</a>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <div class="text-muted small">Comprobantes</div>
+      <div class="h3 fw-bold text-primary mb-0">{{ total_comprobantes }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <div class="text-muted small">Total</div>
+      <div class="h3 fw-bold text-dark mb-0">${{ "{:,.2f}".format(total_general or 0) }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <div class="text-muted small">Pendiente / revision</div>
+      <div class="h3 fw-bold text-warning mb-0">${{ "{:,.2f}".format(total_pendiente or 0) }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <div class="text-muted small">Aprobado / reembolsado</div>
+      <div class="h3 fw-bold text-success mb-0">${{ "{:,.2f}".format(total_aprobado or 0) }}</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="row g-3">
+  {% for empleado in empleados %}
+  <div class="col-xl-3 col-lg-4 col-md-6">
+    <a class="card border-0 shadow-sm h-100 text-decoration-none text-reset" href="{{ url_for('gastos_admin_empleado', empleado=empleado.nombre) }}">
+      <div class="card-body">
+        <div class="d-flex justify-content-between gap-2 align-items-start">
+          <div>
+            <div class="fw-bold fs-5 text-primary">{{ empleado.nombre }}</div>
+            <div class="text-muted small">{{ empleado.conteo }} comprobante(s) · {{ empleado.adjuntos }} adjunto(s)</div>
+          </div>
+          {% if empleado.pendiente %}
+          <span class="badge bg-warning text-dark">Pendiente</span>
+          {% else %}
+          <span class="badge bg-success">Al dia</span>
+          {% endif %}
+        </div>
+        <div class="mt-3">
+          <div class="small text-muted">Total registrado</div>
+          <div class="h4 fw-bold mb-0">${{ "{:,.2f}".format(empleado.total or 0) }}</div>
+        </div>
+        <div class="row g-2 mt-2 small">
+          <div class="col-6">
+            <div class="text-muted">Pendiente</div>
+            <div class="fw-bold text-warning">${{ "{:,.2f}".format(empleado.pendiente or 0) }}</div>
+          </div>
+          <div class="col-6">
+            <div class="text-muted">Aprobado</div>
+            <div class="fw-bold text-success">${{ "{:,.2f}".format(empleado.aprobado or 0) }}</div>
+          </div>
+        </div>
+        <div class="small text-muted mt-2">Ultimo: {{ empleado.ultimo.strftime("%d/%m/%Y") if empleado.ultimo else "-" }}</div>
+      </div>
+    </a>
+  </div>
+  {% else %}
+  <div class="col-12">
+    <div class="alert alert-info">Todavia no hay comprobantes de gastos registrados por empleados.</div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
