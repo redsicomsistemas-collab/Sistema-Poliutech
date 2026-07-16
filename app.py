@@ -2759,8 +2759,8 @@ COTIZACION_REVIEW_BCC_EMAIL = "sistemas@poliutech.com"
 COTIZACION_RESPONSE_EMAIL = (os.getenv("COTIZACION_RESPONSE_EMAIL") or "umorales@poliutech.com").strip()
 COTIZACION_APPROVALS_EMAIL = "aprobaciones@poliutech.com,mescalera@poliutech.com"
 COTIZACION_REVIEW_RESULT_AAZCONA_EMAIL = "aazcona@poliutech.com"
-GASTOS_REVIEW_EMAIL = "hjaramillo@poliutech.com"
-GASTOS_REVIEW_BCC_EMAIL = "sistemas@poliutech.com"
+GASTOS_REVIEW_EMAIL = "hjaramillo@poliutech.com,sistemas@poliutech.com"
+GASTOS_REVIEW_BCC_EMAIL = ""
 SUPPORT_TICKET_EMAIL = (os.getenv("SUPPORT_TICKET_EMAIL") or "sistemas@poliutech.com").strip()
 USER_CREATION_EMAIL = "sistemas@poliutech.com"
 COTIZACION_TRASH_RETENTION_DAYS = 30
@@ -11292,6 +11292,50 @@ def _gastos_group_mail_html(gastos: list["ComprobacionGasto"], view_url: str, ap
     """.strip()
 
 
+def _gastos_add_email_attachments(msg: EmailMessage, gasto: "ComprobacionGasto") -> None:
+    for adj in getattr(gasto, "adjuntos", []) or []:
+        rel_path = (getattr(adj, "ruta", "") or "").replace("\\", "/").lstrip("/")
+        if not rel_path:
+            continue
+        file_path = Path(app.static_folder or "static") / rel_path
+        if not file_path.exists() or not file_path.is_file():
+            logger.warning("Adjunto de gasto no encontrado: %s", file_path)
+            continue
+        mime_type = getattr(adj, "mime_type", None) or mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+        maintype, subtype = (mime_type.split("/", 1) + ["octet-stream"])[:2] if "/" in mime_type else ("application", "octet-stream")
+        filename = getattr(adj, "nombre_original", None) or file_path.name
+        msg.add_attachment(file_path.read_bytes(), maintype=maintype, subtype=subtype, filename=filename)
+
+
+def _send_gastos_review_push_hansel(gasto: "ComprobacionGasto") -> dict[str, int]:
+    tokens = _mobile_push_tokens_for_users(_mobile_push_user_ids_for_hansel_only())
+    if not tokens:
+        logger.warning("Push gasto %s: Hansel no tiene token movil activo.", gasto.folio or gasto.id)
+    return _send_push_notification(
+        tokens,
+        title="Nuevo comprobante de gasto",
+        body=f"{gasto.folio or gasto.id} - ${float(gasto.total or 0):,.2f} {gasto.moneda or 'MXN'}",
+        data={
+            "type": "gasto_viatico",
+            "gasto_id": str(gasto.id),
+            "folio": gasto.folio or "",
+            "url": url_for("gastos_viaticos_detalle", gasto_id=gasto.id, _external=True),
+        },
+    )
+
+
+def _notify_gasto_created_for_review(gasto: "ComprobacionGasto") -> None:
+    try:
+        _send_gastos_review_email(gasto)
+    except Exception as exc:
+        logger.exception("No se pudo enviar correo de revision de gasto %s", gasto.folio or gasto.id)
+        raise exc
+    try:
+        _send_gastos_review_push_hansel(gasto)
+    except Exception as exc:
+        logger.warning("Push de gasto %s fallo: %s", gasto.folio or gasto.id, exc)
+
+
 def _send_gastos_review_email(gasto: "ComprobacionGasto") -> None:
     recipients = _parse_email_list(GASTOS_REVIEW_EMAIL)
     bcc = _parse_email_list(GASTOS_REVIEW_BCC_EMAIL)
@@ -11314,6 +11358,7 @@ def _send_gastos_review_email(gasto: "ComprobacionGasto") -> None:
         f"Aprobar: {approve_url}\n"
     )
     msg.add_alternative(_gastos_mail_html(gasto, view_url, approve_url), subtype="html")
+    _gastos_add_email_attachments(msg, gasto)
 
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
         smtp.ehlo()
@@ -11641,6 +11686,7 @@ def gastos_viaticos_crear():
             return _gastos_redirect()
         tipo_agrupacion = "PROYECTO"
         proyecto = (solicitud_recurso.proyecto or "").strip() or proyecto
+        estatus = "EN REVISION"
 
     gastos_creados: list[ComprobacionGasto] = []
     max_rows = max(len(conceptos), len(totales), 1)
@@ -11705,8 +11751,22 @@ def gastos_viaticos_crear():
         return _gastos_redirect()
 
     db.session.commit()
+    notified = 0
+    notify_errors: list[str] = []
+    if solicitud_recurso:
+        for gasto in gastos_creados:
+            try:
+                _notify_gasto_created_for_review(gasto)
+                notified += 1
+            except Exception as exc:
+                notify_errors.append(str(exc))
     grupo = proyecto if tipo_agrupacion == "PROYECTO" else evento
-    flash(f"Salida '{grupo}' registrada con {len(gastos_creados)} gasto(s). Quedo lista para enviarse a revision.", "success")
+    if notify_errors:
+        flash(f"Salida '{grupo}' registrada, pero no se pudo notificar revision: {notify_errors[0]}", "warning")
+    elif notified:
+        flash(f"Comprobacion registrada y enviada a revision por correo y notificacion movil.", "success")
+    else:
+        flash(f"Salida '{grupo}' registrada con {len(gastos_creados)} gasto(s). Quedo lista para enviarse a revision.", "success")
     return _gastos_redirect()
 
 
