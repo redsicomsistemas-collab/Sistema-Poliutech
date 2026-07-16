@@ -10542,6 +10542,114 @@ def _notify_solicitud_recurso_created(solicitud: SolicitudRecurso) -> None:
         logger.warning("Push de solicitud de recursos %s fallo: %s", solicitud.folio or solicitud.id, exc)
 
 
+def _solicitud_recurso_solicitante_user(solicitud: SolicitudRecurso) -> Usuario | None:
+    user = getattr(solicitud, "usuario", None)
+    if user:
+        return user
+    user_id = getattr(solicitud, "usuario_id", None)
+    if not user_id:
+        return None
+    return Usuario.query.get(user_id)
+
+
+def _solicitud_recurso_resultado_mail_html(solicitud: SolicitudRecurso, detail_url: str) -> str:
+    estatus = (solicitud.estatus or "").strip().upper()
+    aprobada = estatus == "AUTORIZADA"
+    titulo = "Solicitud de recursos autorizada" if aprobada else "Solicitud de recursos rechazada"
+    color = "#15803d" if aprobada else "#b91c1c"
+    mensaje = (
+        "Tu solicitud fue autorizada y quedo registrada para seguimiento."
+        if aprobada
+        else "Tu solicitud fue rechazada. Revisa el detalle para dar seguimiento."
+    )
+    gasto_html = ""
+    if aprobada and getattr(solicitud, "gasto_generado", None):
+        gasto_html = (
+            f"<tr><td style='padding:8px;color:#64748b;font-weight:700;'>Gasto generado</td>"
+            f"<td style='padding:8px;'>{escape(solicitud.gasto_generado.folio or str(solicitud.gasto_generado.id))}</td></tr>"
+        )
+    return f"""
+    <div style="font-family:Arial,sans-serif;color:#0f172a;max-width:680px;margin:0 auto;">
+      <h2 style="margin:0 0 10px;color:{color};">{titulo}</h2>
+      <p style="margin:0 0 18px;color:#475569;">{mensaje}</p>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:18px;">
+        <tr><td style="padding:8px;color:#64748b;font-weight:700;">Folio</td><td style="padding:8px;">{escape(solicitud.folio or str(solicitud.id))}</td></tr>
+        <tr><td style="padding:8px;color:#64748b;font-weight:700;">Estatus</td><td style="padding:8px;font-weight:700;color:{color};">{escape(estatus)}</td></tr>
+        <tr><td style="padding:8px;color:#64748b;font-weight:700;">Proyecto / obra</td><td style="padding:8px;">{escape(solicitud.proyecto or '-')}</td></tr>
+        <tr><td style="padding:8px;color:#64748b;font-weight:700;">Total</td><td style="padding:8px;font-weight:700;">${float(solicitud.total or 0):,.2f}</td></tr>
+        {gasto_html}
+      </table>
+      <p style="margin:18px 0;"> <a href="{detail_url}" style="background:#0C3C78;color:#fff;text-decoration:none;padding:10px 14px;border-radius:6px;display:inline-block;">Ver solicitud</a></p>
+    </div>
+    """
+
+
+def _send_solicitud_recurso_resultado_email(solicitud: SolicitudRecurso) -> None:
+    solicitante = _solicitud_recurso_solicitante_user(solicitud)
+    recipients = _parse_email_list(getattr(solicitante, "correo", None))
+    if not recipients:
+        raise ValueError("La solicitud no tiene correo del usuario solicitante.")
+
+    estatus = (solicitud.estatus or "").strip().upper()
+    accion = "autorizada" if estatus == "AUTORIZADA" else "rechazada"
+    detail_url = url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id, _external=True)
+    msg = EmailMessage()
+    msg["Subject"] = f"Solicitud de recursos {accion} {solicitud.folio or solicitud.id}"
+    msg["From"] = f"SISTEMA MAR <{SMTP_FROM or SMTP_USERNAME}>"
+    msg["To"] = ", ".join(recipients)
+    msg.set_content(
+        f"Tu solicitud de recursos {solicitud.folio or solicitud.id} fue {accion}.\n"
+        f"Proyecto / obra: {solicitud.proyecto or '-'}\n"
+        f"Total: ${float(solicitud.total or 0):,.2f}\n"
+        f"Ver: {detail_url}\n"
+    )
+    msg.add_alternative(_solicitud_recurso_resultado_mail_html(solicitud, detail_url), subtype="html")
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
+        smtp.ehlo()
+        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+        smtp.send_message(msg, to_addrs=recipients)
+
+
+def _send_solicitud_recurso_resultado_push(solicitud: SolicitudRecurso) -> dict[str, int]:
+    solicitante = _solicitud_recurso_solicitante_user(solicitud)
+    user_ids = [solicitante.id] if solicitante and solicitante.id else []
+    tokens = _mobile_push_tokens_for_users(user_ids)
+    if not tokens:
+        logger.warning(
+            "Push resultado solicitud de recursos %s: solicitante %s no tiene token movil activo.",
+            solicitud.folio or solicitud.id,
+            user_ids,
+        )
+    estatus = (solicitud.estatus or "").strip().upper()
+    title = "Solicitud de recursos autorizada" if estatus == "AUTORIZADA" else "Solicitud de recursos rechazada"
+    body = f"{solicitud.folio or solicitud.id} - ${float(solicitud.total or 0):,.2f}"
+    return _send_push_notification(
+        tokens,
+        title=title,
+        body=body,
+        data={
+            "type": "solicitud_recurso_resultado",
+            "solicitud_id": str(solicitud.id),
+            "folio": solicitud.folio or "",
+            "estatus": estatus,
+            "url": url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id, _external=True),
+            "target_user_id": str(user_ids[0]) if len(user_ids) == 1 else "",
+        },
+    )
+
+
+def _notify_solicitud_recurso_resultado(solicitud: SolicitudRecurso) -> None:
+    try:
+        _send_solicitud_recurso_resultado_email(solicitud)
+    except Exception as exc:
+        logger.warning("Correo resultado solicitud de recursos %s fallo: %s", solicitud.folio or solicitud.id, exc)
+
+    try:
+        _send_solicitud_recurso_resultado_push(solicitud)
+    except Exception as exc:
+        logger.warning("Push resultado solicitud de recursos %s fallo: %s", solicitud.folio or solicitud.id, exc)
+
+
 FINANZAS_CATEGORIA_CREDITO = "CREDITO_RECIBIDO"
 FINANZAS_ESTATUS = ("PENDIENTE", "PARCIAL", "PAGADO", "VENCIDO", "CANCELADO")
 GASTOS_ESTATUS = ("PENDIENTE", "EN REVISION", "APROBADO", "RECHAZADO", "REEMBOLSADO")
@@ -13226,10 +13334,13 @@ def solicitud_recurso_estatus(solicitud_id: int):
     if nuevo == "AUTORIZADA" and not (solicitud.proyecto or "").strip():
         flash("La solicitud necesita proyecto para registrarse automaticamente en gastos.", "warning")
         return redirect(url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id))
+    anterior = (solicitud.estatus or "").strip().upper()
     solicitud.estatus = nuevo
     solicitud.actualizado_en = now_cdmx_naive()
     gasto = _solicitud_recurso_registrar_gasto(solicitud) if nuevo == "AUTORIZADA" else None
     db.session.commit()
+    if nuevo in {"AUTORIZADA", "RECHAZADA"} and anterior != nuevo:
+        _notify_solicitud_recurso_resultado(solicitud)
     if gasto:
         flash(f"Estatus actualizado. Se registro en gastos como {gasto.folio}.", "success")
     else:
