@@ -54,7 +54,7 @@
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-header bg-primary text-white fw-bold">Agregar comprobacion</div>
   <div class="card-body">
-    <form method="post" action="{{ url_for('gastos_viaticos_crear') }}" enctype="multipart/form-data" class="row g-3">
+    <form method="post" action="{{ url_for('gastos_viaticos_crear') }}" enctype="multipart/form-data" class="row g-3" id="grupoComprobacionForm">
       <input type="hidden" name="tipo_agrupacion" value="{{ tipo_agrupacion }}">
       <input type="hidden" name="proyecto" value="{{ grupo if tipo_agrupacion == 'PROYECTO' else '' }}">
       <input type="hidden" name="evento" value="{{ grupo if tipo_agrupacion == 'EVENTO' else '' }}">
@@ -87,15 +87,15 @@
       </div>
       <div class="col-md-2">
         <label class="form-label">Subtotal</label>
-        <input type="number" step="any" min="0" name="subtotal[]" class="form-control">
+        <input type="number" step="any" min="0" name="subtotal[]" class="form-control js-subtotal">
       </div>
       <div class="col-md-2">
         <label class="form-label">IVA</label>
-        <input type="number" step="any" min="0" name="iva[]" class="form-control">
+        <input type="number" step="any" min="0" name="iva[]" class="form-control js-iva">
       </div>
       <div class="col-md-2">
         <label class="form-label">Total</label>
-        <input type="number" step="any" min="0" name="total[]" class="form-control" required>
+        <input type="number" step="any" min="0" name="total[]" class="form-control js-total" required>
       </div>
       <div class="col-md-2">
         <label class="form-label">Moneda</label>
@@ -154,4 +154,24 @@
     </div>
   </div>
 </div>
+<script>
+(function () {
+  const form = document.getElementById("grupoComprobacionForm");
+  if (!form) return;
+  const subtotalEl = form.querySelector(".js-subtotal");
+  const ivaEl = form.querySelector(".js-iva");
+  const totalEl = form.querySelector(".js-total");
+  const parseMoney = value => Number(String(value || "").replace(/[$,]/g, "")) || 0;
+  const updateTotal = () => {
+    const subtotal = parseMoney(subtotalEl?.value);
+    const iva = parseMoney(ivaEl?.value);
+    if (!totalEl) return;
+    const total = subtotal + iva;
+    totalEl.value = total ? total.toFixed(2) : "";
+  };
+  subtotalEl?.addEventListener("input", updateTotal);
+  ivaEl?.addEventListener("input", updateTotal);
+  form.addEventListener("submit", updateTotal);
+})();
+</script>
 {% endblock %}

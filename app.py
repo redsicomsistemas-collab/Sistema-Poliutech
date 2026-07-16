@@ -10721,8 +10721,7 @@ def _gastos_status_row_class(estatus: str) -> str:
 
 def _gastos_es_recurso(gasto: "ComprobacionGasto") -> bool:
     tipo = (getattr(gasto, "tipo_gasto", "") or "").strip().upper()
-    referencia = (getattr(gasto, "referencia", "") or "").strip().upper()
-    return tipo == "RECURSO" or referencia.startswith("SR:")
+    return tipo == "RECURSO"
 
 
 def _gastos_monto_saldo(gasto: "ComprobacionGasto") -> float:
@@ -11648,7 +11647,11 @@ def gastos_viaticos_crear():
     now = now_cdmx_naive()
     for idx in range(max_rows):
         concepto = (conceptos[idx] if idx < len(conceptos) else "").strip()
+        subtotal = fmt(parse_float(subtotales[idx] if idx < len(subtotales) else 0, 0))
+        iva = fmt(parse_float(ivas[idx] if idx < len(ivas) else 0, 0))
         total = fmt(parse_float(totales[idx] if idx < len(totales) else 0, 0))
+        if total <= 0 and (subtotal > 0 or iva > 0):
+            total = fmt(subtotal + iva)
         if not concepto and total <= 0:
             continue
         if not concepto or total <= 0:
@@ -11671,8 +11674,8 @@ def gastos_viaticos_crear():
             solicitud_recurso_id=solicitud_recurso.id if solicitud_recurso else None,
             fecha_comprobante=_parse_date_or_none(fechas[idx] if idx < len(fechas) else "") or fecha_salida,
             fecha_registro=now,
-            subtotal=fmt(parse_float(subtotales[idx] if idx < len(subtotales) else 0, 0)),
-            iva=fmt(parse_float(ivas[idx] if idx < len(ivas) else 0, 0)),
+            subtotal=subtotal,
+            iva=iva,
             total=total,
             moneda=(((monedas[idx] if idx < len(monedas) else "") or "MXN").strip().upper()[:10] or "MXN"),
             metodo_pago=((metodos_pago[idx] if idx < len(metodos_pago) else "") or "").strip() or None,
