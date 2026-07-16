@@ -665,6 +665,11 @@
   </div>
 
   {% set show_app_shell = current_user.is_authenticated and request.endpoint != "login" %}
+  {% set current_nombre_l = (current_user.nombre or "")|lower if current_user.is_authenticated else "" %}
+  {% set current_visible_l = (current_user.nombre_visible or "")|lower if current_user.is_authenticated else "" %}
+  {% set current_correo_l = (current_user.correo or "")|lower if current_user.is_authenticated else "" %}
+  {% set current_rol_u = (current_user.rol or "")|upper if current_user.is_authenticated else "" %}
+  {% set can_view_eval_departamental = current_user.is_authenticated and (current_rol_u == "ADMIN" or current_nombre_l == "admin" or current_correo_l == "hjaramillo@poliutech.com" or current_nombre_l in ["hjaramillo", "hansel"] or current_nombre_l[:6] == "hansel" or current_visible_l[:6] == "hansel") %}
 
   <!-- ====== Barra superior ====== -->
   {% if show_app_shell %}
@@ -689,6 +694,9 @@
           <li><span class="dropdown-item-text fw-semibold">{{ current_user.nombre }}</span></li>
           <li><hr class="dropdown-divider"></li>
           <li><a class="dropdown-item" href="{{ url_for('reportes_diarios_index') }}">🗓️ Reportes diarios</a></li>
+          {% if can_view_eval_departamental %}
+          <li><a class="dropdown-item" href="{{ url_for('reportes_diarios_evaluacion') }}">📊 Evaluacion departamental</a></li>
+          {% endif %}
           <li><hr class="dropdown-divider"></li>
           <li><a class="dropdown-item" href="{{ url_for('logout') }}">🚪 Cerrar sesión</a></li>
         </ul>
@@ -709,6 +717,9 @@
           </button>
           <div class="collapse mobile-user-actions" id="mobileUserActions">
             <a href="{{ url_for('reportes_diarios_index') }}">🗓️ Reportes diarios</a>
+            {% if can_view_eval_departamental %}
+            <a href="{{ url_for('reportes_diarios_evaluacion') }}">📊 Evaluacion departamental</a>
+            {% endif %}
             <a href="{{ url_for('logout') }}">Salir</a>
           </div>
         </div>
@@ -728,6 +739,9 @@
         <a class="nav-link" href="{{ url_for('gastos_admin_panel') }}">📊 Gastos admin</a>
         {% endif %}
         <a class="nav-link" href="{{ url_for('soporte_tickets') }}">🎫 Soporte</a>
+        {% if can_view_eval_departamental %}
+        <a class="nav-link" href="{{ url_for('reportes_diarios_evaluacion') }}">📊 Eval. departamentos</a>
+        {% endif %}
         <a class="nav-link" href="{{ url_for('prospectos') }}">📋 Leads</a>
         <a class="nav-link" href="{{ url_for('admin_catalogos') }}">📚 Catálogos</a>
         <a class="nav-link" href="{{ url_for('pu.obras_index') }}">🧮 P. Unitarios</a>

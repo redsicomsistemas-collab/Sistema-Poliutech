@@ -12532,8 +12532,10 @@ def _reportes_diarios_can_view_all() -> bool:
     email = (getattr(current_user, "correo", "") or "").strip().lower()
     nombre = (getattr(current_user, "nombre", "") or "").strip().lower()
     visible = (getattr(current_user, "nombre_visible", "") or "").strip().lower()
+    rol = (getattr(current_user, "rol", "") or "").strip().upper()
     return (
-        nombre == "admin"
+        rol == "ADMIN"
+        or nombre == "admin"
         or email == "hjaramillo@poliutech.com"
         or nombre in {"hjaramillo", "hansel"}
         or nombre.startswith("hansel")
@@ -12546,6 +12548,199 @@ def _reportes_diarios_query():
     if not _reportes_diarios_can_view_all():
         query = query.filter(ReporteDiario.usuario_id == getattr(current_user, "id", None))
     return query
+
+
+def _reporte_diario_score(reporte: ReporteDiario) -> tuple[int, list[str], list[str]]:
+    payload = _reporte_diario_payload(reporte)
+    cumplimiento_score = {
+        "100%": 100,
+        "80-99%": 90,
+        "60-79%": 70,
+        "MENOR A 60%": 45,
+    }.get((reporte.cumplimiento or "").upper(), 0)
+    semaforo_score = {
+        "SIN INCIDENCIAS": 100,
+        "RIESGOS IDENTIFICADOS": 70,
+        "REQUIERE INTERVENCION INMEDIATA": 35,
+    }.get((reporte.semaforo or "").upper(), 0)
+
+    actividades = payload["actividades"]
+    avances = []
+    terminadas = 0
+    pendientes = 0
+    fortalezas = []
+    debilidades = []
+    for item in actividades:
+        estatus = (item.get("estatus") or "").upper()
+        if estatus == "TERMINADA":
+            terminadas += 1
+        if estatus == "PENDIENTE":
+            pendientes += 1
+            actividad = (item.get("actividad") or "").strip()
+            if actividad:
+                debilidades.append(f"Pendiente: {actividad}")
+        try:
+            avance = float(item.get("avance") or 0)
+            if avance > 0:
+                avances.append(max(0, min(100, avance)))
+        except Exception:
+            pass
+
+    actividad_score = round(sum(avances) / len(avances)) if avances else (100 if actividades and pendientes == 0 else 0)
+    score = round((cumplimiento_score * 0.35) + (actividad_score * 0.4) + (semaforo_score * 0.25))
+
+    if terminadas:
+        fortalezas.append(f"{terminadas} actividades terminadas")
+    for punto in payload["puntos"]:
+        impacto = (punto.get("impacto") or "").strip()
+        if impacto:
+            fortalezas.append(impacto)
+    for riesgo in payload["riesgos"]:
+        situacion = (riesgo.get("situacion") or "").strip()
+        if situacion:
+            debilidades.append(situacion)
+    if reporte.apoyo_direccion:
+        debilidades.append(f"Apoyo requerido: {reporte.apoyo_direccion.strip()}")
+    if (reporte.semaforo or "").upper() == "REQUIERE INTERVENCION INMEDIATA":
+        debilidades.append("Requiere intervencion inmediata")
+
+    return score, fortalezas[:5], debilidades[:5]
+
+
+def _departamento_reporte_diario(reporte: ReporteDiario) -> str:
+    puesto = (reporte.puesto or "").strip()
+    if puesto:
+        return puesto
+    return "Sin departamento"
+
+
+def _evaluacion_departamentos(reportes: list[ReporteDiario]) -> dict:
+    departamentos: dict[str, dict] = {}
+    colaboradores: dict[str, dict] = {}
+    semaforo_counts = {status: 0 for status in REPORTE_DIARIO_SEMAFORO}
+    cumplimiento_counts = {status: 0 for status in REPORTE_DIARIO_CUMPLIMIENTO}
+    timeline: dict[str, dict[str, int]] = {}
+
+    for reporte in reportes:
+        score, fortalezas, debilidades = _reporte_diario_score(reporte)
+        departamento = _departamento_reporte_diario(reporte)
+        dep = departamentos.setdefault(departamento, {
+            "nombre": departamento,
+            "reportes": 0,
+            "score_total": 0,
+            "riesgos": 0,
+            "intervenciones": 0,
+            "fortalezas": {},
+            "debilidades": {},
+            "colaboradores": set(),
+        })
+        dep["reportes"] += 1
+        dep["score_total"] += score
+        dep["colaboradores"].add(reporte.colaborador or "Sin colaborador")
+        if (reporte.semaforo or "").upper() == "RIESGOS IDENTIFICADOS":
+            dep["riesgos"] += 1
+        if (reporte.semaforo or "").upper() == "REQUIERE INTERVENCION INMEDIATA":
+            dep["intervenciones"] += 1
+        for item in fortalezas:
+            dep["fortalezas"][item] = dep["fortalezas"].get(item, 0) + 1
+        for item in debilidades:
+            dep["debilidades"][item] = dep["debilidades"].get(item, 0) + 1
+
+        col_key = (reporte.colaborador or "Sin colaborador").strip()
+        col = colaboradores.setdefault(col_key, {
+            "nombre": col_key,
+            "departamento": departamento,
+            "reportes": 0,
+            "score_total": 0,
+            "ultimo_reporte": reporte,
+            "alertas": 0,
+        })
+        col["reportes"] += 1
+        col["score_total"] += score
+        if reporte.fecha and (not col["ultimo_reporte"].fecha or reporte.fecha > col["ultimo_reporte"].fecha):
+            col["ultimo_reporte"] = reporte
+        if (reporte.semaforo or "").upper() != "SIN INCIDENCIAS":
+            col["alertas"] += 1
+
+        semaforo = (reporte.semaforo or "SIN INCIDENCIAS").upper()
+        if semaforo in semaforo_counts:
+            semaforo_counts[semaforo] += 1
+        cumplimiento = (reporte.cumplimiento or "").upper()
+        if cumplimiento in cumplimiento_counts:
+            cumplimiento_counts[cumplimiento] += 1
+        if reporte.fecha:
+            day = reporte.fecha.strftime("%Y-%m-%d")
+            timeline.setdefault(day, {status: 0 for status in REPORTE_DIARIO_SEMAFORO})
+            if semaforo in timeline[day]:
+                timeline[day][semaforo] += 1
+
+    for dep in departamentos.values():
+        dep["score"] = round(dep["score_total"] / dep["reportes"]) if dep["reportes"] else 0
+        dep["colaboradores_count"] = len(dep["colaboradores"])
+        dep["fortalezas_top"] = sorted(dep["fortalezas"].items(), key=lambda item: item[1], reverse=True)[:4]
+        dep["debilidades_top"] = sorted(dep["debilidades"].items(), key=lambda item: item[1], reverse=True)[:4]
+
+    for col in colaboradores.values():
+        col["score"] = round(col["score_total"] / col["reportes"]) if col["reportes"] else 0
+
+    dept_list = sorted(departamentos.values(), key=lambda item: item["score"], reverse=True)
+    col_list = sorted(colaboradores.values(), key=lambda item: (item["alertas"], -item["score"]), reverse=True)
+    return {
+        "departamentos": dept_list,
+        "colaboradores": col_list,
+        "semaforo_counts": semaforo_counts,
+        "cumplimiento_counts": cumplimiento_counts,
+        "timeline": [{"fecha": day, **values} for day, values in sorted(timeline.items())],
+    }
+
+
+@app.route("/reportes-diarios/evaluacion")
+@login_required
+def reportes_diarios_evaluacion():
+    if not _reportes_diarios_can_view_all():
+        abort(403)
+
+    fecha_ini_raw = (request.args.get("fecha_ini") or "").strip()
+    fecha_fin_raw = (request.args.get("fecha_fin") or "").strip()
+    departamento = (request.args.get("departamento") or "").strip()
+    colaborador = (request.args.get("colaborador") or "").strip()
+    fecha_fin = _parse_date_or_none(fecha_fin_raw) or now_cdmx_naive()
+    fecha_ini = _parse_date_or_none(fecha_ini_raw) or (fecha_fin - timedelta(days=30))
+    start = fecha_ini.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = fecha_fin.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+
+    query = ReporteDiario.query.filter(ReporteDiario.fecha >= start, ReporteDiario.fecha < end)
+    if departamento:
+        query = query.filter(ReporteDiario.puesto.ilike(f"%{departamento}%"))
+    if colaborador:
+        query = query.filter(ReporteDiario.colaborador.ilike(f"%{colaborador}%"))
+
+    reportes = query.order_by(ReporteDiario.fecha.desc(), ReporteDiario.id.desc()).all()
+    evaluacion = _evaluacion_departamentos(reportes)
+    departamentos_options = [
+        row[0] or "Sin departamento"
+        for row in db.session.query(ReporteDiario.puesto).distinct().order_by(ReporteDiario.puesto.asc()).all()
+    ]
+    colaboradores_options = [
+        row[0]
+        for row in db.session.query(ReporteDiario.colaborador).distinct().order_by(ReporteDiario.colaborador.asc()).all()
+        if row[0]
+    ]
+
+    return render_template(
+        "reportes_diarios_evaluacion.html",
+        title="Evaluacion departamental",
+        reportes=reportes,
+        evaluacion=evaluacion,
+        fecha_ini=start.strftime("%Y-%m-%d"),
+        fecha_fin=(end - timedelta(days=1)).strftime("%Y-%m-%d"),
+        departamento=departamento,
+        colaborador=colaborador,
+        departamentos_options=departamentos_options,
+        colaboradores_options=colaboradores_options,
+        semaforo_options=REPORTE_DIARIO_SEMAFORO,
+        cumplimiento_options=REPORTE_DIARIO_CUMPLIMIENTO,
+    )
 
 
 @app.route("/reportes-diarios")

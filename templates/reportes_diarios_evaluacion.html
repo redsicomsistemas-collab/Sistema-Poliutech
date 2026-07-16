@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}Evaluacion departamental{% endblock %}
+
+{% block content %}
+{% set total_reportes = reportes|length %}
+{% set total_departamentos = evaluacion.departamentos|length %}
+{% set promedio_general = (evaluacion.departamentos|sum(attribute='score') / total_departamentos)|round(0, 'common') if total_departamentos else 0 %}
+
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 my-4">
+  <div>
+    <h2 class="fw-bold text-primary mb-1">Evaluacion departamental</h2>
+    <div class="text-muted">Fortalezas, debilidades y alertas generadas desde reportes diarios.</div>
+  </div>
+  <a class="btn btn-outline-primary" href="{{ url_for('reportes_diarios_index') }}">Ver reportes diarios</a>
+</div>
+
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-header bg-light">
+    <form method="get" action="{{ url_for('reportes_diarios_evaluacion') }}" class="row g-2 align-items-end">
+      <div class="col-md-2">
+        <label class="form-label">Desde</label>
+        <input type="date" name="fecha_ini" class="form-control" value="{{ fecha_ini }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Hasta</label>
+        <input type="date" name="fecha_fin" class="form-control" value="{{ fecha_fin }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Departamento / puesto</label>
+        <input name="departamento" class="form-control" value="{{ departamento }}" list="departamentos-list" placeholder="Todos">
+        <datalist id="departamentos-list">
+          {% for item in departamentos_options %}
+          <option value="{{ item }}">
+          {% endfor %}
+        </datalist>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Colaborador</label>
+        <input name="colaborador" class="form-control" value="{{ colaborador }}" list="colaboradores-list" placeholder="Todos">
+        <datalist id="colaboradores-list">
+          {% for item in colaboradores_options %}
+          <option value="{{ item }}">
+          {% endfor %}
+        </datalist>
+      </div>
+      <div class="col-md-2 d-grid">
+        <button class="btn btn-primary">Actualizar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="border rounded p-3 h-100">
+      <div class="text-muted small">Reportes analizados</div>
+      <div class="display-6 fw-bold text-primary">{{ total_reportes }}</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="border rounded p-3 h-100">
+      <div class="text-muted small">Departamentos</div>
+      <div class="display-6 fw-bold text-primary">{{ total_departamentos }}</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="border rounded p-3 h-100">
+      <div class="text-muted small">Promedio general</div>
+      <div class="display-6 fw-bold text-primary">{{ promedio_general }}%</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="border rounded p-3 h-100">
+      <div class="text-muted small">Alertas abiertas</div>
+      <div class="display-6 fw-bold text-danger">{{ evaluacion.semaforo_counts["RIESGOS IDENTIFICADOS"] + evaluacion.semaforo_counts["REQUIERE INTERVENCION INMEDIATA"] }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4 mb-4">
+  <div class="col-lg-7">
+    <div class="border rounded p-3 h-100">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-bold text-primary mb-0">Score por departamento</h5>
+        <span class="text-muted small">0 a 100</span>
+      </div>
+      <canvas id="deptScoreChart" height="150"></canvas>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="border rounded p-3 h-100">
+      <h5 class="fw-bold text-primary mb-3">Semaforo de reportes</h5>
+      <canvas id="semaforoChart" height="150"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  {% for dep in evaluacion.departamentos %}
+  <div class="col-xl-6">
+    <div class="border rounded p-3 h-100">
+      <div class="d-flex justify-content-between gap-3 align-items-start mb-3">
+        <div>
+          <h5 class="fw-bold mb-1">{{ dep.nombre }}</h5>
+          <div class="text-muted small">{{ dep.reportes }} reportes · {{ dep.colaboradores_count }} colaboradores</div>
+        </div>
+        <span class="badge {% if dep.score >= 85 %}bg-success{% elif dep.score >= 70 %}bg-warning text-dark{% else %}bg-danger{% endif %} fs-6">{{ dep.score }}%</span>
+      </div>
+      <div class="progress mb-3" style="height: 10px;">
+        <div class="progress-bar {% if dep.score >= 85 %}bg-success{% elif dep.score >= 70 %}bg-warning{% else %}bg-danger{% endif %}" style="width: {{ dep.score }}%"></div>
+      </div>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div class="fw-bold text-success mb-2">Fortalezas</div>
+          {% for item, count in dep.fortalezas_top %}
+          <div class="small border-bottom py-2">{{ item }} <span class="text-muted">({{ count }})</span></div>
+          {% else %}
+          <div class="text-muted small">Sin fortalezas detectadas en el periodo.</div>
+          {% endfor %}
+        </div>
+        <div class="col-md-6">
+          <div class="fw-bold text-danger mb-2">Debilidades</div>
+          {% for item, count in dep.debilidades_top %}
+          <div class="small border-bottom py-2">{{ item }} <span class="text-muted">({{ count }})</span></div>
+          {% else %}
+          <div class="text-muted small">Sin debilidades detectadas en el periodo.</div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="mt-3 small text-muted">
+        Riesgos: {{ dep.riesgos }} · Intervenciones inmediatas: {{ dep.intervenciones }}
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="col-12">
+    <div class="alert alert-info">No hay reportes diarios con los filtros seleccionados.</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="border rounded p-3 mb-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="fw-bold text-primary mb-0">Alertas por colaborador</h5>
+    <span class="text-muted small">Ordenado por alertas</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Colaborador</th>
+          <th>Departamento</th>
+          <th class="text-center">Reportes</th>
+          <th class="text-center">Score</th>
+          <th class="text-center">Alertas</th>
+          <th>Ultimo reporte</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for col in evaluacion.colaboradores %}
+        <tr>
+          <td class="fw-semibold">{{ col.nombre }}</td>
+          <td>{{ col.departamento }}</td>
+          <td class="text-center">{{ col.reportes }}</td>
+          <td class="text-center">{{ col.score }}%</td>
+          <td class="text-center">
+            <span class="badge {% if col.alertas %}bg-danger{% else %}bg-success{% endif %}">{{ col.alertas }}</span>
+          </td>
+          <td>
+            <a href="{{ url_for('reporte_diario_detalle', reporte_id=col.ultimo_reporte.id) }}">{{ col.ultimo_reporte.folio }}</a>
+            <span class="text-muted small">{{ col.ultimo_reporte.fecha.strftime("%d/%m/%Y") if col.ultimo_reporte.fecha else "" }}</span>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-muted text-center py-4">Sin colaboradores en el periodo.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+(function() {
+  const deptLabels = {{ evaluacion.departamentos|map(attribute='nombre')|list|tojson }};
+  const deptScores = {{ evaluacion.departamentos|map(attribute='score')|list|tojson }};
+  const semaforoLabels = {{ semaforo_options|list|tojson }};
+  const semaforoCounts = {{ evaluacion.semaforo_counts|tojson }};
+
+  new Chart(document.getElementById("deptScoreChart"), {
+    type: "bar",
+    data: {
+      labels: deptLabels,
+      datasets: [{
+        label: "Score",
+        data: deptScores,
+        backgroundColor: "#0C3C78",
+        borderRadius: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, max: 100 } }
+    }
+  });
+
+  new Chart(document.getElementById("semaforoChart"), {
+    type: "doughnut",
+    data: {
+      labels: semaforoLabels,
+      datasets: [{
+        data: semaforoLabels.map((label) => semaforoCounts[label] || 0),
+        backgroundColor: ["#198754", "#ffc107", "#dc3545"]
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: "bottom" } }
+    }
+  });
+})();
+</script>
+{% endblock %}
