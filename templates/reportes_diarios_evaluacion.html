@@ -48,12 +48,12 @@
       </div>
       <div class="col-md-3">
         <label class="form-label">Colaborador</label>
-        <input name="colaborador" class="form-control" value="{{ colaborador }}" list="colaboradores-list" placeholder="Todos">
-        <datalist id="colaboradores-list">
+        <select name="colaborador" class="form-select">
+          <option value="">Global</option>
           {% for item in colaboradores_options %}
-          <option value="{{ item }}">
+          <option value="{{ item }}" {% if colaborador == item %}selected{% endif %}>{{ item }}</option>
           {% endfor %}
-        </datalist>
+        </select>
       </div>
       <div class="col-md-2 d-grid">
         <button class="btn btn-primary">Actualizar</button>
@@ -62,13 +62,21 @@
   </div>
 </div>
 
-<div class="d-flex flex-wrap gap-2 mb-4">
-  <a class="btn {% if not colaborador %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ url_for('reportes_diarios_evaluacion', fecha_ini=fecha_ini, fecha_fin=fecha_fin, departamento=departamento) }}">Global</a>
-  {% if vista_empleado %}
-  <span class="btn btn-primary disabled">Empleado: {{ empleado_seleccionado.nombre }}</span>
-  {% else %}
-  <span class="btn btn-outline-secondary disabled">Por empleado: selecciona un colaborador en el filtro</span>
-  {% endif %}
+<div class="border rounded p-3 mb-4">
+  <form method="get" action="{{ url_for('reportes_diarios_evaluacion') }}" class="row g-2 align-items-end">
+    <input type="hidden" name="fecha_ini" value="{{ fecha_ini }}">
+    <input type="hidden" name="fecha_fin" value="{{ fecha_fin }}">
+    <input type="hidden" name="departamento" value="{{ departamento }}">
+    <div class="col-md-5 col-lg-4">
+      <label class="form-label fw-semibold">Vista</label>
+      <select name="colaborador" class="form-select" onchange="this.form.submit()">
+        <option value="">Global</option>
+        {% for item in colaboradores_options %}
+        <option value="{{ item }}" {% if colaborador == item %}selected{% endif %}>{{ item }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </form>
 </div>
 
 <div class="row g-3 mb-4">
