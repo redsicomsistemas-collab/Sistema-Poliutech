@@ -5,13 +5,25 @@
 {% set total_reportes = reportes|length %}
 {% set total_departamentos = evaluacion.departamentos|length %}
 {% set promedio_general = (evaluacion.departamentos|sum(attribute='score') / total_departamentos)|round(0, 'common') if total_departamentos else 0 %}
+{% set vista_empleado = empleado_seleccionado is not none %}
 
 <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 my-4">
   <div>
-    <h2 class="fw-bold text-primary mb-1">Evaluacion departamental</h2>
-    <div class="text-muted">Fortalezas, debilidades y alertas generadas desde reportes diarios.</div>
+    <h2 class="fw-bold text-primary mb-1">{% if vista_empleado %}Evaluacion de empleado{% else %}Evaluacion departamental{% endif %}</h2>
+    <div class="text-muted">
+      {% if vista_empleado %}
+      Perfil de {{ empleado_seleccionado.nombre }} generado desde sus reportes diarios.
+      {% else %}
+      Fortalezas, debilidades y alertas generadas desde reportes diarios.
+      {% endif %}
+    </div>
   </div>
-  <a class="btn btn-outline-primary" href="{{ url_for('reportes_diarios_index') }}">Ver reportes diarios</a>
+  <div class="d-flex gap-2 flex-wrap">
+    {% if vista_empleado or colaborador %}
+    <a class="btn btn-outline-primary" href="{{ url_for('reportes_diarios_evaluacion', fecha_ini=fecha_ini, fecha_fin=fecha_fin, departamento=departamento) }}">Vista global</a>
+    {% endif %}
+    <a class="btn btn-outline-primary" href="{{ url_for('reportes_diarios_index') }}">Ver reportes diarios</a>
+  </div>
 </div>
 
 <div class="card shadow-sm border-0 mb-4">
@@ -50,6 +62,15 @@
   </div>
 </div>
 
+<div class="d-flex flex-wrap gap-2 mb-4">
+  <a class="btn {% if not colaborador %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ url_for('reportes_diarios_evaluacion', fecha_ini=fecha_ini, fecha_fin=fecha_fin, departamento=departamento) }}">Global</a>
+  {% if vista_empleado %}
+  <span class="btn btn-primary disabled">Empleado: {{ empleado_seleccionado.nombre }}</span>
+  {% else %}
+  <span class="btn btn-outline-secondary disabled">Por empleado: selecciona un colaborador en el filtro</span>
+  {% endif %}
+</div>
+
 <div class="row g-3 mb-4">
   <div class="col-md-3">
     <div class="border rounded p-3 h-100">
@@ -59,14 +80,18 @@
   </div>
   <div class="col-md-3">
     <div class="border rounded p-3 h-100">
-      <div class="text-muted small">Departamentos</div>
+      <div class="text-muted small">{% if vista_empleado %}Departamento / puesto{% else %}Departamentos{% endif %}</div>
+      {% if vista_empleado %}
+      <div class="h4 fw-bold text-primary mb-0">{{ empleado_seleccionado.departamento }}</div>
+      {% else %}
       <div class="display-6 fw-bold text-primary">{{ total_departamentos }}</div>
+      {% endif %}
     </div>
   </div>
   <div class="col-md-3">
     <div class="border rounded p-3 h-100">
-      <div class="text-muted small">Promedio general</div>
-      <div class="display-6 fw-bold text-primary">{{ promedio_general }}%</div>
+      <div class="text-muted small">{% if vista_empleado %}Score empleado{% else %}Promedio general{% endif %}</div>
+      <div class="display-6 fw-bold text-primary">{% if vista_empleado %}{{ empleado_seleccionado.score }}{% else %}{{ promedio_general }}{% endif %}%</div>
     </div>
   </div>
   <div class="col-md-3">
@@ -77,11 +102,87 @@
   </div>
 </div>
 
+{% if vista_empleado %}
+<div class="row g-4 mb-4">
+  <div class="col-lg-5">
+    <div class="border rounded p-3 h-100">
+      <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+        <div>
+          <h5 class="fw-bold text-primary mb-1">{{ empleado_seleccionado.nombre }}</h5>
+          <div class="text-muted small">{{ empleado_seleccionado.departamento }} · {{ empleado_seleccionado.reportes }} reportes</div>
+        </div>
+        <span class="badge {% if empleado_seleccionado.score >= 85 %}bg-success{% elif empleado_seleccionado.score >= 70 %}bg-warning text-dark{% else %}bg-danger{% endif %} fs-6">{{ empleado_seleccionado.score }}%</span>
+      </div>
+      <div class="progress mb-3" style="height: 10px;">
+        <div class="progress-bar {% if empleado_seleccionado.score >= 85 %}bg-success{% elif empleado_seleccionado.score >= 70 %}bg-warning{% else %}bg-danger{% endif %}" style="width: {{ empleado_seleccionado.score }}%"></div>
+      </div>
+      <div class="row g-3">
+        <div class="col-sm-6">
+          <div class="fw-bold text-success mb-2">Fortalezas</div>
+          {% for item, count in empleado_seleccionado.fortalezas_top %}
+          <div class="small border-bottom py-2">{{ item }} <span class="text-muted">({{ count }})</span></div>
+          {% else %}
+          <div class="text-muted small">Sin fortalezas detectadas.</div>
+          {% endfor %}
+        </div>
+        <div class="col-sm-6">
+          <div class="fw-bold text-danger mb-2">Debilidades</div>
+          {% for item, count in empleado_seleccionado.debilidades_top %}
+          <div class="small border-bottom py-2">{{ item }} <span class="text-muted">({{ count }})</span></div>
+          {% else %}
+          <div class="text-muted small">Sin debilidades detectadas.</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="border rounded p-3 h-100">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-bold text-primary mb-0">Evolucion del empleado</h5>
+        <span class="text-muted small">Score por reporte</span>
+      </div>
+      <canvas id="employeeScoreChart" height="135"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="border rounded p-3 mb-4">
+  <h5 class="fw-bold text-primary mb-3">Reportes de {{ empleado_seleccionado.nombre }}</h5>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Reporte</th>
+          <th>Fecha</th>
+          <th class="text-center">Score</th>
+          <th>Cumplimiento</th>
+          <th>Semaforo</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in empleado_seleccionado.reportes_rows|reverse %}
+        <tr>
+          <td><a href="{{ url_for('reporte_diario_detalle', reporte_id=item.id) }}">{{ item.folio }}</a></td>
+          <td>{{ item.fecha.strftime("%d/%m/%Y") if item.fecha else "" }}</td>
+          <td class="text-center fw-bold">{{ item.score }}%</td>
+          <td>{{ item.cumplimiento or "-" }}</td>
+          <td>{{ item.semaforo or "-" }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-muted text-center py-4">Sin reportes del empleado en el periodo.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
 <div class="row g-4 mb-4">
   <div class="col-lg-7">
     <div class="border rounded p-3 h-100">
       <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-bold text-primary mb-0">Score por departamento</h5>
+        <h5 class="fw-bold text-primary mb-0">{% if vista_empleado %}Comparativo del area{% else %}Score por departamento{% endif %}</h5>
         <span class="text-muted small">0 a 100</span>
       </div>
       <canvas id="deptScoreChart" height="150"></canvas>
@@ -154,6 +255,7 @@
           <th class="text-center">Score</th>
           <th class="text-center">Alertas</th>
           <th>Ultimo reporte</th>
+          <th class="text-end">Vista</th>
         </tr>
       </thead>
       <tbody>
@@ -170,9 +272,12 @@
             <a href="{{ url_for('reporte_diario_detalle', reporte_id=col.ultimo_reporte.id) }}">{{ col.ultimo_reporte.folio }}</a>
             <span class="text-muted small">{{ col.ultimo_reporte.fecha.strftime("%d/%m/%Y") if col.ultimo_reporte.fecha else "" }}</span>
           </td>
+          <td class="text-end">
+            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('reportes_diarios_evaluacion', fecha_ini=fecha_ini, fecha_fin=fecha_fin, departamento=departamento, colaborador=col.nombre) }}">Ver</a>
+          </td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="text-muted text-center py-4">Sin colaboradores en el periodo.</td></tr>
+        <tr><td colspan="7" class="text-muted text-center py-4">Sin colaboradores en el periodo.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -185,6 +290,8 @@
   const deptScores = {{ evaluacion.departamentos|map(attribute='score')|list|tojson }};
   const semaforoLabels = {{ semaforo_options|list|tojson }};
   const semaforoCounts = {{ evaluacion.semaforo_counts|tojson }};
+  const employeeLabels = {{ (empleado_seleccionado.chart_labels if empleado_seleccionado else [])|tojson }};
+  const employeeScores = {{ (empleado_seleccionado.chart_scores if empleado_seleccionado else [])|tojson }};
 
   new Chart(document.getElementById("deptScoreChart"), {
     type: "bar",
@@ -203,6 +310,29 @@
       scales: { y: { beginAtZero: true, max: 100 } }
     }
   });
+
+  const employeeCanvas = document.getElementById("employeeScoreChart");
+  if (employeeCanvas) {
+    new Chart(employeeCanvas, {
+      type: "line",
+      data: {
+        labels: employeeLabels,
+        datasets: [{
+          label: "Score",
+          data: employeeScores,
+          borderColor: "#0C3C78",
+          backgroundColor: "rgba(12, 60, 120, 0.12)",
+          tension: 0.25,
+          fill: true
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, max: 100 } }
+      }
+    });
+  }
 
   new Chart(document.getElementById("semaforoChart"), {
     type: "doughnut",

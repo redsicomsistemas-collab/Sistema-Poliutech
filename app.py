@@ -12654,6 +12654,11 @@ def _evaluacion_departamentos(reportes: list[ReporteDiario]) -> dict:
             "score_total": 0,
             "ultimo_reporte": reporte,
             "alertas": 0,
+            "fortalezas": {},
+            "debilidades": {},
+            "semaforo_counts": {status: 0 for status in REPORTE_DIARIO_SEMAFORO},
+            "cumplimiento_counts": {status: 0 for status in REPORTE_DIARIO_CUMPLIMIENTO},
+            "reportes_rows": [],
         })
         col["reportes"] += 1
         col["score_total"] += score
@@ -12661,13 +12666,29 @@ def _evaluacion_departamentos(reportes: list[ReporteDiario]) -> dict:
             col["ultimo_reporte"] = reporte
         if (reporte.semaforo or "").upper() != "SIN INCIDENCIAS":
             col["alertas"] += 1
+        for item in fortalezas:
+            col["fortalezas"][item] = col["fortalezas"].get(item, 0) + 1
+        for item in debilidades:
+            col["debilidades"][item] = col["debilidades"].get(item, 0) + 1
+        col["reportes_rows"].append({
+            "id": reporte.id,
+            "folio": reporte.folio,
+            "fecha": reporte.fecha,
+            "score": score,
+            "cumplimiento": reporte.cumplimiento,
+            "semaforo": reporte.semaforo,
+        })
 
         semaforo = (reporte.semaforo or "SIN INCIDENCIAS").upper()
         if semaforo in semaforo_counts:
             semaforo_counts[semaforo] += 1
+        if semaforo in col["semaforo_counts"]:
+            col["semaforo_counts"][semaforo] += 1
         cumplimiento = (reporte.cumplimiento or "").upper()
         if cumplimiento in cumplimiento_counts:
             cumplimiento_counts[cumplimiento] += 1
+        if cumplimiento in col["cumplimiento_counts"]:
+            col["cumplimiento_counts"][cumplimiento] += 1
         if reporte.fecha:
             day = reporte.fecha.strftime("%Y-%m-%d")
             timeline.setdefault(day, {status: 0 for status in REPORTE_DIARIO_SEMAFORO})
@@ -12682,6 +12703,14 @@ def _evaluacion_departamentos(reportes: list[ReporteDiario]) -> dict:
 
     for col in colaboradores.values():
         col["score"] = round(col["score_total"] / col["reportes"]) if col["reportes"] else 0
+        col["fortalezas_top"] = sorted(col["fortalezas"].items(), key=lambda item: item[1], reverse=True)[:5]
+        col["debilidades_top"] = sorted(col["debilidades"].items(), key=lambda item: item[1], reverse=True)[:5]
+        col["reportes_rows"] = sorted(col["reportes_rows"], key=lambda item: item["fecha"] or datetime.min)
+        col["chart_labels"] = [
+            (item["fecha"].strftime("%d/%m") if item["fecha"] else item["folio"] or "")
+            for item in col["reportes_rows"]
+        ]
+        col["chart_scores"] = [item["score"] for item in col["reportes_rows"]]
 
     dept_list = sorted(departamentos.values(), key=lambda item: item["score"], reverse=True)
     col_list = sorted(colaboradores.values(), key=lambda item: (item["alertas"], -item["score"]), reverse=True)
@@ -12717,6 +12746,11 @@ def reportes_diarios_evaluacion():
 
     reportes = query.order_by(ReporteDiario.fecha.desc(), ReporteDiario.id.desc()).all()
     evaluacion = _evaluacion_departamentos(reportes)
+    empleado_seleccionado = None
+    if colaborador:
+        colaborador_l = colaborador.lower()
+        exactos = [item for item in evaluacion["colaboradores"] if item["nombre"].lower() == colaborador_l]
+        empleado_seleccionado = exactos[0] if exactos else (evaluacion["colaboradores"][0] if len(evaluacion["colaboradores"]) == 1 else None)
     departamentos_options = [
         row[0] or "Sin departamento"
         for row in db.session.query(ReporteDiario.puesto).distinct().order_by(ReporteDiario.puesto.asc()).all()
@@ -12736,6 +12770,7 @@ def reportes_diarios_evaluacion():
         fecha_fin=(end - timedelta(days=1)).strftime("%Y-%m-%d"),
         departamento=departamento,
         colaborador=colaborador,
+        empleado_seleccionado=empleado_seleccionado,
         departamentos_options=departamentos_options,
         colaboradores_options=colaboradores_options,
         semaforo_options=REPORTE_DIARIO_SEMAFORO,
