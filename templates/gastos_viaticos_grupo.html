@@ -91,11 +91,11 @@
       </div>
       <div class="col-md-2">
         <label class="form-label">IVA</label>
-        <input type="number" step="any" min="0" name="iva[]" class="form-control js-iva">
+        <input type="number" step="any" min="0" name="iva[]" class="form-control js-iva" readonly>
       </div>
       <div class="col-md-2">
         <label class="form-label">Total</label>
-        <input type="number" step="any" min="0" name="total[]" class="form-control js-total" required>
+        <input type="number" step="any" min="0" name="total[]" class="form-control js-total" readonly required>
       </div>
       <div class="col-md-2">
         <label class="form-label">Moneda</label>
@@ -164,13 +164,13 @@
   const parseMoney = value => Number(String(value || "").replace(/[$,]/g, "")) || 0;
   const updateTotal = () => {
     const subtotal = parseMoney(subtotalEl?.value);
-    const iva = parseMoney(ivaEl?.value);
+    const iva = subtotal * 0.16;
+    if (ivaEl) ivaEl.value = subtotal ? iva.toFixed(2) : "";
     if (!totalEl) return;
     const total = subtotal + iva;
     totalEl.value = total ? total.toFixed(2) : "";
   };
   subtotalEl?.addEventListener("input", updateTotal);
-  ivaEl?.addEventListener("input", updateTotal);
   form.addEventListener("submit", updateTotal);
 })();
 </script>

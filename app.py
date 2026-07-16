@@ -11649,6 +11649,8 @@ def gastos_viaticos_crear():
         concepto = (conceptos[idx] if idx < len(conceptos) else "").strip()
         subtotal = fmt(parse_float(subtotales[idx] if idx < len(subtotales) else 0, 0))
         iva = fmt(parse_float(ivas[idx] if idx < len(ivas) else 0, 0))
+        if subtotal > 0 and iva <= 0:
+            iva = fmt(subtotal * 0.16)
         total = fmt(parse_float(totales[idx] if idx < len(totales) else 0, 0))
         if total <= 0 and (subtotal > 0 or iva > 0):
             total = fmt(subtotal + iva)
