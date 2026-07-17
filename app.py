@@ -2761,6 +2761,7 @@ COTIZACION_APPROVALS_EMAIL = "aprobaciones@poliutech.com,mescalera@poliutech.com
 COTIZACION_REVIEW_RESULT_AAZCONA_EMAIL = "aazcona@poliutech.com"
 GASTOS_REVIEW_EMAIL = "hjaramillo@poliutech.com,sistemas@poliutech.com"
 GASTOS_REVIEW_BCC_EMAIL = ""
+FINANZAS_AUTH_NOTIFY_EMAILS = "mescalera@poliutech.com,miguele@poliutech.com"
 SUPPORT_TICKET_EMAIL = (os.getenv("SUPPORT_TICKET_EMAIL") or "sistemas@poliutech.com").strip()
 USER_CREATION_EMAIL = "sistemas@poliutech.com"
 COTIZACION_TRASH_RETENTION_DAYS = 30
@@ -2844,6 +2845,7 @@ def inject_endpoint_helpers():
     return {
         "endpoint_exists": endpoint_exists,
         "gastos_admin_can_view": lambda: _gastos_admin_can_view(),
+        "estado_cuenta_recursos_can_view": lambda: _estado_cuenta_recursos_can_view(),
     }
 
 
@@ -3527,6 +3529,24 @@ def _gastos_admin_can_view() -> bool:
         or nombre in {"hansel", "hjaramillo"}
         or nombre.startswith("hansel")
         or visible.startswith("hansel")
+    )
+
+def _estado_cuenta_recursos_can_view() -> bool:
+    if not getattr(current_user, "is_authenticated", False):
+        return False
+    nombre = (getattr(current_user, "nombre", "") or "").strip().lower()
+    visible = (getattr(current_user, "nombre_visible", "") or "").strip().lower()
+    correo = (getattr(current_user, "correo", "") or "").strip().lower()
+    return (
+        is_admin()
+        or nombre == "admin"
+        or getattr(current_user, "id", None) == 18
+        or correo in {"hjaramillo@poliutech.com", "miguele@poliutech.com"}
+        or nombre in {"hansel", "hjaramillo", "miguel", "miguele"}
+        or nombre.startswith("hansel")
+        or nombre.startswith("miguel")
+        or visible.startswith("hansel")
+        or visible.startswith("miguel")
     )
 
 def normalize_user_role(value: str) -> str:
@@ -8270,6 +8290,31 @@ def _unique_emails(*groups: list[str]) -> list[str]:
     return unique
 
 
+def _finanzas_auth_notify_recipients() -> list[str]:
+    return _parse_email_list(FINANZAS_AUTH_NOTIFY_EMAILS)
+
+
+def _mobile_push_user_ids_for_finanzas_auth_notify() -> list[int]:
+    target_emails = {email.lower() for email in _finanzas_auth_notify_recipients()}
+    aliases = {"mescalera", "mesacalera", "miguel", "miguele"}
+    user_ids: set[int] = set()
+    for user in Usuario.query.all():
+        user_name = (getattr(user, "nombre", "") or "").strip().lower()
+        visible_name = (_mobile_user_responsable(user) or "").strip().lower()
+        raw_visible_name = (getattr(user, "nombre_visible", "") or "").strip().lower()
+        user_email = (getattr(user, "correo", "") or "").strip().lower()
+        identity_parts = {user_name, visible_name, raw_visible_name}
+        if (
+            user_email in target_emails
+            or any(part in aliases or part.startswith("mescalera ") or part.startswith("mesacalera ") or part.startswith("miguel ") for part in identity_parts if part)
+        ):
+            if user.id:
+                user_ids.add(user.id)
+    if not user_ids:
+        logger.warning("Push finanzas autorizaciones: no se encontraron usuarios para %s.", sorted(target_emails))
+    return list(user_ids)
+
+
 def _quote_responsible_email(c: Cotizacion) -> list[str]:
     responsable = (c.responsable or "").strip()
     if not responsable:
@@ -10650,6 +10695,69 @@ def _notify_solicitud_recurso_resultado(solicitud: SolicitudRecurso) -> None:
         logger.warning("Push resultado solicitud de recursos %s fallo: %s", solicitud.folio or solicitud.id, exc)
 
 
+def _send_solicitud_recurso_autorizada_finanzas_email(solicitud: SolicitudRecurso) -> None:
+    recipients = _finanzas_auth_notify_recipients()
+    if not recipients:
+        raise ValueError("No hay correos configurados para autorizaciones de finanzas.")
+
+    detail_url = url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id, _external=True)
+    gasto_line = ""
+    if getattr(solicitud, "gasto_generado", None):
+        gasto_line = f"Gasto generado: {solicitud.gasto_generado.folio or solicitud.gasto_generado.id}\n"
+    msg = EmailMessage()
+    msg["Subject"] = f"Solicitud de recursos autorizada {solicitud.folio or solicitud.id}"
+    msg["From"] = f"SISTEMA MAR <{SMTP_FROM or SMTP_USERNAME}>"
+    msg["To"] = ", ".join(recipients)
+    msg.set_content(
+        f"Solicitud de recursos autorizada {solicitud.folio or solicitud.id}\n"
+        f"Solicitante: {solicitud.solicitante or '-'}\n"
+        f"Proyecto / obra: {solicitud.proyecto or '-'}\n"
+        f"Total: ${float(solicitud.total or 0):,.2f}\n"
+        f"{gasto_line}"
+        f"Ver: {detail_url}\n"
+    )
+    msg.add_alternative(_solicitud_recurso_resultado_mail_html(solicitud, detail_url), subtype="html")
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
+        smtp.ehlo()
+        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+        smtp.send_message(msg, to_addrs=recipients)
+
+
+def _send_solicitud_recurso_autorizada_finanzas_push(solicitud: SolicitudRecurso) -> dict[str, int]:
+    user_ids = _mobile_push_user_ids_for_finanzas_auth_notify()
+    tokens = _mobile_push_tokens_for_users(user_ids)
+    if not tokens:
+        logger.warning(
+            "Push solicitud de recursos autorizada %s: Mescalera/Miguel sin token movil activo.",
+            solicitud.folio or solicitud.id,
+        )
+    return _send_push_notification(
+        tokens,
+        title="Solicitud de recursos autorizada",
+        body=f"{solicitud.folio or solicitud.id} - ${float(solicitud.total or 0):,.2f}",
+        data={
+            "type": "solicitud_recurso_autorizada_finanzas",
+            "solicitud_id": str(solicitud.id),
+            "folio": solicitud.folio or "",
+            "estatus": solicitud.estatus or "",
+            "url": url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id, _external=True),
+            "target_user_ids": ",".join(str(user_id) for user_id in user_ids),
+        },
+    )
+
+
+def _notify_solicitud_recurso_autorizada_finanzas(solicitud: SolicitudRecurso) -> None:
+    try:
+        _send_solicitud_recurso_autorizada_finanzas_email(solicitud)
+    except Exception as exc:
+        logger.warning("Correo finanzas solicitud de recursos %s fallo: %s", solicitud.folio or solicitud.id, exc)
+
+    try:
+        _send_solicitud_recurso_autorizada_finanzas_push(solicitud)
+    except Exception as exc:
+        logger.warning("Push finanzas solicitud de recursos %s fallo: %s", solicitud.folio or solicitud.id, exc)
+
+
 FINANZAS_CATEGORIA_CREDITO = "CREDITO_RECIBIDO"
 FINANZAS_ESTATUS = ("PENDIENTE", "PARCIAL", "PAGADO", "VENCIDO", "CANCELADO")
 GASTOS_ESTATUS = ("PENDIENTE", "EN REVISION", "APROBADO", "RECHAZADO", "REEMBOLSADO")
@@ -10855,6 +10963,142 @@ def _gastos_monto_saldo(gasto: "ComprobacionGasto") -> float:
         return 0.0
     total = float(gasto.total or 0)
     return total if _gastos_es_recurso(gasto) else -total
+
+
+def _estado_cuenta_user_label(user: Usuario | None, fallback: str = "") -> str:
+    if user:
+        label = _usuario_nombre_representante(user)
+        if label:
+            return label
+        if getattr(user, "correo", None):
+            return user.correo
+        return f"Usuario {user.id}"
+    return (fallback or "").strip() or "Sin usuario"
+
+
+def _estado_cuenta_user_key(user: Usuario | None, fallback: str = "") -> str:
+    if user and user.id:
+        return f"u-{user.id}"
+    value = re.sub(r"[^a-z0-9]+", "-", (fallback or "sin-usuario").strip().lower()).strip("-")
+    return f"r-{value or 'sin-usuario'}"
+
+
+def _estado_cuenta_user_from_responsable(nombre: str) -> Usuario | None:
+    nombre_l = (nombre or "").strip().lower()
+    if not nombre_l:
+        return None
+    return Usuario.query.filter(
+        or_(
+            db.func.lower(Usuario.nombre) == nombre_l,
+            db.func.lower(db.func.coalesce(Usuario.nombre_visible, "")) == nombre_l,
+        )
+    ).first()
+
+
+def _estado_cuenta_user_for_gasto(gasto: "ComprobacionGasto") -> tuple[Usuario | None, str]:
+    solicitud = getattr(gasto, "solicitud_recurso", None)
+    if solicitud and getattr(solicitud, "usuario", None):
+        return solicitud.usuario, solicitud.solicitante or gasto.responsable or ""
+    if getattr(gasto, "usuario", None):
+        return gasto.usuario, gasto.responsable or ""
+    user = _estado_cuenta_user_from_responsable(gasto.responsable or "")
+    return user, gasto.responsable or ""
+
+
+def _estado_cuenta_new_bucket(user: Usuario | None, fallback: str = "") -> dict:
+    label = _estado_cuenta_user_label(user, fallback)
+    return {
+        "key": _estado_cuenta_user_key(user, fallback or label),
+        "usuario": user,
+        "nombre": label,
+        "correo": getattr(user, "correo", "") if user else "",
+        "enviado": 0.0,
+        "comprobado": 0.0,
+        "saldo": 0.0,
+        "recursos_count": 0,
+        "comprobaciones_count": 0,
+        "ultimo": None,
+        "movimientos": [],
+    }
+
+
+def _estado_cuenta_recursos_data(user_key: str | None = None) -> list[dict]:
+    buckets: dict[str, dict] = {}
+
+    solicitudes = (
+        SolicitudRecurso.query
+        .filter(SolicitudRecurso.estatus == "AUTORIZADA")
+        .order_by(SolicitudRecurso.fecha.asc(), SolicitudRecurso.id.asc())
+        .all()
+    )
+    for solicitud in solicitudes:
+        user = getattr(solicitud, "usuario", None)
+        fallback = solicitud.solicitante or ""
+        key = _estado_cuenta_user_key(user, fallback)
+        bucket = buckets.setdefault(key, _estado_cuenta_new_bucket(user, fallback))
+        monto = float(solicitud.total or 0)
+        fecha = solicitud.gasto_generado_en or solicitud.actualizado_en or solicitud.fecha
+        bucket["enviado"] += monto
+        bucket["recursos_count"] += 1
+        bucket["ultimo"] = max([d for d in [bucket["ultimo"], fecha] if d], default=None)
+        bucket["movimientos"].append({
+            "fecha": fecha,
+            "tipo": "RECURSO AUTORIZADO",
+            "folio": solicitud.folio or f"#{solicitud.id}",
+            "concepto": solicitud.proyecto or "Solicitud de recursos",
+            "referencia": solicitud.gasto_generado.folio if getattr(solicitud, "gasto_generado", None) else "",
+            "estatus": solicitud.estatus,
+            "monto_enviado": monto,
+            "monto_comprobado": 0.0,
+            "saldo_delta": monto,
+            "url": url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id),
+        })
+
+    comprobaciones = (
+        ComprobacionGasto.query
+        .filter(
+            ComprobacionGasto.estatus.in_(("APROBADO", "REEMBOLSADO")),
+            ComprobacionGasto.tipo_gasto != "RECURSO",
+        )
+        .order_by(ComprobacionGasto.fecha_comprobante.asc(), ComprobacionGasto.id.asc())
+        .all()
+    )
+    for gasto in comprobaciones:
+        user, fallback = _estado_cuenta_user_for_gasto(gasto)
+        key = _estado_cuenta_user_key(user, fallback)
+        bucket = buckets.setdefault(key, _estado_cuenta_new_bucket(user, fallback))
+        monto = float(gasto.total or 0)
+        fecha = gasto.fecha_comprobante or gasto.actualizado_en or gasto.fecha_registro
+        bucket["comprobado"] += monto
+        bucket["comprobaciones_count"] += 1
+        bucket["ultimo"] = max([d for d in [bucket["ultimo"], fecha] if d], default=None)
+        bucket["movimientos"].append({
+            "fecha": fecha,
+            "tipo": f"{gasto.tipo_gasto or 'GASTO'} COMPROBADO",
+            "folio": gasto.folio or f"#{gasto.id}",
+            "concepto": gasto.concepto or "",
+            "referencia": gasto.proyecto or gasto.evento or gasto.referencia or "",
+            "estatus": gasto.estatus,
+            "monto_enviado": 0.0,
+            "monto_comprobado": monto,
+            "saldo_delta": -monto,
+            "url": url_for("gastos_viaticos_detalle", gasto_id=gasto.id),
+        })
+
+    for bucket in buckets.values():
+        bucket["enviado"] = fmt(bucket["enviado"])
+        bucket["comprobado"] = fmt(bucket["comprobado"])
+        bucket["saldo"] = fmt(bucket["enviado"] - bucket["comprobado"])
+        bucket["movimientos"].sort(key=lambda item: (item["fecha"] or datetime.min, item["folio"]))
+        saldo = 0.0
+        for mov in bucket["movimientos"]:
+            saldo = fmt(saldo + float(mov["saldo_delta"] or 0))
+            mov["saldo"] = saldo
+
+    rows = sorted(buckets.values(), key=lambda item: (float(item["saldo"] or 0), item["nombre"]), reverse=True)
+    if user_key:
+        rows = [item for item in rows if item["key"] == user_key]
+    return rows
 
 
 def _solicitudes_recurso_saldos(comprobaciones: list["ComprobacionGasto"]) -> list[dict]:
@@ -11530,6 +11774,137 @@ def _send_gastos_group_review_email(gastos: list["ComprobacionGasto"]) -> None:
         smtp.send_message(msg, to_addrs=[*recipients, *bcc])
 
 
+def _gastos_authorized_mail_html(gastos: list["ComprobacionGasto"], detail_url: str) -> str:
+    total = sum(float(gasto.total or 0) for gasto in gastos)
+    rows = []
+    for gasto in gastos:
+        grupo = gasto.proyecto or gasto.evento or "-"
+        rows.append(
+            "<tr>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;font-weight:700;color:#0C3C78;'>{escape(gasto.folio or f'#{gasto.id}')}</td>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;'>{escape(gasto.tipo_gasto or 'GASTO')}</td>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;'>{escape(grupo)}</td>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;'>{escape(gasto.responsable or '-')}</td>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;'>{escape(gasto.concepto or '')}</td>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;'>${float(gasto.total or 0):,.2f} {escape(gasto.moneda or 'MXN')}</td>"
+            "</tr>"
+        )
+    title = "Comprobante autorizado" if len(gastos) == 1 else "Comprobantes autorizados"
+    return f"""
+    <div style="font-family:Arial,sans-serif;color:#0f172a;max-width:860px;margin:0 auto;">
+      <h2 style="margin:0 0 10px;color:#15803d;">{title}</h2>
+      <p style="margin:0 0 18px;color:#475569;">Se autorizo {len(gastos)} comprobante(s) de gasto/viatico.</p>
+      <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;">
+        <thead>
+          <tr style="background:#f8fafc;color:#334155;">
+            <th style="padding:10px;text-align:left;">Folio</th>
+            <th style="padding:10px;text-align:left;">Tipo</th>
+            <th style="padding:10px;text-align:left;">Proyecto / evento</th>
+            <th style="padding:10px;text-align:left;">Responsable</th>
+            <th style="padding:10px;text-align:left;">Concepto</th>
+            <th style="padding:10px;text-align:right;">Total</th>
+          </tr>
+        </thead>
+        <tbody>{''.join(rows)}</tbody>
+      </table>
+      <div style="margin:18px 0;padding:14px 16px;border:1px solid #bbf7d0;background:#f0fdf4;border-radius:8px;">
+        <div style="font-size:12px;text-transform:uppercase;color:#166534;font-weight:800;">Total autorizado</div>
+        <div style="font-size:24px;font-weight:900;color:#166534;">${total:,.2f}</div>
+      </div>
+      <p style="margin:18px 0;"> <a href="{detail_url}" style="background:#0C3C78;color:#fff;text-decoration:none;padding:10px 14px;border-radius:6px;display:inline-block;">Ver detalle</a></p>
+    </div>
+    """
+
+
+def _send_gastos_authorized_finanzas_email(gastos: list["ComprobacionGasto"]) -> None:
+    gastos = [gasto for gasto in gastos if not _gastos_es_recurso(gasto)]
+    if not gastos:
+        return
+    recipients = _finanzas_auth_notify_recipients()
+    if not recipients:
+        raise ValueError("No hay correos configurados para autorizaciones de finanzas.")
+
+    first = gastos[0]
+    detail_url = url_for("gastos_viaticos_detalle", gasto_id=first.id, _external=True)
+    total = sum(float(gasto.total or 0) for gasto in gastos)
+    subject = (
+        f"Comprobante autorizado {first.folio or first.id}"
+        if len(gastos) == 1
+        else f"{len(gastos)} comprobantes autorizados - ${total:,.2f}"
+    )
+    lines = [
+        subject,
+        f"Total autorizado: ${total:,.2f}",
+        "",
+    ]
+    for gasto in gastos:
+        lines.append(
+            f"- {gasto.folio or gasto.id}: {gasto.tipo_gasto or 'GASTO'} | "
+            f"{gasto.proyecto or gasto.evento or '-'} | {gasto.responsable or '-'} | "
+            f"${float(gasto.total or 0):,.2f} {gasto.moneda or 'MXN'}"
+        )
+    lines.extend(["", f"Ver detalle: {detail_url}"])
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = f"REGISTRO DE GASTOS Y/O VIATICOS <{SMTP_FROM or SMTP_USERNAME}>"
+    msg["To"] = ", ".join(recipients)
+    msg.set_content("\n".join(lines))
+    msg.add_alternative(_gastos_authorized_mail_html(gastos, detail_url), subtype="html")
+
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
+        smtp.ehlo()
+        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+        smtp.send_message(msg, to_addrs=recipients)
+
+
+def _send_gastos_authorized_finanzas_push(gastos: list["ComprobacionGasto"]) -> dict[str, int]:
+    gastos = [gasto for gasto in gastos if not _gastos_es_recurso(gasto)]
+    if not gastos:
+        return {"sent": 0, "failed": 0}
+    user_ids = _mobile_push_user_ids_for_finanzas_auth_notify()
+    tokens = _mobile_push_tokens_for_users(user_ids)
+    if not tokens:
+        logger.warning("Push gastos autorizados: Mescalera/Miguel sin token movil activo.")
+    total = sum(float(gasto.total or 0) for gasto in gastos)
+    first = gastos[0]
+    title = "Comprobante autorizado" if len(gastos) == 1 else "Comprobantes autorizados"
+    body = (
+        f"{first.folio or first.id} - ${float(first.total or 0):,.2f} {first.moneda or 'MXN'}"
+        if len(gastos) == 1
+        else f"{len(gastos)} comprobantes - ${total:,.2f}"
+    )
+    return _send_push_notification(
+        tokens,
+        title=title,
+        body=body,
+        data={
+            "type": "gastos_viaticos_autorizados_finanzas",
+            "gasto_id": str(first.id),
+            "folio": first.folio or "",
+            "count": str(len(gastos)),
+            "total": f"{total:.2f}",
+            "url": url_for("gastos_viaticos_detalle", gasto_id=first.id, _external=True),
+            "target_user_ids": ",".join(str(user_id) for user_id in user_ids),
+        },
+    )
+
+
+def _notify_gastos_authorized_finanzas(gastos: list["ComprobacionGasto"]) -> None:
+    gastos = [gasto for gasto in gastos if not _gastos_es_recurso(gasto)]
+    if not gastos:
+        return
+    try:
+        _send_gastos_authorized_finanzas_email(gastos)
+    except Exception as exc:
+        logger.warning("Correo finanzas gastos autorizados fallo: %s", exc)
+
+    try:
+        _send_gastos_authorized_finanzas_push(gastos)
+    except Exception as exc:
+        logger.warning("Push finanzas gastos autorizados fallo: %s", exc)
+
+
 def _gastos_query_from_request():
     q = (request.args.get("q") or "").strip()
     agrupacion = (request.args.get("agrupacion") or "").strip().upper()
@@ -11733,6 +12108,41 @@ def gastos_admin_empleado():
         rechazado=rechazado,
         gastos_badge_class=_gastos_badge_class,
         fecha_input=_finanzas_fecha_input,
+    )
+
+
+@app.route("/gastos-viaticos/estado-cuenta")
+@login_required
+def estado_cuenta_recursos_panel():
+    if not _estado_cuenta_recursos_can_view():
+        abort(403)
+    usuarios = _estado_cuenta_recursos_data()
+    total_enviado = sum(float(item["enviado"] or 0) for item in usuarios)
+    total_comprobado = sum(float(item["comprobado"] or 0) for item in usuarios)
+    total_saldo = sum(float(item["saldo"] or 0) for item in usuarios)
+    return render_template(
+        "estado_cuenta_recursos.html",
+        title="Estado de cuenta de recursos",
+        usuarios=usuarios,
+        total_enviado=total_enviado,
+        total_comprobado=total_comprobado,
+        total_saldo=total_saldo,
+    )
+
+
+@app.route("/gastos-viaticos/estado-cuenta/<path:user_key>")
+@login_required
+def estado_cuenta_recursos_detalle(user_key: str):
+    if not _estado_cuenta_recursos_can_view():
+        abort(403)
+    rows = _estado_cuenta_recursos_data(user_key)
+    if not rows:
+        abort(404)
+    usuario = rows[0]
+    return render_template(
+        "estado_cuenta_recursos_detalle.html",
+        title=f"Estado de cuenta {usuario['nombre']}",
+        usuario=usuario,
     )
 
 
@@ -12099,9 +12509,12 @@ def gastos_viaticos_detalle(gasto_id: int):
 def gastos_viaticos_marcar_aprobado(gasto_id: int):
     gasto = ComprobacionGasto.query.get_or_404(gasto_id)
     require_gasto_owner_or_admin(gasto)
+    anterior = (gasto.estatus or "").strip().upper()
     gasto.estatus = "APROBADO"
     gasto.actualizado_en = now_cdmx_naive()
     db.session.commit()
+    if anterior != "APROBADO":
+        _notify_gastos_authorized_finanzas([gasto])
     flash(f"Comprobacion {gasto.folio} aprobada.", "success")
     return redirect(url_for("gastos_viaticos_detalle", gasto_id=gasto.id))
 
@@ -12123,9 +12536,12 @@ def gastos_viaticos_revision(gasto_id: int):
 @app.route("/gastos-viaticos/revision/<int:gasto_id>/aprobar")
 def gastos_viaticos_revision_aprobar(gasto_id: int):
     gasto = _gastos_load_from_token(gasto_id, request.args.get("token"), "approve")
+    anterior = (gasto.estatus or "").strip().upper()
     gasto.estatus = "APROBADO"
     gasto.actualizado_en = now_cdmx_naive()
     db.session.commit()
+    if anterior != "APROBADO":
+        _notify_gastos_authorized_finanzas([gasto])
     return render_template(
         "gastos_viaticos_detalle.html",
         title=f"Comprobante {gasto.folio or gasto.id}",
@@ -12164,10 +12580,15 @@ def gastos_viaticos_revision_grupo_aprobar():
     if not gastos:
         abort(404)
     now = now_cdmx_naive()
+    newly_approved = []
     for gasto in gastos:
+        anterior = (gasto.estatus or "").strip().upper()
         gasto.estatus = "APROBADO"
         gasto.actualizado_en = now
+        if anterior != "APROBADO":
+            newly_approved.append(gasto)
     db.session.commit()
+    _notify_gastos_authorized_finanzas(newly_approved)
     return render_template(
         "gastos_viaticos_revision_grupo.html",
         title="Salida de gastos",
@@ -12193,6 +12614,7 @@ def gastos_viaticos_actualizar(gasto_id: int):
         flash("Selecciona un estatus valido.", "warning")
         return _gastos_redirect()
 
+    anterior = (gasto.estatus or "").strip().upper()
     gasto.estatus = estatus
     gasto.proveedor = (f.get("proveedor") or "").strip() or None
     gasto.concepto = (f.get("concepto") or "").strip() or gasto.concepto
@@ -12212,6 +12634,8 @@ def gastos_viaticos_actualizar(gasto_id: int):
         gasto.responsable = responsable_actual() or gasto.responsable
     gasto.actualizado_en = now_cdmx_naive()
     db.session.commit()
+    if estatus == "APROBADO" and anterior != "APROBADO":
+        _notify_gastos_authorized_finanzas([gasto])
     flash(f"Comprobacion {gasto.folio} actualizada.", "success")
     return _gastos_redirect()
 
@@ -13341,6 +13765,8 @@ def solicitud_recurso_estatus(solicitud_id: int):
     db.session.commit()
     if nuevo in {"AUTORIZADA", "RECHAZADA"} and anterior != nuevo:
         _notify_solicitud_recurso_resultado(solicitud)
+    if nuevo == "AUTORIZADA" and anterior != nuevo:
+        _notify_solicitud_recurso_autorizada_finanzas(solicitud)
     if gasto:
         flash(f"Estatus actualizado. Se registro en gastos como {gasto.folio}.", "success")
     else:

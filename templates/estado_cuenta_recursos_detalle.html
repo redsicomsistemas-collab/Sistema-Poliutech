@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Estado de cuenta {{ usuario.nombre }}{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 my-4">
+  <div>
+    <h2 class="fw-bold text-primary mb-1">{{ usuario.nombre }}</h2>
+    <div class="text-muted">Detalle de recursos enviados y comprobaciones autorizadas.</div>
+  </div>
+  <a class="btn btn-outline-secondary" href="{{ url_for('estado_cuenta_recursos_panel') }}">Volver al panel</a>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <div class="text-muted small">Dinero enviado</div>
+      <div class="h3 fw-bold text-primary mb-0">${{ "{:,.2f}".format(usuario.enviado or 0) }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <div class="text-muted small">Comprobado autorizado</div>
+      <div class="h3 fw-bold text-success mb-0">${{ "{:,.2f}".format(usuario.comprobado or 0) }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <div class="text-muted small">Debe</div>
+      <div class="h3 fw-bold {% if usuario.saldo > 0 %}text-danger{% else %}text-success{% endif %} mb-0">${{ "{:,.2f}".format(usuario.saldo or 0) }}</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-light fw-bold">Movimientos</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Tipo</th>
+            <th>Folio</th>
+            <th>Concepto / referencia</th>
+            <th class="text-end">Enviado</th>
+            <th class="text-end">Comprobado</th>
+            <th class="text-end">Saldo</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for mov in usuario.movimientos %}
+          <tr>
+            <td>{{ mov.fecha.strftime("%d/%m/%Y") if mov.fecha else "-" }}</td>
+            <td><span class="badge {% if mov.monto_enviado %}bg-primary{% else %}bg-success{% endif %}">{{ mov.tipo }}</span></td>
+            <td class="fw-bold">{{ mov.folio }}</td>
+            <td>
+              <div style="white-space: normal; overflow-wrap: anywhere;">{{ mov.concepto }}</div>
+              <div class="small text-muted">{{ mov.referencia or mov.estatus }}</div>
+            </td>
+            <td class="text-end fw-bold">{% if mov.monto_enviado %}${{ "{:,.2f}".format(mov.monto_enviado) }}{% else %}-{% endif %}</td>
+            <td class="text-end fw-bold text-success">{% if mov.monto_comprobado %}${{ "{:,.2f}".format(mov.monto_comprobado) }}{% else %}-{% endif %}</td>
+            <td class="text-end fw-bold {% if mov.saldo > 0 %}text-danger{% else %}text-success{% endif %}">${{ "{:,.2f}".format(mov.saldo or 0) }}</td>
+            <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ mov.url }}">Ver</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="text-center text-muted py-4">Sin movimientos.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

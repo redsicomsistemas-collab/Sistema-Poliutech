@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Estado de cuenta de recursos{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 my-4">
+  <div>
+    <h2 class="fw-bold text-primary mb-1">Estado de cuenta de recursos</h2>
+    <div class="text-muted">Dinero autorizado, comprobado y pendiente por usuario.</div>
+  </div>
+  <a class="btn btn-outline-secondary" href="{{ url_for('gastos_viaticos_index') }}">Volver a gastos</a>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <div class="text-muted small">Dinero enviado</div>
+      <div class="h3 fw-bold text-primary mb-0">${{ "{:,.2f}".format(total_enviado or 0) }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <div class="text-muted small">Comprobado autorizado</div>
+      <div class="h3 fw-bold text-success mb-0">${{ "{:,.2f}".format(total_comprobado or 0) }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <div class="text-muted small">Saldo pendiente</div>
+      <div class="h3 fw-bold {% if total_saldo > 0 %}text-danger{% else %}text-success{% endif %} mb-0">${{ "{:,.2f}".format(total_saldo or 0) }}</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-light fw-bold">Usuarios</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Usuario</th>
+            <th class="text-end">Enviado</th>
+            <th class="text-end">Comprobado</th>
+            <th class="text-end">Debe</th>
+            <th>Movimientos</th>
+            <th>Ultimo movimiento</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for usuario in usuarios %}
+          <tr>
+            <td>
+              <div class="fw-bold text-primary">{{ usuario.nombre }}</div>
+              <div class="small text-muted">{{ usuario.correo or "Sin correo" }}</div>
+            </td>
+            <td class="text-end fw-bold">${{ "{:,.2f}".format(usuario.enviado or 0) }}</td>
+            <td class="text-end fw-bold text-success">${{ "{:,.2f}".format(usuario.comprobado or 0) }}</td>
+            <td class="text-end fw-bold {% if usuario.saldo > 0 %}text-danger{% else %}text-success{% endif %}">${{ "{:,.2f}".format(usuario.saldo or 0) }}</td>
+            <td>
+              <div>{{ usuario.recursos_count }} recurso(s)</div>
+              <div class="small text-muted">{{ usuario.comprobaciones_count }} comprobacion(es)</div>
+            </td>
+            <td>{{ usuario.ultimo.strftime("%d/%m/%Y") if usuario.ultimo else "-" }}</td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-outline-primary" href="{{ url_for('estado_cuenta_recursos_detalle', user_key=usuario.key) }}">Detalle</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center text-muted py-4">Todavia no hay recursos autorizados ni comprobaciones aprobadas.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
