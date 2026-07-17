@@ -33,7 +33,7 @@
       <form method="POST" action="{{ url_for('login', next=request.args.get('next')) }}" class="auth-form">
         <label for="nombre">Usuario</label>
         <div class="auth-input-group">
-          <span aria-hidden="true">♙</span>
+          <span aria-hidden="true">●</span>
           <input id="nombre" type="text" name="nombre" placeholder="Escribe tu usuario" autocomplete="username" autofocus required>
         </div>
 
@@ -42,7 +42,7 @@
           <a href="{{ url_for('forgot_password') }}">¿Olvidaste tu contraseña?</a>
         </div>
         <div class="auth-input-group">
-          <span aria-hidden="true">⌑</span>
+          <span aria-hidden="true">◆</span>
           <input id="password" type="password" name="password" placeholder="Escribe tu contraseña" autocomplete="current-password" required>
           <button class="password-toggle" type="button" data-password-toggle="password" aria-label="Mostrar contraseña">◉</button>
         </div>
