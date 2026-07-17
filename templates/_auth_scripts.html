@@ -1,0 +1,30 @@
+<script>
+(function () {
+  const root = document.documentElement;
+  const themeButton = document.getElementById('authThemeToggle');
+  function updateButton() {
+    const dark = root.getAttribute('data-bs-theme') === 'dark';
+    if (themeButton) {
+      themeButton.setAttribute('aria-label', dark ? 'Activar tema claro' : 'Activar tema oscuro');
+      themeButton.title = dark ? 'Activar tema claro' : 'Activar tema oscuro';
+    }
+  }
+  themeButton?.addEventListener('click', function () {
+    const next = root.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-bs-theme', next);
+    localStorage.setItem('mar-theme', next);
+    updateButton();
+  });
+  updateButton();
+
+  document.querySelectorAll('[data-password-toggle]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      const input = document.getElementById(button.dataset.passwordToggle);
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      button.textContent = show ? '⊘' : '◉';
+      button.setAttribute('aria-label', show ? 'Ocultar contraseña' : 'Mostrar contraseña');
+    });
+  });
+})();
+</script>

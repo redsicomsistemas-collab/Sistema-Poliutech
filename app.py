@@ -2874,8 +2874,8 @@ def _require_login_everywhere():
     if request.path.startswith("/static/") or request.endpoint == "static":
         return
 
-    # Permitir login y endpoints "públicos" mínimos
-    if request.path == "/login" or request.endpoint == "login":
+    # Permitir autenticación y recuperación de acceso
+    if request.endpoint in {"login", "forgot_password", "reset_password"}:
         return
     if request.path in ("/health", "/ping"):
         return
@@ -5130,7 +5130,8 @@ def login():
             flash("Credenciales inválidas.", "danger")
             return redirect(url_for("login"))
 
-        login_user(u)
+        remember = (request.form.get("remember") or "").lower() in {"1", "true", "on", "yes"}
+        login_user(u, remember=remember)
         # Redirige a la página solicitada originalmente (si viene)
         nxt = request.args.get("next")
         if nxt:
@@ -5143,7 +5144,101 @@ def login():
                 pass
         return redirect(url_for("index"))
 
-    return render_template("login.html", title="Login")
+    return render_template("login.html", title="Iniciar sesión")
+
+
+PASSWORD_RESET_MAX_AGE = 30 * 60
+
+
+def _password_reset_serializer() -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(app.secret_key, salt="mar-password-reset-v1")
+
+
+def _password_reset_token(usuario: Usuario) -> str:
+    # La huella del hash invalida automáticamente el enlace al cambiar la contraseña.
+    payload = {"uid": usuario.id, "pwd": usuario.password_hash[-20:]}
+    return _password_reset_serializer().dumps(payload)
+
+
+def _password_reset_user(token: str) -> Usuario | None:
+    try:
+        payload = _password_reset_serializer().loads(token, max_age=PASSWORD_RESET_MAX_AGE)
+        usuario = db.session.get(Usuario, int(payload.get("uid", 0)))
+        if not usuario or payload.get("pwd") != usuario.password_hash[-20:]:
+            return None
+        return usuario
+    except (BadSignature, SignatureExpired, TypeError, ValueError):
+        return None
+
+
+def _send_password_reset_email(usuario: Usuario, reset_url: str) -> None:
+    msg = EmailMessage()
+    msg["Subject"] = "Restablece tu acceso a Sistema MAR"
+    msg["From"] = f"SISTEMA MAR <{SMTP_FROM or SMTP_USERNAME}>"
+    msg["To"] = usuario.correo
+    msg.set_content(
+        "Recibimos una solicitud para restablecer tu contraseña de Sistema MAR.\n\n"
+        f"Abre este enlace (válido durante 30 minutos):\n{reset_url}\n\n"
+        "Si no hiciste esta solicitud, ignora este mensaje."
+    )
+    msg.add_alternative(
+        f"""
+        <div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#172033">
+          <div style="background:#0c3c78;color:white;padding:22px 26px;border-radius:12px 12px 0 0">
+            <strong style="font-size:20px">Sistema MAR · Poliutech</strong>
+          </div>
+          <div style="padding:28px 26px;border:1px solid #d9e2ec;border-top:0;border-radius:0 0 12px 12px">
+            <h2 style="margin-top:0">Restablece tu contraseña</h2>
+            <p>Hola {escape(usuario.nombre_representante)}, recibimos una solicitud para recuperar tu acceso.</p>
+            <p style="margin:28px 0"><a href="{escape(reset_url)}" style="background:#0c3c78;color:white;text-decoration:none;padding:13px 22px;border-radius:8px;font-weight:bold">Crear nueva contraseña</a></p>
+            <p style="color:#667085;font-size:14px">El enlace vence en 30 minutos y solo puede utilizarse una vez. Si no solicitaste el cambio, ignora este correo.</p>
+          </div>
+        </div>
+        """,
+        subtype="html",
+    )
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
+        smtp.starttls()
+        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+        smtp.send_message(msg)
+
+
+@app.route("/olvide-contrasena", methods=["GET", "POST"])
+def forgot_password():
+    if request.method == "POST":
+        identity = (request.form.get("identity") or "").strip().lower()
+        usuario = Usuario.query.filter(
+            db.or_(db.func.lower(Usuario.correo) == identity, db.func.lower(Usuario.nombre) == identity)
+        ).first()
+        if usuario and (usuario.correo or "").strip():
+            try:
+                reset_url = url_for("reset_password", token=_password_reset_token(usuario), _external=True)
+                _send_password_reset_email(usuario, reset_url)
+            except Exception:
+                logger.exception("No se pudo enviar el correo de recuperación para usuario id=%s", usuario.id)
+        flash("Si los datos coinciden con una cuenta, recibirás un enlace de recuperación en unos minutos.", "success")
+        return redirect(url_for("forgot_password"))
+    return render_template("forgot_password.html", title="Recuperar acceso")
+
+
+@app.route("/restablecer-contrasena/<token>", methods=["GET", "POST"])
+def reset_password(token: str):
+    usuario = _password_reset_user(token)
+    if not usuario:
+        return render_template("reset_password.html", title="Enlace vencido", invalid_token=True), 400
+    if request.method == "POST":
+        password = request.form.get("password") or ""
+        confirmation = request.form.get("password_confirmation") or ""
+        if len(password) < 8:
+            flash("La contraseña debe tener al menos 8 caracteres.", "danger")
+        elif password != confirmation:
+            flash("Las contraseñas no coinciden.", "danger")
+        else:
+            usuario.set_password(password)
+            db.session.commit()
+            flash("Tu contraseña se actualizó. Ya puedes iniciar sesión.", "success")
+            return redirect(url_for("login"))
+    return render_template("reset_password.html", title="Crear nueva contraseña", invalid_token=False, token=token)
 
 @app.route("/logout")
 @login_required

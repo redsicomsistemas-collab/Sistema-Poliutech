@@ -1,32 +1,61 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="container" style="max-width:420px; margin-top:80px;">
-  <div class="card shadow-sm">
-    <div class="card-body">
-      <h4 class="mb-3">Iniciar sesión</h4>
-
-      {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-          {% for category, msg in messages %}
-            <div class="alert alert-{{ 'danger' if category=='danger' else category }} py-2">
-              {{ msg }}
-            </div>
-          {% endfor %}
-        {% endif %}
-      {% endwith %}
-
-      <form method="POST" action="{{ url_for('login') }}">
-        <div class="mb-3">
-          <label class="form-label">Nombre</label>
-          <input type="text" class="form-control" name="nombre" placeholder="Escribe tu usuario" required>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Contraseña</label>
-          <input type="password" class="form-control" name="password" required>
-        </div>
-        <button class="btn btn-primary w-100" type="submit">Entrar</button>
-      </form>
+{% include "_auth_styles.html" %}
+<section class="auth-hero">
+  {% include "_auth_video.html" %}
+  <div class="auth-brand-panel">
+    <div class="auth-brand-copy">
+      <span class="auth-eyebrow">POLIUTECH</span>
+      <h1>Todo tu trabajo.<br>Un solo lugar.</h1>
+      <p>Gestión comercial y operativa para mantener cada proyecto en movimiento.</p>
+      <div class="auth-brand-rule"></div>
+      <span class="auth-season">Sistema M.A.R. · Cuarta Edición 2026</span>
     </div>
   </div>
-</div>
+
+  <div class="auth-form-panel">
+    <button class="auth-theme-toggle" id="authThemeToggle" type="button" aria-label="Cambiar tema" title="Cambiar tema">
+      <span class="theme-light-icon" aria-hidden="true">☀</span>
+      <span class="theme-dark-icon" aria-hidden="true">☾</span>
+    </button>
+
+    <div class="auth-card">
+      <div class="auth-logo-wrap">
+        <img src="{{ url_for('static', filename='logo-light-mark.png', v='2') }}" class="auth-logo auth-logo-light" alt="Poliutech">
+        <img src="{{ url_for('static', filename='logo-dark-mark.png', v='2') }}" class="auth-logo auth-logo-dark" alt="Poliutech">
+      </div>
+      <div class="auth-heading">
+        <span class="auth-kicker">SISTEMA MAR</span>
+        <h2>Bienvenido</h2>
+        <p>Ingresa tus datos para continuar.</p>
+      </div>
+
+      <form method="POST" action="{{ url_for('login', next=request.args.get('next')) }}" class="auth-form">
+        <label for="nombre">Usuario</label>
+        <div class="auth-input-group">
+          <span aria-hidden="true">♙</span>
+          <input id="nombre" type="text" name="nombre" placeholder="Escribe tu usuario" autocomplete="username" autofocus required>
+        </div>
+
+        <div class="auth-label-row">
+          <label for="password">Contraseña</label>
+          <a href="{{ url_for('forgot_password') }}">¿Olvidaste tu contraseña?</a>
+        </div>
+        <div class="auth-input-group">
+          <span aria-hidden="true">⌑</span>
+          <input id="password" type="password" name="password" placeholder="Escribe tu contraseña" autocomplete="current-password" required>
+          <button class="password-toggle" type="button" data-password-toggle="password" aria-label="Mostrar contraseña">◉</button>
+        </div>
+
+        <label class="auth-check">
+          <input type="checkbox" name="remember" value="1">
+          <span>Mantener mi sesión iniciada</span>
+        </label>
+        <button class="auth-submit" type="submit">Entrar al sistema <span aria-hidden="true">→</span></button>
+      </form>
+      <p class="auth-help">¿Necesitas ayuda? Contacta al administrador del sistema.</p>
+    </div>
+  </div>
+</section>
+{% include "_auth_scripts.html" %}
 {% endblock %}
