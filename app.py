@@ -2846,6 +2846,7 @@ def inject_endpoint_helpers():
         "endpoint_exists": endpoint_exists,
         "gastos_admin_can_view": lambda: _gastos_admin_can_view(),
         "estado_cuenta_recursos_can_view": lambda: _estado_cuenta_recursos_can_view(),
+        "evaluacion_departamental_can_view": lambda: _evaluacion_departamental_can_view(),
     }
 
 
@@ -13170,6 +13171,24 @@ def _reportes_diarios_can_view_all() -> bool:
     )
 
 
+def _evaluacion_departamental_can_view() -> bool:
+    """Restringe la evaluacion departamental exclusivamente a Admin y Hansel."""
+    if not getattr(current_user, "is_authenticated", False):
+        return False
+
+    user_id = getattr(current_user, "id", None)
+    email = (getattr(current_user, "correo", "") or "").strip().lower()
+    nombre = (getattr(current_user, "nombre", "") or "").strip().lower()
+    rol = (getattr(current_user, "rol", "") or "").strip().upper()
+    return (
+        rol == "ADMIN"
+        or nombre == "admin"
+        or user_id == 18
+        or email == "hjaramillo@poliutech.com"
+        or nombre in {"hansel", "hjaramillo"}
+    )
+
+
 def _reportes_diarios_query():
     query = ReporteDiario.query
     if not _reportes_diarios_can_view_all():
@@ -13404,7 +13423,7 @@ def _evaluacion_departamentos(reportes: list[ReporteDiario]) -> dict:
 @app.route("/reportes-diarios/evaluacion")
 @login_required
 def reportes_diarios_evaluacion():
-    if not _reportes_diarios_can_view_all():
+    if not _evaluacion_departamental_can_view():
         abort(403)
 
     contexto = _evaluacion_reportes_filtrados()
@@ -13444,7 +13463,7 @@ def reportes_diarios_evaluacion():
 @app.route("/reportes-diarios/evaluacion/export.xlsx")
 @login_required
 def reportes_diarios_evaluacion_export_xlsx():
-    if not _reportes_diarios_can_view_all():
+    if not _evaluacion_departamental_can_view():
         abort(403)
     if Workbook is None:
         abort(501, description="openpyxl no instalado en el servidor.")

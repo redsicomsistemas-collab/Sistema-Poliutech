@@ -675,10 +675,7 @@
 
   {% set show_app_shell = current_user.is_authenticated and request.endpoint != "login" %}
   {% set current_nombre_l = (current_user.nombre or "")|lower if current_user.is_authenticated else "" %}
-  {% set current_visible_l = (current_user.nombre_visible or "")|lower if current_user.is_authenticated else "" %}
-  {% set current_correo_l = (current_user.correo or "")|lower if current_user.is_authenticated else "" %}
-  {% set current_rol_u = (current_user.rol or "")|upper if current_user.is_authenticated else "" %}
-  {% set can_view_eval_departamental = current_user.is_authenticated and (current_rol_u == "ADMIN" or current_nombre_l == "admin" or current_correo_l == "hjaramillo@poliutech.com" or current_nombre_l in ["hjaramillo", "hansel"] or current_nombre_l[:6] == "hansel" or current_visible_l[:6] == "hansel") %}
+  {% set can_view_eval_departamental = evaluacion_departamental_can_view() %}
 
   <!-- ====== Barra superior ====== -->
   {% if show_app_shell %}
