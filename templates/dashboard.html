@@ -670,6 +670,9 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function renderFilteredCharts() {
+    const darkTheme = document.documentElement.getAttribute("data-bs-theme") === "dark";
+    const chartTextColor = darkTheme ? "#dce5f2" : "#5f6368";
+    const chartGridColor = darkTheme ? "rgba(174, 185, 202, 0.18)" : "rgba(0, 0, 0, 0.1)";
     const visibleRows = getVisibleRows();
     const [{ monthly, years }, statusData] = await Promise.all([
       getDashboardMonthlyData(visibleRows),
@@ -718,12 +721,12 @@ document.addEventListener("DOMContentLoaded", () => {
           title: {
             display: true,
             text: activeYear,
-            color: "#444",
+            color: chartTextColor,
             font: { size: 13, weight: "normal" }
           },
           legend: {
             position: "top",
-            labels: { boxWidth: 28, padding: 12 }
+            labels: { boxWidth: 28, padding: 12, color: chartTextColor }
           },
           tooltip: {
             callbacks: {
@@ -738,7 +741,9 @@ document.addEventListener("DOMContentLoaded", () => {
         },
         scales: {
           x: {
+            grid: { color: chartGridColor },
             ticks: {
+              color: chartTextColor,
               autoSkip: false,
               maxRotation: 0,
               minRotation: 0
@@ -746,7 +751,9 @@ document.addEventListener("DOMContentLoaded", () => {
           },
           y: {
             beginAtZero: true,
+            grid: { color: chartGridColor },
             ticks: {
+              color: chartTextColor,
               callback: (value) => `$${moneyCompact.format(value)}`
             }
           },
@@ -754,7 +761,7 @@ document.addEventListener("DOMContentLoaded", () => {
             beginAtZero: true,
             position: "right",
             grid: { drawOnChartArea: false },
-            ticks: { precision: 0 }
+            ticks: { precision: 0, color: chartTextColor }
           }
         }
       }
@@ -773,12 +780,13 @@ document.addEventListener("DOMContentLoaded", () => {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { position: "bottom" } }
+        plugins: { legend: { position: "bottom", labels: { color: chartTextColor } } }
       }
     });
   }
 
   window.refreshDashboardCharts = renderFilteredCharts;
+  window.addEventListener("mar-theme-change", renderFilteredCharts);
 
   function getVisibleRowCheckboxes() {
     return getVisibleRows()
