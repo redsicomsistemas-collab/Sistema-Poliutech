@@ -2,7 +2,7 @@
   body.auth-page { min-height:100%; background:#07192c; overflow:auto; }
   body.auth-page .auth-content { min-height:100vh; padding:0; background:transparent !important; }
   body.auth-page > footer { position:fixed; z-index:5; bottom:0; left:0; right:0; padding:.7rem 1rem !important; border:0 !important; color:rgba(255,255,255,.66) !important; background:rgba(4,16,29,.46); backdrop-filter:blur(10px); }
-  .auth-hero { --card-bg:rgba(255,255,255,.94); --card-text:#172033; --muted:#64748b; --field-bg:#f8fafc; --field-border:#d7e0ea; --focus:#0c3c78; position:relative; min-height:100vh; display:grid; grid-template-columns:minmax(0,1.15fr) minmax(430px,.85fr); overflow:hidden; background:#07192c url("{{ url_for('static', filename='login-roof-hero.png', v='1') }}") center/cover no-repeat; color:white; }
+  .auth-hero { --card-bg:rgba(255,255,255,.94); --card-text:#172033; --muted:#64748b; --field-bg:#f8fafc; --field-border:#d7e0ea; --focus:#0c3c78; position:relative; min-height:100vh; display:grid; grid-template-columns:minmax(0,1.15fr) minmax(430px,.85fr); overflow:hidden; background:#07192c url("{{ url_for('static', filename='login-roof-hero.png', v='2') }}") center/cover no-repeat; color:white; }
   .auth-hero::before { content:""; position:absolute; z-index:1; inset:0; pointer-events:none; background:linear-gradient(90deg,rgba(3,19,34,.18),rgba(4,22,39,.76)); }
   .auth-bg-video { position:absolute; z-index:0; inset:0; width:100%; height:100%; object-fit:cover; object-position:center; pointer-events:none; }
   [data-bs-theme="dark"] .auth-hero { --card-bg:rgba(11,25,43,.94); --card-text:#f2f6fb; --muted:#a8b6c8; --field-bg:#101f34; --field-border:#34465d; --focus:#76b7ff; }
