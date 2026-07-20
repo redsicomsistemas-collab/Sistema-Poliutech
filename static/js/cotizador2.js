@@ -148,6 +148,26 @@ function recalcTotals(){
 }
 
 document.addEventListener("DOMContentLoaded", ()=>{
+  let cotizacionTieneCambios = false;
+  let cotizacionGuardandose = false;
+
+  const frm = document.getElementById("frm-cotizacion");
+  if (frm) {
+    const marcarCambios = () => { cotizacionTieneCambios = true; };
+    frm.addEventListener("input", marcarCambios);
+    frm.addEventListener("change", marcarCambios);
+    frm.addEventListener("click", (event) => {
+      if (event.target.closest("#btn-add-row, .btn-del, .btn-move-up, .btn-move-down, .item-suggest .list-group-item, #btn-voice-apply-web")) {
+        marcarCambios();
+      }
+    });
+  }
+
+  window.addEventListener("beforeunload", (event) => {
+    if (!cotizacionTieneCambios || cotizacionGuardandose) return;
+    event.preventDefault();
+    event.returnValue = "";
+  });
 
   // ============================================================
   // 🔹 AUTOCOMPLETAR CLIENTE (UI superior) — sin RFC
@@ -224,10 +244,10 @@ document.addEventListener("DOMContentLoaded", ()=>{
   // ============================================================
   // 🔹 ENVÍO + ABRIR PDF NUEVA PESTAÑA
   // ============================================================
-  const frm = document.getElementById("frm-cotizacion");
   if (frm) {
     frm.addEventListener("submit", async (e) => {
       e.preventDefault();
+      cotizacionGuardandose = true;
 
       const submitBtn = frm.querySelector('button[type="submit"]');
       if (submitBtn) submitBtn.disabled = true;
@@ -266,11 +286,13 @@ document.addEventListener("DOMContentLoaded", ()=>{
             }, 800);
           });
         } else {
+          cotizacionGuardandose = false;
           if (submitBtn) submitBtn.disabled = false;
           Swal.fire("Error", "No se pudo guardar la cotización.", "error");
           console.warn("Respuesta inesperada:", text);
         }
       } catch (err) {
+        cotizacionGuardandose = false;
         if (submitBtn) submitBtn.disabled = false;
         Swal.close();
         Swal.fire("Error", "No se pudo guardar la cotización.", "error");
