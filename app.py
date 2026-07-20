@@ -99,11 +99,10 @@ def _split_notas_y_zona(notas_raw: str) -> tuple[str, str]:
     zona_line = ""
     for ln in notas_raw.splitlines():
         s = ln.strip()
-        if not s:
-            continue
         if s.lower().startswith("zona:"):
             zona_line = s
         else:
+            # Conserva los renglones vacios intencionales entre condiciones.
             extras.append(s)
     return "\n".join(extras).strip(), zona_line
 
@@ -115,8 +114,7 @@ def _condiciones_comerciales_finales(notas_raw: str) -> list[str]:
     if extras_txt:
         for ln in extras_txt.splitlines():
             s = ln.strip()
-            if s:
-                items.append(s)
+            items.append(s)
     return items
 
 
@@ -9749,7 +9747,12 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
             fontSize=9,
             leftIndent=8,
         )
-        bullets = "<br/>".join([f"• {x}" for x in condiciones if str(x).strip()])
+        # Una condicion vacia representa un renglon en blanco intencional.
+        # Asi, dos Enter en el textarea separan visualmente dos puntos.
+        bullets = "<br/>".join(
+            f"• {escape(str(x))}" if str(x).strip() else ""
+            for x in condiciones
+        )
         elems.append(Paragraph(bullets, nota_style))
         elems.append(Spacer(1, 8))
 
