@@ -1287,5 +1287,57 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 })();
 </script>
+<script>
+(function() {
+  function shouldProtect(form) {
+    if (!(form instanceof HTMLFormElement)) return false;
+    if (form.dataset.unsavedWarning === "off") return false;
+    return (form.getAttribute("method") || "get").toLowerCase() !== "get";
+  }
+
+  function markChanged(form) {
+    if (!shouldProtect(form)) return;
+    form.dataset.unsavedChanges = "true";
+    delete form.dataset.unsavedSubmitting;
+  }
+
+  document.addEventListener("input", function(event) {
+    markChanged(event.target.closest("form"));
+  });
+
+  document.addEventListener("change", function(event) {
+    markChanged(event.target.closest("form"));
+  });
+
+  document.addEventListener("click", function(event) {
+    const control = event.target.closest(
+      ".js-add-row, .js-remove-row, #btn-add-row, .btn-del, .btn-move-up, .btn-move-down"
+    );
+    if (control) markChanged(control.closest("form"));
+  });
+
+  document.addEventListener("submit", function(event) {
+    const form = event.target;
+    if (!shouldProtect(form)) return;
+    form.dataset.unsavedSubmitting = "true";
+  });
+
+  document.addEventListener("mar:save-failed", function(event) {
+    const form = event.target;
+    if (form instanceof HTMLFormElement) delete form.dataset.unsavedSubmitting;
+  });
+
+  window.addEventListener("beforeunload", function(event) {
+    const hasUnsavedChanges = Array.from(document.forms).some((form) =>
+      shouldProtect(form) &&
+      form.dataset.unsavedChanges === "true" &&
+      form.dataset.unsavedSubmitting !== "true"
+    );
+    if (!hasUnsavedChanges) return;
+    event.preventDefault();
+    event.returnValue = "";
+  });
+})();
+</script>
 </body>
 </html>
