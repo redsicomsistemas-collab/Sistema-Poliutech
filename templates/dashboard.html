@@ -314,9 +314,18 @@
             {% endfor %}
           </select>
         </div>
-        <div class="col-xl-3 col-lg-3 col-md-6">
+        <div class="col-xl-2 col-lg-3 col-md-6">
           <label class="form-label small fw-bold text-secondary mb-1">Cliente / Empresa / Proyecto</label>
           <input type="text" id="filtro-cliente" class="form-control form-control-sm" placeholder="Buscar..." value="{{ dashboard_filters.cliente }}">
+        </div>
+        <div class="col-xl-2 col-lg-3 col-md-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Elaboró</label>
+          <select id="filtro-responsable" class="form-select form-select-sm">
+            <option value="">Todos</option>
+            {% for nombre in responsables %}
+            <option value="{{ nombre }}" {% if dashboard_filters.responsable == nombre %}selected{% endif %}>{{ nombre }}</option>
+            {% endfor %}
+          </select>
         </div>
         <div class="col-xl-3 col-12">
           <div class="filter-actions">
@@ -356,6 +365,7 @@
               <th>Empresa</th>
               <th>Especialidad</th>
               <th>Proyecto</th>
+              <th>Elaboró</th>
               <th>Total</th>
               <th>Aprobación</th>
               <th>Seguimiento</th>
@@ -406,6 +416,7 @@
               <td class="cell-empresa">{{ c.cliente.empresa if c.cliente else '' }}</td>
               <td class="cell-especialidad">{{ c.especialidad or '' }}</td>
               <td class="cell-proyecto">{{ c.proyecto or 'Sin proyecto' }}</td>
+              <td>{{ c.responsable or 'Sin asignar' }}</td>
               <td>${{ "{:,.2f}".format(c.total) }}</td>
               <td class="cell-estatus">
                 <select class="status-select" onchange="cambiarEstatusAprobacion({{ c.id }}, this)">
@@ -460,19 +471,19 @@
         <nav aria-label="Paginacion de cotizaciones">
           <ul class="pagination pagination-sm mb-0">
             <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
-              <a class="page-link" href="{{ url_for('index', page=pagination.prev_num, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente) if pagination.has_prev else '#' }}">Anterior</a>
+              <a class="page-link" href="{{ url_for('index', page=pagination.prev_num, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente, responsable=dashboard_filters.responsable) if pagination.has_prev else '#' }}">Anterior</a>
             </li>
             {% for p in pagination.iter_pages(left_edge=1, left_current=1, right_current=2, right_edge=1) %}
               {% if p %}
               <li class="page-item {% if p == pagination.page %}active{% endif %}">
-                <a class="page-link" href="{{ url_for('index', page=p, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente) }}">{{ p }}</a>
+                <a class="page-link" href="{{ url_for('index', page=p, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente, responsable=dashboard_filters.responsable) }}">{{ p }}</a>
               </li>
               {% else %}
               <li class="page-item disabled"><span class="page-link">...</span></li>
               {% endif %}
             {% endfor %}
             <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
-              <a class="page-link" href="{{ url_for('index', page=pagination.next_num, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente) if pagination.has_next else '#' }}">Siguiente</a>
+              <a class="page-link" href="{{ url_for('index', page=pagination.next_num, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente, responsable=dashboard_filters.responsable) if pagination.has_next else '#' }}">Siguiente</a>
             </li>
           </ul>
         </nav>
@@ -494,6 +505,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const hasta = document.getElementById("filtro-hasta");
   const estatus = document.getElementById("filtro-estatus");
   const cliente = document.getElementById("filtro-cliente");
+  const responsable = document.getElementById("filtro-responsable");
   const limpiar = document.getElementById("btn-limpiar-filtros");
   const exportarExcel = document.getElementById("btn-exportar-excel");
   const exportarSeguimientosPdf = document.getElementById("btn-exportar-seguimientos-pdf");
@@ -534,6 +546,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (hasta?.value) params.set("hasta", hasta.value);
     if (estatus?.value) params.set("estatus", estatus.value);
     if (cliente?.value.trim()) params.set("cliente", cliente.value.trim());
+    if (responsable?.value) params.set("responsable", responsable.value);
     return params;
   }
 
@@ -952,6 +965,7 @@ document.addEventListener("DOMContentLoaded", () => {
             hasta: (hasta?.value || ""),
             estatus: (estatus?.value || ""),
             cliente: (cliente?.value || ""),
+            responsable: (responsable?.value || ""),
           }
         }),
       });
@@ -991,7 +1005,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   let clienteFilterTimer = null;
-  [desde, hasta, estatus].forEach((el) => {
+  [desde, hasta, estatus, responsable].forEach((el) => {
     el?.addEventListener("change", aplicarFiltrosDashboard);
   });
   cliente?.addEventListener("input", () => {

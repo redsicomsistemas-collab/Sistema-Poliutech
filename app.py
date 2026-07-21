@@ -3905,6 +3905,7 @@ def _build_dashboard_cotizaciones_query(
     hasta: str = "",
     estatus: str = "",
     cliente: str = "",
+    responsable: str = "",
 ):
     q = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
     q = q.filter(Cotizacion.eliminada_en.is_(None))
@@ -3928,6 +3929,13 @@ def _build_dashboard_cotizaciones_query(
 
     if estatus:
         q = q.filter(Cotizacion.estatus == estatus)
+
+    responsable = (responsable or "").strip()
+    if responsable:
+        q = q.filter(
+            db.func.lower(db.func.trim(db.func.coalesce(Cotizacion.responsable, "")))
+            == responsable.lower()
+        )
 
     cliente = (cliente or "").strip().lower()
     if cliente:
@@ -5257,11 +5265,13 @@ def index():
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
+    responsable = (request.args.get("responsable") or "").strip()
     dashboard_filters = {
         "desde": desde,
         "hasta": hasta,
         "estatus": estatus,
         "cliente": cliente,
+        "responsable": responsable,
     }
 
     try:
@@ -5270,10 +5280,11 @@ def index():
             hasta=hasta,
             estatus=estatus,
             cliente=cliente,
+            responsable=responsable,
         )
     except ValueError:
         base_query = _build_dashboard_cotizaciones_query()
-        dashboard_filters = {"desde": "", "hasta": "", "estatus": "", "cliente": ""}
+        dashboard_filters = {"desde": "", "hasta": "", "estatus": "", "cliente": "", "responsable": ""}
 
     total_cotizaciones = base_query.count()
     total_importe = (
@@ -5286,6 +5297,18 @@ def index():
     cotizaciones = pagination.items
 
     total_catalogo = Concepto.query.count()
+    responsables = [
+        row[0]
+        for row in (
+            _cotizaciones_base_query()
+            .with_entities(Cotizacion.responsable)
+            .filter(Cotizacion.responsable.isnot(None))
+            .filter(db.func.trim(Cotizacion.responsable) != "")
+            .distinct()
+            .order_by(Cotizacion.responsable)
+            .all()
+        )
+    ]
 
     return render_template(
         "dashboard.html",
@@ -5296,6 +5319,7 @@ def index():
         cotizaciones=cotizaciones,
         pagination=pagination,
         dashboard_filters=dashboard_filters,
+        responsables=responsables,
         valid_estatus=VALID_ESTATUS_SEGUIMIENTO,
         valid_estatus_aprobacion=VALID_ESTATUS_APROBACION,
         show_splash=True
@@ -7831,6 +7855,7 @@ def bulk_eliminar_filtradas():
     hasta_s = (filters.get("hasta") or "").strip()
     estatus_s = (filters.get("estatus") or "").strip()
     cliente_s = (filters.get("cliente") or "").strip().lower()
+    responsable_s = (filters.get("responsable") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -7838,6 +7863,7 @@ def bulk_eliminar_filtradas():
             hasta=hasta_s,
             estatus=estatus_s,
             cliente=cliente_s,
+            responsable=responsable_s,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -9168,6 +9194,7 @@ def export_dashboard_cotizaciones_xlsx():
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
+    responsable = (request.args.get("responsable") or "").strip()
 
     try:
         cotizaciones = (_build_dashboard_cotizaciones_query(
@@ -9175,6 +9202,7 @@ def export_dashboard_cotizaciones_xlsx():
             hasta=hasta,
             estatus=estatus,
             cliente=cliente,
+            responsable=responsable,
         ).order_by(Cotizacion.fecha.desc()).all())
     except ValueError as exc:
         abort(400, description=str(exc))
@@ -9205,6 +9233,8 @@ def export_dashboard_cotizaciones_xlsx():
         filtros_texto.append(f"Estatus: {estatus}")
     if cliente:
         filtros_texto.append(f"Cliente/Empresa: {cliente}")
+    if responsable:
+        filtros_texto.append(f"Elaboró: {responsable}")
     if not filtros_texto:
         filtros_texto.append("Sin filtros")
 
@@ -9292,6 +9322,7 @@ def export_dashboard_followups_pdf():
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
+    responsable = (request.args.get("responsable") or "").strip()
 
     try:
         cotizaciones = (
@@ -9300,6 +9331,7 @@ def export_dashboard_followups_pdf():
                 hasta=hasta,
                 estatus=estatus,
                 cliente=cliente,
+                responsable=responsable,
             )
             .order_by(Cotizacion.fecha.desc())
             .all()
@@ -9370,6 +9402,8 @@ def export_dashboard_followups_pdf():
         filtros_texto.append(f"Estatus: {estatus}")
     if cliente:
         filtros_texto.append(f"Cliente/Empresa: {cliente}")
+    if responsable:
+        filtros_texto.append(f"Elaboró: {responsable}")
     if not filtros_texto:
         filtros_texto.append("Sin filtros")
 
@@ -9463,6 +9497,7 @@ def api_dashboard_filter_summary():
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
+    responsable = (request.args.get("responsable") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -9470,6 +9505,7 @@ def api_dashboard_filter_summary():
             hasta=hasta,
             estatus=estatus,
             cliente=cliente,
+            responsable=responsable,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -9864,6 +9900,7 @@ def api_dashboard_metrics():
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
+    responsable = (request.args.get("responsable") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -9871,6 +9908,7 @@ def api_dashboard_metrics():
             hasta=hasta,
             estatus=estatus,
             cliente=cliente,
+            responsable=responsable,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -9905,6 +9943,7 @@ def api_dashboard_status_breakdown():
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
+    responsable = (request.args.get("responsable") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -9912,6 +9951,7 @@ def api_dashboard_status_breakdown():
             hasta=hasta,
             estatus=estatus,
             cliente=cliente,
+            responsable=responsable,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
