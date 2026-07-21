@@ -9785,10 +9785,16 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
         )
         # Una condicion vacia representa un renglon en blanco intencional.
         # Asi, dos Enter en el textarea separan visualmente dos puntos.
-        bullets = "<br/>".join(
-            f"• {escape(str(x))}" if str(x).strip() else ""
-            for x in condiciones
-        )
+        def _linea_condicion_pdf(value: object) -> str:
+            texto = str(value).strip()
+            if not texto:
+                return ""
+            texto_normalizado = _normalize_text_for_match(texto).rstrip(":").strip()
+            if texto_normalizado == "clausulas":
+                return escape(texto)
+            return f"• {escape(texto)}"
+
+        bullets = "<br/>".join(_linea_condicion_pdf(x) for x in condiciones)
         elems.append(Paragraph(bullets, nota_style))
         elems.append(Spacer(1, 8))
 
