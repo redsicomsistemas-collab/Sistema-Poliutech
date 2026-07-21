@@ -13,21 +13,24 @@
 </div>
 
 <div class="card shadow-sm border-0 mb-4">
-  <div class="card-header bg-primary text-white fw-bold">Formato de reporte diario de actividades</div>
+  <div class="card-header bg-primary text-white fw-bold">
+    {% if borrador_edicion %}Editar borrador {{ borrador_edicion.folio }}{% else %}Formato de reporte diario de actividades{% endif %}
+  </div>
   <div class="card-body">
     <form method="post" action="{{ url_for('reporte_diario_crear') }}" id="reporte-diario-form">
+      <input type="hidden" name="reporte_id" id="reporte-diario-id" value="{{ borrador_edicion.id if borrador_edicion else '' }}">
       <div class="row g-3">
         <div class="col-md-4">
           <label class="form-label">Colaborador</label>
-          <input name="colaborador" class="form-control" value="{{ responsable_default }}" required>
+          <input name="colaborador" class="form-control" value="{{ borrador_edicion.colaborador if borrador_edicion else responsable_default }}" required>
         </div>
         <div class="col-md-4">
           <label class="form-label">Puesto</label>
-          <input name="puesto" class="form-control">
+          <input name="puesto" class="form-control" value="{{ borrador_edicion.puesto or '' if borrador_edicion else '' }}">
         </div>
         <div class="col-md-4">
           <label class="form-label">Fecha</label>
-          <input type="date" name="fecha" class="form-control" value="{{ fecha_hoy }}" required>
+          <input type="date" name="fecha" class="form-control" value="{{ borrador_edicion.fecha.strftime('%Y-%m-%d') if borrador_edicion and borrador_edicion.fecha else fecha_hoy }}" required>
         </div>
       </div>
 
@@ -45,18 +48,20 @@
             </tr>
           </thead>
           <tbody>
-            {% for i in range(1, 6) %}
+            {% set actividad_count = [5, borrador_payload.actividades|length]|max %}
+            {% for i in range(actividad_count) %}
+            {% set actividad = borrador_payload.actividades[i] if i < borrador_payload.actividades|length else {} %}
             <tr>
-              <td class="fw-bold text-center js-index">{{ i }}</td>
-              <td><input name="actividad[]" class="form-control form-control-sm"></td>
+              <td class="fw-bold text-center js-index">{{ i + 1 }}</td>
+              <td><input name="actividad[]" class="form-control form-control-sm" value="{{ actividad.get('actividad', '') }}"></td>
               <td>
                 <select name="actividad_estatus[]" class="form-select form-select-sm">
                   {% for item in actividad_estatus_options %}
-                  <option value="{{ item }}">{{ item }}</option>
+                  <option value="{{ item }}" {% if actividad.get('estatus') == item %}selected{% endif %}>{{ item }}</option>
                   {% endfor %}
                 </select>
               </td>
-              <td><input type="number" min="0" max="100" step="1" name="actividad_avance[]" class="form-control form-control-sm"></td>
+              <td><input type="number" min="0" max="100" step="1" name="actividad_avance[]" class="form-control form-control-sm" value="{{ actividad.get('avance', '') }}"></td>
               <td><button type="button" class="btn btn-sm btn-outline-danger js-remove-row">Quitar</button></td>
             </tr>
             {% endfor %}
@@ -69,14 +74,15 @@
       <h5 class="fw-bold text-primary">2. Los 3 puntos mas importantes del dia</h5>
       <div class="row g-3">
         {% for i in range(1, 4) %}
+        {% set punto = borrador_payload.puntos[i - 1] if i - 1 < borrador_payload.puntos|length else {} %}
         <div class="col-lg-4">
           <div class="border rounded p-3 h-100">
             <label class="form-label fw-bold">Prioridad {{ i }}</label>
-            <textarea name="punto_prioridad[]" class="form-control mb-2" rows="2"></textarea>
+            <textarea name="punto_prioridad[]" class="form-control mb-2" rows="2">{{ punto.get('prioridad', '') }}</textarea>
             <label class="form-label">Resultado obtenido</label>
-            <textarea name="punto_resultado[]" class="form-control mb-2" rows="2"></textarea>
+            <textarea name="punto_resultado[]" class="form-control mb-2" rows="2">{{ punto.get('resultado', '') }}</textarea>
             <label class="form-label">Impacto para Poliutech</label>
-            <textarea name="punto_impacto[]" class="form-control" rows="2"></textarea>
+            <textarea name="punto_impacto[]" class="form-control" rows="2">{{ punto.get('impacto', '') }}</textarea>
           </div>
         </div>
         {% endfor %}
@@ -91,10 +97,11 @@
           </thead>
           <tbody>
             {% for i in range(1, 4) %}
+            {% set prioridad = borrador_payload.prioridades[i - 1] if i - 1 < borrador_payload.prioridades|length else {} %}
             <tr>
               <td class="fw-bold text-center">{{ i }}</td>
-              <td><input name="prioridad_actividad[]" class="form-control form-control-sm"></td>
-              <td><input name="prioridad_objetivo[]" class="form-control form-control-sm"></td>
+              <td><input name="prioridad_actividad[]" class="form-control form-control-sm" value="{{ prioridad.get('actividad', '') }}"></td>
+              <td><input name="prioridad_objetivo[]" class="form-control form-control-sm" value="{{ prioridad.get('objetivo', '') }}"></td>
             </tr>
             {% endfor %}
           </tbody>
@@ -109,7 +116,7 @@
           <select name="cumplimiento" class="form-select mb-3" required>
             <option value="">Seleccionar</option>
             {% for item in cumplimiento_options %}
-            <option value="{{ item }}">{{ item }}</option>
+            <option value="{{ item }}" {% if borrador_edicion and borrador_edicion.cumplimiento == item %}selected{% endif %}>{{ item }}</option>
             {% endfor %}
           </select>
           <div class="table-responsive">
@@ -117,9 +124,10 @@
               <thead class="table-light"><tr><th>Tipo</th><th style="width:120px;">Horas</th></tr></thead>
               <tbody>
                 {% for tipo in ["Actividades productivas", "Reuniones", "Seguimiento a clientes", "Administracion", "Traslados", "Otros"] %}
+                {% set tiempo = borrador_payload.tiempos[loop.index0] if loop.index0 < borrador_payload.tiempos|length else {} %}
                 <tr>
-                  <td><input name="tiempo_tipo[]" class="form-control form-control-sm" value="{{ tipo }}"></td>
-                  <td><input type="number" min="0" step="0.25" name="tiempo_horas[]" class="form-control form-control-sm"></td>
+                  <td><input name="tiempo_tipo[]" class="form-control form-control-sm" value="{{ tiempo.get('tipo', tipo) }}"></td>
+                  <td><input type="number" min="0" step="0.25" name="tiempo_horas[]" class="form-control form-control-sm" value="{{ tiempo.get('horas', '') }}"></td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -132,12 +140,16 @@
             <table class="table table-sm align-middle" id="riesgos-table">
               <thead class="table-light"><tr><th>Situacion</th><th>Impacto</th><th>Apoyo requerido</th><th style="width:90px;"></th></tr></thead>
               <tbody>
+                {% set riesgo_count = [1, borrador_payload.riesgos|length]|max %}
+                {% for i in range(riesgo_count) %}
+                {% set riesgo = borrador_payload.riesgos[i] if i < borrador_payload.riesgos|length else {} %}
                 <tr>
-                  <td><input name="riesgo_situacion[]" class="form-control form-control-sm"></td>
-                  <td><input name="riesgo_impacto[]" class="form-control form-control-sm"></td>
-                  <td><input name="riesgo_apoyo[]" class="form-control form-control-sm"></td>
+                  <td><input name="riesgo_situacion[]" class="form-control form-control-sm" value="{{ riesgo.get('situacion', '') }}"></td>
+                  <td><input name="riesgo_impacto[]" class="form-control form-control-sm" value="{{ riesgo.get('impacto', '') }}"></td>
+                  <td><input name="riesgo_apoyo[]" class="form-control form-control-sm" value="{{ riesgo.get('apoyo', '') }}"></td>
                   <td><button type="button" class="btn btn-sm btn-outline-danger js-remove-row">Quitar</button></td>
                 </tr>
+                {% endfor %}
               </tbody>
             </table>
           </div>
@@ -149,23 +161,26 @@
       <div class="row g-3">
         <div class="col-lg-6">
           <label class="form-label fw-bold">6. Decisiones o apoyo requerido de direccion</label>
-          <textarea name="apoyo_direccion" class="form-control" rows="4"></textarea>
+          <textarea name="apoyo_direccion" class="form-control" rows="4">{{ borrador_edicion.apoyo_direccion or '' if borrador_edicion else '' }}</textarea>
         </div>
         <div class="col-lg-6">
           <label class="form-label fw-bold">7. Observaciones</label>
-          <textarea name="observaciones" class="form-control" rows="4"></textarea>
+          <textarea name="observaciones" class="form-control" rows="4">{{ borrador_edicion.observaciones or '' if borrador_edicion else '' }}</textarea>
         </div>
         <div class="col-lg-6">
           <label class="form-label fw-bold">Semaforo del dia</label>
           <select name="semaforo" class="form-select" required>
             {% for item in semaforo_options %}
-            <option value="{{ item }}">{{ item }}</option>
+            <option value="{{ item }}" {% if borrador_edicion and borrador_edicion.semaforo == item %}selected{% endif %}>{{ item }}</option>
             {% endfor %}
           </select>
         </div>
       </div>
 
       <div class="d-flex justify-content-end gap-2 mt-4">
+        {% if borrador_edicion %}
+        <a class="btn btn-outline-secondary btn-lg" href="{{ url_for('reportes_diarios_index') }}">Cancelar edición</a>
+        {% endif %}
         <button type="button" class="btn btn-outline-primary btn-lg" id="guardar-reporte-diario">
           Guardar
         </button>
@@ -203,6 +218,28 @@
 </div>
 
 <div class="row g-3 mb-4">
+  <div class="col-lg-4">
+    <div class="border rounded h-100 bg-light">
+      <div class="p-3 border-bottom bg-warning-subtle d-flex justify-content-between align-items-center">
+        <span class="fw-bold">GUARDADOS / NO ENVIADOS</span>
+        <span class="badge bg-warning text-dark">{{ borradores|length }}</span>
+      </div>
+      <div class="p-2">
+        {% for reporte in borradores %}
+        <div class="bg-white border rounded p-3 mb-2">
+          <div class="fw-bold">{{ reporte.folio }}</div>
+          <div>{{ reporte.colaborador }}</div>
+          <div class="small text-muted mb-2">{{ reporte.fecha.strftime("%d/%m/%Y") if reporte.fecha else "" }} · Borrador</div>
+          {% if reporte.usuario_id == current_user.id %}
+          <a class="btn btn-sm btn-warning" href="{{ url_for('reportes_diarios_index', editar=reporte.id) }}#reporte-diario-form">Editar</a>
+          {% endif %}
+        </div>
+        {% else %}
+        <div class="text-muted small p-3">No hay borradores guardados.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
   {% for status, items in kanban.items() %}
   <div class="col-lg-4">
     <div class="border rounded h-100 bg-light">
@@ -264,6 +301,7 @@
       });
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.message || "No se pudo guardar el reporte.");
+      document.getElementById("reporte-diario-id").value = result.reporte_id;
       saveButton.textContent = "Guardado";
       window.setTimeout(() => { saveButton.textContent = originalText; }, 1800);
     } catch (error) {
