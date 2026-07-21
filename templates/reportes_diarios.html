@@ -166,7 +166,9 @@
       </div>
 
       <div class="d-flex justify-content-end mt-4">
-        <button class="btn btn-success btn-lg">Enviar reporte diario</button>
+        <button type="submit" class="btn btn-success btn-lg" id="enviar-reporte-diario">
+          Guardar y enviar reporte diario
+        </button>
       </div>
     </form>
   </div>
@@ -223,6 +225,15 @@
 
 <script>
 (function() {
+  const form = document.getElementById("reporte-diario-form");
+  const submitButton = document.getElementById("enviar-reporte-diario");
+
+  form?.addEventListener("submit", () => {
+    if (!form.checkValidity()) return;
+    submitButton.disabled = true;
+    submitButton.textContent = "Guardando y enviando...";
+  });
+
   function renumber(table) {
     table.querySelectorAll("tbody tr").forEach((row, index) => {
       const cell = row.querySelector(".js-index");
