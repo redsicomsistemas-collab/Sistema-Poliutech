@@ -13713,13 +13713,27 @@ def reportes_diarios_index():
         query = query.filter(ReporteDiario.fecha >= start, ReporteDiario.fecha < end)
 
     reportes = query.order_by(ReporteDiario.fecha.desc(), ReporteDiario.hora_envio.desc(), ReporteDiario.id.desc()).all()
+    borradores = [reporte for reporte in reportes if reporte.estatus == "BORRADOR"]
+    reportes_enviados = [reporte for reporte in reportes if reporte.estatus != "BORRADOR"]
     kanban = {status: [] for status in REPORTE_DIARIO_SEMAFORO}
-    for reporte in reportes:
+    for reporte in reportes_enviados:
         kanban.setdefault(reporte.semaforo or "SIN INCIDENCIAS", []).append(reporte)
+
+    editar_id = request.args.get("editar", type=int)
+    borrador_edicion = None
+    borrador_payload = {"actividades": [], "puntos": [], "prioridades": [], "tiempos": [], "riesgos": []}
+    if editar_id:
+        borrador_edicion = ReporteDiario.query.filter(
+            ReporteDiario.id == editar_id,
+            ReporteDiario.usuario_id == getattr(current_user, "id", None),
+            ReporteDiario.estatus == "BORRADOR",
+        ).first_or_404()
+        borrador_payload = _reporte_diario_payload(borrador_edicion)
 
     hoy = now_cdmx_naive().replace(hour=0, minute=0, second=0, microsecond=0)
     ya_envio_hoy = ReporteDiario.query.filter(
         ReporteDiario.usuario_id == getattr(current_user, "id", None),
+        ReporteDiario.estatus == "ENVIADO",
         ReporteDiario.fecha >= hoy,
         ReporteDiario.fecha < hoy + timedelta(days=1),
     ).first()
@@ -13728,6 +13742,7 @@ def reportes_diarios_index():
         "reportes_diarios.html",
         title="Reportes diarios",
         reportes=reportes,
+        borradores=borradores,
         kanban=kanban,
         q=q,
         semaforo=semaforo,
@@ -13738,6 +13753,8 @@ def reportes_diarios_index():
         fecha_hoy=now_cdmx_naive().strftime("%Y-%m-%d"),
         responsable_default=responsable_actual() or "",
         ya_envio_hoy=ya_envio_hoy,
+        borrador_edicion=borrador_edicion,
+        borrador_payload=borrador_payload,
         can_view_all=_reportes_diarios_can_view_all(),
     )
 
@@ -13747,6 +13764,7 @@ def reportes_diarios_index():
 def reporte_diario_crear():
     accion = (request.form.get("accion") or "enviar").strip().lower()
     guardar_borrador = accion == "guardar"
+    reporte_id = request.form.get("reporte_id", type=int)
     reporte = _reporte_diario_from_form(request.form)
     if not reporte.colaborador:
         message = "Captura el colaborador del reporte."
@@ -13762,11 +13780,18 @@ def reporte_diario_crear():
         return redirect(url_for("reportes_diarios_index"))
 
     start = reporte.fecha.replace(hour=0, minute=0, second=0, microsecond=0)
-    existing = ReporteDiario.query.filter(
-        ReporteDiario.usuario_id == getattr(current_user, "id", None),
-        ReporteDiario.fecha >= start,
-        ReporteDiario.fecha < start + timedelta(days=1),
-    ).first()
+    if reporte_id:
+        existing = ReporteDiario.query.filter(
+            ReporteDiario.id == reporte_id,
+            ReporteDiario.usuario_id == getattr(current_user, "id", None),
+            ReporteDiario.estatus == "BORRADOR",
+        ).first_or_404()
+    else:
+        existing = ReporteDiario.query.filter(
+            ReporteDiario.usuario_id == getattr(current_user, "id", None),
+            ReporteDiario.fecha >= start,
+            ReporteDiario.fecha < start + timedelta(days=1),
+        ).first()
     if existing:
         if existing.estatus == "ENVIADO":
             message = f"El reporte {existing.folio} de esa fecha ya fue enviado."
