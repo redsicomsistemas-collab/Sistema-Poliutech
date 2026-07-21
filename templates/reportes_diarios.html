@@ -165,9 +165,12 @@
         </div>
       </div>
 
-      <div class="d-flex justify-content-end mt-4">
-        <button type="submit" class="btn btn-success btn-lg" id="enviar-reporte-diario">
-          Guardar y enviar reporte diario
+      <div class="d-flex justify-content-end gap-2 mt-4">
+        <button type="button" class="btn btn-outline-primary btn-lg" id="guardar-reporte-diario">
+          Guardar
+        </button>
+        <button type="submit" name="accion" value="enviar" class="btn btn-success btn-lg" id="enviar-reporte-diario">
+          Enviar
         </button>
       </div>
     </form>
@@ -226,12 +229,50 @@
 <script>
 (function() {
   const form = document.getElementById("reporte-diario-form");
+  const saveButton = document.getElementById("guardar-reporte-diario");
   const submitButton = document.getElementById("enviar-reporte-diario");
 
   form?.addEventListener("submit", () => {
     if (!form.checkValidity()) return;
     submitButton.disabled = true;
-    submitButton.textContent = "Guardando y enviando...";
+    saveButton.disabled = true;
+    submitButton.textContent = "Enviando...";
+  });
+
+  saveButton?.addEventListener("click", async () => {
+    const collaborator = form.elements.namedItem("colaborador");
+    const date = form.elements.namedItem("fecha");
+    if (!collaborator.value.trim() || !date.value) {
+      collaborator.required = true;
+      date.required = true;
+      form.reportValidity();
+      return;
+    }
+
+    saveButton.disabled = true;
+    submitButton.disabled = true;
+    const originalText = saveButton.textContent;
+    saveButton.textContent = "Guardando...";
+    const data = new FormData(form);
+    data.set("accion", "guardar");
+
+    try {
+      const response = await fetch(form.action, {
+        method: "POST",
+        body: data,
+        headers: { "Accept": "application/json" },
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.message || "No se pudo guardar el reporte.");
+      saveButton.textContent = "Guardado";
+      window.setTimeout(() => { saveButton.textContent = originalText; }, 1800);
+    } catch (error) {
+      saveButton.textContent = originalText;
+      window.alert(error.message || "No se pudo guardar el reporte.");
+    } finally {
+      saveButton.disabled = false;
+      submitButton.disabled = false;
+    }
   });
 
   function renumber(table) {

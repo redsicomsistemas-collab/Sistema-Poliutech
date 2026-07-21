@@ -13745,12 +13745,20 @@ def reportes_diarios_index():
 @app.route("/reportes-diarios/crear", methods=["POST"])
 @login_required
 def reporte_diario_crear():
+    accion = (request.form.get("accion") or "enviar").strip().lower()
+    guardar_borrador = accion == "guardar"
     reporte = _reporte_diario_from_form(request.form)
     if not reporte.colaborador:
-        flash("Captura el colaborador del reporte.", "warning")
+        message = "Captura el colaborador del reporte."
+        if request.accept_mimetypes.best == "application/json":
+            return jsonify({"ok": False, "message": message}), 400
+        flash(message, "warning")
         return redirect(url_for("reportes_diarios_index"))
-    if not _json_loads_list(reporte.actividades_json):
-        flash("Agrega al menos una actividad realizada.", "warning")
+    if not guardar_borrador and not _json_loads_list(reporte.actividades_json):
+        message = "Agrega al menos una actividad realizada."
+        if request.accept_mimetypes.best == "application/json":
+            return jsonify({"ok": False, "message": message}), 400
+        flash(message, "warning")
         return redirect(url_for("reportes_diarios_index"))
 
     start = reporte.fecha.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -13760,11 +13768,34 @@ def reporte_diario_crear():
         ReporteDiario.fecha < start + timedelta(days=1),
     ).first()
     if existing:
-        flash(f"Ya existe un reporte diario para esa fecha: {existing.folio}.", "warning")
-        return redirect(url_for("reporte_diario_detalle", reporte_id=existing.id))
+        if existing.estatus == "ENVIADO":
+            message = f"El reporte {existing.folio} de esa fecha ya fue enviado."
+            if request.accept_mimetypes.best == "application/json":
+                return jsonify({"ok": False, "message": message}), 409
+            flash(message, "warning")
+            return redirect(url_for("reporte_diario_detalle", reporte_id=existing.id))
+        for field in (
+            "colaborador", "puesto", "fecha", "cumplimiento", "semaforo",
+            "actividades_json", "puntos_importantes_json", "prioridades_siguientes_json",
+            "tiempos_json", "problemas_riesgos_json", "apoyo_direccion", "observaciones",
+        ):
+            setattr(existing, field, getattr(reporte, field))
+        reporte = existing
+    else:
+        db.session.add(reporte)
 
-    db.session.add(reporte)
+    reporte.estatus = "BORRADOR" if guardar_borrador else "ENVIADO"
+    if not guardar_borrador:
+        reporte.hora_envio = now_cdmx_naive()
     db.session.commit()
+
+    if guardar_borrador:
+        message = f"Borrador {reporte.folio} guardado correctamente."
+        if request.accept_mimetypes.best == "application/json":
+            return jsonify({"ok": True, "message": message, "reporte_id": reporte.id})
+        flash(message, "success")
+        return redirect(url_for("reportes_diarios_index"))
+
     _notify_reporte_diario_created(reporte)
     flash(f"Reporte {reporte.folio} enviado correctamente.", "success")
     return redirect(url_for("reporte_diario_detalle", reporte_id=reporte.id))
