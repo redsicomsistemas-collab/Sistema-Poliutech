@@ -12564,6 +12564,7 @@ def gastos_viaticos_crear():
     fechas = f.getlist("fecha_comprobante[]") or [f.get("fecha_comprobante")]
     subtotales = f.getlist("subtotal[]") or [f.get("subtotal")]
     ivas = f.getlist("iva[]") or [f.get("iva")]
+    iva_capturado = "iva[]" in f or "iva" in f
     totales = f.getlist("total[]") or [f.get("total")]
     monedas = f.getlist("moneda[]") or [f.get("moneda")]
     metodos_pago = f.getlist("metodo_pago[]") or [f.get("metodo_pago")]
@@ -12593,7 +12594,9 @@ def gastos_viaticos_crear():
         concepto = (conceptos[idx] if idx < len(conceptos) else "").strip()
         subtotal = fmt(parse_float(subtotales[idx] if idx < len(subtotales) else 0, 0))
         iva = fmt(parse_float(ivas[idx] if idx < len(ivas) else 0, 0))
-        if subtotal > 0 and iva <= 0:
+        # Conserva compatibilidad con clientes antiguos que no envian IVA. Si el
+        # campo si fue enviado, vacio o cero significan expresamente "sin IVA".
+        if subtotal > 0 and not iva_capturado:
             iva = fmt(subtotal * 0.16)
         total = fmt(parse_float(totales[idx] if idx < len(totales) else 0, 0))
         if total <= 0 and (subtotal > 0 or iva > 0):

@@ -91,7 +91,7 @@
       </div>
       <div class="col-md-2">
         <label class="form-label">IVA</label>
-        <input type="number" step="any" min="0" name="iva[]" class="form-control js-iva" readonly>
+        <input type="number" step="any" min="0" name="iva[]" class="form-control js-iva" placeholder="0.00">
       </div>
       <div class="col-md-2">
         <label class="form-label">Total</label>
@@ -162,16 +162,23 @@
   const ivaEl = form.querySelector(".js-iva");
   const totalEl = form.querySelector(".js-total");
   const parseMoney = value => Number(String(value || "").replace(/[$,]/g, "")) || 0;
-  const updateTotal = () => {
+  let ivaEditado = false;
+  const updateTotal = (calcularIva = false) => {
     const subtotal = parseMoney(subtotalEl?.value);
-    const iva = subtotal * 0.16;
-    if (ivaEl) ivaEl.value = subtotal ? iva.toFixed(2) : "";
+    if (calcularIva && !ivaEditado && ivaEl) {
+      ivaEl.value = subtotal ? (subtotal * 0.16).toFixed(2) : "";
+    }
+    const iva = parseMoney(ivaEl?.value);
     if (!totalEl) return;
     const total = subtotal + iva;
     totalEl.value = total ? total.toFixed(2) : "";
   };
-  subtotalEl?.addEventListener("input", updateTotal);
-  form.addEventListener("submit", updateTotal);
+  subtotalEl?.addEventListener("input", () => updateTotal(true));
+  ivaEl?.addEventListener("input", () => {
+    ivaEditado = true;
+    updateTotal();
+  });
+  form.addEventListener("submit", () => updateTotal());
 })();
 </script>
 {% endblock %}
