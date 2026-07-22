@@ -3909,6 +3909,7 @@ def _build_dashboard_cotizaciones_query(
     hasta: str = "",
     estatus: str = "",
     cliente: str = "",
+    especialidad: str = "",
 ):
     q = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
     q = q.filter(Cotizacion.eliminada_en.is_(None))
@@ -3932,6 +3933,12 @@ def _build_dashboard_cotizaciones_query(
 
     if estatus:
         q = q.filter(Cotizacion.estatus == estatus)
+
+    especialidad = (especialidad or "").strip().lower()
+    if especialidad:
+        q = q.filter(
+            db.func.lower(db.func.coalesce(Cotizacion.especialidad, "")).like(f"%{especialidad}%")
+        )
 
     cliente = (cliente or "").strip().lower()
     if cliente:
@@ -5261,11 +5268,13 @@ def index():
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
+    especialidad = (request.args.get("especialidad") or "").strip()
     dashboard_filters = {
         "desde": desde,
         "hasta": hasta,
         "estatus": estatus,
         "cliente": cliente,
+        "especialidad": especialidad,
     }
 
     try:
@@ -5274,10 +5283,11 @@ def index():
             hasta=hasta,
             estatus=estatus,
             cliente=cliente,
+            especialidad=especialidad,
         )
     except ValueError:
         base_query = _build_dashboard_cotizaciones_query()
-        dashboard_filters = {"desde": "", "hasta": "", "estatus": "", "cliente": ""}
+        dashboard_filters = {"desde": "", "hasta": "", "estatus": "", "cliente": "", "especialidad": ""}
 
     total_cotizaciones = base_query.count()
     total_importe = (
@@ -7823,7 +7833,7 @@ def bulk_eliminar_filtradas():
     """Elimina cotizaciones visibles por filtros del dashboard.
 
     ✅ Solo ADMIN.
-    Recibe JSON: { filters: { desde:'YYYY-MM-DD', hasta:'YYYY-MM-DD', estatus:'', cliente:'' } }
+    Recibe JSON: { filters: { desde:'YYYY-MM-DD', hasta:'YYYY-MM-DD', estatus:'', cliente:'', especialidad:'' } }
     """
     if not is_admin():
         return jsonify({"error": "Solo el administrador puede eliminar cotizaciones."}), 403
@@ -7835,6 +7845,7 @@ def bulk_eliminar_filtradas():
     hasta_s = (filters.get("hasta") or "").strip()
     estatus_s = (filters.get("estatus") or "").strip()
     cliente_s = (filters.get("cliente") or "").strip().lower()
+    especialidad_s = (filters.get("especialidad") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -7842,6 +7853,7 @@ def bulk_eliminar_filtradas():
             hasta=hasta_s,
             estatus=estatus_s,
             cliente=cliente_s,
+            especialidad=especialidad_s,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -9172,6 +9184,9 @@ def export_dashboard_cotizaciones_xlsx():
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
+    especialidad = (request.args.get("especialidad") or "").strip()
+
+    especialidad = (request.args.get("especialidad") or "").strip()
 
     try:
         cotizaciones = (_build_dashboard_cotizaciones_query(
@@ -9179,6 +9194,7 @@ def export_dashboard_cotizaciones_xlsx():
             hasta=hasta,
             estatus=estatus,
             cliente=cliente,
+            especialidad=especialidad,
         ).order_by(Cotizacion.fecha.desc()).all())
     except ValueError as exc:
         abort(400, description=str(exc))
@@ -9209,6 +9225,8 @@ def export_dashboard_cotizaciones_xlsx():
         filtros_texto.append(f"Estatus: {estatus}")
     if cliente:
         filtros_texto.append(f"Cliente/Empresa: {cliente}")
+    if especialidad:
+        filtros_texto.append(f"Especialidad: {especialidad}")
     if not filtros_texto:
         filtros_texto.append("Sin filtros")
 
@@ -9420,6 +9438,7 @@ def export_dashboard_followups_pdf():
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
+    especialidad = (request.args.get("especialidad") or "").strip()
 
     try:
         cotizaciones = (
@@ -9428,6 +9447,7 @@ def export_dashboard_followups_pdf():
                 hasta=hasta,
                 estatus=estatus,
                 cliente=cliente,
+                especialidad=especialidad,
             )
             .order_by(Cotizacion.fecha.desc())
             .all()
@@ -9498,6 +9518,8 @@ def export_dashboard_followups_pdf():
         filtros_texto.append(f"Estatus: {estatus}")
     if cliente:
         filtros_texto.append(f"Cliente/Empresa: {cliente}")
+    if especialidad:
+        filtros_texto.append(f"Especialidad: {especialidad}")
     if not filtros_texto:
         filtros_texto.append("Sin filtros")
 
@@ -9591,6 +9613,7 @@ def api_dashboard_filter_summary():
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
+    especialidad = (request.args.get("especialidad") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -9598,6 +9621,7 @@ def api_dashboard_filter_summary():
             hasta=hasta,
             estatus=estatus,
             cliente=cliente,
+            especialidad=especialidad,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -9987,6 +10011,7 @@ def api_dashboard_metrics():
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
+    especialidad = (request.args.get("especialidad") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -9994,6 +10019,7 @@ def api_dashboard_metrics():
             hasta=hasta,
             estatus=estatus,
             cliente=cliente,
+            especialidad=especialidad,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -10028,6 +10054,7 @@ def api_dashboard_status_breakdown():
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
+    especialidad = (request.args.get("especialidad") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -10035,6 +10062,7 @@ def api_dashboard_status_breakdown():
             hasta=hasta,
             estatus=estatus,
             cliente=cliente,
+            especialidad=especialidad,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
