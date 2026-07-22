@@ -1000,7 +1000,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   let clienteFilterTimer = null;
-  [desde, hasta, estatus, responsable].forEach((el) => {
+  [desde, hasta, estatus].forEach((el) => {
     el?.addEventListener("change", aplicarFiltrosDashboard);
   });
   [cliente, especialidad].forEach((el) => el?.addEventListener("input", () => {
