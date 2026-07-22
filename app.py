@@ -2707,6 +2707,8 @@ from reportlab.lib.enums import TA_JUSTIFY
 # Excel
 try:
     from openpyxl import Workbook
+    from openpyxl.chart import BarChart, LineChart, PieChart, Reference
+    from openpyxl.chart.label import DataLabelList
     from openpyxl.utils import get_column_letter
     from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 except Exception:
@@ -9303,6 +9305,130 @@ def export_dashboard_cotizaciones_xlsx():
     ws.column_dimensions["K"].width = 10
     ws.column_dimensions["L"].width = 14
     ws.column_dimensions["M"].width = 14
+
+    # Las graficas se construyen con la misma lista ya filtrada que alimenta
+    # la tabla. De esta forma el archivo siempre representa exactamente lo que
+    # el usuario estaba viendo al momento de exportar.
+    monthly = {}
+    status_counts = {status: 0 for status in VALID_ESTATUS}
+    for cot in cotizaciones:
+        if cot.fecha:
+            month_key = cot.fecha.strftime("%Y-%m")
+            month_values = monthly.setdefault(month_key, {"count": 0, "total": 0.0})
+            month_values["count"] += 1
+            month_values["total"] += float(cot.total or 0)
+
+        status_key = (cot.estatus or "").strip().upper()
+        if status_key in status_counts:
+            status_counts[status_key] += 1
+
+    charts_ws = wb.create_sheet("Graficas")
+    charts_ws.sheet_view.showGridLines = False
+    charts_ws.merge_cells("A1:N1")
+    charts_ws["A1"] = "GRAFICAS DE COTIZACIONES"
+    charts_ws["A1"].font = Font(bold=True, size=16, color="FFFFFF")
+    charts_ws["A1"].fill = header_fill
+    charts_ws["A1"].alignment = center
+    charts_ws.merge_cells("A2:N2")
+    charts_ws["A2"] = " | ".join(filtros_texto)
+    charts_ws["A2"].alignment = left
+
+    charts_ws["A4"] = "Indicador"
+    charts_ws["B4"] = "Valor"
+    charts_ws["A5"] = "Cotizaciones"
+    charts_ws["B5"] = len(cotizaciones)
+    charts_ws["A6"] = "Importe total"
+    charts_ws["B6"] = sum(float(cot.total or 0) for cot in cotizaciones)
+    charts_ws["B6"].number_format = '"$"#,##0.00'
+    for row in charts_ws.iter_rows(min_row=4, max_row=6, min_col=1, max_col=2):
+        for cell in row:
+            cell.border = border
+    for cell in charts_ws[4]:
+        if cell.column <= 2:
+            cell.fill = header_fill
+            cell.font = white
+            cell.alignment = center
+
+    monthly_header_row = 9
+    charts_ws.cell(monthly_header_row, 1, "Mes")
+    charts_ws.cell(monthly_header_row, 2, "Cotizaciones")
+    charts_ws.cell(monthly_header_row, 3, "Importe")
+    for col in range(1, 4):
+        cell = charts_ws.cell(monthly_header_row, col)
+        cell.fill = header_fill
+        cell.font = white
+        cell.alignment = center
+        cell.border = border
+
+    for month_key in sorted(monthly):
+        values = monthly[month_key]
+        charts_ws.append([month_key, values["count"], values["total"]])
+        charts_ws.cell(charts_ws.max_row, 3).number_format = '"$"#,##0.00'
+
+    monthly_last_row = charts_ws.max_row
+    if monthly_last_row > monthly_header_row:
+        amount_chart = BarChart()
+        amount_chart.type = "col"
+        amount_chart.style = 10
+        amount_chart.title = "Importe y cotizaciones por mes"
+        amount_chart.y_axis.title = "Importe"
+        amount_chart.x_axis.title = "Mes"
+        amount_chart.height = 9
+        amount_chart.width = 18
+        amount_chart.add_data(
+            Reference(charts_ws, min_col=3, min_row=monthly_header_row, max_row=monthly_last_row),
+            titles_from_data=True,
+        )
+        amount_chart.set_categories(
+            Reference(charts_ws, min_col=1, min_row=monthly_header_row + 1, max_row=monthly_last_row)
+        )
+
+        count_chart = LineChart()
+        count_chart.add_data(
+            Reference(charts_ws, min_col=2, min_row=monthly_header_row, max_row=monthly_last_row),
+            titles_from_data=True,
+        )
+        count_chart.y_axis.title = "Cotizaciones"
+        count_chart.y_axis.axId = 200
+        count_chart.y_axis.crosses = "max"
+        count_chart.graphicalProperties = None
+        amount_chart += count_chart
+        charts_ws.add_chart(amount_chart, "E4")
+
+    status_header_row = max(monthly_last_row + 3, 18)
+    charts_ws.cell(status_header_row, 1, "Estatus")
+    charts_ws.cell(status_header_row, 2, "Cotizaciones")
+    for col in range(1, 3):
+        cell = charts_ws.cell(status_header_row, col)
+        cell.fill = header_fill
+        cell.font = white
+        cell.alignment = center
+        cell.border = border
+    for status, count in status_counts.items():
+        charts_ws.append([status, count])
+
+    status_last_row = charts_ws.max_row
+    if sum(status_counts.values()) > 0:
+        status_chart = PieChart()
+        status_chart.title = "Distribucion por estatus"
+        status_chart.height = 9
+        status_chart.width = 15
+        status_chart.add_data(
+            Reference(charts_ws, min_col=2, min_row=status_header_row, max_row=status_last_row),
+            titles_from_data=True,
+        )
+        status_chart.set_categories(
+            Reference(charts_ws, min_col=1, min_row=status_header_row + 1, max_row=status_last_row)
+        )
+        status_chart.dataLabels = DataLabelList()
+        status_chart.dataLabels.showPercent = True
+        status_chart.dataLabels.showLeaderLines = True
+        charts_ws.add_chart(status_chart, f"E{status_header_row}")
+
+    charts_ws.column_dimensions["A"].width = 24
+    charts_ws.column_dimensions["B"].width = 16
+    charts_ws.column_dimensions["C"].width = 18
+    charts_ws.freeze_panes = "A4"
 
     bio = io.BytesIO()
     wb.save(bio)
