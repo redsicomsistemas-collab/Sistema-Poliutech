@@ -492,24 +492,25 @@
     const rounded = Math.round((Number(value) || 0) * 100) / 100;
     return rounded ? rounded.toFixed(2) : "";
   };
-  const updateTotalsFromSubtotal = (subtotalEl, ivaEl, totalEl) => {
+  const updateTotals = (subtotalEl, ivaEl, totalEl, calculateDefaultIva = false) => {
     const subtotal = money(subtotalEl.value);
-    if (!subtotal) {
-      ivaEl.value = "";
-      totalEl.value = "";
-      return;
+    if (calculateDefaultIva && ivaEl.dataset.manual !== "true") {
+      ivaEl.value = subtotal ? asCurrencyInput(subtotal * 0.16) : "";
     }
-    const iva = subtotal * 0.16;
-    ivaEl.value = asCurrencyInput(iva);
-    totalEl.value = asCurrencyInput(subtotal + iva);
+    totalEl.value = asCurrencyInput(subtotal + money(ivaEl.value));
   };
   const bindTotals = root => {
     const subtotalEl = root.querySelector(".js-subtotal") || root.querySelector("#subtotal");
     const ivaEl = root.querySelector(".js-iva") || root.querySelector("#iva");
     const totalEl = root.querySelector(".js-total") || root.querySelector("#total");
     if (!subtotalEl || !ivaEl || !totalEl) return;
-    subtotalEl.addEventListener("input", () => updateTotalsFromSubtotal(subtotalEl, ivaEl, totalEl));
-    subtotalEl.addEventListener("change", () => updateTotalsFromSubtotal(subtotalEl, ivaEl, totalEl));
+    if (ivaEl.value !== "") ivaEl.dataset.manual = "true";
+    subtotalEl.addEventListener("input", () => updateTotals(subtotalEl, ivaEl, totalEl, true));
+    subtotalEl.addEventListener("change", () => updateTotals(subtotalEl, ivaEl, totalEl, true));
+    ivaEl.addEventListener("input", () => {
+      ivaEl.dataset.manual = "true";
+      updateTotals(subtotalEl, ivaEl, totalEl);
+    });
   };
   document.querySelectorAll("#gastoRows .gasto-line").forEach(bindTotals);
   document.querySelectorAll(".modal form").forEach(bindTotals);
@@ -525,6 +526,7 @@
     if (!base || !gastoRows) return;
     const clone = base.cloneNode(true);
     clone.querySelectorAll("input").forEach(input => {
+      if (input.classList.contains("js-iva")) delete input.dataset.manual;
       if (input.type === "file") {
         input.value = "";
       } else if (input.name === "moneda[]") {
