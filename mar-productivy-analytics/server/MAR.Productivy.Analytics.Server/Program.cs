@@ -16,7 +16,8 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 app.Use(async (context, next) => {
     var path=context.Request.Path.Value??"";
-    if(!path.StartsWith("/api/")||path is "/api/login" or "/api/ingest" or "/api/heartbeat"){await next();return;}
+    var isEmployeeRegistration=context.Request.Method=="POST"&&path=="/api/devices";
+    if(!path.StartsWith("/api/")||path is "/api/login" or "/api/ingest" or "/api/heartbeat"||isEmployeeRegistration){await next();return;}
     var security=context.RequestServices.GetRequiredService<SecurityStore>();var session=security.Validate(context.Request.Cookies["mar_session"]);
     if(session is null){context.Response.StatusCode=401;await context.Response.WriteAsJsonAsync(new{error="Inicia sesión"});return;}
     context.Items["user"]=session.Value.user;context.Items["role"]=session.Value.role;await next();
