@@ -1,5 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+  .relacion-input.is-locked {
+    appearance: none;
+    background-image: none;
+    pointer-events: none;
+  }
+</style>
 <div class="py-4">
   <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
     <div>
@@ -64,7 +71,7 @@
                 <td><input type="text" name="empresa[]" class="form-control altas-input" value="{{ row.empresa }}" readonly></td>
                 <td><input type="text" name="razon_social_poliutech[]" class="form-control altas-input" value="{{ row.razon_social_poliutech }}" readonly></td>
                 <td>
-                  <select name="relacion[]" class="form-select relacion-input">
+                  <select name="relacion[]" class="form-select relacion-input is-locked" tabindex="-1" aria-readonly="true">
                     <option value="CLIENTE" {% if row.relacion == 'CLIENTE' %}selected{% endif %}>CLIENTE</option>
                     <option value="PROVEEDOR" {% if row.relacion == 'PROVEEDOR' %}selected{% endif %}>PROVEEDOR</option>
                   </select>
@@ -172,6 +179,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (editButton) {
       const row = editButton.closest("tr");
       const inputs = row ? row.querySelectorAll(".altas-input") : [];
+      const relacionInput = row?.querySelector(".relacion-input");
       const willEnable = Array.from(inputs).every((input) => input.hasAttribute("readonly"));
       inputs.forEach((input) => {
         if (willEnable) {
@@ -180,6 +188,11 @@ document.addEventListener("DOMContentLoaded", () => {
           input.setAttribute("readonly", "readonly");
         }
       });
+      if (relacionInput) {
+        relacionInput.classList.toggle("is-locked", !willEnable);
+        relacionInput.setAttribute("aria-readonly", willEnable ? "false" : "true");
+        relacionInput.tabIndex = willEnable ? 0 : -1;
+      }
       editButton.textContent = willEnable ? "Bloquear" : "Editar";
       if (willEnable && inputs.length > 0) {
         inputs[0].focus();
