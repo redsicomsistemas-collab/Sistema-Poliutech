@@ -36,13 +36,18 @@ except Exception:
 # por el usuario y, cuando aplique, la trazabilidad de la zona.
 DEFAULT_CONDICIONES: list[str] = []
 VALID_ESTATUS_SEGUIMIENTO = [
-    "ENVIADA",
-    "PENDIENTE",
-    "EN CURSO",
-    "O. TERMINADA",
-    "FINALIZADA",
-    "GANADA",
-    "PERDIDA",
+    "0%",
+    "5%",
+    "10%",
+    "20%",
+    "30%",
+    "40%",
+    "50%",
+    "70%",
+    "80%",
+    "90%",
+    "95%",
+    "100%",
 ]
 VALID_ESTATUS_APROBACION = [
     "APROBADA",
@@ -1614,7 +1619,7 @@ def _create_mobile_voice_quote(preview: dict, user: Usuario) -> Cotizacion:
         folio=generar_folio(),
         fecha=now_cdmx_naive(),
         cliente_id=cliente.id if cliente else None,
-        estatus="PENDIENTE",
+        estatus="0%",
         estatus_aprobacion="EN REVISIÓN",
         notas="\n".join(part for part in notes_parts if part).strip() or None,
         responsable=responsible,
@@ -1834,7 +1839,7 @@ def _mobile_push_user_ids_for_aazcona() -> list[int]:
 
 
 def _send_quote_status_push(cot: Cotizacion, previous_status: str, new_status: str) -> dict[str, int]:
-    if (new_status or "").strip().upper() == "FINALIZADA":
+    if (new_status or "").strip().upper() == "100%":
         return {"sent": 0, "failed": 0}
     pdf_url = _mobile_quote_pdf_url(cot.id)
     owner_ids = _mobile_push_user_ids_for_quote_owner(cot)
@@ -2020,7 +2025,7 @@ def _send_quote_followup_push(cot: Cotizacion, seg: CotizacionSeguimiento) -> di
 
 def _send_daily_status_reminder(cot: Cotizacion, ahora: datetime) -> None:
     estatus_actual = (cot.estatus or "").strip().upper()
-    if not estatus_actual or estatus_actual == "FINALIZADA":
+    if not estatus_actual or estatus_actual == "100%":
         return
 
     body = (
@@ -3457,9 +3462,26 @@ def ensure_schema():
             """))
             db.session.execute(text("""
                 UPDATE cotizacion
-                SET estatus = 'PENDIENTE'
+                SET estatus = '0%'
                 WHERE UPPER(COALESCE(estatus, '')) IN ('APROBADO', 'APROBADA', 'AUTORIZADO', 'RECHAZADO', 'RECHAZADA', 'EN REVISIÓN', 'EN REVISION')
                    OR estatus IS NULL OR TRIM(estatus) = ''
+            """))
+            db.session.execute(text("""
+                UPDATE cotizacion
+                SET estatus = CASE UPPER(TRIM(COALESCE(estatus, '')))
+                    WHEN 'PENDIENTE' THEN '0%'
+                    WHEN 'PERDIDA' THEN '0%'
+                    WHEN 'ENVIADA' THEN '5%'
+                    WHEN 'EN CURSO' THEN '50%'
+                    WHEN 'O. TERMINADA' THEN '95%'
+                    WHEN 'FINALIZADA' THEN '100%'
+                    WHEN 'GANADA' THEN '100%'
+                    ELSE estatus
+                END
+                WHERE UPPER(TRIM(COALESCE(estatus, ''))) IN (
+                    'PENDIENTE', 'PERDIDA', 'ENVIADA', 'EN CURSO',
+                    'O. TERMINADA', 'FINALIZADA', 'GANADA'
+                )
             """))
             db.session.commit()
     except Exception as e:
@@ -5189,7 +5211,7 @@ def build_import_payload_from_pdf(pdf_bytes: bytes, filename: str, responsable_h
     return {
         "folio": folio,
         "fecha": fecha.isoformat(sep=" "),
-        "estatus": "PENDIENTE",
+        "estatus": "0%",
         "responsable": responsable_hint or "",
         "cliente": {
             "nombre_cliente": cliente_nombre,
@@ -5250,13 +5272,13 @@ def _normalize_import_payload(payload: dict) -> dict:
     raw_aprobacion = (payload.get("estatus_aprobacion") or "").strip().upper()
     if raw_estatus in {"APROBADO", "APROBADA", "AUTORIZADO"}:
         raw_aprobacion = "APROBADA"
-        raw_estatus = "PENDIENTE"
+        raw_estatus = "0%"
     elif raw_estatus in {"RECHAZADO", "RECHAZADA"}:
         raw_aprobacion = "RECHAZADA"
-        raw_estatus = "PENDIENTE"
+        raw_estatus = "0%"
     elif raw_estatus in {"EN REVISION", "EN REVISIÓN"}:
         raw_aprobacion = "EN REVISIÓN"
-        raw_estatus = "PENDIENTE"
+        raw_estatus = "0%"
     if raw_aprobacion == "APROBADO" or raw_aprobacion == "AUTORIZADO":
         raw_aprobacion = "APROBADA"
     elif raw_aprobacion == "RECHAZADO":
@@ -5267,7 +5289,7 @@ def _normalize_import_payload(payload: dict) -> dict:
     return {
         "folio": (payload.get("folio") or payload.get("folio_externo") or "").strip() or None,
         "fecha": parse_datetime_flexible(payload.get("fecha")) or now_cdmx_naive(),
-        "estatus": raw_estatus if raw_estatus in VALID_ESTATUS_SEGUIMIENTO else "PENDIENTE",
+        "estatus": raw_estatus if raw_estatus in VALID_ESTATUS_SEGUIMIENTO else "0%",
         "estatus_aprobacion": raw_aprobacion if raw_aprobacion in VALID_ESTATUS_APROBACION else "EN REVISIÓN",
         "responsable": (payload.get("responsable") or "").strip() or None,
         "proyecto": (payload.get("proyecto") or payload.get("obra") or "").strip() or None,
@@ -8030,7 +8052,7 @@ def crear_cotizacion():
         folio=generar_folio(),
         fecha=now_cdmx_naive(),
         cliente_id=cliente.id if cliente else None,
-        estatus=(f.get("estatus") or "PENDIENTE").upper(),
+        estatus=(f.get("estatus") or "0%").upper(),
         estatus_aprobacion=(f.get("estatus_aprobacion") or "EN REVISIÓN").upper(),
         especialidad=especialidad_form,
         especialidad_descripcion=(f.get("especialidad_descripcion") or "").strip()[:500] or None,
@@ -8227,7 +8249,7 @@ def actualizar_cotizacion(cot_id: int):
         c.cliente_id = cliente.id
 
     # === ENCABEZADO ===
-    estatus_form = (f.get("estatus") or c.estatus or "PENDIENTE").upper()
+    estatus_form = (f.get("estatus") or c.estatus or "0%").upper()
     if estatus_form not in VALID_ESTATUS_SEGUIMIENTO:
         flash("Selecciona un estatus de seguimiento válido.", "danger")
         return redirect(url_for("editar_cotizacion", cot_id=c.id))
