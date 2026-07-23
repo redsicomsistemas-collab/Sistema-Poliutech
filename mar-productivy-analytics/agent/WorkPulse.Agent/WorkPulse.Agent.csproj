@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>MAR.Productivy.Analytics.Agent</AssemblyName>
+    <Product>MAR Productivy Analytics</Product>
+    <Description>Agente de analítica de actividad para Windows 10 y 11</Description>
+    <ApplicationIcon>mar.ico</ApplicationIcon>
+  </PropertyGroup>
+</Project>
