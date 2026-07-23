@@ -4,6 +4,7 @@ using System.Text.Json;
 
 record LoginInput(string Username, string Password);
 record UserInput(string Username, string Password, string Role);
+record PasswordResetInput(string Password);
 record AdminUser(string Username, string PasswordHash, string Role, bool Active, DateTimeOffset CreatedAt);
 
 sealed class SecurityStore {
@@ -17,6 +18,7 @@ sealed class SecurityStore {
     public (string user,string role)? Validate(string? token){if(string.IsNullOrWhiteSpace(token)||!sessions.TryGetValue(token,out var s)||s.expires<DateTimeOffset.UtcNow)return null;return(s.user,s.role);}
     public object ListUsers(){lock(gate)return users.Select(x=>new{x.Username,x.Role,x.Active,x.CreatedAt});}
     public object AddUser(UserInput input,string actor){lock(gate){if(users.Any(x=>x.Username.Equals(input.Username,StringComparison.OrdinalIgnoreCase)))throw new InvalidOperationException("El usuario ya existe.");var role=input.Role is "administrator" or "analyst" or "viewer"?input.Role:"viewer";users.Add(new(input.Username.Trim(),Hash(input.Password),role,true,DateTimeOffset.UtcNow));Save();Audit(actor,"user.create",input.Username);return new{input.Username,role};}}
+    public bool ResetPassword(string username,string password,string actor){lock(gate){var index=users.FindIndex(x=>x.Username.Equals(username,StringComparison.OrdinalIgnoreCase));if(index<0)return false;users[index]=users[index] with { PasswordHash=Hash(password) };Save();Audit(actor,"user.password.reset",username);return true;}}
     public void Logout(string? token){if(!string.IsNullOrWhiteSpace(token))sessions.TryRemove(token,out _);}
     public void Audit(string user,string action,string detail){var line=JsonSerializer.Serialize(new{at=DateTimeOffset.UtcNow,user,action,detail});File.AppendAllText(auditPath,line+Environment.NewLine);}
     public object AuditLog(){try{var entries=new List<JsonElement>();if(File.Exists(auditPath))foreach(var line in File.ReadLines(auditPath).TakeLast(500)){using var document=JsonDocument.Parse(line);entries.Add(document.RootElement.Clone());}entries.Reverse();return new{entries};}catch{return new{entries=new List<JsonElement>()};}}

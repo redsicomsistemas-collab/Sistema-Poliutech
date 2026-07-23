@@ -26,6 +26,11 @@ app.MapPost("/api/login", (LoginInput input, HttpResponse response, SecurityStor
 app.MapPost("/api/logout", (HttpRequest request,HttpResponse response,SecurityStore security)=>{security.Logout(request.Cookies["mar_session"]);response.Cookies.Delete("mar_session");return Results.NoContent();});
 app.MapGet("/api/users", (SecurityStore security)=>Results.Ok(new{users=security.ListUsers()}));
 app.MapPost("/api/users", (UserInput input,HttpContext context,SecurityStore security)=>Results.Ok(security.AddUser(input,context.Items["user"]?.ToString()??"system")));
+app.MapPut("/api/users/{username}/password", (string username,PasswordResetInput input,HttpContext context,SecurityStore security) => {
+    if(context.Items["role"]?.ToString()!="administrator")return Results.Forbid();
+    if(string.IsNullOrWhiteSpace(input.Password)||input.Password.Length<8)return Results.BadRequest(new{error="La contraseña debe tener al menos 8 caracteres."});
+    return security.ResetPassword(username,input.Password,context.Items["user"]?.ToString()??"system")?Results.NoContent():Results.NotFound();
+});
 app.MapGet("/api/audit", (SecurityStore security)=>Results.Ok(security.AuditLog()));
 app.MapGet("/api/backup", (LocalStore store)=>Results.File(store.Backup(),"application/zip",$"MAR-respaldo-{DateTime.Now:yyyyMMdd-HHmm}.zip"));
 app.MapPost("/api/restore", async (HttpRequest request,LocalStore store)=>{if(!request.HasFormContentType)return Results.BadRequest(new{error="Selecciona un respaldo ZIP."});var form=await request.ReadFormAsync();var file=form.Files.FirstOrDefault();if(file is null)return Results.BadRequest(new{error="Falta el archivo."});await using var stream=file.OpenReadStream();store.Restore(stream);return Results.Ok(new{restored=true});});
