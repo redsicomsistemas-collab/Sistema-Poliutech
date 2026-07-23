@@ -95,7 +95,16 @@
       </div>
       <div class="col-md-4">
         <label for="especialidad" class="form-label fw-semibold">Especialidad</label>
-        <input type="text" id="especialidad" name="especialidad" class="form-control" placeholder="Especialidad de la cotizacion" autocomplete="off">
+        <select id="especialidad" name="especialidad" class="form-select" required>
+          <option value="" selected disabled>Selecciona una especialidad</option>
+          {% for especialidad in especialidades_cotizacion %}
+          <option value="{{ especialidad }}">{{ especialidad }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label for="especialidad_descripcion" class="form-label fw-semibold">Descripción</label>
+        <input type="text" id="especialidad_descripcion" name="especialidad_descripcion" class="form-control" placeholder="Descripción de la especialidad" autocomplete="off">
       </div>
       <div class="col-md-4">
         <label for="direccion" class="form-label fw-semibold">Dirección</label>

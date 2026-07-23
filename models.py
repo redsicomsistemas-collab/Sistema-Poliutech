@@ -57,6 +57,7 @@ class Cotizacion(db.Model):
     estatus = db.Column(db.String(20), default="PENDIENTE")
     estatus_aprobacion = db.Column(db.String(20), default="EN REVISIÓN")
     especialidad = db.Column(db.String(160))
+    especialidad_descripcion = db.Column(db.String(500))
     subtotal = db.Column(db.Float, default=0.0)
     descuento_total = db.Column(db.Float, default=0.0)
     iva_porc = db.Column(db.Float, default=16.0)
