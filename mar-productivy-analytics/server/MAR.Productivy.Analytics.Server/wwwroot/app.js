@@ -1,4 +1,7 @@
 const $=id=>document.getElementById(id), esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function applyTheme(theme){document.documentElement.dataset.theme=theme;localStorage.setItem('mar-theme',theme);const dark=theme==='dark';$('themeIcon').textContent=dark?'☀':'☾';$('themeLabel').textContent=dark?'Tema claro':'Tema oscuro';$('themeToggle').setAttribute('aria-pressed',String(dark))}
+$('themeToggle').addEventListener('click',()=>applyTheme(document.documentElement.dataset.theme==='dark'?'light':'dark'));
+applyTheme(document.documentElement.dataset.theme||'light');
 const dur=s=>{s=Math.max(0,Math.round(s||0));if(s<60)return `${s}s`;if(s<3600)return `${Math.floor(s/60)}m ${s%60}s`;return `${Math.floor(s/3600)}h ${Math.floor(s%3600/60)}m`};
 const when=v=>v?new Date(v).toLocaleString('es-MX'):'Nunca';
 async function api(url,options){const response=await fetch(url,options);if(response.status===401){$('loginScreen').classList.remove('hidden');throw new Error('Inicia sesión');}if(!response.ok)throw new Error((await response.json().catch(()=>({}))).error||`Error ${response.status}`);return response.status===204?null:response.json()}

@@ -1,0 +1,132 @@
+:root {
+  color-scheme: light;
+  --surface: #fff;
+  --surface-soft: #f8fafc;
+  --field: #fff;
+  --row-line: #edf1f5;
+  --theme-shadow: #183d680a;
+  --hero-fade: #f3f6faf2;
+  --overlay: #041326b8;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --mar: #66b5ff;
+  --mar-deep: #edf7ff;
+  --mar-mid: #2183d2;
+  --mar-cyan: #35c8e8;
+  --gold: #ffc928;
+  --ink: #e9f1fb;
+  --muted: #9db0c5;
+  --line: #263c55;
+  --bg: #091522;
+  --surface: #101f2f;
+  --surface-soft: #142638;
+  --field: #0c1a28;
+  --row-line: #20364d;
+  --theme-shadow: #00000035;
+  --hero-fade: #091522f2;
+  --overlay: #020a12d6;
+}
+
+body { transition: background .2s, color .2s; }
+body::before {
+  background: linear-gradient(90deg, var(--hero-fade), var(--bg) 67%),
+    url('/assets/mar-roof-hero.png') center/cover;
+}
+
+.notice,
+.metrics article,
+.panel {
+  background: var(--surface);
+  border-color: var(--line);
+  box-shadow: 0 6px 18px var(--theme-shadow);
+}
+
+.row,
+.data-row { border-color: var(--row-line); }
+.bar { background: var(--line); }
+.data-row.head,
+.settings > div,
+.filters,
+.settings-form,
+.backup-box { background: var(--surface-soft); }
+.filters input,
+.filters select,
+.settings-form input,
+.data-row select,
+.login-card input,
+.modal input {
+  background: var(--field);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.chart { background: linear-gradient(var(--surface), var(--surface-soft)); }
+.backdrop { background: var(--overlay); }
+.modal {
+  background: var(--surface);
+  border-top-color: var(--mar-mid);
+}
+.modal code {
+  background: var(--surface-soft);
+  border-color: var(--line);
+}
+
+.theme-toggle {
+  position: fixed;
+  z-index: 100;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 13px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 8px 24px #00152e2e;
+}
+.theme-toggle:hover { background: var(--surface-soft); }
+.theme-toggle span:first-child { font-size: 17px; line-height: 1; }
+
+.login-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.login-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 0 auto 22px;
+}
+.login-brand img {
+  display: block;
+  width: 58px;
+  height: 58px;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  border-radius: 13px;
+}
+.login-brand strong,
+.login-brand span {
+  display: block;
+  color: var(--ink);
+}
+.login-brand strong { font-size: 24px; letter-spacing: 3px; }
+.login-brand span { font-size: 9px; font-weight: 800; letter-spacing: 1.4px; }
+.login-card p { color: var(--muted); }
+.login-card #loginError { color: #e05c68; }
+
+html[data-theme="dark"] nav a.active {
+  background: #eaf4ff;
+  color: #0c3c78;
+}
+html[data-theme="dark"] header { border-color: var(--line); }
+
+@media (max-width: 520px) {
+  .theme-toggle { right: 12px; bottom: 12px; }
+  .theme-toggle span:last-child { display: none; }
+}
