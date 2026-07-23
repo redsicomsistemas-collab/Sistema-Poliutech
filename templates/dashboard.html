@@ -294,6 +294,11 @@
   <div class="card shadow-sm dashboard-quotes-card">
     <div class="card-body">
       <h5 class="card-title mb-3">Últimas Cotizaciones</h5>
+      <ul class="nav nav-tabs mb-3" aria-label="Resultado comercial">
+        <li class="nav-item"><a class="nav-link {% if not dashboard_filters.resultado %}active{% endif %}" href="{{ url_for('index') }}">Todas</a></li>
+        <li class="nav-item"><a class="nav-link text-success {% if dashboard_filters.resultado == 'GANADA' %}active fw-bold{% endif %}" href="{{ url_for('index', resultado='GANADA') }}">Ganadas</a></li>
+        <li class="nav-item"><a class="nav-link text-danger {% if dashboard_filters.resultado == 'PERDIDA' %}active fw-bold{% endif %}" href="{{ url_for('index', resultado='PERDIDA') }}">Perdidas</a></li>
+      </ul>
 
       <!-- 🔍 FILTROS -->
       <div class="row g-3 align-items-end mb-3 dashboard-filters">
@@ -373,6 +378,8 @@
               <th>Elaboró</th>
               <th>Total</th>
               <th>Aprobación</th>
+              <th>Resultado</th>
+              {% if dashboard_filters.resultado == 'PERDIDA' %}<th>Motivo de pérdida</th>{% endif %}
               <th>Seguimiento</th>
               <th>Acciones</th>
             </tr>
@@ -383,6 +390,7 @@
                 data-fecha="{{ c.fecha.strftime('%Y-%m-%d') }}"
                 data-estatus="{{ c.estatus }}"
                 data-estatus-aprobacion="{{ c.estatus_aprobacion or 'EN REVISIÓN' }}"
+                data-resultado="{{ c.resultado or '' }}"
                 data-total="{{ '%.2f'|format(c.total or 0) }}"
                 data-cliente="{{ (c.cliente.nombre_cliente if c.cliente else '')|lower }}"
                 data-empresa="{{ (c.cliente.empresa if c.cliente else '')|lower }}"
@@ -431,6 +439,15 @@
                   {% endfor %}
                 </select>
               </td>
+              <td class="text-center cell-resultado">
+                <div class="d-flex gap-1 justify-content-center flex-wrap">
+                  <button type="button" class="btn btn-sm {% if c.resultado == 'GANADA' %}btn-success{% else %}btn-outline-success{% endif %}" onclick="cambiarResultado({{ c.id }}, 'GANADA', this)">Ganada</button>
+                  <button type="button" class="btn btn-sm {% if c.resultado == 'PERDIDA' %}btn-danger{% else %}btn-outline-danger{% endif %}" onclick="cambiarResultado({{ c.id }}, 'PERDIDA', this)">Perdida</button>
+                </div>
+              </td>
+              {% if dashboard_filters.resultado == 'PERDIDA' %}
+              <td class="cell-motivo-perdida">{{ c.motivo_perdida or 'Sin motivo registrado' }}</td>
+              {% endif %}
               <td class="cell-estatus">
                 <select class="status-select" onchange="cambiarEstatus({{ c.id }}, this)">
                   {% for estado in valid_estatus %}
@@ -477,19 +494,19 @@
         <nav aria-label="Paginacion de cotizaciones">
           <ul class="pagination pagination-sm mb-0">
             <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
-              <a class="page-link" href="{{ url_for('index', page=pagination.prev_num, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente, especialidad=dashboard_filters.especialidad, especialidad_descripcion=dashboard_filters.especialidad_descripcion) if pagination.has_prev else '#' }}">Anterior</a>
+              <a class="page-link" href="{{ url_for('index', page=pagination.prev_num, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente, especialidad=dashboard_filters.especialidad, especialidad_descripcion=dashboard_filters.especialidad_descripcion, resultado=dashboard_filters.resultado) if pagination.has_prev else '#' }}">Anterior</a>
             </li>
             {% for p in pagination.iter_pages(left_edge=1, left_current=1, right_current=2, right_edge=1) %}
               {% if p %}
               <li class="page-item {% if p == pagination.page %}active{% endif %}">
-                <a class="page-link" href="{{ url_for('index', page=p, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente, especialidad=dashboard_filters.especialidad, especialidad_descripcion=dashboard_filters.especialidad_descripcion) }}">{{ p }}</a>
+                <a class="page-link" href="{{ url_for('index', page=p, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente, especialidad=dashboard_filters.especialidad, especialidad_descripcion=dashboard_filters.especialidad_descripcion, resultado=dashboard_filters.resultado) }}">{{ p }}</a>
               </li>
               {% else %}
               <li class="page-item disabled"><span class="page-link">...</span></li>
               {% endif %}
             {% endfor %}
             <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
-              <a class="page-link" href="{{ url_for('index', page=pagination.next_num, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente, especialidad=dashboard_filters.especialidad, especialidad_descripcion=dashboard_filters.especialidad_descripcion) if pagination.has_next else '#' }}">Siguiente</a>
+              <a class="page-link" href="{{ url_for('index', page=pagination.next_num, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente, especialidad=dashboard_filters.especialidad, especialidad_descripcion=dashboard_filters.especialidad_descripcion, resultado=dashboard_filters.resultado) if pagination.has_next else '#' }}">Siguiente</a>
             </li>
           </ul>
         </nav>
@@ -520,6 +537,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const cotizacionesSummaryEls = document.querySelectorAll('[data-summary="cotizaciones-total"]');
   const conceptosSummaryEls = document.querySelectorAll('[data-summary="conceptos-total"]');
   const statuses = {{ valid_estatus|tojson }};
+  const RESULTADO_ACTIVO = {{ (dashboard_filters.resultado or '')|tojson }};
   const chartColors = ["#1565c0", "#f9a825", "#00897b", "#6d4c41", "#546e7a", "#2e7d32", "#c62828"];
   const monthNames = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
   const moneyCompact = new Intl.NumberFormat("es-MX", {
@@ -555,6 +573,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (cliente?.value.trim()) params.set("cliente", cliente.value.trim());
     if (especialidad?.value.trim()) params.set("especialidad", especialidad.value.trim());
     if (especialidadDescripcion?.value.trim()) params.set("especialidad_descripcion", especialidadDescripcion.value.trim());
+    if (RESULTADO_ACTIVO) params.set("resultado", RESULTADO_ACTIVO);
     return params;
   }
 
@@ -975,6 +994,7 @@ document.addEventListener("DOMContentLoaded", () => {
             cliente: (cliente?.value || ""),
             especialidad: (especialidad?.value || ""),
             especialidad_descripcion: (especialidadDescripcion?.value || ""),
+            resultado: RESULTADO_ACTIVO,
           }
         }),
       });
@@ -1214,6 +1234,54 @@ function cambiarEstatusAprobacion(id, selectElem) {
         Swal.fire("Error", "No se pudo actualizar la aprobación.", "error");
         console.error(err);
     });
+}
+
+async function cambiarResultado(id, resultado, buttonElem) {
+    let motivo = "";
+    if (resultado === "PERDIDA") {
+        const respuesta = await Swal.fire({
+            icon: "warning",
+            title: "Marcar trabajo como perdido",
+            input: "textarea",
+            inputLabel: "Motivo de pérdida",
+            inputPlaceholder: "Explica por qué no se ganó el trabajo...",
+            inputAttributes: { "aria-label": "Motivo de pérdida" },
+            showCancelButton: true,
+            confirmButtonText: "Guardar como perdida",
+            cancelButtonText: "Cancelar",
+            confirmButtonColor: "#dc3545",
+            inputValidator: value => !value.trim() ? "El motivo es obligatorio." : undefined
+        });
+        if (!respuesta.isConfirmed) return;
+        motivo = (respuesta.value || "").trim();
+    } else {
+        const respuesta = await Swal.fire({
+            icon: "question",
+            title: "¿Marcar como ganada?",
+            text: "La cotización pasará a la pestaña Ganadas.",
+            showCancelButton: true,
+            confirmButtonText: "Sí, marcar ganada",
+            cancelButtonText: "Cancelar",
+            confirmButtonColor: "#198754"
+        });
+        if (!respuesta.isConfirmed) return;
+    }
+
+    buttonElem.disabled = true;
+    try {
+        const response = await fetch(`/api/cotizaciones/${id}/resultado`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ resultado, motivo })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.ok) throw new Error(data.error || "No se pudo guardar el resultado.");
+        await Swal.fire({ icon: "success", title: "Resultado actualizado", text: data.mensaje, timer: 1200, showConfirmButton: false });
+        window.location.reload();
+    } catch (error) {
+        buttonElem.disabled = false;
+        Swal.fire("Error", error.message || "No se pudo actualizar el resultado.", "error");
+    }
 }
 </script>
 

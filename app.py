@@ -3239,6 +3239,8 @@ def ensure_schema():
             ("total", "ALTER TABLE cotizacion ADD COLUMN total FLOAT DEFAULT 0.0"),
             ("moneda", "ALTER TABLE cotizacion ADD COLUMN moneda VARCHAR(10) DEFAULT 'MXN'"),
             ("estatus_aprobacion", "ALTER TABLE cotizacion ADD COLUMN estatus_aprobacion VARCHAR(20) DEFAULT 'EN REVISIÓN'"),
+            ("resultado", "ALTER TABLE cotizacion ADD COLUMN resultado VARCHAR(20)"),
+            ("motivo_perdida", "ALTER TABLE cotizacion ADD COLUMN motivo_perdida TEXT"),
             ("especialidad", "ALTER TABLE cotizacion ADD COLUMN especialidad VARCHAR(160)"),
             ("especialidad_descripcion", "ALTER TABLE cotizacion ADD COLUMN especialidad_descripcion VARCHAR(500)"),
             ("notas", "ALTER TABLE cotizacion ADD COLUMN notas VARCHAR(3000)"),
@@ -3952,6 +3954,7 @@ def _build_dashboard_cotizaciones_query(
     cliente: str = "",
     especialidad: str = "",
     especialidad_descripcion: str = "",
+    resultado: str = "",
 ):
     q = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
     q = q.filter(Cotizacion.eliminada_en.is_(None))
@@ -3975,6 +3978,10 @@ def _build_dashboard_cotizaciones_query(
 
     if estatus:
         q = q.filter(Cotizacion.estatus == estatus)
+
+    resultado = (resultado or "").strip().upper()
+    if resultado in {"GANADA", "PERDIDA"}:
+        q = q.filter(db.func.upper(db.func.coalesce(Cotizacion.resultado, "")) == resultado)
 
     especialidad = (especialidad or "").strip().lower()
     if especialidad:
@@ -5320,6 +5327,9 @@ def index():
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
+    resultado = (request.args.get("resultado") or "").strip().upper()
+    if resultado not in {"GANADA", "PERDIDA"}:
+        resultado = ""
     dashboard_filters = {
         "desde": desde,
         "hasta": hasta,
@@ -5327,6 +5337,7 @@ def index():
         "cliente": cliente,
         "especialidad": especialidad,
         "especialidad_descripcion": especialidad_descripcion,
+        "resultado": resultado,
     }
 
     try:
@@ -5337,10 +5348,11 @@ def index():
             cliente=cliente,
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
+            resultado=resultado,
         )
     except ValueError:
         base_query = _build_dashboard_cotizaciones_query()
-        dashboard_filters = {"desde": "", "hasta": "", "estatus": "", "cliente": "", "especialidad": "", "especialidad_descripcion": ""}
+        dashboard_filters = {"desde": "", "hasta": "", "estatus": "", "cliente": "", "especialidad": "", "especialidad_descripcion": "", "resultado": ""}
 
     total_cotizaciones = base_query.count()
     total_importe = (
@@ -7942,6 +7954,7 @@ def bulk_eliminar_filtradas():
     cliente_s = (filters.get("cliente") or "").strip().lower()
     especialidad_s = (filters.get("especialidad") or "").strip()
     especialidad_descripcion_s = (filters.get("especialidad_descripcion") or "").strip()
+    resultado_s = (filters.get("resultado") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -7951,6 +7964,7 @@ def bulk_eliminar_filtradas():
             cliente=cliente_s,
             especialidad=especialidad_s,
             especialidad_descripcion=especialidad_descripcion_s,
+            resultado=resultado_s,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -8067,6 +8081,17 @@ def view_cotizacion(cot_id: int):
 def cotizacion_seguimiento(cot_id: int):
     c = _cotizacion_activa_or_404(cot_id)
     require_owner_or_admin(c)
+    eventos_cronologia = [{
+        "fecha": c.fecha.strftime("%d/%m/%Y %H:%M") if c.fecha else "",
+        "titulo": "Cotización creada",
+        "detalle": c.proyecto or c.folio or "Inicio",
+    }]
+    for seg in sorted(c.seguimientos or [], key=lambda item: item.fecha_seguimiento or datetime.min):
+        eventos_cronologia.append({
+            "fecha": seg.fecha_seguimiento.strftime("%d/%m/%Y %H:%M") if seg.fecha_seguimiento else "",
+            "titulo": seg.autor or "Seguimiento",
+            "detalle": (seg.comentario or "").strip(),
+        })
     return render_template(
         "cotizacion_seguimiento.html",
         c=c,
@@ -8079,6 +8104,7 @@ def cotizacion_seguimiento(cot_id: int):
             ],
         ),
         seguimientos=c.seguimientos,
+        eventos_cronologia=eventos_cronologia,
         valid_estatus=VALID_ESTATUS,
         mention_users=_usuarios_menciones_payload(),
         title=f"Seguimiento {c.folio}",
@@ -8301,6 +8327,43 @@ def api_update_estatus_aprobacion(cot_id):
         "folio": c.folio,
         "estatus_aprobacion": nuevo,
         "mensaje": f"Estatus de aprobación de {c.folio} actualizado a {nuevo}."
+    })
+
+@app.route("/api/cotizaciones/<int:cot_id>/resultado", methods=["POST"])
+@login_required
+def api_update_resultado_cotizacion(cot_id):
+    c = _cotizacion_activa_or_404(cot_id)
+    require_owner_or_admin(c)
+    data = request.get_json(silent=True) or {}
+    resultado = (data.get("resultado") or "").strip().upper()
+    motivo = (data.get("motivo") or "").strip()
+    if resultado not in {"GANADA", "PERDIDA"}:
+        return jsonify({"ok": False, "error": "Resultado comercial inválido."}), 400
+    if resultado == "PERDIDA" and not motivo:
+        return jsonify({"ok": False, "error": "Captura el motivo por el que se perdió el trabajo."}), 400
+
+    anterior = (c.resultado or "").strip().upper()
+    c.resultado = resultado
+    c.motivo_perdida = motivo if resultado == "PERDIDA" else None
+    if anterior != resultado or (resultado == "PERDIDA" and motivo):
+        comentario = f"Resultado comercial: {resultado}."
+        if motivo:
+            comentario += f"\nMotivo de pérdida: {motivo}"
+        db.session.add(CotizacionSeguimiento(
+            cotizacion_id=c.id,
+            usuario_id=getattr(current_user, "id", None),
+            autor=responsable_actual() or getattr(current_user, "nombre", None) or "Sistema",
+            comentario=comentario,
+            fecha_seguimiento=now_cdmx_naive(),
+            actualizado_en=now_cdmx_naive(),
+        ))
+    db.session.commit()
+    return jsonify({
+        "ok": True,
+        "folio": c.folio,
+        "resultado": resultado,
+        "motivo_perdida": c.motivo_perdida or "",
+        "mensaje": f"{c.folio} marcada como {resultado}.",
     })
 
 # ---------------------------------------------------------
@@ -9283,6 +9346,7 @@ def export_dashboard_cotizaciones_xlsx():
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
+    resultado = (request.args.get("resultado") or "").strip()
 
     try:
         cotizaciones = (_build_dashboard_cotizaciones_query(
@@ -9292,6 +9356,7 @@ def export_dashboard_cotizaciones_xlsx():
             cliente=cliente,
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
+            resultado=resultado,
         ).order_by(Cotizacion.fecha.desc()).all())
     except ValueError as exc:
         abort(400, description=str(exc))
@@ -9541,6 +9606,7 @@ def export_dashboard_followups_pdf():
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
+    resultado = (request.args.get("resultado") or "").strip()
 
     try:
         cotizaciones = (
@@ -9551,6 +9617,7 @@ def export_dashboard_followups_pdf():
                 cliente=cliente,
                 especialidad=especialidad,
                 especialidad_descripcion=especialidad_descripcion,
+                resultado=resultado,
             )
             .order_by(Cotizacion.fecha.desc())
             .all()
@@ -9718,6 +9785,7 @@ def api_dashboard_filter_summary():
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
+    resultado = (request.args.get("resultado") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -9727,6 +9795,7 @@ def api_dashboard_filter_summary():
             cliente=cliente,
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
+            resultado=resultado,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -10130,6 +10199,7 @@ def api_dashboard_metrics():
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
+    resultado = (request.args.get("resultado") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -10139,6 +10209,7 @@ def api_dashboard_metrics():
             cliente=cliente,
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
+            resultado=resultado,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -10175,6 +10246,7 @@ def api_dashboard_status_breakdown():
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
+    resultado = (request.args.get("resultado") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -10184,6 +10256,7 @@ def api_dashboard_status_breakdown():
             cliente=cliente,
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
+            resultado=resultado,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400

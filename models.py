@@ -56,6 +56,8 @@ class Cotizacion(db.Model):
     fecha = db.Column(db.DateTime, default=datetime.utcnow)
     estatus = db.Column(db.String(20), default="0%")
     estatus_aprobacion = db.Column(db.String(20), default="EN REVISIÓN")
+    resultado = db.Column(db.String(20))
+    motivo_perdida = db.Column(db.Text)
     especialidad = db.Column(db.String(160))
     especialidad_descripcion = db.Column(db.String(500))
     subtotal = db.Column(db.Float, default=0.0)

@@ -26,6 +26,10 @@
           <div class="col-md-6 mb-2"><label class="fw-bold">Ciudad:</label><div>{{ c.ciudad_trabajo or "—" }}</div></div>
           <div class="col-md-6 mb-2"><label class="fw-bold">Especialidad:</label><div>{{ c.especialidad or "—" }}</div></div>
           <div class="col-md-6 mb-2"><label class="fw-bold">Descripción de especialidad:</label><div>{{ c.especialidad_descripcion or "—" }}</div></div>
+          <div class="col-md-6 mb-2"><label class="fw-bold">Resultado comercial:</label><div>{{ c.resultado or "Sin definir" }}</div></div>
+          {% if c.resultado == 'PERDIDA' %}
+          <div class="col-md-6 mb-2"><label class="fw-bold">Motivo de pérdida:</label><div>{{ c.motivo_perdida or "Sin motivo registrado" }}</div></div>
+          {% endif %}
         </div>
         <div class="mt-2"><label class="fw-bold">Representante:</label><div>{{ c.responsable or "—" }}</div></div>
       </div>
