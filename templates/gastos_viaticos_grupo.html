@@ -136,7 +136,7 @@
           {% for gasto in gastos %}
           <tr>
             <td class="fw-bold">{{ gasto.folio or ("#" ~ gasto.id) }}</td>
-            <td>{{ gasto.tipo_gasto }}</td>
+            <td>{{ "FONDO" if gastos_es_recurso(gasto) else gasto.tipo_gasto }}</td>
             <td>
               <div class="fw-semibold">{{ gasto.proveedor or "Sin proveedor" }}</div>
               <div style="white-space: normal; overflow-wrap: anywhere;">{{ gasto.concepto }}</div>
