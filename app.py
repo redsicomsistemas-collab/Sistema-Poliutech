@@ -206,6 +206,7 @@ def _load_provider_numbers_from_xlsx() -> list[dict]:
                 "numero": numero,
                 "empresa": empresa,
                 "razon_social_poliutech": razon_social,
+                "relacion": "PROVEEDOR",
                 "contacto": "",
                 "telefono": "",
                 "correo": "",
@@ -222,11 +223,15 @@ def _save_provider_numbers(rows: list[dict]) -> None:
 
 def _normalize_provider_row(row: Optional[dict], idx: int) -> dict:
     row = row or {}
+    relacion = str(row.get("relacion", "")).strip().upper()
+    if relacion not in {"CLIENTE", "PROVEEDOR"}:
+        relacion = "PROVEEDOR"
     return {
         "id": idx,
         "numero": str(row.get("numero", "")).strip(),
         "empresa": str(row.get("empresa", "")).strip(),
         "razon_social_poliutech": str(row.get("razon_social_poliutech", "")).strip(),
+        "relacion": relacion,
         "contacto": str(row.get("contacto", "")).strip(),
         "telefono": str(row.get("telefono", "")).strip(),
         "correo": str(row.get("correo", "")).strip(),
@@ -2108,12 +2113,17 @@ def _filter_registro_obras_for_mobile(rows: list[dict], user: Usuario, obra: str
 def _provider_filters_from_request() -> dict[str, str]:
     return {
         "razon_social_poliutech": (request.args.get("razon_social_poliutech") or "").strip().lower(),
+        "relacion": (request.args.get("relacion") or "").strip().upper(),
     }
 
 
 def _provider_row_matches_filters(row: dict, filters: dict[str, str]) -> bool:
     for field, needle in filters.items():
-        if needle and needle not in str(row.get(field, "")).strip().lower():
+        value = str(row.get(field, "")).strip()
+        if field == "relacion":
+            if needle and value.upper() != needle:
+                return False
+        elif needle and needle not in value.lower():
             return False
     return True
 
@@ -5487,16 +5497,20 @@ def altas_proveedores():
         numeros = request.form.getlist("numero[]")
         empresas = request.form.getlist("empresa[]")
         razones = request.form.getlist("razon_social_poliutech[]")
+        relaciones = request.form.getlist("relacion[]")
         contactos = request.form.getlist("contacto[]")
         telefonos = request.form.getlist("telefono[]")
         correos = request.form.getlist("correo[]")
 
-        total_rows = max(len(numeros), len(empresas), len(razones), len(contactos), len(telefonos), len(correos), 0)
+        total_rows = max(len(numeros), len(empresas), len(razones), len(relaciones), len(contactos), len(telefonos), len(correos), 0)
         rows: list[dict] = []
         for idx in range(total_rows):
             numero = (numeros[idx] if idx < len(numeros) else "").strip()
             empresa = (empresas[idx] if idx < len(empresas) else "").strip()
             razon_social = (razones[idx] if idx < len(razones) else "").strip()
+            relacion = (relaciones[idx] if idx < len(relaciones) else "PROVEEDOR").strip().upper()
+            if relacion not in {"CLIENTE", "PROVEEDOR"}:
+                relacion = "PROVEEDOR"
             contacto = (contactos[idx] if idx < len(contactos) else "").strip()
             telefono = (telefonos[idx] if idx < len(telefonos) else "").strip()
             correo = (correos[idx] if idx < len(correos) else "").strip()
@@ -5514,6 +5528,7 @@ def altas_proveedores():
                             "numero": (numeros[pos] if pos < len(numeros) else "").strip(),
                             "empresa": (empresas[pos] if pos < len(empresas) else "").strip(),
                             "razon_social_poliutech": (razones[pos] if pos < len(razones) else "").strip(),
+                            "relacion": (relaciones[pos] if pos < len(relaciones) else "PROVEEDOR").strip(),
                             "contacto": (contactos[pos] if pos < len(contactos) else "").strip(),
                             "telefono": (telefonos[pos] if pos < len(telefonos) else "").strip(),
                             "correo": (correos[pos] if pos < len(correos) else "").strip(),
@@ -5526,6 +5541,7 @@ def altas_proveedores():
                                 "numero": (numeros[pos] if pos < len(numeros) else "").strip(),
                                 "empresa": (empresas[pos] if pos < len(empresas) else "").strip(),
                                 "razon_social_poliutech": (razones[pos] if pos < len(razones) else "").strip(),
+                                "relacion": (relaciones[pos] if pos < len(relaciones) else "PROVEEDOR").strip(),
                                 "contacto": (contactos[pos] if pos < len(contactos) else "").strip(),
                                 "telefono": (telefonos[pos] if pos < len(telefonos) else "").strip(),
                                 "correo": (correos[pos] if pos < len(correos) else "").strip(),
@@ -5542,6 +5558,7 @@ def altas_proveedores():
                 "numero": numero,
                 "empresa": empresa,
                 "razon_social_poliutech": razon_social,
+                "relacion": relacion,
                 "contacto": contacto,
                 "telefono": telefono,
                 "correo": correo,
@@ -5574,6 +5591,7 @@ def export_altas_proveedores_xlsx():
         "NUMERO",
         "EMPRESA",
         "RAZON SOCIAL POLIUTECH",
+        "RELACION",
         "CONTACTO",
         "TELEFONO",
         "CORREO",
@@ -5584,6 +5602,7 @@ def export_altas_proveedores_xlsx():
             row.get("numero", ""),
             row.get("empresa", ""),
             row.get("razon_social_poliutech", ""),
+            row.get("relacion", ""),
             row.get("contacto", ""),
             row.get("telefono", ""),
             row.get("correo", ""),
@@ -5593,7 +5612,7 @@ def export_altas_proveedores_xlsx():
         "Altas",
         headers,
         body_rows,
-        column_widths=[18, 28, 28, 24, 18, 32],
+        column_widths=[18, 28, 28, 18, 24, 18, 32],
     )
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -5682,6 +5701,7 @@ def export_altas_proveedores_pdf():
         canv.restoreState()
 
     filtro_razon = (filters.get("razon_social_poliutech") or "").strip()
+    filtro_relacion = (filters.get("relacion") or "").strip()
     generated_at = now_cdmx_naive().strftime("%d/%m/%Y %H:%M")
     meta_data = [
         [
@@ -5691,6 +5711,10 @@ def export_altas_proveedores_pdf():
         [
             Paragraph("<b>Filtro aplicado:</b> Razón social Poliutech", styles["EncabezadoAltas"]),
             Paragraph(filtro_razon or "Todos", styles["EncabezadoAltas"]),
+        ],
+        [
+            Paragraph("<b>Relación:</b>", styles["EncabezadoAltas"]),
+            Paragraph(filtro_relacion or "Todas", styles["EncabezadoAltas"]),
         ],
     ]
     meta_tbl = Table(meta_data, colWidths=[95 * mm, 95 * mm], hAlign="LEFT")
@@ -5708,6 +5732,7 @@ def export_altas_proveedores_pdf():
         "NUMERO",
         "EMPRESA",
         "RAZON SOCIAL POLIUTECH",
+        "RELACION",
         "CONTACTO",
         "TELEFONO",
         "CORREO",
@@ -5717,6 +5742,7 @@ def export_altas_proveedores_pdf():
             Paragraph(_truncate_pdf_text(row.get("numero", ""), 24), styles["AltasCenter"]),
             Paragraph(_truncate_pdf_text(row.get("empresa", ""), 48), styles["AltasCell"]),
             Paragraph(_truncate_pdf_text(row.get("razon_social_poliutech", ""), 52), styles["AltasCell"]),
+            Paragraph(_truncate_pdf_text(row.get("relacion", ""), 12), styles["AltasCenter"]),
             Paragraph(_truncate_pdf_text(row.get("contacto", ""), 38), styles["AltasCell"]),
             Paragraph(_truncate_pdf_text(row.get("telefono", ""), 24), styles["AltasCenter"]),
             Paragraph(_truncate_pdf_text(row.get("correo", ""), 42), styles["AltasCell"]),
@@ -5730,11 +5756,12 @@ def export_altas_proveedores_pdf():
             Paragraph("-", styles["AltasCenter"]),
             Paragraph("-", styles["AltasCenter"]),
             Paragraph("-", styles["AltasCenter"]),
+            Paragraph("-", styles["AltasCenter"]),
         ])
 
     tbl = Table(
         data,
-        colWidths=[16 * mm, 38 * mm, 48 * mm, 28 * mm, 22 * mm, 38 * mm],
+        colWidths=[15 * mm, 31 * mm, 40 * mm, 23 * mm, 25 * mm, 21 * mm, 35 * mm],
         repeatRows=1,
         hAlign="CENTER",
     )
@@ -5744,7 +5771,8 @@ def export_altas_proveedores_pdf():
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("ALIGN", (0, 0), (0, -1), "CENTER"),
-        ("ALIGN", (4, 0), (4, -1), "CENTER"),
+        ("ALIGN", (3, 0), (3, -1), "CENTER"),
+        ("ALIGN", (5, 0), (5, -1), "CENTER"),
         ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
         ("FONTSIZE", (0, 0), (-1, -1), 7.5),
         ("WORDWRAP", (0, 0), (-1, -1), True),
