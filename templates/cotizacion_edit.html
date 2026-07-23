@@ -28,7 +28,20 @@
               {% endfor %}
             </datalist>
           </div>
-          <div class="col-md-4 mt-3"><label class="form-label">Especialidad</label><input type="text" name="especialidad" class="form-control" value="{{ c.especialidad or '' }}" placeholder="Especialidad de la cotizacion"></div>
+          <div class="col-md-4 mt-3">
+            <label class="form-label">Especialidad</label>
+            <select name="especialidad" class="form-select" required>
+              {% if c.especialidad and c.especialidad not in especialidades_cotizacion %}
+              <option value="{{ c.especialidad }}" selected>{{ c.especialidad }} (anterior)</option>
+              {% else %}
+              <option value="" disabled {% if not c.especialidad %}selected{% endif %}>Selecciona una especialidad</option>
+              {% endif %}
+              {% for especialidad in especialidades_cotizacion %}
+              <option value="{{ especialidad }}" {% if c.especialidad == especialidad %}selected{% endif %}>{{ especialidad }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4 mt-3"><label class="form-label">Descripción</label><input type="text" name="especialidad_descripcion" class="form-control" value="{{ c.especialidad_descripcion or '' }}" placeholder="Descripción de la especialidad"></div>
           <div class="col-md-4 mt-3"><label class="form-label">Ciudad</label><input type="text" name="ciudad_trabajo" class="form-control text-uppercase" value="{{ c.ciudad_trabajo or '' }}" placeholder="CIUDAD DE MÉXICO"></div>
           <div class="col-md-4 mt-3">
             <label class="form-label">Moneda</label>
