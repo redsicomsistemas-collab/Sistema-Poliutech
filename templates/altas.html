@@ -15,7 +15,7 @@
       <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 mb-3">
         <div>
           <h6 class="mb-0">Filtros</h6>
-          <small class="text-muted">Filtra la tabla por razón social antes de exportar.</small>
+          <small class="text-muted">Filtra la tabla por razón social y relación antes de exportar.</small>
         </div>
       </div>
 
@@ -23,6 +23,14 @@
         <div class="col-xl-4 col-md-6">
           <label class="form-label small fw-bold text-secondary mb-1">Razon social</label>
           <input type="text" id="filtro-razon-social" class="form-control form-control-sm" value="{{ filters.razon_social_poliutech if filters else '' }}">
+        </div>
+        <div class="col-xl-3 col-md-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Relación</label>
+          <select id="filtro-relacion" class="form-select form-select-sm">
+            <option value="">Todas</option>
+            <option value="CLIENTE" {% if filters and filters.relacion == 'CLIENTE' %}selected{% endif %}>CLIENTE</option>
+            <option value="PROVEEDOR" {% if filters and filters.relacion == 'PROVEEDOR' %}selected{% endif %}>PROVEEDOR</option>
+          </select>
         </div>
         <div class="col-xl-5 col-md-6 d-flex align-items-end gap-2">
           <button type="button" class="btn btn-outline-secondary btn-sm w-100" id="btn-limpiar-filtros">Limpiar</button>
@@ -39,6 +47,7 @@
                 <th style="min-width: 170px;">NUMERO</th>
                 <th style="min-width: 220px;">EMPRESA</th>
                 <th style="min-width: 250px;">RAZON SOCIAL POLIUTECH</th>
+                <th style="min-width: 160px;">RELACIÓN</th>
                 <th style="min-width: 220px;">CONTACTO</th>
                 <th style="min-width: 180px;">TELEFONO</th>
                 <th style="min-width: 240px;">CORREO</th>
@@ -49,10 +58,17 @@
               {% for row in rows %}
               <tr
                 data-razon-social-poliutech="{{ row.razon_social_poliutech|lower }}"
+                data-relacion="{{ row.relacion }}"
               >
                 <td><input type="text" name="numero[]" class="form-control altas-input" value="{{ row.numero }}" readonly></td>
                 <td><input type="text" name="empresa[]" class="form-control altas-input" value="{{ row.empresa }}" readonly></td>
                 <td><input type="text" name="razon_social_poliutech[]" class="form-control altas-input" value="{{ row.razon_social_poliutech }}" readonly></td>
+                <td>
+                  <select name="relacion[]" class="form-select relacion-input">
+                    <option value="CLIENTE" {% if row.relacion == 'CLIENTE' %}selected{% endif %}>CLIENTE</option>
+                    <option value="PROVEEDOR" {% if row.relacion == 'PROVEEDOR' %}selected{% endif %}>PROVEEDOR</option>
+                  </select>
+                </td>
                 <td><input type="text" name="contacto[]" class="form-control altas-input" value="{{ row.contacto }}" readonly></td>
                 <td><input type="text" name="telefono[]" class="form-control altas-input" value="{{ row.telefono }}" readonly></td>
                 <td><input type="email" name="correo[]" class="form-control altas-input" value="{{ row.correo }}" readonly></td>
@@ -63,10 +79,11 @@
               </tr>
               {% endfor %}
               {% if not rows %}
-              <tr data-razon-social-poliutech="">
+              <tr data-razon-social-poliutech="" data-relacion="PROVEEDOR">
                 <td><input type="text" name="numero[]" class="form-control altas-input"></td>
                 <td><input type="text" name="empresa[]" class="form-control altas-input"></td>
                 <td><input type="text" name="razon_social_poliutech[]" class="form-control altas-input"></td>
+                <td><select name="relacion[]" class="form-select relacion-input"><option value="CLIENTE">CLIENTE</option><option value="PROVEEDOR" selected>PROVEEDOR</option></select></td>
                 <td><input type="text" name="contacto[]" class="form-control altas-input"></td>
                 <td><input type="text" name="telefono[]" class="form-control altas-input"></td>
                 <td><input type="email" name="correo[]" class="form-control altas-input"></td>
@@ -90,10 +107,11 @@
 </div>
 
 <template id="altas-row-template">
-  <tr data-razon-social-poliutech="">
+  <tr data-razon-social-poliutech="" data-relacion="PROVEEDOR">
     <td><input type="text" name="numero[]" class="form-control altas-input"></td>
     <td><input type="text" name="empresa[]" class="form-control altas-input"></td>
     <td><input type="text" name="razon_social_poliutech[]" class="form-control altas-input"></td>
+    <td><select name="relacion[]" class="form-select relacion-input"><option value="CLIENTE">CLIENTE</option><option value="PROVEEDOR" selected>PROVEEDOR</option></select></td>
     <td><input type="text" name="contacto[]" class="form-control altas-input"></td>
     <td><input type="text" name="telefono[]" class="form-control altas-input"></td>
     <td><input type="email" name="correo[]" class="form-control altas-input"></td>
@@ -114,11 +132,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const exportarExcelButton = document.getElementById("btn-exportar-excel");
   const filtros = {
     razonSocialPoliutech: document.getElementById("filtro-razon-social"),
+    relacion: document.getElementById("filtro-relacion"),
   };
 
   function syncRowDataset(row) {
     if (!row) return;
     row.dataset.razonSocialPoliutech = (row.querySelector('input[name="razon_social_poliutech[]"]')?.value || "").trim().toLowerCase();
+    row.dataset.relacion = (row.querySelector('select[name="relacion[]"]')?.value || "").trim().toUpperCase();
   }
 
   function applyFilters() {
@@ -126,7 +146,10 @@ document.addEventListener("DOMContentLoaded", () => {
       syncRowDataset(row);
       const visible = Object.entries(filtros).every(([field, input]) => {
         const term = (input?.value || "").trim().toLowerCase();
-        return !term || (row.dataset[field] || "").includes(term);
+        if (!term) return true;
+        return field === "relacion"
+          ? (row.dataset[field] || "").toLowerCase() === term
+          : (row.dataset[field] || "").includes(term);
       });
       row.style.display = visible ? "" : "none";
     });
@@ -178,8 +201,15 @@ document.addEventListener("DOMContentLoaded", () => {
     applyFilters();
   });
 
+  tbody.addEventListener("change", (event) => {
+    if (!event.target.closest(".relacion-input")) return;
+    syncRowDataset(event.target.closest("tr"));
+    applyFilters();
+  });
+
   Object.values(filtros).forEach((input) => {
     input?.addEventListener("input", applyFilters);
+    input?.addEventListener("change", applyFilters);
   });
 
   limpiarFiltrosButton?.addEventListener("click", () => {
