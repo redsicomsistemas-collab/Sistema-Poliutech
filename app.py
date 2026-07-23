@@ -50,6 +50,16 @@ VALID_ESTATUS_APROBACION = [
     "EN REVISIÓN",
 ]
 VALID_ESTATUS = VALID_ESTATUS_SEGUIMIENTO
+ESPECIALIDADES_COTIZACION = [
+    "Waterproofing",
+    "Pisos",
+    "Fireproofing",
+    "Reforzamiento E.",
+    "Suministro",
+    "Acabados",
+    "Inyección",
+    "Construcción",
+]
 PROSPECT_STATUS_OPTIONS = [
     "PENDIENTE",
     "CONTACTADO",
@@ -3225,6 +3235,7 @@ def ensure_schema():
             ("moneda", "ALTER TABLE cotizacion ADD COLUMN moneda VARCHAR(10) DEFAULT 'MXN'"),
             ("estatus_aprobacion", "ALTER TABLE cotizacion ADD COLUMN estatus_aprobacion VARCHAR(20) DEFAULT 'EN REVISIÓN'"),
             ("especialidad", "ALTER TABLE cotizacion ADD COLUMN especialidad VARCHAR(160)"),
+            ("especialidad_descripcion", "ALTER TABLE cotizacion ADD COLUMN especialidad_descripcion VARCHAR(500)"),
             ("notas", "ALTER TABLE cotizacion ADD COLUMN notas VARCHAR(3000)"),
             ("last_whatsapp_at", "ALTER TABLE cotizacion ADD COLUMN last_whatsapp_at TIMESTAMP NULL"),
             ("proyecto", "ALTER TABLE cotizacion ADD COLUMN proyecto VARCHAR(200)"),
@@ -3918,6 +3929,7 @@ def _build_dashboard_cotizaciones_query(
     estatus: str = "",
     cliente: str = "",
     especialidad: str = "",
+    especialidad_descripcion: str = "",
 ):
     q = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
     q = q.filter(Cotizacion.eliminada_en.is_(None))
@@ -3945,7 +3957,15 @@ def _build_dashboard_cotizaciones_query(
     especialidad = (especialidad or "").strip().lower()
     if especialidad:
         q = q.filter(
-            db.func.lower(db.func.coalesce(Cotizacion.especialidad, "")).like(f"%{especialidad}%")
+            db.func.lower(db.func.coalesce(Cotizacion.especialidad, "")) == especialidad
+        )
+
+    especialidad_descripcion = (especialidad_descripcion or "").strip().lower()
+    if especialidad_descripcion:
+        q = q.filter(
+            db.func.lower(db.func.coalesce(Cotizacion.especialidad_descripcion, "")).like(
+                f"%{especialidad_descripcion}%"
+            )
         )
 
     cliente = (cliente or "").strip().lower()
@@ -5277,12 +5297,14 @@ def index():
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
+    especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     dashboard_filters = {
         "desde": desde,
         "hasta": hasta,
         "estatus": estatus,
         "cliente": cliente,
         "especialidad": especialidad,
+        "especialidad_descripcion": especialidad_descripcion,
     }
 
     try:
@@ -5292,10 +5314,11 @@ def index():
             estatus=estatus,
             cliente=cliente,
             especialidad=especialidad,
+            especialidad_descripcion=especialidad_descripcion,
         )
     except ValueError:
         base_query = _build_dashboard_cotizaciones_query()
-        dashboard_filters = {"desde": "", "hasta": "", "estatus": "", "cliente": "", "especialidad": ""}
+        dashboard_filters = {"desde": "", "hasta": "", "estatus": "", "cliente": "", "especialidad": "", "especialidad_descripcion": ""}
 
     total_cotizaciones = base_query.count()
     total_importe = (
@@ -5333,13 +5356,14 @@ def index():
         responsables=responsables,
         valid_estatus=VALID_ESTATUS_SEGUIMIENTO,
         valid_estatus_aprobacion=VALID_ESTATUS_APROBACION,
+        especialidades_cotizacion=ESPECIALIDADES_COTIZACION,
         show_splash=True
     )
 
 @app.route("/cotizador")
 @login_required
 def cotizador():
-    return render_template("cotizador.html", title="Nuevo - Sistema MAR", proyectos=_known_project_names())
+    return render_template("cotizador.html", title="Nuevo - Sistema MAR", proyectos=_known_project_names(), especialidades_cotizacion=ESPECIALIDADES_COTIZACION)
 
 
 @app.route("/proyectos")
@@ -7400,6 +7424,10 @@ def api_conceptos_suggest():
 @login_required
 def crear_cotizacion():
     f = request.form
+    especialidad_form = (f.get("especialidad") or "").strip()
+    if especialidad_form not in ESPECIALIDADES_COTIZACION:
+        flash("Selecciona una especialidad válida.", "danger")
+        return redirect(url_for("cotizador"))
 
     nombre_cliente = (f.get("cliente") or f.get("cliente_nombre") or "").strip()
     empresa = (f.get("empresa") or "").strip()
@@ -7462,7 +7490,8 @@ def crear_cotizacion():
         cliente_id=cliente.id if cliente else None,
         estatus=(f.get("estatus") or "PENDIENTE").upper(),
         estatus_aprobacion=(f.get("estatus_aprobacion") or "EN REVISIÓN").upper(),
-        especialidad=(f.get("especialidad") or "").strip() or None,
+        especialidad=especialidad_form,
+        especialidad_descripcion=(f.get("especialidad_descripcion") or "").strip()[:500] or None,
         notas=(f.get("notas") or "").strip() or None,
         last_whatsapp_at=None,
         responsable=responsable_final,
@@ -7601,7 +7630,7 @@ def editar_cotizacion(cot_id: int):
     descuento_porc_actual = 0.0
     if float(c.subtotal or 0) > 0:
         descuento_porc_actual = (float(c.descuento_total or 0) / float(c.subtotal or 0)) * 100.0
-    return render_template("cotizacion_edit.html", c=c, zona_actual=zona_actual, notas_adicionales=notas_adicionales, descuento_porc_actual=descuento_porc_actual, proyectos=_known_project_names(), valid_estatus=VALID_ESTATUS_SEGUIMIENTO, valid_estatus_aprobacion=VALID_ESTATUS_APROBACION, title=f"Editar {c.folio}")
+    return render_template("cotizacion_edit.html", c=c, zona_actual=zona_actual, notas_adicionales=notas_adicionales, descuento_porc_actual=descuento_porc_actual, proyectos=_known_project_names(), especialidades_cotizacion=ESPECIALIDADES_COTIZACION, valid_estatus=VALID_ESTATUS_SEGUIMIENTO, valid_estatus_aprobacion=VALID_ESTATUS_APROBACION, title=f"Editar {c.folio}")
 
 @app.route("/cotizaciones/<int:cot_id>/actualizar", methods=["POST"])
 @login_required
@@ -7610,6 +7639,10 @@ def actualizar_cotizacion(cot_id: int):
     require_owner_or_admin(c)
 
     f = request.form
+    especialidad_form = (f.get("especialidad") or "").strip()
+    if especialidad_form not in ESPECIALIDADES_COTIZACION:
+        flash("Selecciona una especialidad válida.", "danger")
+        return redirect(url_for("editar_cotizacion", cot_id=c.id))
 
     # === CLIENTE ===
     cliente_nombre = (f.get("cliente") or f.get("cliente_nombre") or "").strip()
@@ -7666,7 +7699,8 @@ def actualizar_cotizacion(cot_id: int):
         return redirect(url_for("editar_cotizacion", cot_id=c.id))
     c.estatus = estatus_form
     c.estatus_aprobacion = "EN REVISIÓN"
-    c.especialidad = (f.get("especialidad") or "").strip() or None
+    c.especialidad = especialidad_form
+    c.especialidad_descripcion = (f.get("especialidad_descripcion") or "").strip()[:500] or None
     c.notas = (f.get("notas") or "").strip()
     c.responsable = (responsable_final or c.responsable)
     c.proyecto = (f.get("proyecto") or "").strip() or None
@@ -7885,6 +7919,7 @@ def bulk_eliminar_filtradas():
     estatus_s = (filters.get("estatus") or "").strip()
     cliente_s = (filters.get("cliente") or "").strip().lower()
     especialidad_s = (filters.get("especialidad") or "").strip()
+    especialidad_descripcion_s = (filters.get("especialidad_descripcion") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -7893,6 +7928,7 @@ def bulk_eliminar_filtradas():
             estatus=estatus_s,
             cliente=cliente_s,
             especialidad=especialidad_s,
+            especialidad_descripcion=especialidad_descripcion_s,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -9224,8 +9260,7 @@ def export_dashboard_cotizaciones_xlsx():
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
-
-    especialidad = (request.args.get("especialidad") or "").strip()
+    especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
 
     try:
         cotizaciones = (_build_dashboard_cotizaciones_query(
@@ -9234,6 +9269,7 @@ def export_dashboard_cotizaciones_xlsx():
             estatus=estatus,
             cliente=cliente,
             especialidad=especialidad,
+            especialidad_descripcion=especialidad_descripcion,
         ).order_by(Cotizacion.fecha.desc()).all())
     except ValueError as exc:
         abort(400, description=str(exc))
@@ -9250,7 +9286,7 @@ def export_dashboard_cotizaciones_xlsx():
     thin = Side(style="thin", color="DDDDDD")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-    ws.merge_cells("A1:K1")
+    ws.merge_cells("A1:N1")
     ws["A1"] = "REPORTE DE COTIZACIONES"
     ws["A1"].font = Font(bold=True, size=14)
     ws["A1"].alignment = center
@@ -9266,6 +9302,8 @@ def export_dashboard_cotizaciones_xlsx():
         filtros_texto.append(f"Cliente/Empresa: {cliente}")
     if especialidad:
         filtros_texto.append(f"Especialidad: {especialidad}")
+    if especialidad_descripcion:
+        filtros_texto.append(f"Descripción: {especialidad_descripcion}")
     if not filtros_texto:
         filtros_texto.append("Sin filtros")
 
@@ -9273,7 +9311,7 @@ def export_dashboard_cotizaciones_xlsx():
     ws["A2"] = " | ".join(filtros_texto)
     ws["A2"].alignment = left
 
-    headers = ["Folio", "Fecha", "Cliente", "Empresa", "Telefono", "Responsable", "Especialidad", "Aprobacion", "Seguimiento", "Subtotal", "IVA %", "IVA $", "Total"]
+    headers = ["Folio", "Fecha", "Cliente", "Empresa", "Telefono", "Responsable", "Especialidad", "Descripción", "Aprobacion", "Seguimiento", "Subtotal", "IVA %", "IVA $", "Total"]
     ws.append([])
     ws.append(headers)
 
@@ -9294,6 +9332,7 @@ def export_dashboard_cotizaciones_xlsx():
             c.cliente.telefono if c.cliente and c.cliente.telefono else "",
             c.responsable or "",
             c.especialidad or "",
+            c.especialidad_descripcion or "",
             c.estatus_aprobacion or "EN REVISIÓN",
             c.estatus or "",
             float(c.subtotal or 0),
@@ -9304,9 +9343,9 @@ def export_dashboard_cotizaciones_xlsx():
         row = ws.max_row
         for col in range(1, len(headers) + 1):
             ws.cell(row=row, column=col).border = border
-        for col in (10, 12, 13):
+        for col in (11, 13, 14):
             ws.cell(row=row, column=col).number_format = '"$"#,##0.00'
-        ws.cell(row=row, column=11).number_format = '0.00'
+        ws.cell(row=row, column=12).number_format = '0.00'
         ws.cell(row=row, column=1).alignment = left
         ws.cell(row=row, column=2).alignment = center
         ws.cell(row=row, column=3).alignment = left
@@ -9314,12 +9353,12 @@ def export_dashboard_cotizaciones_xlsx():
         ws.cell(row=row, column=5).alignment = left
 
     total_row = ws.max_row + 2
-    ws.cell(row=total_row, column=12, value="Total exportado:").font = bold
-    ws.cell(row=total_row, column=13, value=f"=SUM(M{header_row + 1}:M{ws.max_row})")
-    ws.cell(row=total_row, column=13).font = bold
-    ws.cell(row=total_row, column=13).number_format = '"$"#,##0.00'
+    ws.cell(row=total_row, column=13, value="Total exportado:").font = bold
+    ws.cell(row=total_row, column=14, value=f"=SUM(N{header_row + 1}:N{ws.max_row})")
+    ws.cell(row=total_row, column=14).font = bold
+    ws.cell(row=total_row, column=14).number_format = '"$"#,##0.00'
 
-    ws.auto_filter.ref = f"A{header_row}:M{max(header_row, ws.max_row)}"
+    ws.auto_filter.ref = f"A{header_row}:N{max(header_row, ws.max_row)}"
     ws.freeze_panes = f"A{header_row + 1}"
     ws.column_dimensions["A"].width = 18
     ws.column_dimensions["B"].width = 18
@@ -9327,13 +9366,14 @@ def export_dashboard_cotizaciones_xlsx():
     ws.column_dimensions["D"].width = 28
     ws.column_dimensions["E"].width = 18
     ws.column_dimensions["F"].width = 18
-    ws.column_dimensions["G"].width = 14
-    ws.column_dimensions["H"].width = 14
+    ws.column_dimensions["G"].width = 18
+    ws.column_dimensions["H"].width = 32
     ws.column_dimensions["I"].width = 14
     ws.column_dimensions["J"].width = 14
     ws.column_dimensions["K"].width = 10
     ws.column_dimensions["L"].width = 14
     ws.column_dimensions["M"].width = 14
+    ws.column_dimensions["N"].width = 14
 
     # Las graficas se construyen con la misma lista ya filtrada que alimenta
     # la tabla. De esta forma el archivo siempre representa exactamente lo que
@@ -9478,6 +9518,7 @@ def export_dashboard_followups_pdf():
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
+    especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
 
     try:
         cotizaciones = (
@@ -9487,6 +9528,7 @@ def export_dashboard_followups_pdf():
                 estatus=estatus,
                 cliente=cliente,
                 especialidad=especialidad,
+                especialidad_descripcion=especialidad_descripcion,
             )
             .order_by(Cotizacion.fecha.desc())
             .all()
@@ -9653,6 +9695,7 @@ def api_dashboard_filter_summary():
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
+    especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -9661,6 +9704,7 @@ def api_dashboard_filter_summary():
             estatus=estatus,
             cliente=cliente,
             especialidad=especialidad,
+            especialidad_descripcion=especialidad_descripcion,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -10046,6 +10090,7 @@ def api_cotizaciones_search():
             "estatus": c.estatus,
             "estatus_aprobacion": c.estatus_aprobacion or "EN REVISIÓN",
             "especialidad": c.especialidad or "",
+            "especialidad_descripcion": c.especialidad_descripcion or "",
             "proyecto": c.proyecto or "",
             "total": round(c.total or 0, 2),
             "export_csv": url_for("export_cotizacion_csv", cot_id=c.id),
@@ -10062,6 +10107,7 @@ def api_dashboard_metrics():
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
+    especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -10070,6 +10116,7 @@ def api_dashboard_metrics():
             estatus=estatus,
             cliente=cliente,
             especialidad=especialidad,
+            especialidad_descripcion=especialidad_descripcion,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -10105,6 +10152,7 @@ def api_dashboard_status_breakdown():
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
+    especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -10113,6 +10161,7 @@ def api_dashboard_status_breakdown():
             estatus=estatus,
             cliente=cliente,
             especialidad=especialidad,
+            especialidad_descripcion=especialidad_descripcion,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
