@@ -857,17 +857,17 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function confirmIfGanadas(ids) {
-    // detectar si hay GANADA en selección
+    // advertir cuando se eliminan cotizaciones con seguimiento completo
     const ganadas = ids.filter(id => {
       const tr = document.querySelector(`#tablaCotizaciones tr[data-id="${id}"]`);
-      return tr && (tr.dataset.estatus || "").toUpperCase() === "GANADA";
+      return tr && (tr.dataset.estatus || "").toUpperCase() === "100%";
     });
     if (ganadas.length === 0) return true;
 
     const step1 = await Swal.fire({
       icon: "warning",
-      title: "¡Ojo! Hay cotizaciones GANADAS",
-      html: `Estás por eliminar <b>${ganadas.length}</b> cotización(es) con estatus <b>GANADA</b>.<br><br>Para continuar escribe <b>ELIMINAR</b>.`,
+      title: "¡Ojo! Hay cotizaciones al 100%",
+      html: `Estás por eliminar <b>${ganadas.length}</b> cotización(es) con seguimiento <b>100%</b>.<br><br>Para continuar escribe <b>ELIMINAR</b>.`,
       input: "text",
       inputPlaceholder: "Escribe ELIMINAR",
       showCancelButton: true,

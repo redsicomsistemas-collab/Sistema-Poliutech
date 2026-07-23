@@ -54,7 +54,7 @@ class Cotizacion(db.Model):
     folio = db.Column(db.String(40), unique=True)
     cliente_id = db.Column(db.Integer, db.ForeignKey("cliente.id"))
     fecha = db.Column(db.DateTime, default=datetime.utcnow)
-    estatus = db.Column(db.String(20), default="PENDIENTE")
+    estatus = db.Column(db.String(20), default="0%")
     estatus_aprobacion = db.Column(db.String(20), default="EN REVISIÓN")
     especialidad = db.Column(db.String(160))
     especialidad_descripcion = db.Column(db.String(500))
