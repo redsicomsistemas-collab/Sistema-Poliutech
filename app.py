@@ -2737,8 +2737,7 @@ except Exception:
     Workbook = None  # la app sigue arrancando aunque falte openpyxl
     get_column_letter = None
 
-# Twilio + Scheduler
-from twilio.rest import Client as TwilioClient
+# WhatsApp Cloud API (Meta) + Scheduler
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # Auth (Flask-Login)
@@ -2758,9 +2757,11 @@ DEFAULT_DATABASE_URL = "sqlite:///mar3.db"
 MAR_BLUE = "#0C3C78"
 MAR_BLUE_XLSX = "0C3C78"
 
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
-TWILIO_AUTH_TOKEN  = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
-TWILIO_WHATSAPP    = os.getenv("TWILIO_WHATSAPP", "whatsapp:+14155238886").strip()
+META_WHATSAPP_ACCESS_TOKEN = os.getenv("META_WHATSAPP_ACCESS_TOKEN", "").strip()
+META_WHATSAPP_PHONE_NUMBER_ID = os.getenv("META_WHATSAPP_PHONE_NUMBER_ID", "").strip()
+META_WHATSAPP_TEMPLATE_NAME = os.getenv("META_WHATSAPP_TEMPLATE_NAME", "mar_notificacion").strip()
+META_WHATSAPP_TEMPLATE_LANGUAGE = os.getenv("META_WHATSAPP_TEMPLATE_LANGUAGE", "es_MX").strip()
+META_GRAPH_API_VERSION = os.getenv("META_GRAPH_API_VERSION", "v23.0").strip()
 
 DEFAULT_ADMIN_WHATSAPP_RECIPIENTS = (
     "whatsapp:+5215521323076,whatsapp:+5215610035643,whatsapp:+14055619808"
@@ -3138,31 +3139,18 @@ def _audit_after_request(response):
     return response
 
 # ---------------------------------------------------------
-# Twilio init (Render)
+# Meta WhatsApp Cloud API init (Render)
 # ---------------------------------------------------------
-twilio_client: Optional[TwilioClient] = None
-
-def init_twilio_client():
-    global twilio_client, TWILIO_WHATSAPP
-    try:
-        sid = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
-        token = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
-        wsp_from = os.getenv("TWILIO_WHATSAPP", "").strip()
-
-        if sid and token and wsp_from:
-            twilio_client = TwilioClient(sid, token)
-            TWILIO_WHATSAPP = wsp_from
-            print("[Twilio] Cliente inicializado correctamente.")
-            print(f"[Twilio] Remitente WhatsApp: {TWILIO_WHATSAPP}")
-        else:
-            twilio_client = None
-            print("[Twilio] Configuración incompleta. WhatsApp deshabilitado.")
-    except Exception as e:
-        twilio_client = None
-        print(f"[Twilio] Error al inicializar cliente: {e}", file=sys.stderr)
+def init_meta_whatsapp():
+    if META_WHATSAPP_ACCESS_TOKEN and META_WHATSAPP_PHONE_NUMBER_ID and META_WHATSAPP_TEMPLATE_NAME:
+        print("[Meta WhatsApp] Cloud API configurada.")
+        print(f"[Meta WhatsApp] Phone Number ID: {META_WHATSAPP_PHONE_NUMBER_ID}")
+        print(f"[Meta WhatsApp] Plantilla: {META_WHATSAPP_TEMPLATE_NAME} ({META_WHATSAPP_TEMPLATE_LANGUAGE})")
+    else:
+        print("[Meta WhatsApp] Configuración incompleta. WhatsApp deshabilitado.")
 
 with app.app_context():
-    init_twilio_client()
+    init_meta_whatsapp()
 
 # ---------------------------------------------------------
 # Migraciones mínimas (SQLite)
@@ -5214,7 +5202,7 @@ def normalize_whatsapp(number: str) -> str:
     digits = "".join(ch for ch in n if ch.isdigit())
     if not digits:
         return ""
-    # México usa 10 dígitos nacionales. Twilio requiere E.164 (+52 + 10 dígitos).
+    # México usa 10 dígitos nacionales. WhatsApp requiere E.164 (+52 + 10 dígitos).
     # También quitamos el antiguo "1" móvil de +521, que ya no forma parte
     # del formato mexicano vigente.
     if len(digits) == 13 and digits.startswith("521"):
@@ -5226,23 +5214,74 @@ def normalize_whatsapp(number: str) -> str:
     return f"whatsapp:+52{digits}" if len(digits) == 10 else ""
 
 def can_send_whatsapp() -> bool:
-    return bool(twilio_client and TWILIO_WHATSAPP)
+    return bool(
+        META_WHATSAPP_ACCESS_TOKEN
+        and META_WHATSAPP_PHONE_NUMBER_ID
+        and META_WHATSAPP_TEMPLATE_NAME
+    )
 
 def send_whatsapp_multi(to_list: Iterable[str], body: str) -> None:
     if not to_list:
         return
     if not can_send_whatsapp():
-        print("[Twilio] Config incompleta; omito envío.")
-        return
+        raise RuntimeError(
+            "Meta WhatsApp no está configurado. Faltan ACCESS_TOKEN, PHONE_NUMBER_ID o TEMPLATE_NAME."
+        )
+    title, separator, detail = (body or "").partition("\n\n")
+    title = title.strip().strip("*") or "Notificación de Sistema MAR"
+    detail = (detail if separator else body).strip() or "Consulta Sistema MAR para ver el detalle."
+    endpoint = (
+        f"https://graph.facebook.com/{META_GRAPH_API_VERSION}/"
+        f"{META_WHATSAPP_PHONE_NUMBER_ID}/messages"
+    )
     for to in to_list:
         to_norm = normalize_whatsapp(to)
         if not to_norm:
             continue
+        recipient = "".join(ch for ch in to_norm if ch.isdigit())
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": recipient,
+            "type": "template",
+            "template": {
+                "name": META_WHATSAPP_TEMPLATE_NAME,
+                "language": {"code": META_WHATSAPP_TEMPLATE_LANGUAGE},
+                "components": [
+                    {
+                        "type": "body",
+                        "parameters": [
+                            {"type": "text", "text": title[:1024]},
+                            {"type": "text", "text": detail[:4096]},
+                        ],
+                    }
+                ],
+            },
+        }
         try:
-            twilio_client.messages.create(from_=TWILIO_WHATSAPP, to=to_norm, body=body)
+            response = requests.post(
+                endpoint,
+                headers={
+                    "Authorization": f"Bearer {META_WHATSAPP_ACCESS_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=30,
+            )
+            if not response.ok:
+                try:
+                    error_detail = response.json()
+                except ValueError:
+                    error_detail = response.text[:1000]
+                raise RuntimeError(
+                    f"Meta Graph API HTTP {response.status_code}: {error_detail}"
+                )
+            message_id = ((response.json().get("messages") or [{}])[0]).get("id", "")
+            print(f"[Meta WhatsApp] Enviado a {recipient}; id={message_id}")
         except Exception as e:
-            print(f"[Twilio] ERROR enviando a {to_norm}: {e}", file=sys.stderr)
+            print(f"[Meta WhatsApp] ERROR enviando a {recipient}: {e}", file=sys.stderr)
             traceback.print_exc()
+            raise
 
 
 def _notification_phone_recipients(email_recipients: Iterable[str]) -> list[str]:
@@ -5314,7 +5353,7 @@ class _WhatsAppNotificationTransport:
 
     def send_message(self, msg: EmailMessage, to_addrs=None, **kwargs):
         if not can_send_whatsapp():
-            raise RuntimeError("WhatsApp no está configurado; revisa las credenciales de Twilio.")
+            raise RuntimeError("WhatsApp no está configurado; revisa las credenciales de Meta Cloud API.")
         direct_phone = str(msg.get("X-WhatsApp-To") or "").strip()
         if direct_phone:
             phones = [normalize_whatsapp(direct_phone)]
