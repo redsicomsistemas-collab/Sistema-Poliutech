@@ -265,6 +265,7 @@ class Usuario(UserMixin, db.Model):
     rol = db.Column(db.String(10), default="REP", nullable=False)
 
     correo = db.Column(db.String(160))
+    telefono = db.Column(db.String(20))
 
     # Lista JSON de permisos elevados asignados individualmente por Admin.
     permisos = db.Column(db.Text, default="[]", nullable=False)
