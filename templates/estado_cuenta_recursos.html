@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Estado de cuenta de recursos{% endblock %}
+{% block title %}Estado de cuenta de fondos{% endblock %}
 
 {% block content %}
 <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 my-4">
   <div>
-    <h2 class="fw-bold text-primary mb-1">Estado de cuenta de recursos</h2>
+    <h2 class="fw-bold text-primary mb-1">Estado de cuenta de fondos</h2>
     <div class="text-muted">Dinero autorizado, comprobado y pendiente por usuario.</div>
   </div>
   <a class="btn btn-outline-secondary" href="{{ url_for('gastos_viaticos_index') }}">Volver a gastos</a>
@@ -58,7 +58,7 @@
             <td class="text-end fw-bold text-success">${{ "{:,.2f}".format(usuario.comprobado or 0) }}</td>
             <td class="text-end fw-bold {% if usuario.saldo > 0 %}text-danger{% else %}text-success{% endif %}">${{ "{:,.2f}".format(usuario.saldo or 0) }}</td>
             <td>
-              <div>{{ usuario.recursos_count }} recurso(s)</div>
+              <div>{{ usuario.recursos_count }} fondo(s)</div>
               <div class="small text-muted">{{ usuario.comprobaciones_count }} comprobacion(es)</div>
             </td>
             <td>{{ usuario.ultimo.strftime("%d/%m/%Y") if usuario.ultimo else "-" }}</td>
@@ -67,7 +67,7 @@
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="7" class="text-center text-muted py-4">Todavia no hay recursos autorizados ni comprobaciones aprobadas.</td></tr>
+          <tr><td colspan="7" class="text-center text-muted py-4">Todavía no hay fondos autorizados ni comprobaciones aprobadas.</td></tr>
           {% endfor %}
         </tbody>
       </table>

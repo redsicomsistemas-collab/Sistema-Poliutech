@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Solicitudes de recursos{% endblock %}
+{% block title %}Solicitudes de fondos{% endblock %}
 
 {% block content %}
 <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 my-4">
   <div>
-    <h2 class="fw-bold text-primary mb-1">Solicitudes de recursos</h2>
+    <h2 class="fw-bold text-primary mb-1">Solicitudes de fondos</h2>
     <div class="text-muted">Registro de partidas, cantidades, descripciones e importes solicitados.</div>
   </div>
 </div>
@@ -166,7 +166,7 @@
           </tr>
           {% else %}
           <tr>
-            <td colspan="7" class="text-center text-muted py-4">No hay solicitudes de recursos con estos filtros.</td>
+            <td colspan="7" class="text-center text-muted py-4">No hay solicitudes de fondos con estos filtros.</td>
           </tr>
           {% endfor %}
         </tbody>

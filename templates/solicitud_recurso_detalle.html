@@ -4,7 +4,7 @@
 {% block content %}
 <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 my-4">
   <div>
-    <h2 class="fw-bold text-primary mb-1">Solicitud {{ solicitud.folio }}</h2>
+    <h2 class="fw-bold text-primary mb-1">Solicitud de fondos {{ solicitud.folio }}</h2>
     <div class="text-muted">{{ solicitud.fecha.strftime("%d/%m/%Y %H:%M") if solicitud.fecha else "" }}</div>
   </div>
   <a href="{{ url_for('solicitudes_recursos_index') }}" class="btn btn-outline-secondary">Volver</a>
@@ -48,10 +48,10 @@
 {% if solicitud.gasto_generado %}
 <div class="alert alert-success d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
   <div>
-    <div class="fw-bold">Registrada en gastos</div>
+    <div class="fw-bold">Fondo autorizado</div>
     <div>{{ solicitud.gasto_generado.folio }} · ${{ "{:,.2f}".format(solicitud.gasto_generado.total or 0) }} {{ solicitud.gasto_generado.moneda or "MXN" }}</div>
   </div>
-  <a class="btn btn-outline-success" href="{{ url_for('gastos_viaticos_detalle', gasto_id=solicitud.gasto_generado.id) }}">Ver gasto</a>
+  <a class="btn btn-outline-success" href="{{ url_for('gastos_viaticos_detalle', gasto_id=solicitud.gasto_generado.id) }}">Ver fondo</a>
 </div>
 {% endif %}
 

@@ -738,7 +738,7 @@
         <a class="nav-link" href="{{ url_for('index') }}">🏠 Inicio</a>
         <a class="nav-link" href="{{ url_for('proyectos') }}">📁 Proyectos</a>
         <a class="nav-link" href="{{ url_for('inventario_index') }}">📦 Inventario</a>
-        <a class="nav-link" href="{{ url_for('solicitudes_recursos_index') }}">📋 Recursos</a>
+        <a class="nav-link" href="{{ url_for('solicitudes_recursos_index') }}">📋 Fondos</a>
         <a class="nav-link" href="{{ url_for('ordenes_compra_index') }}">🧾 Compras</a>
         <a class="nav-link" href="{{ url_for('finanzas_index') }}">🏦 Finanzas</a>
         {% if endpoint_exists('facturacion.index') %}
@@ -746,7 +746,7 @@
         {% endif %}
         <a class="nav-link" href="{{ url_for('gastos_viaticos_index') }}">🧾 Gastos</a>
         {% if estado_cuenta_recursos_can_view() %}
-        <a class="nav-link" href="{{ url_for('estado_cuenta_recursos_panel') }}">💳 Edo. recursos</a>
+        <a class="nav-link" href="{{ url_for('estado_cuenta_recursos_panel') }}">💳 Edo. fondos</a>
         {% endif %}
         {% if gastos_admin_can_view() %}
         <a class="nav-link" href="{{ url_for('gastos_admin_panel') }}">📊 Gastos admin</a>

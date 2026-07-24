@@ -108,13 +108,13 @@
       <div class="mb-4">
         <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
           <div class="fw-semibold">{{ adj.nombre_original }}</div>
-          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('static', filename=adj.ruta) }}" target="_blank">Abrir archivo</a>
+          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('gastos_viaticos_adjunto', adjunto_id=adj.id, token=attachment_token|default('')) }}" target="_blank">Abrir archivo</a>
         </div>
         {% if (adj.mime_type or "").startswith("image/") %}
-        <img src="{{ url_for('static', filename=adj.ruta) }}" alt="{{ adj.nombre_original }}" class="receipt-attachment-img">
+        <img src="{{ url_for('gastos_viaticos_adjunto', adjunto_id=adj.id, token=attachment_token|default('')) }}" alt="{{ adj.nombre_original }}" class="receipt-attachment-img">
         {% else %}
         <div class="ratio ratio-4x3 border rounded bg-light">
-          <iframe src="{{ url_for('static', filename=adj.ruta) }}" title="{{ adj.nombre_original }}"></iframe>
+          <iframe src="{{ url_for('gastos_viaticos_adjunto', adjunto_id=adj.id, token=attachment_token|default('')) }}" title="{{ adj.nombre_original }}"></iframe>
         </div>
         {% endif %}
       </div>

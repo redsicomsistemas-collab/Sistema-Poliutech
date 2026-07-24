@@ -291,7 +291,7 @@
                   <div class="fw-bold {{ 'text-success' if (grupo.saldo or 0) >= 0 else 'text-danger' }}">
                     {{ '+' if (grupo.saldo or 0) >= 0 else '-' }}${{ "{:,.2f}".format((grupo.saldo or 0)|abs) }}
                   </div>
-                  <div class="small text-muted">Rec. ${{ "{:,.2f}".format(grupo.recursos or 0) }} · Gto. ${{ "{:,.2f}".format(grupo.gastos or 0) }}</div>
+                  <div class="small text-muted">Fondos ${{ "{:,.2f}".format(grupo.recursos or 0) }} · Gastos ${{ "{:,.2f}".format(grupo.gastos or 0) }}</div>
                 </td>
                 <td>
                   {% if grupo.pendientes %}
@@ -300,8 +300,10 @@
                     <input type="hidden" name="grupo" value="{{ grupo.nombre }}">
                     <input type="hidden" name="fecha" value="{{ grupo.fecha }}">
                     <input type="hidden" name="responsable" value="{{ grupo.responsable }}">
-                    <button class="btn btn-sm btn-primary">Enviar salida</button>
+                    <button class="btn btn-sm btn-primary">Enviar grupo completo</button>
                   </form>
+                  {% elif grupo.en_revision %}
+                  <span class="badge bg-warning text-dark">En revisión</span>
                   {% else %}
                   <span class="badge bg-success">Cerrada</span>
                   {% endif %}
@@ -374,7 +376,7 @@
             <td class="fw-bold cell-wrap">{{ gasto.folio }}</td>
             <td class="cell-wrap">
               <div class="fw-semibold">{{ gasto.proyecto if gasto.tipo_agrupacion == "PROYECTO" else gasto.evento }}</div>
-              <div class="small text-muted">{{ gasto.tipo_agrupacion }} · {{ gasto.tipo_gasto }}</div>
+              <div class="small text-muted">{{ gasto.tipo_agrupacion }} · {{ "FONDO" if gastos_es_recurso(gasto) else gasto.tipo_gasto }}</div>
             </td>
             <td class="cell-wrap">
               <div class="fw-semibold">{{ gasto.proveedor or "Sin proveedor" }}</div>

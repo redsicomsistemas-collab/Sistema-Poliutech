@@ -2712,7 +2712,7 @@ def _build_matrix_xlsx(sheet_name: str, rows: list[list[str]], column_widths: Op
 
 from flask import (
     Flask, render_template, render_template_string, request, redirect, url_for,
-    flash, jsonify, Response, abort, g, current_app
+    flash, jsonify, Response, abort, g, current_app, send_file
 )
 
 from sqlalchemy import text, or_, and_, case
@@ -2854,6 +2854,17 @@ app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", DEFAULT_SECRET_KEY)
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+# Render monta el disco persistente de este servicio en /data. En desarrollo se
+# conserva static/uploads para no exigir una ruta especial en cada equipo.
+_configured_upload_root = (os.getenv("UPLOAD_STORAGE_ROOT") or "").strip()
+if _configured_upload_root:
+    UPLOAD_STORAGE_ROOT = Path(_configured_upload_root).expanduser().resolve()
+elif Path("/data").is_dir():
+    UPLOAD_STORAGE_ROOT = Path("/data/uploads")
+else:
+    UPLOAD_STORAGE_ROOT = Path(app.static_folder or "static").resolve() / "uploads"
+
 logger = logging.getLogger(__name__)
 
 db.init_app(app)
@@ -10812,7 +10823,7 @@ def _mobile_push_user_ids_for_hansel_only() -> list[int]:
             if user.id:
                 user_ids.add(user.id)
     if not user_ids:
-        logger.warning("Push solicitud de recursos: no se encontro usuario Hansel.")
+        logger.warning("Push solicitud de fondos: no se encontro usuario Hansel.")
     return list(user_ids)
 
 
@@ -10834,7 +10845,7 @@ def _solicitud_recurso_mail_html(solicitud: SolicitudRecurso, detail_url: str) -
     partidas_html = "".join(rows) or "<tr><td colspan='5' style='padding:10px;'>Sin partidas.</td></tr>"
     return f"""
     <div style="font-family:Arial,sans-serif;color:#0f172a;max-width:760px;margin:0 auto;">
-      <h2 style="margin:0 0 10px;color:#0C3C78;">Nueva solicitud de recursos</h2>
+      <h2 style="margin:0 0 10px;color:#0C3C78;">Solicitud de fondos</h2>
       <p style="margin:0 0 18px;color:#475569;">Se registro la solicitud <b>{escape(solicitud.folio or str(solicitud.id))}</b>.</p>
       <table style="width:100%;border-collapse:collapse;margin-bottom:18px;">
         <tr><td style="padding:8px;color:#64748b;font-weight:700;">Solicitante</td><td style="padding:8px;">{escape(solicitud.solicitante or '-')}</td></tr>
@@ -10864,11 +10875,11 @@ def _send_solicitud_recurso_email(solicitud: SolicitudRecurso) -> None:
     recipients = list(SOLICITUD_RECURSO_EMAILS)
     detail_url = url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id, _external=True)
     msg = EmailMessage()
-    msg["Subject"] = f"Nueva solicitud de recursos {solicitud.folio or solicitud.id}"
+    msg["Subject"] = f"Solicitud de fondos {solicitud.folio or solicitud.id}"
     msg["From"] = f"SISTEMA MAR <{SMTP_FROM or SMTP_USERNAME}>"
     msg["To"] = ", ".join(recipients)
     msg.set_content(
-        f"Nueva solicitud de recursos {solicitud.folio or solicitud.id}\n"
+        f"Solicitud de fondos {solicitud.folio or solicitud.id}\n"
         f"Solicitante: {solicitud.solicitante or '-'}\n"
         f"Proyecto / obra: {solicitud.proyecto or '-'}\n"
         f"Total: ${float(solicitud.total or 0):,.2f}\n"
@@ -10886,12 +10897,12 @@ def _send_solicitud_recurso_push_hansel(solicitud: SolicitudRecurso) -> dict[str
     tokens = _mobile_push_tokens_for_users(user_ids)
     if not tokens:
         logger.warning(
-            "Push solicitud de recursos %s: Hansel no tiene token movil activo.",
+            "Push solicitud de fondos %s: Hansel no tiene token movil activo.",
             solicitud.folio or solicitud.id,
         )
     return _send_push_notification(
         tokens,
-        title="Nueva solicitud de recursos",
+        title="Solicitud de fondos",
         body=f"{solicitud.folio or solicitud.id} - ${float(solicitud.total or 0):,.2f}",
         data={
             "type": "solicitud_recurso",
@@ -10906,12 +10917,12 @@ def _notify_solicitud_recurso_created(solicitud: SolicitudRecurso) -> None:
     try:
         _send_solicitud_recurso_email(solicitud)
     except Exception as exc:
-        logger.warning("Correo de solicitud de recursos %s fallo: %s", solicitud.folio or solicitud.id, exc)
+        logger.warning("Correo de solicitud de fondos %s fallo: %s", solicitud.folio or solicitud.id, exc)
 
     try:
         _send_solicitud_recurso_push_hansel(solicitud)
     except Exception as exc:
-        logger.warning("Push de solicitud de recursos %s fallo: %s", solicitud.folio or solicitud.id, exc)
+        logger.warning("Push de solicitud de fondos %s fallo: %s", solicitud.folio or solicitud.id, exc)
 
 
 def _solicitud_recurso_solicitante_user(solicitud: SolicitudRecurso) -> Usuario | None:
@@ -10927,7 +10938,7 @@ def _solicitud_recurso_solicitante_user(solicitud: SolicitudRecurso) -> Usuario 
 def _solicitud_recurso_resultado_mail_html(solicitud: SolicitudRecurso, detail_url: str) -> str:
     estatus = (solicitud.estatus or "").strip().upper()
     aprobada = estatus == "AUTORIZADA"
-    titulo = "Solicitud de recursos autorizada" if aprobada else "Solicitud de recursos rechazada"
+    titulo = "Solicitud de fondos autorizada" if aprobada else "Solicitud de fondos rechazada"
     color = "#15803d" if aprobada else "#b91c1c"
     mensaje = (
         "Tu solicitud fue autorizada y quedo registrada para seguimiento."
@@ -10966,11 +10977,11 @@ def _send_solicitud_recurso_resultado_email(solicitud: SolicitudRecurso) -> None
     accion = "autorizada" if estatus == "AUTORIZADA" else "rechazada"
     detail_url = url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id, _external=True)
     msg = EmailMessage()
-    msg["Subject"] = f"Solicitud de recursos {accion} {solicitud.folio or solicitud.id}"
+    msg["Subject"] = f"Solicitud de fondos {accion} {solicitud.folio or solicitud.id}"
     msg["From"] = f"SISTEMA MAR <{SMTP_FROM or SMTP_USERNAME}>"
     msg["To"] = ", ".join(recipients)
     msg.set_content(
-        f"Tu solicitud de recursos {solicitud.folio or solicitud.id} fue {accion}.\n"
+        f"Tu solicitud de fondos {solicitud.folio or solicitud.id} fue {accion}.\n"
         f"Proyecto / obra: {solicitud.proyecto or '-'}\n"
         f"Total: ${float(solicitud.total or 0):,.2f}\n"
         f"Ver: {detail_url}\n"
@@ -10988,12 +10999,12 @@ def _send_solicitud_recurso_resultado_push(solicitud: SolicitudRecurso) -> dict[
     tokens = _mobile_push_tokens_for_users(user_ids)
     if not tokens:
         logger.warning(
-            "Push resultado solicitud de recursos %s: solicitante %s no tiene token movil activo.",
+            "Push resultado solicitud de fondos %s: solicitante %s no tiene token movil activo.",
             solicitud.folio or solicitud.id,
             user_ids,
         )
     estatus = (solicitud.estatus or "").strip().upper()
-    title = "Solicitud de recursos autorizada" if estatus == "AUTORIZADA" else "Solicitud de recursos rechazada"
+    title = "Solicitud de fondos autorizada" if estatus == "AUTORIZADA" else "Solicitud de fondos rechazada"
     body = f"{solicitud.folio or solicitud.id} - ${float(solicitud.total or 0):,.2f}"
     return _send_push_notification(
         tokens,
@@ -11014,12 +11025,12 @@ def _notify_solicitud_recurso_resultado(solicitud: SolicitudRecurso) -> None:
     try:
         _send_solicitud_recurso_resultado_email(solicitud)
     except Exception as exc:
-        logger.warning("Correo resultado solicitud de recursos %s fallo: %s", solicitud.folio or solicitud.id, exc)
+        logger.warning("Correo resultado solicitud de fondos %s fallo: %s", solicitud.folio or solicitud.id, exc)
 
     try:
         _send_solicitud_recurso_resultado_push(solicitud)
     except Exception as exc:
-        logger.warning("Push resultado solicitud de recursos %s fallo: %s", solicitud.folio or solicitud.id, exc)
+        logger.warning("Push resultado solicitud de fondos %s fallo: %s", solicitud.folio or solicitud.id, exc)
 
 
 def _send_solicitud_recurso_autorizada_finanzas_email(solicitud: SolicitudRecurso) -> None:
@@ -11032,11 +11043,11 @@ def _send_solicitud_recurso_autorizada_finanzas_email(solicitud: SolicitudRecurs
     if getattr(solicitud, "gasto_generado", None):
         gasto_line = f"Gasto generado: {solicitud.gasto_generado.folio or solicitud.gasto_generado.id}\n"
     msg = EmailMessage()
-    msg["Subject"] = f"Solicitud de recursos autorizada {solicitud.folio or solicitud.id}"
+    msg["Subject"] = f"Solicitud de fondos autorizada {solicitud.folio or solicitud.id}"
     msg["From"] = f"SISTEMA MAR <{SMTP_FROM or SMTP_USERNAME}>"
     msg["To"] = ", ".join(recipients)
     msg.set_content(
-        f"Solicitud de recursos autorizada {solicitud.folio or solicitud.id}\n"
+        f"Solicitud de fondos autorizada {solicitud.folio or solicitud.id}\n"
         f"Solicitante: {solicitud.solicitante or '-'}\n"
         f"Proyecto / obra: {solicitud.proyecto or '-'}\n"
         f"Total: ${float(solicitud.total or 0):,.2f}\n"
@@ -11055,12 +11066,12 @@ def _send_solicitud_recurso_autorizada_finanzas_push(solicitud: SolicitudRecurso
     tokens = _mobile_push_tokens_for_users(user_ids)
     if not tokens:
         logger.warning(
-            "Push solicitud de recursos autorizada %s: Mescalera/Miguel sin token movil activo.",
+            "Push solicitud de fondos autorizada %s: Mescalera/Miguel sin token movil activo.",
             solicitud.folio or solicitud.id,
         )
     return _send_push_notification(
         tokens,
-        title="Solicitud de recursos autorizada",
+        title="Solicitud de fondos autorizada",
         body=f"{solicitud.folio or solicitud.id} - ${float(solicitud.total or 0):,.2f}",
         data={
             "type": "solicitud_recurso_autorizada_finanzas",
@@ -11077,12 +11088,12 @@ def _notify_solicitud_recurso_autorizada_finanzas(solicitud: SolicitudRecurso) -
     try:
         _send_solicitud_recurso_autorizada_finanzas_email(solicitud)
     except Exception as exc:
-        logger.warning("Correo finanzas solicitud de recursos %s fallo: %s", solicitud.folio or solicitud.id, exc)
+        logger.warning("Correo finanzas solicitud de fondos %s fallo: %s", solicitud.folio or solicitud.id, exc)
 
     try:
         _send_solicitud_recurso_autorizada_finanzas_push(solicitud)
     except Exception as exc:
-        logger.warning("Push finanzas solicitud de recursos %s fallo: %s", solicitud.folio or solicitud.id, exc)
+        logger.warning("Push finanzas solicitud de fondos %s fallo: %s", solicitud.folio or solicitud.id, exc)
 
 
 FINANZAS_CATEGORIA_CREDITO = "CREDITO_RECIBIDO"
@@ -11212,7 +11223,7 @@ def _solicitud_recurso_concepto_gasto(solicitud: SolicitudRecurso) -> str:
     for idx, partida in enumerate(solicitud.partidas, start=1):
         cantidad = float(partida.cantidad or 0)
         conceptos.append(f"{idx}. {cantidad:,.2f} x {partida.concepto}")
-    return "Solicitud de recursos " + (solicitud.folio or f"#{solicitud.id}") + (": " + "; ".join(conceptos) if conceptos else "")
+    return "Solicitud de fondos " + (solicitud.folio or f"#{solicitud.id}") + (": " + "; ".join(conceptos) if conceptos else "")
 
 
 def _solicitud_recurso_registrar_gasto(solicitud: SolicitudRecurso) -> ComprobacionGasto:
@@ -11370,9 +11381,9 @@ def _estado_cuenta_recursos_data(user_key: str | None = None) -> list[dict]:
         bucket["ultimo"] = max([d for d in [bucket["ultimo"], fecha] if d], default=None)
         bucket["movimientos"].append({
             "fecha": fecha,
-            "tipo": "RECURSO AUTORIZADO",
+            "tipo": "FONDO AUTORIZADO",
             "folio": solicitud.folio or f"#{solicitud.id}",
-            "concepto": solicitud.proyecto or "Solicitud de recursos",
+            "concepto": solicitud.proyecto or "Solicitud de fondos",
             "referencia": solicitud.gasto_generado.folio if getattr(solicitud, "gasto_generado", None) else "",
             "estatus": solicitud.estatus,
             "monto_enviado": monto,
@@ -11507,6 +11518,20 @@ def _gastos_file_ext(filename: str) -> str:
     return (filename or "").rsplit(".", 1)[-1].lower() if "." in (filename or "") else ""
 
 
+def _upload_storage_path(relative_path: str) -> Path:
+    """Resuelve una ruta guardada en DB dentro del almacén persistente."""
+    normalized = str(relative_path or "").replace("\\", "/").lstrip("/")
+    if normalized == "uploads":
+        normalized = ""
+    elif normalized.startswith("uploads/"):
+        normalized = normalized[len("uploads/"):]
+    candidate = (UPLOAD_STORAGE_ROOT / normalized).resolve()
+    root = UPLOAD_STORAGE_ROOT.resolve()
+    if candidate != root and root not in candidate.parents:
+        abort(404)
+    return candidate
+
+
 def _gastos_save_upload(uploaded, comprobacion_id: int) -> ComprobacionAdjunto | None:
     if not uploaded or not (uploaded.filename or "").strip():
         return None
@@ -11514,7 +11539,7 @@ def _gastos_save_upload(uploaded, comprobacion_id: int) -> ComprobacionAdjunto |
     if ext not in GASTOS_UPLOAD_EXTS:
         raise ValueError("Adjunta un PDF o imagen valida: pdf, png, jpg, jpeg o webp.")
 
-    upload_dir = Path(app.static_folder or "static") / "uploads" / "gastos_viaticos" / str(comprobacion_id)
+    upload_dir = UPLOAD_STORAGE_ROOT / "gastos_viaticos" / str(comprobacion_id)
     upload_dir.mkdir(parents=True, exist_ok=True)
     original = secure_filename(uploaded.filename) or f"comprobante.{ext}"
     stem = Path(original).stem[:80] or "comprobante"
@@ -11805,7 +11830,7 @@ def _gastos_group_query(tipo_agrupacion: str, grupo: str, fecha: str, responsabl
     field = ComprobacionGasto.proyecto if tipo_agrupacion == "PROYECTO" else ComprobacionGasto.evento
     query = _gastos_apply_user_scope(ComprobacionGasto.query).filter(
         ComprobacionGasto.tipo_agrupacion == tipo_agrupacion,
-        ComprobacionGasto.estatus.in_(("PENDIENTE", "EN REVISION")),
+        ComprobacionGasto.estatus == "PENDIENTE",
         ComprobacionGasto.tipo_gasto != "RECURSO",
         field == (grupo or "").strip(),
     )
@@ -11926,6 +11951,7 @@ def _gastos_mail_html(gasto: "ComprobacionGasto", view_url: str, approve_url: st
 
 def _gastos_group_mail_html(gastos: list["ComprobacionGasto"], view_url: str, approve_url: str) -> str:
     first = gastos[0]
+    titulo = _gastos_review_title(gastos)
     grupo = escape(_gastos_group_name(first))
     tipo = escape(first.tipo_agrupacion or "")
     responsable = escape(first.responsable or "Sin responsable")
@@ -11953,8 +11979,8 @@ def _gastos_group_mail_html(gastos: list["ComprobacionGasto"], view_url: str, ap
           <div style="background:#ffffff;border:1px solid #d9e2ec;border-radius:10px;overflow:hidden;box-shadow:0 8px 24px rgba(15,45,80,.08);">
             <div style="background:#0C3C78;color:#ffffff;padding:22px 26px;">
               <div style="font-size:12px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;opacity:.9;">MAR · Poliutech</div>
-              <div style="font-size:23px;font-weight:800;margin-top:5px;">Salida agrupada pendiente de revision</div>
-              <div style="font-size:14px;opacity:.92;margin-top:6px;">Gastos y viaticos</div>
+              <div style="font-size:23px;font-weight:800;margin-top:5px;">{escape(titulo)}</div>
+              <div style="font-size:14px;opacity:.92;margin-top:6px;">Grupo pendiente de revisión</div>
             </div>
             <div style="padding:26px;">
               <p style="margin:0 0 20px 0;font-size:15px;color:#475569;">Se envio una salida agrupada con {len(gastos)} comprobante(s) para validacion administrativa.</p>
@@ -12021,6 +12047,38 @@ def _send_gastos_review_push_hansel(gasto: "ComprobacionGasto") -> dict[str, int
     )
 
 
+def _gastos_review_title(gastos: list["ComprobacionGasto"]) -> str:
+    if any(getattr(gasto, "solicitud_recurso_id", None) for gasto in gastos):
+        return "Comprobación de fondos gastados"
+    return "Gastos"
+
+
+def _send_gastos_group_review_push_hansel(gastos: list["ComprobacionGasto"]) -> dict[str, int]:
+    if not gastos:
+        return {"sent": 0, "failed": 0}
+    tokens = _mobile_push_tokens_for_users(_mobile_push_user_ids_for_hansel_only())
+    if not tokens:
+        logger.warning("Push de grupo de gastos: Hansel no tiene token movil activo.")
+    first = gastos[0]
+    total = sum(float(gasto.total or 0) for gasto in gastos)
+    return _send_push_notification(
+        tokens,
+        title=_gastos_review_title(gastos),
+        body=f"{_gastos_group_name(first)} · {len(gastos)} comprobante(s) · ${total:,.2f}",
+        data={
+            "type": "gastos_viaticos_grupo",
+            "gasto_id": str(first.id),
+            "count": str(len(gastos)),
+            "total": f"{total:.2f}",
+            "url": url_for(
+                "gastos_viaticos_revision_grupo",
+                token=_gastos_group_review_token(gastos, "view"),
+                _external=True,
+            ),
+        },
+    )
+
+
 def _notify_gasto_created_for_review(gasto: "ComprobacionGasto") -> None:
     try:
         _send_gastos_review_email(gasto)
@@ -12074,11 +12132,12 @@ def _send_gastos_group_review_email(gastos: list["ComprobacionGasto"]) -> None:
     view_url = url_for("gastos_viaticos_revision_grupo", token=_gastos_group_review_token(gastos, "view"), _external=True)
     approve_url = url_for("gastos_viaticos_revision_grupo_aprobar", token=_gastos_group_review_token(gastos, "approve"), _external=True)
     first = gastos[0]
+    titulo = _gastos_review_title(gastos)
     grupo = _gastos_group_name(first)
     fecha = _gastos_fecha_base(first).strftime("%d/%m/%Y")
     total = sum(float(gasto.total or 0) for gasto in gastos)
     lines = [
-        f"Salida agrupada: {grupo}",
+        f"{titulo}: {grupo}",
         f"Fecha: {fecha}",
         f"Comprobantes: {len(gastos)}",
         f"Total: ${total:,.2f}",
@@ -12089,11 +12148,13 @@ def _send_gastos_group_review_email(gastos: list["ComprobacionGasto"]) -> None:
     lines.extend(["", "Abre este correo en vista HTML para usar los botones Ver y Aprobar.", f"Ver: {view_url}", f"Aprobar: {approve_url}"])
 
     msg = EmailMessage()
-    msg["Subject"] = f"Revision de salida {grupo} - {fecha} ({len(gastos)} comprobantes)"
+    msg["Subject"] = f"{titulo} - {grupo} - {fecha} ({len(gastos)} comprobantes)"
     msg["From"] = f"REGISTRO DE GASTOS Y/O VIATICOS <{SMTP_FROM or SMTP_USERNAME}>"
     msg["To"] = ", ".join(recipients)
     msg.set_content("\n".join(lines))
     msg.add_alternative(_gastos_group_mail_html(gastos, view_url, approve_url), subtype="html")
+    for gasto in gastos:
+        _gastos_add_email_attachments(msg, gasto)
 
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
         smtp.ehlo()
@@ -12299,6 +12360,7 @@ def gastos_viaticos_index():
             "nombre": nombre,
             "conteo": 0,
             "pendientes": 0,
+            "en_revision": 0,
             "total": 0.0,
             "recursos": 0.0,
             "gastos": 0.0,
@@ -12314,8 +12376,10 @@ def gastos_viaticos_index():
             item["recursos"] += float(gasto.total or 0)
         elif not _gastos_es_recurso(gasto) and (gasto.estatus or "") != "RECHAZADO":
             item["gastos"] += float(gasto.total or 0)
-        if not _gastos_es_recurso(gasto) and (gasto.estatus or "") in {"PENDIENTE", "EN REVISION"}:
+        if not _gastos_es_recurso(gasto) and (gasto.estatus or "") == "PENDIENTE":
             item["pendientes"] += 1
+        elif not _gastos_es_recurso(gasto) and (gasto.estatus or "") == "EN REVISION":
+            item["en_revision"] += 1
 
     return render_template(
         "gastos_viaticos.html",
@@ -12449,7 +12513,7 @@ def estado_cuenta_recursos_panel():
     total_saldo = sum(float(item["saldo"] or 0) for item in usuarios)
     return render_template(
         "estado_cuenta_recursos.html",
-        title="Estado de cuenta de recursos",
+        title="Estado de cuenta de fondos",
         usuarios=usuarios,
         total_enviado=total_enviado,
         total_comprobado=total_comprobado,
@@ -12636,11 +12700,11 @@ def gastos_viaticos_crear():
     if solicitud_recurso_id:
         solicitud_recurso = SolicitudRecurso.query.filter_by(id=solicitud_recurso_id, estatus="AUTORIZADA").first()
         if not solicitud_recurso:
-            flash("Selecciona una solicitud de recurso autorizada para comprobar.", "warning")
+            flash("Selecciona una solicitud de fondos autorizada para comprobar.", "warning")
             return _gastos_redirect()
         tipo_agrupacion = "PROYECTO"
         proyecto = (solicitud_recurso.proyecto or "").strip() or proyecto
-        estatus = "EN REVISION"
+        estatus = "PENDIENTE"
 
     gastos_creados: list[ComprobacionGasto] = []
     max_rows = max(len(conceptos), len(totales), 1)
@@ -12707,23 +12771,12 @@ def gastos_viaticos_crear():
         return _gastos_redirect()
 
     db.session.commit()
-    notified = 0
-    notify_errors: list[str] = []
-    for gasto in gastos_creados:
-        if _gastos_es_recurso(gasto):
-            continue
-        try:
-            _notify_gasto_created_for_review(gasto)
-            notified += 1
-        except Exception as exc:
-            notify_errors.append(str(exc))
     grupo = proyecto if tipo_agrupacion == "PROYECTO" else evento
-    if notify_errors:
-        flash(f"Salida '{grupo}' registrada, pero no se pudo notificar revision: {notify_errors[0]}", "warning")
-    elif notified:
-        flash(f"Comprobacion registrada y notificada por correo y movil.", "success")
-    else:
-        flash(f"Salida '{grupo}' registrada con {len(gastos_creados)} gasto(s). Quedo lista para enviarse a revision.", "success")
+    flash(
+        f"Salida '{grupo}' registrada con {len(gastos_creados)} gasto(s). "
+        "Cuando termines el grupo, usa 'Enviar salida' para mandar una sola notificación.",
+        "success",
+    )
     return _gastos_redirect()
 
 
@@ -12746,15 +12799,31 @@ def gastos_viaticos_enviar_grupo():
         gasto.estatus = "EN REVISION"
         gasto.actualizado_en = now_cdmx_naive()
     db.session.commit()
+    errores_envio: list[str] = []
     try:
         _send_gastos_group_review_email(gastos)
-        flash(f"Salida '{grupo}' enviada a revision con {len(gastos)} comprobante(s).", "success")
     except Exception as exc:
+        errores_envio.append(f"correo: {exc}")
         try:
             logger.exception("No se pudo enviar correo de revision agrupada de gastos %s", grupo)
         except Exception:
             pass
-        flash(f"La salida quedo en revision, pero no se pudo enviar el correo: {exc}", "warning")
+    try:
+        _send_gastos_group_review_push_hansel(gastos)
+    except Exception as exc:
+        errores_envio.append(f"notificación: {exc}")
+        logger.warning("No se pudo enviar push de revision agrupada de gastos %s: %s", grupo, exc)
+    if errores_envio:
+        flash(
+            f"La salida quedó en revisión, pero falló el envío de {'; '.join(errores_envio)}.",
+            "warning",
+        )
+    else:
+        flash(
+            f"Salida '{grupo}' enviada en un solo correo y una sola notificación "
+            f"con {len(gastos)} comprobante(s).",
+            "success",
+        )
     return _gastos_redirect()
 
 
@@ -12834,6 +12903,47 @@ def gastos_viaticos_detalle(gasto_id: int):
     )
 
 
+def _gastos_attachment_token_allows(gasto_id: int, token: str) -> bool:
+    if not token:
+        return False
+    try:
+        payload = _gastos_review_serializer().loads(token, max_age=60 * 60 * 24 * 45)
+    except (BadSignature, SignatureExpired):
+        return False
+    action = (payload.get("action") or "").strip()
+    if action not in {"view", "approve"}:
+        return False
+    if int(payload.get("gasto_id") or 0) == int(gasto_id):
+        return True
+    return int(gasto_id) in {
+        int(item) for item in (payload.get("gasto_ids") or []) if str(item).isdigit()
+    }
+
+
+@app.route("/gastos-viaticos/adjuntos/<int:adjunto_id>")
+def gastos_viaticos_adjunto(adjunto_id: int):
+    adjunto = ComprobacionAdjunto.query.get_or_404(adjunto_id)
+    gasto = adjunto.comprobacion
+    if current_user.is_authenticated:
+        require_gasto_owner_or_admin(gasto)
+    elif not _gastos_attachment_token_allows(gasto.id, request.args.get("token") or ""):
+        abort(403)
+
+    disk_path = _upload_storage_path(adjunto.ruta)
+    if not disk_path.is_file():
+        # Compatibilidad con archivos creados localmente antes del cambio.
+        legacy_path = (Path(app.static_folder or "static") / adjunto.ruta).resolve()
+        if not legacy_path.is_file():
+            abort(404)
+        disk_path = legacy_path
+    return send_file(
+        disk_path,
+        mimetype=adjunto.mime_type or None,
+        download_name=adjunto.nombre_original or adjunto.nombre_archivo,
+        conditional=True,
+    )
+
+
 @app.route("/gastos-viaticos/<int:gasto_id>/aprobar", methods=["POST"])
 @login_required
 def gastos_viaticos_marcar_aprobado(gasto_id: int):
@@ -12858,6 +12968,7 @@ def gastos_viaticos_revision(gasto_id: int):
         title=f"Comprobante {gasto.folio or gasto.id}",
         gasto=gasto,
         public_view=True,
+        attachment_token=token,
         approve_url=url_for("gastos_viaticos_revision_aprobar", gasto_id=gasto.id, token=token),
         gastos_badge_class=_gastos_badge_class,
     )
@@ -12872,13 +12983,15 @@ def gastos_viaticos_revision_aprobar(gasto_id: int):
     db.session.commit()
     if anterior != "APROBADO":
         _notify_gastos_authorized_finanzas([gasto])
+    token = request.args.get("token") or ""
     return render_template(
         "gastos_viaticos_detalle.html",
         title=f"Comprobante {gasto.folio or gasto.id}",
         gasto=gasto,
         public_view=True,
         approved_now=True,
-        approve_url=url_for("gastos_viaticos_revision_aprobar", gasto_id=gasto.id, token=request.args.get("token") or ""),
+        attachment_token=token,
+        approve_url=url_for("gastos_viaticos_revision_aprobar", gasto_id=gasto.id, token=token),
         gastos_badge_class=_gastos_badge_class,
     )
 
@@ -12894,6 +13007,7 @@ def gastos_viaticos_revision_grupo():
         title="Salida de gastos",
         gastos=gastos,
         public_view=True,
+        attachment_token=token,
         approved_now=False,
         grupo=_gastos_group_name(gastos[0]),
         fecha=_gastos_fecha_base(gastos[0]),
@@ -12924,6 +13038,7 @@ def gastos_viaticos_revision_grupo_aprobar():
         title="Salida de gastos",
         gastos=gastos,
         public_view=True,
+        attachment_token=token,
         approved_now=True,
         grupo=_gastos_group_name(gastos[0]),
         fecha=_gastos_fecha_base(gastos[0]),
@@ -14005,7 +14120,7 @@ def solicitudes_recursos_index():
 
     return render_template(
         "solicitudes_recursos.html",
-        title="Solicitudes de recursos",
+        title="Solicitudes de fondos",
         solicitudes=solicitudes,
         estatus_options=SOLICITUD_RECURSO_ESTATUS,
         status_counts=status_counts,
@@ -14022,7 +14137,7 @@ def solicitud_recurso_crear():
     f = request.form
     proyecto = (f.get("proyecto") or "").strip()
     if not proyecto:
-        flash("Selecciona o captura el proyecto para agrupar la solicitud de recursos.", "warning")
+        flash("Selecciona o captura el proyecto para agrupar la solicitud de fondos.", "warning")
         return redirect(url_for("solicitudes_recursos_index"))
 
     solicitud = SolicitudRecurso(

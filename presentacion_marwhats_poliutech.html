@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Presentacion MARWHATS / Poliutech</title>
+  <style>
+    @page { size: A4 landscape; margin: 0; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      color: #172033;
+      background: #f5f7fb;
+    }
+    .slide {
+      width: 297mm;
+      height: 210mm;
+      padding: 20mm 22mm;
+      page-break-after: always;
+      position: relative;
+      overflow: hidden;
+      background: #ffffff;
+    }
+    .slide::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 8mm;
+      height: 100%;
+      background: #0d766e;
+    }
+    .slide::after {
+      content: "MARWHATS / Poliutech";
+      position: absolute;
+      right: 18mm;
+      bottom: 10mm;
+      font-size: 11px;
+      color: #6a7280;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .cover {
+      background:
+        linear-gradient(135deg, rgba(13,118,110,.94), rgba(20,58,87,.92)),
+        url("static/logo.png");
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding-left: 28mm;
+    }
+    .cover::before { display: none; }
+    .cover::after { color: rgba(255,255,255,.78); }
+    .cover h1 {
+      font-size: 54px;
+      line-height: 1;
+      margin: 0 0 18px;
+      max-width: 820px;
+    }
+    .cover p {
+      font-size: 25px;
+      line-height: 1.35;
+      margin: 0;
+      max-width: 780px;
+    }
+    h2 {
+      margin: 0 0 20px;
+      font-size: 34px;
+      color: #0f4f66;
+      line-height: 1.12;
+    }
+    h3 {
+      margin: 18px 0 8px;
+      font-size: 20px;
+      color: #0d766e;
+    }
+    p, li {
+      font-size: 19px;
+      line-height: 1.42;
+    }
+    ul, ol {
+      margin: 0;
+      padding-left: 26px;
+    }
+    li { margin: 7px 0; }
+    .lead {
+      font-size: 23px;
+      line-height: 1.45;
+      max-width: 920px;
+      margin: 0 0 20px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px 36px;
+      align-items: start;
+    }
+    .three {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+    }
+    .box {
+      border: 1px solid #d8e0e8;
+      border-left: 5px solid #0d766e;
+      padding: 14px 16px;
+      border-radius: 6px;
+      background: #fbfdff;
+      min-height: 84px;
+    }
+    .box strong {
+      color: #143a57;
+      display: block;
+      margin-bottom: 6px;
+      font-size: 18px;
+    }
+    .box p {
+      margin: 0;
+      font-size: 16px;
+    }
+    .note {
+      margin-top: 22px;
+      padding: 16px 18px;
+      border-radius: 6px;
+      background: #eaf6f4;
+      color: #123f48;
+      font-size: 20px;
+      line-height: 1.4;
+    }
+    .quote {
+      margin-top: 26px;
+      font-size: 27px;
+      line-height: 1.35;
+      color: #123f48;
+      font-weight: 700;
+      max-width: 920px;
+    }
+    .small li { font-size: 17px; margin: 5px 0; }
+    .module-title {
+      display: inline-block;
+      margin-bottom: 14px;
+      padding: 7px 12px;
+      background: #eaf6f4;
+      color: #0d766e;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 16px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .diagram {
+      width: 100%;
+      height: 128mm;
+      margin-top: 8px;
+    }
+    .diagram text {
+      font-family: "Segoe UI", Arial, sans-serif;
+      fill: #172033;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .diagram .smalltext {
+      font-size: 12px;
+      font-weight: 400;
+      fill: #4e5b68;
+    }
+    .diagram .node {
+      fill: #f8fbfd;
+      stroke: #0d766e;
+      stroke-width: 2;
+      rx: 8;
+    }
+    .diagram .core {
+      fill: #0d766e;
+      stroke: #0d766e;
+    }
+    .diagram .coretext {
+      fill: white;
+      font-size: 17px;
+      font-weight: 700;
+    }
+    .diagram .arrow {
+      stroke: #143a57;
+      stroke-width: 2.2;
+      fill: none;
+      marker-end: url(#arrow);
+    }
+  </style>
+</head>
+<body>
+  <section class="slide cover">
+    <h1>Sistema MARWHATS / Poliutech</h1>
+    <p>Plataforma integral para gestion comercial, operativa y administrativa.</p>
+  </section>
+
+  <section class="slide">
+    <h2>1. Problema Detectado</h2>
+    <p class="lead">Antes del sistema, parte de la informacion podia quedar dispersa entre archivos, mensajes, hojas de calculo y registros manuales.</p>
+    <div class="grid">
+      <ul>
+        <li>Informacion duplicada o dificil de rastrear.</li>
+        <li>Seguimiento comercial dependiente de mensajes o memoria.</li>
+        <li>Cotizaciones sin visibilidad clara de avance.</li>
+        <li>Datos de clientes y obras en fuentes separadas.</li>
+      </ul>
+      <ul>
+        <li>Menor control sobre pendientes y responsables.</li>
+        <li>Dificultad para consultar informacion desde campo.</li>
+        <li>Reportes manuales y poco inmediatos.</li>
+        <li>Riesgo de perder historial operativo.</li>
+      </ul>
+    </div>
+    <div class="note">El reto principal era transformar informacion dispersa en control, seguimiento y capacidad de decision.</div>
+  </section>
+
+  <section class="slide">
+    <h2>2. Objetivo Del Sistema</h2>
+    <p class="lead">MARWHATS centraliza, ordena y automatiza procesos clave de Poliutech para mejorar la operacion diaria.</p>
+    <div class="three">
+      <div class="box"><strong>Centralizar</strong><p>Reunir clientes, cotizaciones, prospectos, obras, finanzas e inventario en un solo entorno.</p></div>
+      <div class="box"><strong>Dar Seguimiento</strong><p>Registrar historial, comentarios, estatus y responsables en cada proceso.</p></div>
+      <div class="box"><strong>Agilizar</strong><p>Reducir captura repetitiva y generar documentos profesionales en PDF y Excel.</p></div>
+      <div class="box"><strong>Controlar</strong><p>Ordenar la informacion por modulo, usuario, proyecto, cliente y estado.</p></div>
+      <div class="box"><strong>Movilizar</strong><p>Permitir consulta y captura desde campo mediante app Android.</p></div>
+      <div class="box"><strong>Decidir</strong><p>Dar visibilidad a direccion mediante metricas, reportes y trazabilidad.</p></div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <h2>3. Descripcion General</h2>
+    <p class="lead">MARWHATS / Poliutech es una plataforma web y movil que conecta las areas comercial, operativa y administrativa.</p>
+    <div class="grid">
+      <ul>
+        <li>Dashboard ejecutivo</li>
+        <li>Gestion de clientes</li>
+        <li>Catalogo de conceptos</li>
+        <li>Cotizador</li>
+        <li>Seguimiento de cotizaciones</li>
+        <li>Prospectos</li>
+      </ul>
+      <ul>
+        <li>Registro de obras</li>
+        <li>Finanzas</li>
+        <li>Inventario</li>
+        <li>Ordenes de compra</li>
+        <li>Precios unitarios / APU</li>
+        <li>App movil Android</li>
+      </ul>
+    </div>
+    <div class="note">No es solo un cotizador: es una plataforma para controlar el ciclo de trabajo de Poliutech.</div>
+  </section>
+
+  <section class="slide">
+    <h2>4. Flujo General De Trabajo</h2>
+    <ol>
+      <li>Se registra un prospecto o cliente.</li>
+      <li>Se genera una cotizacion con conceptos, cantidades, precios e impuestos.</li>
+      <li>Se da seguimiento comercial con comentarios, fechas y responsables.</li>
+      <li>Se actualiza el estatus de la oportunidad.</li>
+      <li>Si avanza, se relaciona con proyecto u obra.</li>
+      <li>Se generan documentos PDF, Excel o reportes internos.</li>
+      <li>Se controlan compras, finanzas e inventario cuando aplica.</li>
+      <li>El equipo puede consultar y actualizar informacion desde la app movil.</li>
+    </ol>
+    <div class="note">El valor esta en que la informacion acompana el proceso completo, no se queda aislada en un archivo.</div>
+  </section>
+
+  <section class="slide">
+    <span class="module-title">Modulo 1</span>
+    <h2>Dashboard Ejecutivo</h2>
+    <p class="lead">El dashboard concentra indicadores para consultar rapidamente el estado comercial y operativo.</p>
+    <div class="grid">
+      <ul>
+        <li>Total de cotizaciones registradas.</li>
+        <li>Cotizaciones por estatus.</li>
+        <li>Montos acumulados.</li>
+        <li>Pendientes por atender.</li>
+      </ul>
+      <ul>
+        <li>Filtros para analisis rapido.</li>
+        <li>Vista ejecutiva para direccion.</li>
+        <li>Lectura inmediata del avance comercial.</li>
+        <li>Base para reportes y toma de decisiones.</li>
+      </ul>
+    </div>
+    <div class="note">Permite saber como va la operacion sin revisar registro por registro.</div>
+  </section>
+
+  <section class="slide">
+    <span class="module-title">Modulo 2</span>
+    <h2>Clientes</h2>
+    <p class="lead">Administra la base de clientes y la relacion de cada cliente con sus cotizaciones.</p>
+    <ul>
+      <li>Registro de nombre, empresa, correo, telefono, direccion y responsable.</li>
+      <li>Relacion directa con cotizaciones generadas.</li>
+      <li>Consulta ordenada de informacion de contacto.</li>
+      <li>Evita depender de agendas, mensajes o archivos externos.</li>
+    </ul>
+    <div class="note">El modulo de clientes crea una base confiable para el seguimiento comercial.</div>
+  </section>
+
+  <section class="slide">
+    <span class="module-title">Modulo 3</span>
+    <h2>Catalogo De Conceptos</h2>
+    <p class="lead">Sirve como base para construir cotizaciones de manera mas rapida, uniforme y profesional.</p>
+    <div class="grid">
+      <ul>
+        <li>Nombre del concepto.</li>
+        <li>Unidad de medida.</li>
+        <li>Precio unitario.</li>
+        <li>Sistema asociado.</li>
+      </ul>
+      <ul>
+        <li>Descripcion tecnica.</li>
+        <li>Edicion de conceptos.</li>
+        <li>Importacion de catalogos.</li>
+        <li>Sugerencias al cotizar.</li>
+      </ul>
+    </div>
+    <div class="note">Reduce errores y mantiene consistencia en las propuestas comerciales.</div>
+  </section>
+
+  <section class="slide">
+    <span class="module-title">Modulo 4</span>
+    <h2>Cotizador</h2>
+    <p class="lead">Es el modulo central para generar propuestas comerciales estructuradas.</p>
+    <div class="grid">
+      <ul>
+        <li>Alta de cotizaciones.</li>
+        <li>Seleccion o captura de cliente.</li>
+        <li>Agregado de conceptos.</li>
+        <li>Cantidades y precios unitarios.</li>
+        <li>Subtotal, IVA, descuento y total.</li>
+      </ul>
+      <ul>
+        <li>Proyecto y ciudad de trabajo.</li>
+        <li>Moneda y condiciones comerciales.</li>
+        <li>Notas tecnicas o comerciales.</li>
+        <li>Generacion de folio.</li>
+        <li>Edicion y actualizacion posterior.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="slide">
+    <span class="module-title">Modulo 5</span>
+    <h2>Exportacion De Cotizaciones</h2>
+    <p class="lead">La informacion capturada puede salir del sistema como documentos utiles para clientes o administracion.</p>
+    <ul>
+      <li>PDF formal de cotizacion.</li>
+      <li>Excel para analisis interno.</li>
+      <li>CSV para intercambio de datos.</li>
+      <li>Reportes de seguimiento.</li>
+      <li>Exportacion del dashboard a Excel.</li>
+    </ul>
+    <div class="note">Esto permite presentar informacion profesional y conservar respaldo documental.</div>
+  </section>
+
+  <section class="slide">
+    <span class="module-title">Modulo 6</span>
+    <h2>Seguimiento De Cotizaciones</h2>
+    <p class="lead">Cada cotizacion conserva un historial de comentarios, fechas, responsables y cambios de estatus.</p>
+    <div class="grid">
+      <ul>
+        <li>Comentarios de seguimiento.</li>
+        <li>Fecha de registro.</li>
+        <li>Autor del comentario.</li>
+        <li>Edicion y eliminacion controlada.</li>
+      </ul>
+      <ul>
+        <li>Estatus: enviada, pendiente, en curso.</li>
+        <li>Obra terminada o finalizada.</li>
+        <li>Ganada o perdida.</li>
+        <li>Historial de contacto con cliente.</li>
+      </ul>
+    </div>
+    <div class="note">Evita perder contexto despues de enviar una propuesta.</div>
+  </section>
+
+  <section class="slide">
+    <span class="module-title">Modulo 7</span>
+    <h2>Captura Por Voz</h2>
+    <p class="lead">El sistema integra funciones para convertir audio en informacion util para cotizaciones.</p>
+    <ul>
+      <li>Transcripcion de audio en espanol.</li>
+      <li>Identificacion de datos como cliente, empresa, telefono, ciudad y conceptos.</li>
+      <li>Vista previa antes de registrar informacion.</li>
+      <li>Apoyo a captura rapida desde web o movil.</li>
+    </ul>
+    <div class="note">Es una funcion diferenciadora para usuarios que trabajan en campo o necesitan capturar rapido.</div>
+  </section>
+
+  <section class="slide">
+    <span class="module-title">Modulo 8</span>
+    <h2>Prospectos</h2>
+    <p class="lead">Permite controlar oportunidades comerciales antes de convertirse en clientes o cotizaciones formales.</p>
+    <div class="grid">
+      <ul>
+        <li>Titulo y descripcion.</li>
+        <li>Contacto, telefono y correo.</li>
+        <li>Responsable asignado.</li>
+        <li>Seguimiento por comentarios.</li>
+      </ul>
+      <ul>
+        <li>Pendiente.</li>
+        <li>Contactado.</li>
+        <li>Cotizado.</li>
+        <li>Finalizado o rechazado.</li>
+      </ul>
+    </div>
+    <div class="note">Ayuda a que ninguna oportunidad comercial quede sin seguimiento.</div>
+  </section>
+
+  <section class="slide">
+    <span class="module-title">Modulo 9</span>
+    <h2>Registro De Obras</h2>
+    <p class="lead">Organiza informacion de obras detectadas, visitadas o en seguimiento.</p>
+    <ul>
+      <li>Numero de registro y nombre de obra.</li>
+      <li>Ubicacion.</li>
+      <li>Encargado, puesto, telefono y correo.</li>
+      <li>Responsable interno.</li>
+      <li>Historial de seguimiento.</li>
+      <li>Exportacion de registros.</li>
+    </ul>
+    <div class="note">Este modulo conecta el trabajo de campo con la administracion central.</div>
+  </section>
+
+  <section class="slide">
+    <span class="module-title">Modulo 10</span>
+    <h2>App Movil Android</h2>
+    <p class="lead">La aplicacion movil extiende el sistema al equipo que trabaja fuera de oficina.</p>
+    <div class="grid">
+      <ul>
+        <li>Login contra el servidor.</li>
+        <li>Consulta de registros de obra.</li>
+        <li>Alta y edicion de registros.</li>
+        <li>Eliminacion masiva cuando aplica.</li>
+      </ul>
+      <ul>
+        <li>Consulta de cotizaciones pendientes.</li>
+        <li>Cambio de estatus.</li>
+        <li>Visualizacion de PDF.</li>
+        <li>Registro para notificaciones push.</li>
+      </ul>
+    </div>
+    <div class="note">La app permite actualizar informacion en campo sin esperar a volver a oficina.</div>
+  </section>
+
+  <section class="slide">
+    <span class="module-title">Modulo 11</span>
+    <h2>Finanzas</h2>
+    <p class="lead">El modulo financiero ayuda a controlar movimientos, saldos, vencimientos y pagos.</p>
+    <ul>
+      <li>Registro de movimientos financieros por categoria.</li>
+      <li>Contraparte, concepto, proyecto y referencia.</li>
+      <li>Monto, saldo, moneda, fecha y vencimiento.</li>
+      <li>Dias de credito.</li>
+      <li>Registro de abonos o pagos.</li>
+      <li>Exportacion a Excel.</li>
+    </ul>
+    <div class="note">Permite relacionar informacion economica con proyectos y responsables.</div>
+  </section>
+
+  <section class="slide">
+    <span class="module-title">Modulo 12</span>
+    <h2>Ordenes De Compra</h2>
+    <p class="lead">Formaliza y controla solicitudes de compra desde su creacion hasta la recepcion.</p>
+    <ul>
+      <li>Creacion de ordenes de compra.</li>
+      <li>Consulta de detalle.</li>
+      <li>Actualizacion de informacion.</li>
+      <li>Cambio de estatus.</li>
+      <li>Registro de recepcion.</li>
+      <li>Exportacion a Excel y generacion de PDF.</li>
+    </ul>
+  </section>
+
+  <section class="slide">
+    <span class="module-title">Modulo 13</span>
+    <h2>Inventario</h2>
+    <p class="lead">Permite controlar productos, existencias y movimientos internos.</p>
+    <ul>
+      <li>Alta y actualizacion de productos.</li>
+      <li>Registro de entradas y salidas.</li>
+      <li>Consulta de kardex por producto.</li>
+      <li>Historial de movimientos.</li>
+      <li>Exportacion a Excel.</li>
+    </ul>
+    <div class="note">Aporta visibilidad sobre materiales y existencias disponibles.</div>
+  </section>
+
+  <section class="slide">
+    <span class="module-title">Modulo 14</span>
+    <h2>Precios Unitarios / APU</h2>
+    <p class="lead">Permite estructurar analisis de costos por obra, partida e insumo.</p>
+    <div class="grid">
+      <ul>
+        <li>Obras y partidas.</li>
+        <li>Materiales, mano de obra y maquinaria.</li>
+        <li>Basicos y extras.</li>
+        <li>Costo directo.</li>
+      </ul>
+      <ul>
+        <li>Sobrecostos.</li>
+        <li>Financiamiento.</li>
+        <li>Utilidad.</li>
+        <li>Precio unitario e importe.</li>
+      </ul>
+    </div>
+    <div class="note">Ayuda a construir precios mas justificados y controlados.</div>
+  </section>
+
+  <section class="slide">
+    <span class="module-title">Modulo 15</span>
+    <h2>Administracion De Usuarios</h2>
+    <p class="lead">El sistema contempla control de acceso mediante usuarios y roles.</p>
+    <ul>
+      <li>Creacion de usuarios.</li>
+      <li>Edicion y eliminacion.</li>
+      <li>Rol administrador o representante.</li>
+      <li>Responsables asignados por registros.</li>
+      <li>Proteccion de rutas internas.</li>
+    </ul>
+    <div class="note">No todos los usuarios necesitan ver o modificar lo mismo; los roles ayudan a mantener orden y seguridad.</div>
+  </section>
+
+  <section class="slide">
+    <span class="module-title">Modulo 16</span>
+    <h2>Bitacora Y Trazabilidad</h2>
+    <p class="lead">MARWHATS conserva informacion historica para saber que paso, cuando paso y quien lo registro.</p>
+    <ul>
+      <li>Seguimientos con autor y fecha.</li>
+      <li>Fechas de creacion y actualizacion.</li>
+      <li>Cambios de estatus.</li>
+      <li>Usuarios responsables.</li>
+      <li>Historial comercial y operativo.</li>
+    </ul>
+    <div class="note">La trazabilidad mejora la continuidad del trabajo y reduce perdida de contexto.</div>
+  </section>
+
+  <section class="slide">
+    <span class="module-title">Modulo 17</span>
+    <h2>Importacion De Cotizaciones Externas</h2>
+    <p class="lead">El sistema permite integrar cotizaciones generadas fuera de MARWHATS para darles seguimiento dentro de la plataforma.</p>
+    <ul>
+      <li>Validacion previa sin escribir en la base de datos.</li>
+      <li>Importacion de cliente y conceptos.</li>
+      <li>Registro de folio externo o generacion de folio interno.</li>
+      <li>Integracion al flujo de seguimiento comercial.</li>
+    </ul>
+    <div class="note">Esto permite recuperar informacion externa y convertirla en informacion operable dentro del sistema.</div>
+  </section>
+
+  <section class="slide">
+    <h2>Beneficios Para Poliutech</h2>
+    <div class="three">
+      <div class="box"><strong>Orden</strong><p>La informacion queda centralizada y clasificada.</p></div>
+      <div class="box"><strong>Velocidad</strong><p>Las cotizaciones y reportes se generan con menos trabajo manual.</p></div>
+      <div class="box"><strong>Seguimiento</strong><p>Las oportunidades no dependen de memoria o mensajes aislados.</p></div>
+      <div class="box"><strong>Control</strong><p>Se identifican responsables, estatus y fechas.</p></div>
+      <div class="box"><strong>Movilidad</strong><p>El equipo puede trabajar desde campo con app Android.</p></div>
+      <div class="box"><strong>Decision</strong><p>Direccion cuenta con datos mas claros para evaluar avance.</p></div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <h2>Impacto Operativo</h2>
+    <p class="lead">El sistema impacta varias areas de la empresa y conecta informacion que antes podia estar separada.</p>
+    <div class="grid">
+      <ul>
+        <li>Ventas: cotizacion, seguimiento y estatus.</li>
+        <li>Administracion: reportes, usuarios y documentos.</li>
+        <li>Campo: app movil y registro de obras.</li>
+        <li>Direccion: dashboard e indicadores.</li>
+      </ul>
+      <ul>
+        <li>Finanzas: movimientos, saldos y pagos.</li>
+        <li>Compras: ordenes y recepciones.</li>
+        <li>Inventario: productos y kardex.</li>
+        <li>Presupuestos: precios unitarios y costos.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="slide">
+    <h2>Seguridad Y Control</h2>
+    <p class="lead">MARWHATS contempla medidas basicas para proteger y ordenar el acceso a la informacion.</p>
+    <ul>
+      <li>Inicio de sesion.</li>
+      <li>Usuarios con roles.</li>
+      <li>Separacion entre administradores y representantes.</li>
+      <li>Control por responsable.</li>
+      <li>Acceso movil autenticado.</li>
+      <li>Registro de dispositivos para notificaciones.</li>
+    </ul>
+  </section>
+
+  <section class="slide">
+    <h2>Tecnologia Utilizada</h2>
+    <div class="grid">
+      <ul>
+        <li>Backend web en Python / Flask.</li>
+        <li>Base de datos SQL.</li>
+        <li>Interfaz web con HTML, CSS y JavaScript.</li>
+        <li>Generacion de PDF, Excel y CSV.</li>
+      </ul>
+      <ul>
+        <li>App Android nativa.</li>
+        <li>API movil para comunicacion con el backend.</li>
+        <li>Firebase para notificaciones push.</li>
+        <li>Transcripcion de voz para captura asistida.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="slide">
+    <h2>Diferenciador Principal</h2>
+    <p class="lead">MARWHATS une en una sola plataforma lo comercial, operativo y administrativo.</p>
+    <div class="quote">No es solo un cotizador. No es solo una base de datos. No es solo una app movil. Es una herramienta integral para controlar el ciclo de trabajo de Poliutech.</div>
+  </section>
+
+  <section class="slide">
+    <h2>Estado Actual Del Sistema</h2>
+    <p class="lead">Actualmente el sistema cuenta con una base amplia de modulos funcionales.</p>
+    <div class="grid">
+      <ul class="small">
+        <li>Cotizaciones</li>
+        <li>Clientes</li>
+        <li>Catalogos</li>
+        <li>Seguimientos</li>
+        <li>Prospectos</li>
+        <li>Registro de obras</li>
+      </ul>
+      <ul class="small">
+        <li>Finanzas</li>
+        <li>Inventario</li>
+        <li>Ordenes de compra</li>
+        <li>Precios unitarios</li>
+        <li>Administracion</li>
+        <li>App movil Android</li>
+      </ul>
+    </div>
+    <div class="note">Se presenta como una plataforma operativa, no como una idea futura.</div>
+  </section>
+
+  <section class="slide">
+    <h2>Mejoras Futuras</h2>
+    <ul>
+      <li>Reportes ejecutivos mas avanzados.</li>
+      <li>Indicadores por vendedor o responsable.</li>
+      <li>Automatizacion de recordatorios.</li>
+      <li>Integracion mas profunda con correo o WhatsApp.</li>
+      <li>Firma o autorizacion digital.</li>
+      <li>Control documental por proyecto.</li>
+      <li>Metricas financieras comparativas.</li>
+      <li>Paneles por periodo, cliente o area.</li>
+    </ul>
+    <div class="note">Una vez centralizada la informacion, el siguiente paso es convertirla en inteligencia operativa.</div>
+  </section>
+
+  <section class="slide">
+    <h2>Cierre</h2>
+    <p class="lead">MARWHATS / Poliutech representa un paso importante hacia la digitalizacion y control integral de la empresa.</p>
+    <ul>
+      <li>Ordena informacion clave.</li>
+      <li>Mejora tiempos de respuesta.</li>
+      <li>Fortalece el seguimiento comercial.</li>
+      <li>Conecta oficina y campo.</li>
+      <li>Apoya decisiones con datos.</li>
+      <li>Prepara a la empresa para seguir creciendo.</li>
+    </ul>
+    <div class="quote">MARWHATS no solo digitaliza procesos: convierte la informacion diaria de Poliutech en control, seguimiento y capacidad de decision.</div>
+  </section>
+
+  <section class="slide">
+    <h2>Diagrama De Flujo Del Funcionamiento</h2>
+    <svg class="diagram" viewBox="0 0 1050 500" role="img" aria-label="Diagrama de flujo de MARWHATS">
+      <defs>
+        <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L9,3 z" fill="#143a57"></path>
+        </marker>
+      </defs>
+
+      <rect class="node" x="30" y="40" width="180" height="70"></rect>
+      <text x="120" y="68" text-anchor="middle">Prospecto / Cliente</text>
+      <text class="smalltext" x="120" y="91" text-anchor="middle">Datos de contacto</text>
+
+      <rect class="node" x="270" y="40" width="180" height="70"></rect>
+      <text x="360" y="68" text-anchor="middle">Cotizador</text>
+      <text class="smalltext" x="360" y="91" text-anchor="middle">Conceptos y totales</text>
+
+      <rect class="node" x="510" y="40" width="180" height="70"></rect>
+      <text x="600" y="68" text-anchor="middle">Documento</text>
+      <text class="smalltext" x="600" y="91" text-anchor="middle">PDF / Excel / CSV</text>
+
+      <rect class="node" x="750" y="40" width="180" height="70"></rect>
+      <text x="840" y="68" text-anchor="middle">Seguimiento</text>
+      <text class="smalltext" x="840" y="91" text-anchor="middle">Comentarios y estatus</text>
+
+      <path class="arrow" d="M210 75 H270"></path>
+      <path class="arrow" d="M450 75 H510"></path>
+      <path class="arrow" d="M690 75 H750"></path>
+
+      <rect class="core" x="390" y="185" width="270" height="92" rx="10"></rect>
+      <text class="coretext" x="525" y="223" text-anchor="middle">Base Central MARWHATS</text>
+      <text class="smalltext" x="525" y="248" text-anchor="middle" fill="#ffffff">Clientes, cotizaciones, obras, finanzas, inventario</text>
+
+      <path class="arrow" d="M840 110 C840 160 650 150 650 190"></path>
+      <path class="arrow" d="M360 110 C360 160 400 155 410 190"></path>
+      <path class="arrow" d="M600 110 C600 150 560 150 555 185"></path>
+
+      <rect class="node" x="40" y="340" width="185" height="78"></rect>
+      <text x="132" y="370" text-anchor="middle">Registro de Obras</text>
+      <text class="smalltext" x="132" y="394" text-anchor="middle">Campo y seguimiento</text>
+
+      <rect class="node" x="270" y="340" width="185" height="78"></rect>
+      <text x="362" y="370" text-anchor="middle">Compras / Inventario</text>
+      <text class="smalltext" x="362" y="394" text-anchor="middle">Ordenes, stock, kardex</text>
+
+      <rect class="node" x="500" y="340" width="185" height="78"></rect>
+      <text x="592" y="370" text-anchor="middle">Finanzas</text>
+      <text class="smalltext" x="592" y="394" text-anchor="middle">Saldos, pagos, vencimientos</text>
+
+      <rect class="node" x="730" y="340" width="185" height="78"></rect>
+      <text x="822" y="370" text-anchor="middle">Dashboard</text>
+      <text class="smalltext" x="822" y="394" text-anchor="middle">Indicadores y reportes</text>
+
+      <path class="arrow" d="M430 277 C360 310 210 305 145 340"></path>
+      <path class="arrow" d="M485 277 C445 310 395 312 372 340"></path>
+      <path class="arrow" d="M565 277 C585 305 590 315 592 340"></path>
+      <path class="arrow" d="M640 242 C760 260 815 298 822 340"></path>
+
+      <rect class="node" x="910" y="190" width="120" height="86"></rect>
+      <text x="970" y="224" text-anchor="middle">App Movil</text>
+      <text class="smalltext" x="970" y="248" text-anchor="middle">Consulta y captura</text>
+
+      <path class="arrow" d="M910 233 H660"></path>
+      <path class="arrow" d="M660 220 H910"></path>
+    </svg>
+    <div class="note">El sistema concentra la informacion en una base central y distribuye valor hacia ventas, campo, compras, finanzas, inventario y direccion.</div>
+  </section>
+</body>
+</html>
