@@ -35,7 +35,7 @@
     </div>
     <div class="d-flex gap-2 flex-wrap">
       <span class="badge bg-{{ gastos_badge_class(gasto.estatus) }} fs-6 align-self-center">{{ gasto.estatus }}</span>
-      {% if gasto.estatus != "APROBADO" %}
+      {% if gasto.estatus != "APROBADO" and (public_view or can_approve|default(false)) %}
         {% if public_view %}
         <a href="{{ approve_url }}" class="btn btn-success">Aprobar</a>
         {% else %}

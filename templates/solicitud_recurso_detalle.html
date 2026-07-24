@@ -93,6 +93,7 @@
   </div>
 </div>
 
+{% if can_manage_fondos %}
 <div class="card shadow-sm border-0">
   <div class="card-header bg-light fw-bold">Seguimiento</div>
   <div class="card-body">
@@ -112,4 +113,5 @@
     </form>
   </div>
 </div>
+{% endif %}
 {% endblock %}

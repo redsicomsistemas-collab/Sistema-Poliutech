@@ -266,6 +266,9 @@ class Usuario(UserMixin, db.Model):
 
     correo = db.Column(db.String(160))
 
+    # Lista JSON de permisos elevados asignados individualmente por Admin.
+    permisos = db.Column(db.Text, default="[]", nullable=False)
+
     password_hash = db.Column(db.String(255), nullable=False)
 
 

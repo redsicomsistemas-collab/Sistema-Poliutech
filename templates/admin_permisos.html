@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between mt-4 mb-3 gap-3">
+  <div>
+    <h3 class="mb-1">Permisos por cuenta</h3>
+    <div class="text-muted">Asigna accesos elevados sin convertir la cuenta en administrador.</div>
+  </div>
+  <div>
+    <a class="btn btn-outline-secondary" href="{{ url_for('admin_usuarios') }}">Volver a usuarios</a>
+    <span class="badge bg-dark ms-2">Solo ADMIN</span>
+  </div>
+</div>
+
+<div class="alert alert-info shadow-sm">
+  Los administradores conservan acceso total. Para las demás cuentas, marca únicamente los permisos que necesiten.
+</div>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-body">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-md-9">
+        <label class="form-label fw-semibold">Buscar cuenta</label>
+        <input class="form-control" name="q" value="{{ q }}" placeholder="Usuario, nombre o correo">
+      </div>
+      <div class="col-md-3 d-grid">
+        <button class="btn btn-outline-primary">Buscar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="row g-4 mb-4">
+  {% for usuario in usuarios %}
+  {% set asignados = permisos_por_usuario.get(usuario.id, []) %}
+  <div class="col-12">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+          <span class="fw-bold">{{ usuario.nombre_visible or usuario.nombre }}</span>
+          <span class="text-muted ms-2">{{ usuario.nombre }} · {{ usuario.correo or "Sin correo" }}</span>
+        </div>
+        <span class="badge {% if (usuario.rol or '')|upper == 'ADMIN' %}bg-dark{% else %}bg-primary{% endif %}">
+          {{ (usuario.rol or "USER")|upper }}
+        </span>
+      </div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('admin_permisos_actualizar', user_id=usuario.id) }}">
+          <input type="hidden" name="q" value="{{ q }}">
+          <div class="row g-3">
+            {% for permiso in permission_catalog %}
+            <div class="col-12 col-lg-6">
+              <label class="border rounded p-3 d-flex gap-3 h-100 {% if permiso.key in asignados %}border-primary bg-primary-subtle{% endif %}">
+                <input class="form-check-input flex-shrink-0" type="checkbox" name="permisos" value="{{ permiso.key }}"
+                       {% if permiso.key in asignados %}checked{% endif %}
+                       {% if (usuario.rol or '')|upper == 'ADMIN' %}disabled{% endif %}>
+                <span>
+                  <span class="badge bg-secondary mb-1">{{ permiso.group }}</span>
+                  <span class="d-block fw-semibold">{{ permiso.name }}</span>
+                  <span class="d-block small text-muted">{{ permiso.description }}</span>
+                </span>
+              </label>
+            </div>
+            {% endfor %}
+          </div>
+          <div class="d-flex justify-content-end mt-3">
+            <button class="btn btn-primary" {% if (usuario.rol or '')|upper == 'ADMIN' %}disabled{% endif %}>
+              Guardar permisos
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="col-12"><div class="alert alert-secondary">No se encontraron cuentas.</div></div>
+  {% endfor %}
+</div>
+{% endblock %}
