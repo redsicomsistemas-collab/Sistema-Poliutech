@@ -3275,6 +3275,10 @@ def ensure_schema():
             db.session.execute(text("ALTER TABLE usuario ADD COLUMN correo VARCHAR(160)"))
             db.session.commit()
             print("✅ Campo 'correo' agregado en 'usuario'.")
+        if "telefono" not in user_cols:
+            db.session.execute(text("ALTER TABLE usuario ADD COLUMN telefono VARCHAR(20)"))
+            db.session.commit()
+            print("✅ Campo 'telefono' agregado en 'usuario'.")
     except Exception as e:
         print("⚠️ ensure_schema(usuario.correo):", e)
 
@@ -5205,19 +5209,24 @@ def normalize_whatsapp(number: str) -> str:
         return ""
     n = number.strip()
     if n.startswith("whatsapp:"):
-        return n
-    if n.startswith("+"):
-        return f"whatsapp:{n}"
+        n = n[len("whatsapp:"):].strip()
+    explicit_international = n.startswith("+")
     digits = "".join(ch for ch in n if ch.isdigit())
     if not digits:
         return ""
-    # Si ya viene con 52, lo dejamos; si no, lo anteponemos
+    # México usa 10 dígitos nacionales. Twilio requiere E.164 (+52 + 10 dígitos).
+    # También quitamos el antiguo "1" móvil de +521, que ya no forma parte
+    # del formato mexicano vigente.
+    if len(digits) == 13 and digits.startswith("521"):
+        digits = "52" + digits[3:]
     if digits.startswith("52"):
-        return f"whatsapp:+{digits}"
-    return f"whatsapp:+52{digits}"
+        return f"whatsapp:+{digits}" if len(digits) == 12 else ""
+    if explicit_international:
+        return f"whatsapp:+{digits}" if 8 <= len(digits) <= 15 else ""
+    return f"whatsapp:+52{digits}" if len(digits) == 10 else ""
 
 def can_send_whatsapp() -> bool:
-    return bool(twilio_client and TWILIO_WHATSAPP and ADMIN_LIST)
+    return bool(twilio_client and TWILIO_WHATSAPP)
 
 def send_whatsapp_multi(to_list: Iterable[str], body: str) -> None:
     if not to_list:
@@ -5234,6 +5243,96 @@ def send_whatsapp_multi(to_list: Iterable[str], body: str) -> None:
         except Exception as e:
             print(f"[Twilio] ERROR enviando a {to_norm}: {e}", file=sys.stderr)
             traceback.print_exc()
+
+
+def _notification_phone_recipients(email_recipients: Iterable[str]) -> list[str]:
+    """Traduce los antiguos destinatarios de correo a teléfonos WhatsApp."""
+    emails = {
+        email.lower()
+        for email in _parse_email_list(",".join(str(value or "") for value in email_recipients))
+    }
+    phones: list[str] = []
+    if emails:
+        users = Usuario.query.filter(db.func.lower(Usuario.correo).in_(emails)).all()
+        phones.extend(user.telefono for user in users if (user.telefono or "").strip())
+        clients = Cliente.query.filter(db.func.lower(Cliente.correo).in_(emails)).all()
+        phones.extend(client.telefono for client in clients if (client.telefono or "").strip())
+
+    # Los buzones de grupo (sistemas, finanzas, revisiones, etc.) no siempre
+    # pertenecen a una cuenta. En ese caso el aviso va a los administradores.
+    if not phones:
+        phones.extend(ADMIN_LIST)
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for phone in phones:
+        normalized = normalize_whatsapp(phone)
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            unique.append(normalized)
+    return unique
+
+
+def _email_message_as_whatsapp(msg: EmailMessage) -> str:
+    """Convierte el contenido de una notificación existente a texto WhatsApp."""
+    subject = str(msg.get("Subject") or "Notificación de Sistema MAR").strip()
+    body = ""
+    try:
+        plain = msg.get_body(preferencelist=("plain",))
+        if plain is not None:
+            body = plain.get_content().strip()
+    except Exception:
+        pass
+    if not body:
+        try:
+            body = msg.get_content().strip()
+        except Exception:
+            body = ""
+    return f"*{subject}*\n\n{body}".strip()
+
+
+class _WhatsAppNotificationTransport:
+    """Compatibilidad SMTP: redirige todas las notificaciones a WhatsApp."""
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def ehlo(self):
+        return None
+
+    def starttls(self):
+        return None
+
+    def login(self, *args, **kwargs):
+        return None
+
+    def send_message(self, msg: EmailMessage, to_addrs=None, **kwargs):
+        if not can_send_whatsapp():
+            raise RuntimeError("WhatsApp no está configurado; revisa las credenciales de Twilio.")
+        direct_phone = str(msg.get("X-WhatsApp-To") or "").strip()
+        if direct_phone:
+            phones = [normalize_whatsapp(direct_phone)]
+            phones = [phone for phone in phones if phone]
+        else:
+            raw_recipients = to_addrs or [address for _, address in getaddresses(msg.get_all("To", []))]
+            if isinstance(raw_recipients, str):
+                raw_recipients = [raw_recipients]
+            phones = _notification_phone_recipients(raw_recipients)
+        if not phones:
+            raise ValueError("No hay teléfono WhatsApp registrado para la notificación.")
+        send_whatsapp_multi(phones, _email_message_as_whatsapp(msg))
+
+
+# A partir de aquí cualquier notificación heredada que todavía construya un
+# EmailMessage usa WhatsApp. Esto cubre altas, cotizaciones, menciones, soporte,
+# reportes, recursos, gastos y recuperación de contraseña sin dejar rutas SMTP.
+smtplib.SMTP = _WhatsAppNotificationTransport
 
 # ---------------------------------------------------------
 # 🔐 Login / Logout
@@ -5321,7 +5420,8 @@ def _send_password_reset_email(usuario: Usuario, reset_url: str) -> None:
     msg = EmailMessage()
     msg["Subject"] = "Restablece tu acceso a Sistema MAR"
     msg["From"] = f"SISTEMA MAR <{SMTP_FROM or SMTP_USERNAME}>"
-    msg["To"] = usuario.correo
+    msg["To"] = usuario.correo or "whatsapp@mar.local"
+    msg["X-WhatsApp-To"] = usuario.telefono or ""
     msg.set_content(
         "Recibimos una solicitud para restablecer tu contraseña de Sistema MAR.\n\n"
         f"Abre este enlace (válido durante 30 minutos):\n{reset_url}\n\n"
@@ -5356,13 +5456,13 @@ def forgot_password():
         usuario = Usuario.query.filter(
             db.or_(db.func.lower(Usuario.correo) == identity, db.func.lower(Usuario.nombre) == identity)
         ).first()
-        if usuario and (usuario.correo or "").strip():
+        if usuario and (usuario.telefono or "").strip():
             try:
                 reset_url = url_for("reset_password", token=_password_reset_token(usuario), _external=True)
                 _send_password_reset_email(usuario, reset_url)
             except Exception:
                 logger.exception("No se pudo enviar el correo de recuperación para usuario id=%s", usuario.id)
-        flash("Si los datos coinciden con una cuenta, recibirás un enlace de recuperación en unos minutos.", "success")
+        flash("Si los datos coinciden con una cuenta, recibirás un enlace por WhatsApp en unos minutos.", "success")
         return redirect(url_for("forgot_password"))
     return render_template("forgot_password.html", title="Recuperar acceso")
 
@@ -10457,6 +10557,7 @@ def admin_usuarios():
         nombre = (request.form.get("nombre") or "").strip()
         nombre_visible = (request.form.get("nombre_visible") or "").strip()
         correo = (request.form.get("correo") or "").strip()
+        telefono = (request.form.get("telefono") or "").strip()
         password = (request.form.get("password") or "").strip()
         rol = normalize_user_role(request.form.get("rol"))
 
@@ -10466,18 +10567,19 @@ def admin_usuarios():
         if not nombre_visible:
             flash("El nombre es obligatorio.", "danger")
             return redirect(url_for("admin_usuarios"))
-        if not correo:
-            flash("El correo del usuario es obligatorio.", "danger")
+        if not telefono or not normalize_whatsapp(telefono):
+            flash("Captura un WhatsApp mexicano válido, por ejemplo 56-1003-5643.", "danger")
             return redirect(url_for("admin_usuarios"))
-        try:
-            correos_usuario = _parse_email_list(correo)
-        except ValueError as exc:
-            flash(str(exc), "danger")
-            return redirect(url_for("admin_usuarios"))
-        if len(correos_usuario) != 1:
-            flash("Captura un solo correo para el usuario.", "danger")
-            return redirect(url_for("admin_usuarios"))
-        correo = correos_usuario[0]
+        if correo:
+            try:
+                correos_usuario = _parse_email_list(correo)
+            except ValueError as exc:
+                flash(str(exc), "danger")
+                return redirect(url_for("admin_usuarios"))
+            if len(correos_usuario) != 1:
+                flash("Captura un solo correo para el usuario.", "danger")
+                return redirect(url_for("admin_usuarios"))
+            correo = correos_usuario[0]
         if not password:
             flash("La contrasena es obligatoria para crear un usuario.", "danger")
             return redirect(url_for("admin_usuarios"))
@@ -10487,7 +10589,7 @@ def admin_usuarios():
             flash("Ya existe un usuario con ese usuario.", "danger")
             return redirect(url_for("admin_usuarios"))
 
-        nuevo = Usuario(nombre=nombre, nombre_visible=nombre_visible, correo=correo, rol=rol)
+        nuevo = Usuario(nombre=nombre, nombre_visible=nombre_visible, correo=correo or None, telefono=telefono, rol=rol)
         nuevo.set_password(password)
         db.session.add(nuevo)
         db.session.commit()
@@ -10532,6 +10634,7 @@ def admin_usuario_editar(user_id: int):
     nombre = (request.form.get("nombre") or "").strip()
     nombre_visible = (request.form.get("nombre_visible") or "").strip()
     correo = (request.form.get("correo") or "").strip()
+    telefono = (request.form.get("telefono") or "").strip()
     password = (request.form.get("password") or "").strip()
     rol = normalize_user_role(request.form.get("rol"))
     previous_nombre = usuario.nombre or ""
@@ -10545,18 +10648,19 @@ def admin_usuario_editar(user_id: int):
     if not nombre_visible:
         flash("El nombre es obligatorio.", "danger")
         return redirect(url_for("admin_usuarios"))
-    if not correo:
-        flash("El correo del usuario es obligatorio.", "danger")
+    if not telefono or not normalize_whatsapp(telefono):
+        flash("Captura un WhatsApp mexicano válido, por ejemplo 56-1003-5643.", "danger")
         return redirect(url_for("admin_usuarios"))
-    try:
-        correos_usuario = _parse_email_list(correo)
-    except ValueError as exc:
-        flash(str(exc), "danger")
-        return redirect(url_for("admin_usuarios"))
-    if len(correos_usuario) != 1:
-        flash("Captura un solo correo para el usuario.", "danger")
-        return redirect(url_for("admin_usuarios"))
-    correo = correos_usuario[0]
+    if correo:
+        try:
+            correos_usuario = _parse_email_list(correo)
+        except ValueError as exc:
+            flash(str(exc), "danger")
+            return redirect(url_for("admin_usuarios"))
+        if len(correos_usuario) != 1:
+            flash("Captura un solo correo para el usuario.", "danger")
+            return redirect(url_for("admin_usuarios"))
+        correo = correos_usuario[0]
 
     duplicado = Usuario.query.filter(
         db.func.lower(Usuario.nombre) == nombre.lower(),
@@ -10577,7 +10681,8 @@ def admin_usuario_editar(user_id: int):
 
     usuario.nombre = nombre
     usuario.nombre_visible = nombre_visible
-    usuario.correo = correo
+    usuario.correo = correo or None
+    usuario.telefono = telefono
     usuario.rol = rol
     if password:
         usuario.set_password(password)
