@@ -2737,8 +2737,7 @@ except Exception:
     Workbook = None  # la app sigue arrancando aunque falte openpyxl
     get_column_letter = None
 
-# WhatsApp Cloud API (Meta) + Scheduler
-from apscheduler.schedulers.background import BackgroundScheduler
+# WhatsApp Cloud API (Meta)
 
 # Auth (Flask-Login)
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
@@ -10544,53 +10543,6 @@ def debug_mobile_devices_hansel():
             for row in rows
         ],
     })
-
-@app.route("/debug/force_reminders")
-@login_required
-def debug_force_reminders():
-    if not is_admin():
-        abort(403)
-    try:
-        enviar_notificaciones_pendientes()
-        return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-def enviar_notificaciones_pendientes():
-    with app.app_context():
-        ahora = now_cdmx_naive()
-        inicio_hoy = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
-
-        cotizaciones = (
-            Cotizacion.query
-            .filter(Cotizacion.eliminada_en.is_(None), db.func.upper(Cotizacion.estatus) != "FINALIZADA")
-            .all()
-        )
-
-        for cot in cotizaciones:
-            if cot.last_whatsapp_at is not None and cot.last_whatsapp_at >= inicio_hoy:
-                continue
-            try:
-                _send_daily_status_reminder(cot, ahora)
-            except Exception as e:
-                print(f"[Scheduler] ERROR recordatorio ({cot.folio}): {e}", file=sys.stderr)
-
-scheduler: Optional[BackgroundScheduler] = None
-try:
-    if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
-        scheduler = BackgroundScheduler(timezone=TZ_CDMX, daemon=True)
-        scheduler.add_job(
-            enviar_notificaciones_pendientes,
-            "cron",
-            hour=10,
-            minute=0,
-            id="daily_quotes_status_reminder",
-            replace_existing=True
-        )
-        scheduler.start()
-        print("[Scheduler] Iniciado (10:00 AM CDMX).")
-except Exception as e:
-    print(f"[Scheduler] No pudo iniciar: {e}", file=sys.stderr)
 
 @app.route("/admin/bitacora")
 @login_required
