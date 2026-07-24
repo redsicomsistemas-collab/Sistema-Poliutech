@@ -5428,11 +5428,6 @@ class _WhatsAppNotificationTransport:
         send_whatsapp_multi(phones, _email_message_as_whatsapp(msg))
 
 
-# A partir de aquí cualquier notificación heredada que todavía construya un
-# EmailMessage usa WhatsApp. Esto cubre altas, cotizaciones, menciones, soporte,
-# reportes, recursos, gastos y recuperación de contraseña sin dejar rutas SMTP.
-smtplib.SMTP = _WhatsAppNotificationTransport
-
 # ---------------------------------------------------------
 # 🔐 Login / Logout
 # ---------------------------------------------------------
@@ -5519,8 +5514,7 @@ def _send_password_reset_email(usuario: Usuario, reset_url: str) -> None:
     msg = EmailMessage()
     msg["Subject"] = "Restablece tu acceso a Sistema MAR"
     msg["From"] = f"SISTEMA MAR <{SMTP_FROM or SMTP_USERNAME}>"
-    msg["To"] = usuario.correo or "whatsapp@mar.local"
-    msg["X-WhatsApp-To"] = usuario.telefono or ""
+    msg["To"] = usuario.correo
     msg.set_content(
         "Recibimos una solicitud para restablecer tu contraseña de Sistema MAR.\n\n"
         f"Abre este enlace (válido durante 30 minutos):\n{reset_url}\n\n"
@@ -5555,13 +5549,13 @@ def forgot_password():
         usuario = Usuario.query.filter(
             db.or_(db.func.lower(Usuario.correo) == identity, db.func.lower(Usuario.nombre) == identity)
         ).first()
-        if usuario and (usuario.telefono or "").strip():
+        if usuario and (usuario.correo or "").strip():
             try:
                 reset_url = url_for("reset_password", token=_password_reset_token(usuario), _external=True)
                 _send_password_reset_email(usuario, reset_url)
             except Exception:
                 logger.exception("No se pudo enviar el correo de recuperación para usuario id=%s", usuario.id)
-        flash("Si los datos coinciden con una cuenta, recibirás un enlace por WhatsApp en unos minutos.", "success")
+        flash("Si los datos coinciden con una cuenta, recibirás un enlace por correo en unos minutos.", "success")
         return redirect(url_for("forgot_password"))
     return render_template("forgot_password.html", title="Recuperar acceso")
 
@@ -10619,19 +10613,21 @@ def admin_usuarios():
         if not nombre_visible:
             flash("El nombre es obligatorio.", "danger")
             return redirect(url_for("admin_usuarios"))
-        if not telefono or not normalize_whatsapp(telefono):
-            flash("Captura un WhatsApp mexicano válido, por ejemplo 56-1003-5643.", "danger")
+        if not correo:
+            flash("El correo del usuario es obligatorio.", "danger")
             return redirect(url_for("admin_usuarios"))
-        if correo:
-            try:
-                correos_usuario = _parse_email_list(correo)
-            except ValueError as exc:
-                flash(str(exc), "danger")
-                return redirect(url_for("admin_usuarios"))
-            if len(correos_usuario) != 1:
-                flash("Captura un solo correo para el usuario.", "danger")
-                return redirect(url_for("admin_usuarios"))
-            correo = correos_usuario[0]
+        try:
+            correos_usuario = _parse_email_list(correo)
+        except ValueError as exc:
+            flash(str(exc), "danger")
+            return redirect(url_for("admin_usuarios"))
+        if len(correos_usuario) != 1:
+            flash("Captura un solo correo para el usuario.", "danger")
+            return redirect(url_for("admin_usuarios"))
+        correo = correos_usuario[0]
+        if telefono and not normalize_whatsapp(telefono):
+            flash("El teléfono debe ser mexicano, por ejemplo 56-1003-5643.", "danger")
+            return redirect(url_for("admin_usuarios"))
         if not password:
             flash("La contrasena es obligatoria para crear un usuario.", "danger")
             return redirect(url_for("admin_usuarios"))
@@ -10641,7 +10637,7 @@ def admin_usuarios():
             flash("Ya existe un usuario con ese usuario.", "danger")
             return redirect(url_for("admin_usuarios"))
 
-        nuevo = Usuario(nombre=nombre, nombre_visible=nombre_visible, correo=correo or None, telefono=telefono, rol=rol)
+        nuevo = Usuario(nombre=nombre, nombre_visible=nombre_visible, correo=correo, telefono=telefono or None, rol=rol)
         nuevo.set_password(password)
         db.session.add(nuevo)
         db.session.commit()
@@ -10700,19 +10696,21 @@ def admin_usuario_editar(user_id: int):
     if not nombre_visible:
         flash("El nombre es obligatorio.", "danger")
         return redirect(url_for("admin_usuarios"))
-    if not telefono or not normalize_whatsapp(telefono):
-        flash("Captura un WhatsApp mexicano válido, por ejemplo 56-1003-5643.", "danger")
+    if not correo:
+        flash("El correo del usuario es obligatorio.", "danger")
         return redirect(url_for("admin_usuarios"))
-    if correo:
-        try:
-            correos_usuario = _parse_email_list(correo)
-        except ValueError as exc:
-            flash(str(exc), "danger")
-            return redirect(url_for("admin_usuarios"))
-        if len(correos_usuario) != 1:
-            flash("Captura un solo correo para el usuario.", "danger")
-            return redirect(url_for("admin_usuarios"))
-        correo = correos_usuario[0]
+    try:
+        correos_usuario = _parse_email_list(correo)
+    except ValueError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("admin_usuarios"))
+    if len(correos_usuario) != 1:
+        flash("Captura un solo correo para el usuario.", "danger")
+        return redirect(url_for("admin_usuarios"))
+    correo = correos_usuario[0]
+    if telefono and not normalize_whatsapp(telefono):
+        flash("El teléfono debe ser mexicano, por ejemplo 56-1003-5643.", "danger")
+        return redirect(url_for("admin_usuarios"))
 
     duplicado = Usuario.query.filter(
         db.func.lower(Usuario.nombre) == nombre.lower(),
@@ -10733,8 +10731,8 @@ def admin_usuario_editar(user_id: int):
 
     usuario.nombre = nombre
     usuario.nombre_visible = nombre_visible
-    usuario.correo = correo or None
-    usuario.telefono = telefono
+    usuario.correo = correo
+    usuario.telefono = telefono or None
     usuario.rol = rol
     if password:
         usuario.set_password(password)
