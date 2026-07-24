@@ -354,6 +354,31 @@ class NotificationSubscription(db.Model):
         return f"<NotificationSubscription recipient={self.destinatario_id} {self.evento}/{self.canal}>"
 
 
+class CompanyBranding(db.Model):
+    __tablename__ = "company_branding"
+
+    id = db.Column(db.Integer, primary_key=True)
+    nombre_comercial = db.Column(db.String(180), default="Poliutech")
+    razon_social = db.Column(db.String(220))
+    rfc = db.Column(db.String(30))
+    direccion = db.Column(db.Text)
+    telefono = db.Column(db.String(60))
+    correo = db.Column(db.String(160))
+    sitio_web = db.Column(db.String(180))
+    color_primario = db.Column(db.String(20), default="#0C3C78")
+    color_secundario = db.Column(db.String(20), default="#082F60")
+    color_acento = db.Column(db.String(20), default="#FFC107")
+    logo_path = db.Column(db.String(300))
+    logo_oscuro_path = db.Column(db.String(300))
+    encabezado = db.Column(db.String(300))
+    pie_pagina = db.Column(db.String(500))
+    leyenda_legal = db.Column(db.Text)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    def __repr__(self):
+        return f"<CompanyBranding {self.nombre_comercial or self.id}>"
+
+
 class RegistroObra(db.Model):
     __tablename__ = "registro_obra"
 

@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}Personalización empresarial{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+  <h2 class="fw-bold text-primary mb-1">🎨 Personalización empresarial</h2>
+  <div class="text-muted">Configura la identidad que utilizarán MAR, los documentos y la hoja membretada.</div>
+</div>
+
+<form method="post" enctype="multipart/form-data">
+  <div class="row g-4">
+    <div class="col-xl-7">
+      <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white py-3"><h5 class="mb-0 fw-bold">Identidad visual</h5></div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Logotipo principal</label>
+              <input class="form-control" type="file" name="logo" accept=".png,.jpg,.jpeg,.webp,.svg">
+              <div class="form-text">PNG transparente o SVG recomendado.</div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Logotipo para fondo oscuro</label>
+              <input class="form-control" type="file" name="logo_oscuro" accept=".png,.jpg,.jpeg,.webp,.svg">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Color principal</label>
+              <div class="input-group">
+                <input class="form-control form-control-color" type="color" id="colorPrimario" name="color_primario" value="{{ branding.color_primario or '#0C3C78' }}">
+                <input class="form-control" id="colorPrimarioText" value="{{ branding.color_primario or '#0C3C78' }}" readonly>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Color secundario</label>
+              <input class="form-control form-control-color w-100" type="color" id="colorSecundario" name="color_secundario" value="{{ branding.color_secundario or '#082F60' }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Color de acento</label>
+              <input class="form-control form-control-color w-100" type="color" id="colorAcento" name="color_acento" value="{{ branding.color_acento or '#FFC107' }}">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white py-3"><h5 class="mb-0 fw-bold">Datos de la empresa</h5></div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Nombre comercial</label>
+              <input class="form-control preview-field" name="nombre_comercial" id="nombreComercial" maxlength="180" required value="{{ branding.nombre_comercial or '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Razón social</label>
+              <input class="form-control preview-field" name="razon_social" id="razonSocial" maxlength="220" value="{{ branding.razon_social or '' }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">RFC</label>
+              <input class="form-control preview-field text-uppercase" name="rfc" id="rfcEmpresa" maxlength="30" value="{{ branding.rfc or '' }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Teléfono</label>
+              <input class="form-control preview-field" name="telefono" id="telefonoEmpresa" maxlength="60" value="{{ branding.telefono or '' }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Correo</label>
+              <input class="form-control preview-field" type="email" name="correo" id="correoEmpresa" maxlength="160" value="{{ branding.correo or '' }}">
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-semibold">Dirección</label>
+              <textarea class="form-control preview-field" name="direccion" id="direccionEmpresa" rows="2">{{ branding.direccion or '' }}</textarea>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Sitio web</label>
+              <input class="form-control preview-field" name="sitio_web" id="sitioEmpresa" maxlength="180" value="{{ branding.sitio_web or '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Texto de encabezado</label>
+              <input class="form-control preview-field" name="encabezado" id="encabezadoEmpresa" maxlength="300" value="{{ branding.encabezado or '' }}">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white py-3"><h5 class="mb-0 fw-bold">Hoja membretada</h5></div>
+        <div class="card-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Pie de página</label>
+            <input class="form-control preview-field" name="pie_pagina" id="pieEmpresa" maxlength="500" value="{{ branding.pie_pagina or '' }}" placeholder="Teléfono · correo · sitio web">
+          </div>
+          <div>
+            <label class="form-label fw-semibold">Leyenda legal</label>
+            <textarea class="form-control preview-field" name="leyenda_legal" id="legalEmpresa" rows="3">{{ branding.leyenda_legal or '' }}</textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-5">
+      <div class="position-sticky" style="top:90px">
+        <div class="card border-0 shadow-sm">
+          <div class="card-header bg-white py-3"><h5 class="mb-0 fw-bold">Vista previa de hoja membretada</h5></div>
+          <div class="card-body bg-light">
+            <div class="bg-white shadow-sm mx-auto position-relative overflow-hidden" style="aspect-ratio:1/1.414;max-width:470px">
+              <div id="previewHeader" style="height:18px;background:{{ branding.color_primario or '#0C3C78' }}"></div>
+              <div class="p-4">
+                <div class="d-flex justify-content-between gap-3 border-bottom pb-3">
+                  <div>
+                    {% if branding.logo_path %}
+                    <img src="{{ url_for('static', filename=branding.logo_path) }}" alt="Logo" style="max-height:58px;max-width:170px">
+                    {% else %}
+                    <div class="fw-bold fs-4 text-primary">LOGOTIPO</div>
+                    {% endif %}
+                  </div>
+                  <div class="text-end small">
+                    <div class="fw-bold" id="previewNombre">{{ branding.nombre_comercial or 'Nombre de la empresa' }}</div>
+                    <div id="previewRazon">{{ branding.razon_social or '' }}</div>
+                    <div id="previewRfc">{{ branding.rfc or '' }}</div>
+                  </div>
+                </div>
+                <div class="pt-4 text-muted">
+                  <div class="fw-bold text-dark mb-3" id="previewEncabezado">{{ branding.encabezado or 'Documento empresarial' }}</div>
+                  <div style="height:7px;background:#e9ecef;margin-bottom:12px"></div>
+                  <div style="height:7px;background:#e9ecef;margin-bottom:12px;width:88%"></div>
+                  <div style="height:7px;background:#e9ecef;margin-bottom:12px;width:94%"></div>
+                  <div style="height:7px;background:#e9ecef;margin-bottom:12px;width:70%"></div>
+                </div>
+              </div>
+              <div class="position-absolute bottom-0 start-0 end-0 p-3 text-center small border-top">
+                <div id="previewDireccion">{{ branding.direccion or '' }}</div>
+                <div id="previewContacto">{{ branding.telefono or '' }}{% if branding.correo %} · {{ branding.correo }}{% endif %}{% if branding.sitio_web %} · {{ branding.sitio_web }}{% endif %}</div>
+                <div id="previewPie" class="fw-semibold">{{ branding.pie_pagina or '' }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-lg w-100 mt-3" type="submit">Guardar personalización</button>
+      </div>
+    </div>
+  </div>
+</form>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const byId = (id) => document.getElementById(id);
+  const sync = () => {
+    byId("previewNombre").textContent = byId("nombreComercial").value || "Nombre de la empresa";
+    byId("previewRazon").textContent = byId("razonSocial").value;
+    byId("previewRfc").textContent = byId("rfcEmpresa").value;
+    byId("previewEncabezado").textContent = byId("encabezadoEmpresa").value || "Documento empresarial";
+    byId("previewDireccion").textContent = byId("direccionEmpresa").value;
+    byId("previewContacto").textContent = [byId("telefonoEmpresa").value, byId("correoEmpresa").value, byId("sitioEmpresa").value].filter(Boolean).join(" · ");
+    byId("previewPie").textContent = byId("pieEmpresa").value;
+    byId("previewHeader").style.background = byId("colorPrimario").value;
+    byId("colorPrimarioText").value = byId("colorPrimario").value.toUpperCase();
+  };
+  document.querySelectorAll(".preview-field, input[type=color]").forEach((el) => el.addEventListener("input", sync));
+  sync();
+});
+</script>
+{% endblock %}

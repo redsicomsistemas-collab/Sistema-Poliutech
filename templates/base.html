@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>MAR – Sistema de Cotizaciones</title>
+  <title>MAR – {{ company_branding.nombre_comercial if company_branding else 'Sistema de Cotizaciones' }}</title>
 
   <script>
     // Aplicar el tema antes de pintar la pagina para evitar un destello blanco.
@@ -24,7 +24,7 @@
 
   <style>
     :root {
-      --mar-blue: #0C3C78;
+      --mar-blue: {{ company_branding.color_primario if company_branding and company_branding.color_primario else '#0C3C78' }};
       --mar-blue-rgb: 12, 60, 120;
       --topbar-height: 74px;
       --bs-primary: var(--mar-blue);
@@ -654,8 +654,8 @@
       <span class="startup-column" style="--x:44vw; --z:-145px; --h:108px; --delay:.26s"></span>
       <span class="startup-column" style="--x:51vw; --z:-340px; --h:62px; --delay:.04s"></span>
       <div class="startup-flare"></div>
-      <img class="startup-logo" src="{{ url_for('static', filename='logo.png') }}" alt="Poliutech">
-      <div class="startup-title">Sistema M.A.R. Poliutech</div>
+      <img class="startup-logo" src="{{ url_for('static', filename=(company_branding.logo_path if company_branding and company_branding.logo_path else 'logo.png')) }}" alt="Logotipo">
+      <div class="startup-title">Sistema M.A.R. {{ company_branding.nombre_comercial if company_branding else 'Poliutech' }}</div>
       <button class="startup-skip" type="button" id="mar-splash-skip">Entrar</button>
       <audio id="mar-splash-audio" preload="auto">
         <source src="{{ url_for('static', filename='sounds/startup.mp3') }}" type="audio/mpeg">
@@ -685,9 +685,13 @@
         ☰
       </button>
       <a class="topbar-brand d-flex align-items-center" href="{{ url_for('index') }}">
+        {% if company_branding and company_branding.logo_path %}
+        <img src="{{ url_for('static', filename=company_branding.logo_path) }}" alt="Logotipo {{ company_branding.nombre_comercial }}" class="me-2 topbar-logo">
+        {% else %}
         <img src="{{ url_for('static', filename='logo-light-mark.png', v='2') }}" alt="Logo Poliutech" class="me-2 topbar-logo topbar-logo-light">
         <img src="{{ url_for('static', filename='logo-dark-mark.png', v='2') }}" alt="Logo Poliutech" class="me-2 topbar-logo topbar-logo-dark">
-        <span class="fw-bold">M.A.R — Sistema Poliutech</span>
+        {% endif %}
+        <span class="fw-bold">M.A.R — {{ company_branding.nombre_comercial if company_branding else 'Sistema Poliutech' }}</span>
       </a>
 
       <a class="quote-cta fw-bold" href="{{ url_for('cotizador') }}">💰 COTIZAR</a>
@@ -768,6 +772,7 @@
             <li><a class="dropdown-item" href="{{ url_for('altas_proveedores') }}">🗂️ Altas</a></li>
             <li><a class="dropdown-item" href="{{ url_for('papelera_cotizaciones') }}">🗑️ Papelera</a></li>
             {% if (current_user.nombre or "")|lower == "admin" %}
+            <li><a class="dropdown-item" href="{{ url_for('admin_personalizacion') }}">🎨 Personalización</a></li>
             <li><a class="dropdown-item" href="{{ url_for('admin_notificaciones') }}">🔔 Notificaciones</a></li>
             <li><a class="dropdown-item" href="{{ url_for('admin_usuarios') }}">👥 Usuarios</a></li>
             <li><a class="dropdown-item" href="{{ url_for('admin_permisos') }}">🔐 Permisos</a></li>

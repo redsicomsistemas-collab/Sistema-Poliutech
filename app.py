@@ -1986,6 +1986,7 @@ def _send_quote_created_notification(cot: Cotizacion) -> None:
             f"Total: {money(cot.total)}"
         )
         send_whatsapp_multi(notification_targets("cotizacion_nueva", "whatsapp") or ADMIN_LIST, msg)
+        _send_configured_sms("cotizacion_nueva", re.sub(r"[*\\\\]", "", msg))
     except Exception as exc:
         logger.warning("WhatsApp de creación falló: %s", exc)
 
@@ -2404,6 +2405,10 @@ def _send_support_ticket_email(ticket: "TicketSoporte") -> None:
         smtp.ehlo()
         smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
         smtp.send_message(msg, to_addrs=recipients)
+    _send_configured_sms(
+        "ticket_soporte",
+        f"Nuevo ticket {ticket.folio or ticket.id}: {ticket.asunto or 'Soporte'} ({ticket.prioridad or 'MEDIA'}).",
+    )
 
 
 def _build_simple_xls(sheet_name: str, headers: list[str], rows: list[list[str]]) -> bytes:
@@ -2781,6 +2786,10 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "26"))
 SMTP_USERNAME = os.getenv("SMTP_USERNAME", "cotizaciones@poliutech.com").strip()
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "Cotizaciones2025@").strip()
 SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USERNAME).strip()
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
+TWILIO_SMS_FROM = os.getenv("TWILIO_SMS_FROM", "").strip()
+TWILIO_MESSAGING_SERVICE_SID = os.getenv("TWILIO_MESSAGING_SERVICE_SID", "").strip()
 COTIZACION_REVIEW_EMAIL = "hjaramillo@poliutech.com,mescalera@poliutech.com"
 COTIZACION_REVIEW_BCC_EMAIL = "sistemas@poliutech.com"
 COTIZACION_RESPONSE_EMAIL = (os.getenv("COTIZACION_RESPONSE_EMAIL") or "umorales@poliutech.com").strip()
@@ -2821,6 +2830,7 @@ NOTIFICATION_EVENT_CATALOG = {
 }
 NOTIFICATION_CHANNEL_CATALOG = {
     "email": "Correo",
+    "sms": "SMS",
     "whatsapp": "WhatsApp",
     "push": "App móvil",
 }
@@ -2838,6 +2848,7 @@ from models import (
     MobileDevice,
     NotificationRecipient,
     NotificationSubscription,
+    CompanyBranding,
     RegistroObra,
     RegistroObraSeguimiento,
     Prospecto,
@@ -3736,7 +3747,7 @@ def notification_targets(evento: str, canal: str) -> list:
         value = None
         if canal == "email":
             value = (recipient.correo or (user.correo if user else "") or "").strip()
-        elif canal == "whatsapp":
+        elif canal in {"sms", "whatsapp"}:
             value = (recipient.telefono or (user.telefono if user else "") or "").strip()
         elif canal == "push" and user:
             value = user.id
@@ -3745,6 +3756,63 @@ def notification_targets(evento: str, canal: str) -> list:
             seen.add(key)
             values.append(value)
     return values
+
+
+def _send_configured_sms(evento: str, body: str) -> dict[str, int]:
+    recipients = notification_targets(evento, "sms")
+    if not recipients:
+        return {"sent": 0, "failed": 0}
+    if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN or not (TWILIO_SMS_FROM or TWILIO_MESSAGING_SERVICE_SID):
+        logger.warning("SMS %s no enviado: faltan credenciales de Twilio.", evento)
+        return {"sent": 0, "failed": len(recipients)}
+    endpoint = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Messages.json"
+    sent = failed = 0
+    for phone in recipients:
+        normalized = normalize_whatsapp(phone).replace("whatsapp:", "")
+        if not normalized:
+            failed += 1
+            continue
+        payload = {"To": normalized, "Body": body[:1500]}
+        if TWILIO_MESSAGING_SERVICE_SID:
+            payload["MessagingServiceSid"] = TWILIO_MESSAGING_SERVICE_SID
+        else:
+            payload["From"] = TWILIO_SMS_FROM
+        try:
+            response = requests.post(
+                endpoint,
+                data=payload,
+                auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN),
+                timeout=20,
+            )
+            response.raise_for_status()
+            sent += 1
+        except Exception as exc:
+            failed += 1
+            logger.warning("SMS %s falló para %s: %s", evento, normalized[-4:], exc)
+    return {"sent": sent, "failed": failed}
+
+
+def _company_branding() -> CompanyBranding:
+    branding = CompanyBranding.query.order_by(CompanyBranding.id.asc()).first()
+    if branding is None:
+        branding = CompanyBranding(
+            nombre_comercial="Poliutech",
+            color_primario="#0C3C78",
+            color_secundario="#082F60",
+            color_acento="#FFC107",
+        )
+        db.session.add(branding)
+        db.session.commit()
+    return branding
+
+
+@app.context_processor
+def inject_company_branding():
+    try:
+        return {"company_branding": _company_branding()}
+    except Exception:
+        db.session.rollback()
+        return {"company_branding": None}
 
 
 def admin_users_base_query():
@@ -10654,6 +10722,64 @@ def admin_bitacora():
     )
 
 # ---------------------------------------------------------
+def _valid_brand_color(value: str, fallback: str) -> str:
+    value = (value or "").strip().upper()
+    return value if re.fullmatch(r"#[0-9A-F]{6}", value) else fallback
+
+
+def _save_brand_logo(uploaded, field_name: str) -> str | None:
+    if not uploaded or not (uploaded.filename or "").strip():
+        return None
+    extension = Path(secure_filename(uploaded.filename)).suffix.lower()
+    if extension not in {".png", ".jpg", ".jpeg", ".webp", ".svg"}:
+        raise ValueError("El logotipo debe ser PNG, JPG, WEBP o SVG.")
+    destination = Path(app.static_folder or "static") / "uploads" / "branding"
+    destination.mkdir(parents=True, exist_ok=True)
+    filename = f"{field_name}{extension}"
+    uploaded.save(destination / filename)
+    return f"uploads/branding/{filename}"
+
+
+@app.route("/admin/personalizacion", methods=["GET", "POST"])
+@login_required
+def admin_personalizacion():
+    if not is_admin_account():
+        abort(403)
+    branding = _company_branding()
+    if request.method == "POST":
+        try:
+            branding.nombre_comercial = (request.form.get("nombre_comercial") or "").strip() or "MAR"
+            branding.razon_social = (request.form.get("razon_social") or "").strip() or None
+            branding.rfc = (request.form.get("rfc") or "").strip().upper() or None
+            branding.direccion = (request.form.get("direccion") or "").strip() or None
+            branding.telefono = (request.form.get("telefono") or "").strip() or None
+            branding.correo = (request.form.get("correo") or "").strip() or None
+            branding.sitio_web = (request.form.get("sitio_web") or "").strip() or None
+            branding.encabezado = (request.form.get("encabezado") or "").strip() or None
+            branding.pie_pagina = (request.form.get("pie_pagina") or "").strip() or None
+            branding.leyenda_legal = (request.form.get("leyenda_legal") or "").strip() or None
+            branding.color_primario = _valid_brand_color(request.form.get("color_primario"), "#0C3C78")
+            branding.color_secundario = _valid_brand_color(request.form.get("color_secundario"), "#082F60")
+            branding.color_acento = _valid_brand_color(request.form.get("color_acento"), "#FFC107")
+            logo_path = _save_brand_logo(request.files.get("logo"), "logo")
+            dark_logo_path = _save_brand_logo(request.files.get("logo_oscuro"), "logo_oscuro")
+            if logo_path:
+                branding.logo_path = logo_path
+            if dark_logo_path:
+                branding.logo_oscuro_path = dark_logo_path
+            db.session.commit()
+            flash("Identidad de la empresa actualizada.", "success")
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), "danger")
+        except Exception:
+            db.session.rollback()
+            logger.exception("No se pudo guardar la identidad de la empresa.")
+            flash("No se pudo guardar la personalización.", "danger")
+        return redirect(url_for("admin_personalizacion"))
+    return render_template("admin_personalizacion.html", branding=branding)
+
+
 @app.route("/admin/notificaciones", methods=["GET", "POST"])
 @login_required
 def admin_notificaciones():
@@ -11246,6 +11372,10 @@ def _notify_reporte_diario_created(reporte: ReporteDiario) -> None:
         _send_reporte_diario_push_hansel(reporte)
     except Exception as exc:
         logger.warning("Push de reporte diario %s fallo: %s", reporte.folio or reporte.id, exc)
+    _send_configured_sms(
+        "reporte_diario",
+        f"Nuevo reporte diario {reporte.folio or reporte.id}: {reporte.colaborador} - {reporte.semaforo}",
+    )
 
 
 def _solicitud_recurso_recalcular(solicitud: SolicitudRecurso) -> None:
@@ -11381,6 +11511,10 @@ def _notify_solicitud_recurso_created(solicitud: SolicitudRecurso) -> None:
         _send_solicitud_recurso_push_hansel(solicitud)
     except Exception as exc:
         logger.warning("Push de solicitud de fondos %s fallo: %s", solicitud.folio or solicitud.id, exc)
+    _send_configured_sms(
+        "solicitud_fondos",
+        f"Nueva solicitud de fondos {solicitud.folio or solicitud.id} por ${float(solicitud.total or 0):,.2f}.",
+    )
 
 
 def _solicitud_recurso_solicitante_user(solicitud: SolicitudRecurso) -> Usuario | None:
@@ -11489,6 +11623,10 @@ def _notify_solicitud_recurso_resultado(solicitud: SolicitudRecurso) -> None:
         _send_solicitud_recurso_resultado_push(solicitud)
     except Exception as exc:
         logger.warning("Push resultado solicitud de fondos %s fallo: %s", solicitud.folio or solicitud.id, exc)
+    _send_configured_sms(
+        "solicitud_fondos_resultado",
+        f"Solicitud {solicitud.folio or solicitud.id}: {solicitud.estatus or 'actualizada'}.",
+    )
 
 
 def _send_solicitud_recurso_autorizada_finanzas_email(solicitud: SolicitudRecurso) -> None:
@@ -12560,6 +12698,10 @@ def _notify_gasto_created_for_review(gasto: "ComprobacionGasto") -> None:
         _send_gastos_review_push_hansel(gasto)
     except Exception as exc:
         logger.warning("Push de gasto %s fallo: %s", gasto.folio or gasto.id, exc)
+    _send_configured_sms(
+        "gastos_revision",
+        f"Comprobante {gasto.folio or gasto.id} enviado a revisión por ${float(gasto.total or 0):,.2f}.",
+    )
 
 
 def _send_gastos_review_email(gasto: "ComprobacionGasto") -> None:
