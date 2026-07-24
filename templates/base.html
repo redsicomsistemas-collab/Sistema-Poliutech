@@ -772,6 +772,7 @@
             <li><a class="dropdown-item" href="{{ url_for('altas_proveedores') }}">🗂️ Altas</a></li>
             <li><a class="dropdown-item" href="{{ url_for('papelera_cotizaciones') }}">🗑️ Papelera</a></li>
             {% if (current_user.nombre or "")|lower == "admin" %}
+            <li><a class="dropdown-item" href="{{ url_for('admin_demos') }}">🧪 Demos</a></li>
             <li><a class="dropdown-item" href="{{ url_for('admin_personalizacion') }}">🎨 Personalización</a></li>
             <li><a class="dropdown-item" href="{{ url_for('admin_notificaciones') }}">🔔 Notificaciones</a></li>
             <li><a class="dropdown-item" href="{{ url_for('admin_usuarios') }}">👥 Usuarios</a></li>
@@ -786,6 +787,15 @@
 
     <!-- ====== Contenido dinámico ====== -->
     <main class="app-content mb-5">
+      {% if is_demo_account and active_demo %}
+      <div class="alert alert-warning border-warning shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+          <strong>🧪 ENTORNO DE DEMOSTRACIÓN</strong>
+          <span class="ms-2">Los envíos externos están simulados y el acceso vence el {{ active_demo.fecha_vencimiento.strftime('%d/%m/%Y') }}.</span>
+        </div>
+        <span class="badge text-bg-warning">{{ active_demo.empresa }}</span>
+      </div>
+      {% endif %}
   {% else %}
     <main class="auth-content">
   {% endif %}

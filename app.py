@@ -4,7 +4,7 @@
 # =========================================================
 from __future__ import annotations
 
-import os, io, csv, sys, math, re, json, traceback, unicodedata, smtplib, zipfile, logging, base64
+import os, io, csv, sys, math, re, json, traceback, unicodedata, smtplib, zipfile, logging, base64, secrets
 import mimetypes
 import requests
 from datetime import datetime, timedelta
@@ -2037,6 +2037,9 @@ def _send_daily_status_reminder(cot: Cotizacion, ahora: datetime) -> None:
 
 
 def _send_push_notification(tokens: list[str], title: str, body: str, data: Optional[dict[str, str]] = None) -> dict[str, int]:
+    if is_demo_user():
+        logger.info("Push simulado en cuenta demo: %s", title)
+        return {"sent": 0, "failed": 0}
     if not tokens:
         return {"sent": 0, "failed": 0}
     app_instance = _get_firebase_app()
@@ -2849,6 +2852,7 @@ from models import (
     NotificationRecipient,
     NotificationSubscription,
     CompanyBranding,
+    DemoEnvironment,
     RegistroObra,
     RegistroObraSeguimiento,
     Prospecto,
@@ -2974,6 +2978,99 @@ def _require_login_everywhere():
     if nxt.endswith("?"):
         nxt = nxt[:-1]
     return redirect(url_for("login", next=nxt))
+
+
+DEMO_MODULE_CATALOG = {
+    "cotizaciones": "Cotizaciones y clientes",
+    "compras": "Compras y proveedores",
+    "gastos": "Gastos y viáticos",
+    "fondos": "Solicitudes de fondos",
+    "reportes": "Reportes diarios",
+    "inventario": "Inventario",
+}
+
+
+def _demo_for_user(usuario=None) -> DemoEnvironment | None:
+    usuario = usuario or current_user
+    user_id = getattr(usuario, "id", None)
+    if not user_id:
+        return None
+    return DemoEnvironment.query.filter(
+        DemoEnvironment.usuario_id == user_id,
+        DemoEnvironment.estado != "CONVERTIDA",
+    ).first()
+
+
+def _demo_modules(demo: DemoEnvironment | None) -> set[str]:
+    if not demo:
+        return set()
+    try:
+        return {str(value) for value in json.loads(demo.modulos or "[]")}
+    except (TypeError, ValueError):
+        return set()
+
+
+def is_demo_user() -> bool:
+    try:
+        return bool(getattr(current_user, "is_authenticated", False) and _demo_for_user())
+    except Exception:
+        return False
+
+
+def _demo_module_for_path(path: str) -> str | None:
+    path = (path or "").lower()
+    for prefix, module in (
+        ("/cotiz", "cotizaciones"),
+        ("/clientes", "cotizaciones"),
+        ("/catalog", "cotizaciones"),
+        ("/ordenes-compra", "compras"),
+        ("/proveedor", "compras"),
+        ("/gastos", "gastos"),
+        ("/solicitudes-recursos", "fondos"),
+        ("/estado-cuenta-recursos", "fondos"),
+        ("/reportes-diarios", "reportes"),
+        ("/inventario", "inventario"),
+    ):
+        if path.startswith(prefix):
+            return module
+    return None
+
+
+@app.before_request
+def _enforce_demo_access():
+    if not getattr(current_user, "is_authenticated", False):
+        return
+    demo = _demo_for_user()
+    if not demo:
+        return
+    now = now_cdmx_naive()
+    if demo.estado != "ACTIVA" or demo.fecha_vencimiento < now:
+        if demo.estado == "ACTIVA":
+            demo.estado = "VENCIDA"
+            db.session.commit()
+        logout_user()
+        flash("El acceso de demostración terminó. Contacta a MAR para ampliarlo.", "warning")
+        return redirect(url_for("login"))
+    if not demo.ultimo_acceso or (now - demo.ultimo_acceso) > timedelta(minutes=15):
+        demo.ultimo_acceso = now
+        db.session.commit()
+    required_module = _demo_module_for_path(request.path)
+    if required_module and required_module not in _demo_modules(demo):
+        flash("Este módulo no está habilitado en la demostración.", "warning")
+        return redirect(url_for("index"))
+
+
+@app.context_processor
+def inject_demo_context():
+    try:
+        demo = _demo_for_user() if getattr(current_user, "is_authenticated", False) else None
+        return {
+            "active_demo": demo,
+            "is_demo_account": bool(demo),
+            "demo_modules": _demo_modules(demo),
+        }
+    except Exception:
+        return {"active_demo": None, "is_demo_account": False, "demo_modules": set()}
 
 # ---------------------------------------------------------
 # Bitácora de actividad (Audit Log)
@@ -3759,6 +3856,9 @@ def notification_targets(evento: str, canal: str) -> list:
 
 
 def _send_configured_sms(evento: str, body: str) -> dict[str, int]:
+    if is_demo_user():
+        logger.info("SMS simulado en cuenta demo: %s", evento)
+        return {"sent": 0, "failed": 0}
     recipients = notification_targets(evento, "sms")
     if not recipients:
         return {"sent": 0, "failed": 0}
@@ -5398,6 +5498,9 @@ def _send_sms_twilio(recipient: str, body: str) -> None:
     print(f"[SMS] Enviado a {recipient}; sid={message_sid}")
 
 def send_whatsapp_multi(to_list: Iterable[str], body: str) -> None:
+    if is_demo_user():
+        logger.info("WhatsApp simulado en cuenta demo.")
+        return
     if not to_list:
         return
     if not can_send_whatsapp() and not can_send_sms():
@@ -10738,6 +10841,172 @@ def _save_brand_logo(uploaded, field_name: str) -> str | None:
     filename = f"{field_name}{extension}"
     uploaded.save(destination / filename)
     return f"uploads/branding/{filename}"
+
+
+def _demo_username(empresa: str) -> str:
+    normalized = unicodedata.normalize("NFKD", empresa or "demo")
+    base = re.sub(r"[^a-z0-9]+", "", normalized.encode("ascii", "ignore").decode().lower())[:34] or "demo"
+    candidate = f"demo_{base}"
+    suffix = 2
+    while Usuario.query.filter(db.func.lower(Usuario.nombre) == candidate.lower()).first():
+        candidate = f"demo_{base[:30]}{suffix}"
+        suffix += 1
+    return candidate
+
+
+def _seed_demo_environment(demo: DemoEnvironment) -> None:
+    user = demo.usuario
+    responsable = user.nombre_representante
+    client = Cliente(
+        nombre_cliente="Mariana López",
+        empresa=f"Cliente ejemplo de {demo.empresa}",
+        responsable=responsable,
+        correo="cliente.demo@example.com",
+        telefono="+525500000000",
+        direccion="Av. Ejemplo 123, Ciudad de México",
+        rfc="XAXX010101000",
+    )
+    db.session.add(client)
+    db.session.flush()
+    quote = Cotizacion(
+        folio=f"DEMO-{demo.id:04d}-001",
+        cliente_id=client.id,
+        fecha=now_cdmx_naive(),
+        estatus="PENDIENTE",
+        estatus_aprobacion="EN REVISIÓN",
+        especialidad="Construcción",
+        subtotal=25000,
+        iva_porc=16,
+        iva_monto=4000,
+        total=29000,
+        moneda="MXN",
+        responsable=responsable,
+        proyecto="Proyecto demostrativo",
+        ciudad_trabajo="Ciudad de México",
+        notas="Cotización de ejemplo. Los envíos externos están simulados.",
+    )
+    db.session.add(quote)
+    db.session.flush()
+    db.session.add(CotizacionDetalle(
+        cotizacion_id=quote.id,
+        nombre_concepto="Servicio demostrativo MAR",
+        unidad="servicio",
+        cantidad=1,
+        precio_unitario=25000,
+        subtotal=25000,
+        descripcion="Partida precargada para recorrer el flujo de cotización.",
+        origen="DEMO",
+    ))
+    db.session.commit()
+
+
+@app.route("/admin/demos", methods=["GET", "POST"])
+@login_required
+def admin_demos():
+    if not is_admin_account():
+        abort(403)
+    generated_credentials = None
+    if request.method == "POST":
+        action = (request.form.get("action") or "create").strip()
+        try:
+            if action == "create":
+                empresa = (request.form.get("empresa") or "").strip()
+                contacto = (request.form.get("contacto") or "").strip()
+                correo = (request.form.get("correo") or "").strip()
+                telefono = (request.form.get("telefono") or "").strip()
+                days = max(1, min(request.form.get("dias", type=int) or 7, 60))
+                modules = [key for key in request.form.getlist("modulos") if key in DEMO_MODULE_CATALOG]
+                if not empresa or not contacto:
+                    raise ValueError("Empresa y contacto son obligatorios.")
+                username = _demo_username(empresa)
+                password = secrets.token_urlsafe(8)
+                user = Usuario(
+                    nombre=username,
+                    nombre_visible=f"{contacto} · Demo",
+                    correo=correo or None,
+                    telefono=telefono or None,
+                    rol="USER",
+                )
+                user.set_password(password)
+                db.session.add(user)
+                db.session.flush()
+                demo = DemoEnvironment(
+                    empresa=empresa,
+                    contacto=contacto,
+                    correo=correo or None,
+                    telefono=telefono or None,
+                    usuario_id=user.id,
+                    modulos=json.dumps(modules or list(DEMO_MODULE_CATALOG)),
+                    estado="ACTIVA",
+                    fecha_inicio=now_cdmx_naive(),
+                    fecha_vencimiento=now_cdmx_naive() + timedelta(days=days),
+                    notas=(request.form.get("notas") or "").strip() or None,
+                )
+                db.session.add(demo)
+                db.session.commit()
+                _seed_demo_environment(demo)
+                generated_credentials = {"username": username, "password": password, "empresa": empresa}
+                flash("Demo creada con datos de ejemplo. Copia las credenciales antes de salir.", "success")
+
+            else:
+                demo_id = request.form.get("demo_id", type=int)
+                demo = db.session.get(DemoEnvironment, demo_id)
+                if demo is None:
+                    abort(404)
+                if action == "extend":
+                    days = max(1, min(request.form.get("dias", type=int) or 7, 60))
+                    base_date = max(demo.fecha_vencimiento, now_cdmx_naive())
+                    demo.fecha_vencimiento = base_date + timedelta(days=days)
+                    demo.estado = "ACTIVA"
+                    flash(f"Demo de {demo.empresa} extendida {days} días.", "success")
+                elif action == "pause":
+                    demo.estado = "PAUSADA"
+                    flash(f"Demo de {demo.empresa} pausada.", "success")
+                elif action == "activate":
+                    demo.estado = "ACTIVA"
+                    if demo.fecha_vencimiento < now_cdmx_naive():
+                        demo.fecha_vencimiento = now_cdmx_naive() + timedelta(days=7)
+                    flash(f"Demo de {demo.empresa} activada.", "success")
+                elif action == "convert":
+                    demo.estado = "CONVERTIDA"
+                    demo.convertida_en = now_cdmx_naive()
+                    demo.usuario.nombre_visible = demo.contacto
+                    flash(f"{demo.empresa} convertida en cuenta normal.", "success")
+                elif action == "reset_password":
+                    password = secrets.token_urlsafe(8)
+                    demo.usuario.set_password(password)
+                    generated_credentials = {
+                        "username": demo.usuario.nombre,
+                        "password": password,
+                        "empresa": demo.empresa,
+                    }
+                    flash("Contraseña temporal restablecida. Cópiala antes de salir.", "success")
+                else:
+                    raise ValueError("Acción de demo no reconocida.")
+                db.session.commit()
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), "danger")
+        except Exception:
+            db.session.rollback()
+            logger.exception("No se pudo gestionar la demostración.")
+            flash("No se pudo guardar la demostración.", "danger")
+        if generated_credentials is None:
+            return redirect(url_for("admin_demos"))
+
+    demos = DemoEnvironment.query.order_by(DemoEnvironment.creado_en.desc()).all()
+    now = now_cdmx_naive()
+    for demo in demos:
+        if demo.estado == "ACTIVA" and demo.fecha_vencimiento < now:
+            demo.estado = "VENCIDA"
+    db.session.commit()
+    return render_template(
+        "admin_demos.html",
+        demos=demos,
+        module_catalog=DEMO_MODULE_CATALOG,
+        generated_credentials=generated_credentials,
+        now=now,
+    )
 
 
 @app.route("/admin/personalizacion", methods=["GET", "POST"])

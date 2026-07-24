@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Administración de demos{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+  <div>
+    <h2 class="fw-bold text-primary mb-1">🧪 Demos comerciales</h2>
+    <div class="text-muted">Crea accesos temporales controlados y conviértelos en clientes cuando estén listos.</div>
+  </div>
+  <span class="badge rounded-pill bg-light text-dark border px-3 py-2">{{ demos|length }} registradas</span>
+</div>
+
+{% if generated_credentials %}
+<div class="alert alert-success shadow-sm border-success">
+  <h5 class="fw-bold">Credenciales de {{ generated_credentials.empresa }}</h5>
+  <p class="mb-2">Esta contraseña solo se muestra ahora. Cópiala y entrégala al prospecto por un medio seguro.</p>
+  <div class="row g-2">
+    <div class="col-md-5"><div class="form-control bg-white"><strong>Usuario:</strong> {{ generated_credentials.username }}</div></div>
+    <div class="col-md-5"><div class="form-control bg-white"><strong>Contraseña:</strong> {{ generated_credentials.password }}</div></div>
+  </div>
+</div>
+{% endif %}
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white py-3"><h5 class="mb-0 fw-bold">Crear demostración</h5></div>
+  <div class="card-body">
+    <form method="post">
+      <input type="hidden" name="action" value="create">
+      <div class="row g-3">
+        <div class="col-lg-3">
+          <label class="form-label fw-semibold">Empresa</label>
+          <input class="form-control" name="empresa" maxlength="180" required>
+        </div>
+        <div class="col-lg-3">
+          <label class="form-label fw-semibold">Contacto</label>
+          <input class="form-control" name="contacto" maxlength="160" required>
+        </div>
+        <div class="col-lg-3">
+          <label class="form-label fw-semibold">Correo</label>
+          <input class="form-control" type="email" name="correo" maxlength="160">
+        </div>
+        <div class="col-lg-2">
+          <label class="form-label fw-semibold">Teléfono</label>
+          <input class="form-control" name="telefono" maxlength="60">
+        </div>
+        <div class="col-lg-1">
+          <label class="form-label fw-semibold">Días</label>
+          <input class="form-control" type="number" name="dias" min="1" max="60" value="7">
+        </div>
+        <div class="col-12">
+          <label class="form-label fw-semibold d-block">Módulos disponibles</label>
+          <div class="d-flex flex-wrap gap-3">
+            {% for key, label in module_catalog.items() %}
+            <label class="form-check">
+              <input class="form-check-input" type="checkbox" name="modulos" value="{{ key }}" checked>
+              <span class="form-check-label">{{ label }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="col-lg-10">
+          <label class="form-label fw-semibold">Notas comerciales</label>
+          <input class="form-control" name="notas" maxlength="500" placeholder="Origen del prospecto, necesidades, siguiente contacto...">
+        </div>
+        <div class="col-lg-2 d-flex align-items-end">
+          <button class="btn btn-primary w-100" type="submit">Crear demo</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="row g-3">
+  {% for demo in demos %}
+  <div class="col-xl-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between gap-3">
+          <div>
+            <h5 class="fw-bold mb-1">{{ demo.empresa }}</h5>
+            <div>{{ demo.contacto }}</div>
+            <div class="small text-muted">{{ demo.correo or 'Sin correo' }} · {{ demo.telefono or 'Sin teléfono' }}</div>
+          </div>
+          {% set badge = 'success' if demo.estado == 'ACTIVA' else ('primary' if demo.estado == 'CONVERTIDA' else 'secondary') %}
+          <span class="badge text-bg-{{ badge }} align-self-start">{{ demo.estado }}</span>
+        </div>
+
+        <hr>
+        <div class="row g-2 small">
+          <div class="col-6"><strong>Usuario:</strong><br>{{ demo.usuario.nombre }}</div>
+          <div class="col-6"><strong>Vencimiento:</strong><br>{{ demo.fecha_vencimiento.strftime('%d/%m/%Y %H:%M') }}</div>
+          <div class="col-6"><strong>Último acceso:</strong><br>{{ demo.ultimo_acceso.strftime('%d/%m/%Y %H:%M') if demo.ultimo_acceso else 'Todavía no ingresa' }}</div>
+          <div class="col-6"><strong>Módulos:</strong><br>{{ (demo.modulos|default('[]'))|replace('[','')|replace(']','')|replace('"','') }}</div>
+        </div>
+        {% if demo.notas %}<div class="alert alert-light border mt-3 mb-0 small">{{ demo.notas }}</div>{% endif %}
+      </div>
+      {% if demo.estado != 'CONVERTIDA' %}
+      <div class="card-footer bg-white d-flex flex-wrap gap-2">
+        <form method="post" class="d-flex gap-1">
+          <input type="hidden" name="action" value="extend">
+          <input type="hidden" name="demo_id" value="{{ demo.id }}">
+          <input class="form-control form-control-sm" style="width:70px" type="number" name="dias" value="7" min="1" max="60">
+          <button class="btn btn-sm btn-outline-primary">Extender</button>
+        </form>
+        <form method="post">
+          <input type="hidden" name="action" value="{{ 'pause' if demo.estado == 'ACTIVA' else 'activate' }}">
+          <input type="hidden" name="demo_id" value="{{ demo.id }}">
+          <button class="btn btn-sm btn-outline-secondary">{{ 'Pausar' if demo.estado == 'ACTIVA' else 'Activar' }}</button>
+        </form>
+        <form method="post">
+          <input type="hidden" name="action" value="reset_password">
+          <input type="hidden" name="demo_id" value="{{ demo.id }}">
+          <button class="btn btn-sm btn-outline-warning">Nueva contraseña</button>
+        </form>
+        <form method="post" onsubmit="return confirm('¿Convertir esta demo en una cuenta normal de cliente?');">
+          <input type="hidden" name="action" value="convert">
+          <input type="hidden" name="demo_id" value="{{ demo.id }}">
+          <button class="btn btn-sm btn-success">Convertir en cliente</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm"><div class="card-body text-center text-muted py-5">Todavía no hay demostraciones.</div></div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

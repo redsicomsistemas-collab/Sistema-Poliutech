@@ -379,6 +379,31 @@ class CompanyBranding(db.Model):
         return f"<CompanyBranding {self.nombre_comercial or self.id}>"
 
 
+class DemoEnvironment(db.Model):
+    __tablename__ = "demo_environment"
+
+    id = db.Column(db.Integer, primary_key=True)
+    empresa = db.Column(db.String(180), nullable=False)
+    contacto = db.Column(db.String(160), nullable=False)
+    correo = db.Column(db.String(160))
+    telefono = db.Column(db.String(60))
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=False, unique=True, index=True)
+    modulos = db.Column(db.Text, default="[]", nullable=False)
+    estado = db.Column(db.String(20), default="ACTIVA", nullable=False, index=True)
+    fecha_inicio = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    fecha_vencimiento = db.Column(db.DateTime, nullable=False, index=True)
+    ultimo_acceso = db.Column(db.DateTime)
+    notas = db.Column(db.Text)
+    convertida_en = db.Column(db.DateTime)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    usuario = db.relationship("Usuario", backref=db.backref("demo_environment", uselist=False))
+
+    def __repr__(self):
+        return f"<DemoEnvironment {self.empresa} {self.estado}>"
+
+
 class RegistroObra(db.Model):
     __tablename__ = "registro_obra"
 
