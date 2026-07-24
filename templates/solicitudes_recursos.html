@@ -154,6 +154,7 @@
             <td>
               <div class="d-flex gap-2 justify-content-center">
                 <a class="btn btn-sm btn-outline-primary" href="{{ url_for('solicitud_recurso_detalle', solicitud_id=solicitud.id) }}">Ver</a>
+                {% if can_manage_fondos %}
                 <form method="post" action="{{ url_for('solicitud_recurso_eliminar', solicitud_id=solicitud.id) }}" class="m-0">
                   <button
                     type="submit"
@@ -161,6 +162,7 @@
                     data-confirm-message="¿Seguro que deseas eliminar la solicitud {{ solicitud.folio }}? Esta accion no se puede deshacer."
                   >Eliminar</button>
                 </form>
+                {% endif %}
               </div>
             </td>
           </tr>

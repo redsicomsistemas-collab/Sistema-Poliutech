@@ -3207,6 +3207,48 @@ def ensure_schema():
     except Exception as e:
         print("⚠️ ensure_schema(usuario.nombre_visible):", e)
 
+    # --- USUARIO.permisos ---
+    try:
+        cols_user = _table_columns("usuario")
+        if "permisos" not in cols_user:
+            db.session.execute(text("ALTER TABLE usuario ADD COLUMN permisos TEXT NOT NULL DEFAULT '[]'"))
+            # Conserva los accesos especiales existentes al activar el nuevo módulo.
+            db.session.execute(text("""
+                UPDATE usuario
+                SET permisos = :miguel_permisos
+                WHERE LOWER(COALESCE(correo, '')) = 'miguele@poliutech.com'
+                   OR LOWER(COALESCE(nombre, '')) IN ('miguel', 'miguele')
+                   OR LOWER(COALESCE(nombre, '')) LIKE 'miguel%'
+                   OR LOWER(COALESCE(nombre_visible, '')) LIKE 'miguel%'
+            """), {
+                "miguel_permisos": json.dumps([
+                    "gastos.ver_todos",
+                    "gastos.panel_admin",
+                    "fondos.estado_cuenta",
+                ]),
+            })
+            db.session.execute(text("""
+                UPDATE usuario
+                SET permisos = :hansel_permisos
+                WHERE LOWER(COALESCE(correo, '')) = 'hjaramillo@poliutech.com'
+                   OR LOWER(COALESCE(nombre, '')) IN ('hansel', 'hjaramillo')
+                   OR LOWER(COALESCE(nombre, '')) LIKE 'hansel%'
+                   OR LOWER(COALESCE(nombre_visible, '')) LIKE 'hansel%'
+            """), {
+                "hansel_permisos": json.dumps([
+                    "gastos.panel_admin",
+                    "fondos.estado_cuenta",
+                    "fondos.gestionar_solicitudes",
+                    "reportes.ver_todos",
+                    "reportes.evaluacion_departamental",
+                ]),
+            })
+            db.session.commit()
+            print("✅ Campo 'permisos' agregado en 'usuario'.")
+    except Exception as e:
+        db.session.rollback()
+        print("⚠️ ensure_schema(usuario.permisos):", e)
+
     # --- COTIZACION.responsable ---
     try:
         cols_cot = _table_columns("cotizacion")
@@ -3551,37 +3593,90 @@ def is_admin_account() -> bool:
     nombre = (getattr(current_user, "nombre", "") or "").strip().lower()
     return bool(getattr(current_user, "is_authenticated", False) and nombre == "admin")
 
+
+PERMISSION_CATALOG = (
+    {
+        "key": "gastos.ver_todos",
+        "group": "Gastos y fondos",
+        "name": "Ver todos los gastos y fondos",
+        "description": "Consulta registros, grupos, comprobantes, adjuntos y exportaciones de todas las cuentas.",
+    },
+    {
+        "key": "gastos.panel_admin",
+        "group": "Gastos y fondos",
+        "name": "Ver panel administrativo de gastos",
+        "description": "Acceso al panel consolidado y al detalle por empleado.",
+    },
+    {
+        "key": "fondos.estado_cuenta",
+        "group": "Gastos y fondos",
+        "name": "Ver estados de cuenta de fondos",
+        "description": "Consulta saldos, fondos entregados y comprobaciones por usuario.",
+    },
+    {
+        "key": "gastos.gestionar_todos",
+        "group": "Gastos y fondos",
+        "name": "Gestionar y autorizar todos los gastos",
+        "description": "Permite editar, aprobar y eliminar comprobaciones de cualquier cuenta.",
+    },
+    {
+        "key": "fondos.gestionar_solicitudes",
+        "group": "Gastos y fondos",
+        "name": "Gestionar autorizaciones de fondos",
+        "description": "Permite cambiar el estatus y eliminar solicitudes de fondos.",
+    },
+    {
+        "key": "reportes.ver_todos",
+        "group": "Reportes",
+        "name": "Ver reportes diarios de todas las cuentas",
+        "description": "Quita el filtro por usuario en el módulo de reportes diarios.",
+    },
+    {
+        "key": "reportes.evaluacion_departamental",
+        "group": "Reportes",
+        "name": "Ver evaluación departamental",
+        "description": "Acceso al tablero de evaluación de departamentos.",
+    },
+)
+VALID_PERMISSION_KEYS = frozenset(item["key"] for item in PERMISSION_CATALOG)
+
+
+def _usuario_permisos(usuario) -> set[str]:
+    raw = getattr(usuario, "permisos", None)
+    if not raw:
+        return set()
+    try:
+        values = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, ValueError):
+        return set()
+    return {str(value) for value in values if str(value) in VALID_PERMISSION_KEYS}
+
+
+def has_permission(permission: str) -> bool:
+    if not getattr(current_user, "is_authenticated", False):
+        return False
+    return is_admin() or permission in _usuario_permisos(current_user)
+
+
+def _gastos_can_view_all() -> bool:
+    """Permite consultar todos los gastos/fondos sin conceder permisos de edición."""
+    return has_permission("gastos.ver_todos") or has_permission("gastos.gestionar_todos")
+
+
 def _gastos_admin_can_view() -> bool:
     if not getattr(current_user, "is_authenticated", False):
         return False
-    nombre = (getattr(current_user, "nombre", "") or "").strip().lower()
-    visible = (getattr(current_user, "nombre_visible", "") or "").strip().lower()
-    correo = (getattr(current_user, "correo", "") or "").strip().lower()
     return (
-        is_admin()
-        or getattr(current_user, "id", None) == 18
-        or correo == "hjaramillo@poliutech.com"
-        or nombre in {"hansel", "hjaramillo"}
-        or nombre.startswith("hansel")
-        or visible.startswith("hansel")
+        has_permission("gastos.panel_admin")
+        or has_permission("gastos.gestionar_todos")
     )
 
 def _estado_cuenta_recursos_can_view() -> bool:
     if not getattr(current_user, "is_authenticated", False):
         return False
-    nombre = (getattr(current_user, "nombre", "") or "").strip().lower()
-    visible = (getattr(current_user, "nombre_visible", "") or "").strip().lower()
-    correo = (getattr(current_user, "correo", "") or "").strip().lower()
     return (
-        is_admin()
-        or nombre == "admin"
-        or getattr(current_user, "id", None) == 18
-        or correo in {"hjaramillo@poliutech.com", "miguele@poliutech.com"}
-        or nombre in {"hansel", "hjaramillo", "miguel", "miguele"}
-        or nombre.startswith("hansel")
-        or nombre.startswith("miguel")
-        or visible.startswith("hansel")
-        or visible.startswith("miguel")
+        has_permission("fondos.estado_cuenta")
+        or has_permission("gastos.gestionar_todos")
     )
 
 def normalize_user_role(value: str) -> str:
@@ -10527,6 +10622,53 @@ def admin_usuario_eliminar(user_id: int):
     return redirect(url_for("admin_usuarios"))
 
 
+@app.route("/admin/permisos")
+@login_required
+def admin_permisos():
+    if not is_admin_account():
+        abort(403)
+    q = (request.args.get("q") or "").strip()
+    query = admin_users_base_query()
+    if q:
+        like = f"%{q}%"
+        query = query.filter(or_(
+            Usuario.nombre.ilike(like),
+            Usuario.nombre_visible.ilike(like),
+            Usuario.correo.ilike(like),
+        ))
+    usuarios = query.all()
+    permisos_por_usuario = {usuario.id: _usuario_permisos(usuario) for usuario in usuarios}
+    return render_template(
+        "admin_permisos.html",
+        title="Permisos por cuenta",
+        usuarios=usuarios,
+        permisos_por_usuario=permisos_por_usuario,
+        permission_catalog=PERMISSION_CATALOG,
+        q=q,
+    )
+
+
+@app.route("/admin/permisos/<int:user_id>", methods=["POST"])
+@login_required
+def admin_permisos_actualizar(user_id: int):
+    if not is_admin_account():
+        abort(403)
+    usuario = Usuario.query.get_or_404(user_id)
+    seleccionados = {
+        value for value in request.form.getlist("permisos")
+        if value in VALID_PERMISSION_KEYS
+    }
+    usuario.permisos = json.dumps(sorted(seleccionados), ensure_ascii=False)
+    db.session.commit()
+    flash(
+        f"Permisos de '{usuario.nombre_visible or usuario.nombre}' actualizados: "
+        f"{len(seleccionados)} asignado(s).",
+        "success",
+    )
+    q = (request.form.get("q") or "").strip()
+    return redirect(url_for("admin_permisos", q=q) if q else url_for("admin_permisos"))
+
+
 # ---------------------------------------------------------
 # Ordenes de compra
 # ---------------------------------------------------------
@@ -11481,7 +11623,7 @@ def _solicitudes_recurso_saldos(comprobaciones: list["ComprobacionGasto"]) -> li
 
 
 def _gastos_user_scope_filter():
-    if is_admin():
+    if _gastos_can_view_all():
         return None
     current_user_id = getattr(current_user, "id", None)
     responsable = responsable_actual()
@@ -11502,16 +11644,28 @@ def _gastos_apply_user_scope(query):
     return query
 
 
-def require_gasto_owner_or_admin(gasto: "ComprobacionGasto") -> None:
-    if is_admin():
-        return
+def _gasto_can_manage(gasto: "ComprobacionGasto") -> bool:
+    if has_permission("gastos.gestionar_todos"):
+        return True
     current_user_id = getattr(current_user, "id", None)
     if current_user_id and gasto.usuario_id == current_user_id:
-        return
+        return True
     responsable = responsable_actual()
     if responsable and (gasto.responsable or "") == responsable:
+        return True
+    return False
+
+
+def require_gasto_owner_or_admin(gasto: "ComprobacionGasto") -> None:
+    if _gasto_can_manage(gasto):
         return
     abort(403)
+
+
+def require_gasto_view_access(gasto: "ComprobacionGasto") -> None:
+    if _gastos_can_view_all():
+        return
+    require_gasto_owner_or_admin(gasto)
 
 
 def _gastos_file_ext(filename: str) -> str:
@@ -12892,12 +13046,13 @@ def gastos_viaticos_grupo_detalle():
 @login_required
 def gastos_viaticos_detalle(gasto_id: int):
     gasto = ComprobacionGasto.query.get_or_404(gasto_id)
-    require_gasto_owner_or_admin(gasto)
+    require_gasto_view_access(gasto)
     return render_template(
         "gastos_viaticos_detalle.html",
         title=f"Comprobante {gasto.folio or gasto.id}",
         gasto=gasto,
         public_view=False,
+        can_approve=_gasto_can_manage(gasto),
         approve_url=url_for("gastos_viaticos_marcar_aprobado", gasto_id=gasto.id),
         gastos_badge_class=_gastos_badge_class,
     )
@@ -12925,7 +13080,7 @@ def gastos_viaticos_adjunto(adjunto_id: int):
     adjunto = ComprobacionAdjunto.query.get_or_404(adjunto_id)
     gasto = adjunto.comprobacion
     if current_user.is_authenticated:
-        require_gasto_owner_or_admin(gasto)
+        require_gasto_view_access(gasto)
     elif not _gastos_attachment_token_allows(gasto.id, request.args.get("token") or ""):
         abort(403)
 
@@ -13506,36 +13661,11 @@ def _orden_compra_guardar_archivo(uploaded, orden: OrdenCompra, prefijo: str) ->
 
 
 def _reportes_diarios_can_view_all() -> bool:
-    email = (getattr(current_user, "correo", "") or "").strip().lower()
-    nombre = (getattr(current_user, "nombre", "") or "").strip().lower()
-    visible = (getattr(current_user, "nombre_visible", "") or "").strip().lower()
-    rol = (getattr(current_user, "rol", "") or "").strip().upper()
-    return (
-        rol == "ADMIN"
-        or nombre == "admin"
-        or email == "hjaramillo@poliutech.com"
-        or nombre in {"hjaramillo", "hansel"}
-        or nombre.startswith("hansel")
-        or visible.startswith("hansel")
-    )
+    return has_permission("reportes.ver_todos")
 
 
 def _evaluacion_departamental_can_view() -> bool:
-    """Restringe la evaluacion departamental exclusivamente a Admin y Hansel."""
-    if not getattr(current_user, "is_authenticated", False):
-        return False
-
-    user_id = getattr(current_user, "id", None)
-    email = (getattr(current_user, "correo", "") or "").strip().lower()
-    nombre = (getattr(current_user, "nombre", "") or "").strip().lower()
-    rol = (getattr(current_user, "rol", "") or "").strip().upper()
-    return (
-        rol == "ADMIN"
-        or nombre == "admin"
-        or user_id == 18
-        or email == "hjaramillo@poliutech.com"
-        or nombre in {"hansel", "hjaramillo"}
-    )
+    return has_permission("reportes.evaluacion_departamental")
 
 
 def _reportes_diarios_query():
@@ -14128,6 +14258,7 @@ def solicitudes_recursos_index():
         q=q,
         estatus=estatus,
         project_options=_known_project_names(),
+        can_manage_fondos=has_permission("fondos.gestionar_solicitudes"),
     )
 
 
@@ -14196,12 +14327,15 @@ def solicitud_recurso_detalle(solicitud_id: int):
             extras=[{"label": "Proyecto / obra", "value": solicitud.proyecto}],
         ),
         estatus_options=SOLICITUD_RECURSO_ESTATUS,
+        can_manage_fondos=has_permission("fondos.gestionar_solicitudes"),
     )
 
 
 @app.route("/solicitudes-recursos/<int:solicitud_id>/eliminar", methods=["POST"])
 @login_required
 def solicitud_recurso_eliminar(solicitud_id: int):
+    if not has_permission("fondos.gestionar_solicitudes"):
+        abort(403)
     solicitud = SolicitudRecurso.query.get_or_404(solicitud_id)
     folio = solicitud.folio or str(solicitud.id)
     db.session.delete(solicitud)
@@ -14213,6 +14347,8 @@ def solicitud_recurso_eliminar(solicitud_id: int):
 @app.route("/solicitudes-recursos/<int:solicitud_id>/estatus", methods=["POST"])
 @login_required
 def solicitud_recurso_estatus(solicitud_id: int):
+    if not has_permission("fondos.gestionar_solicitudes"):
+        abort(403)
     solicitud = SolicitudRecurso.query.get_or_404(solicitud_id)
     nuevo = (request.form.get("estatus") or "").strip().upper()
     if nuevo not in SOLICITUD_RECURSO_ESTATUS:
