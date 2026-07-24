@@ -10627,24 +10627,19 @@ def admin_usuario_eliminar(user_id: int):
 def admin_permisos():
     if not is_admin_account():
         abort(403)
-    q = (request.args.get("q") or "").strip()
-    query = admin_users_base_query()
-    if q:
-        like = f"%{q}%"
-        query = query.filter(or_(
-            Usuario.nombre.ilike(like),
-            Usuario.nombre_visible.ilike(like),
-            Usuario.correo.ilike(like),
-        ))
-    usuarios = query.all()
-    permisos_por_usuario = {usuario.id: _usuario_permisos(usuario) for usuario in usuarios}
+    usuarios = admin_users_base_query().all()
+    selected_user_id = request.args.get("user_id", type=int)
+    usuario_seleccionado = next(
+        (usuario for usuario in usuarios if usuario.id == selected_user_id),
+        None,
+    )
     return render_template(
         "admin_permisos.html",
         title="Permisos por cuenta",
         usuarios=usuarios,
-        permisos_por_usuario=permisos_por_usuario,
+        usuario_seleccionado=usuario_seleccionado,
+        permisos_asignados=_usuario_permisos(usuario_seleccionado) if usuario_seleccionado else set(),
         permission_catalog=PERMISSION_CATALOG,
-        q=q,
     )
 
 
@@ -10665,8 +10660,7 @@ def admin_permisos_actualizar(user_id: int):
         f"{len(seleccionados)} asignado(s).",
         "success",
     )
-    q = (request.form.get("q") or "").strip()
-    return redirect(url_for("admin_permisos", q=q) if q else url_for("admin_permisos"))
+    return redirect(url_for("admin_permisos", user_id=usuario.id))
 
 
 # ---------------------------------------------------------
