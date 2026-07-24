@@ -1,0 +1,27 @@
+{
+  "folio": "COT-2026-02-026-2",
+  "fecha": "2026-02-26",
+  "estatus": "PENDIENTE",
+  "responsable": "Rafa",
+  "cliente": {
+    "nombre_cliente": "Jardin Oracle Guadalajara",
+    "empresa": "Oracle",
+    "correo": "",
+    "telefono": "",
+    "direccion": "Guadalajara, Jalisco",
+    "rfc": ""
+  },
+  "zona": "",
+  "iva_porc": 16,
+  "notas": "Importada desde cotizacion externa.",
+  "items": [
+    {
+      "nombre_concepto": "Sistema Tremproof",
+      "unidad": "m2",
+      "cantidad": 1,
+      "precio_unitario": 0,
+      "sistema": "Tremproof",
+      "descripcion": "Captura aqui la descripcion del concepto."
+    }
+  ]
+}

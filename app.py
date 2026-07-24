@@ -36,18 +36,13 @@ except Exception:
 # por el usuario y, cuando aplique, la trazabilidad de la zona.
 DEFAULT_CONDICIONES: list[str] = []
 VALID_ESTATUS_SEGUIMIENTO = [
-    "0%",
-    "5%",
-    "10%",
-    "20%",
-    "30%",
-    "40%",
-    "50%",
-    "70%",
-    "80%",
-    "90%",
-    "95%",
-    "100%",
+    "ENVIADA",
+    "PENDIENTE",
+    "EN CURSO",
+    "O. TERMINADA",
+    "FINALIZADA",
+    "GANADA",
+    "PERDIDA",
 ]
 VALID_ESTATUS_APROBACION = [
     "APROBADA",
@@ -114,10 +109,11 @@ def _split_notas_y_zona(notas_raw: str) -> tuple[str, str]:
     zona_line = ""
     for ln in notas_raw.splitlines():
         s = ln.strip()
+        if not s:
+            continue
         if s.lower().startswith("zona:"):
             zona_line = s
         else:
-            # Conserva los renglones vacios intencionales entre condiciones.
             extras.append(s)
     return "\n".join(extras).strip(), zona_line
 
@@ -129,7 +125,8 @@ def _condiciones_comerciales_finales(notas_raw: str) -> list[str]:
     if extras_txt:
         for ln in extras_txt.splitlines():
             s = ln.strip()
-            items.append(s)
+            if s:
+                items.append(s)
     return items
 
 
@@ -1617,7 +1614,7 @@ def _create_mobile_voice_quote(preview: dict, user: Usuario) -> Cotizacion:
         folio=generar_folio(),
         fecha=now_cdmx_naive(),
         cliente_id=cliente.id if cliente else None,
-        estatus="0%",
+        estatus="PENDIENTE",
         estatus_aprobacion="EN REVISIÓN",
         notas="\n".join(part for part in notes_parts if part).strip() or None,
         responsable=responsible,
@@ -1837,7 +1834,7 @@ def _mobile_push_user_ids_for_aazcona() -> list[int]:
 
 
 def _send_quote_status_push(cot: Cotizacion, previous_status: str, new_status: str) -> dict[str, int]:
-    if (new_status or "").strip().upper() == "100%":
+    if (new_status or "").strip().upper() == "FINALIZADA":
         return {"sent": 0, "failed": 0}
     pdf_url = _mobile_quote_pdf_url(cot.id)
     owner_ids = _mobile_push_user_ids_for_quote_owner(cot)
@@ -2021,7 +2018,7 @@ def _send_quote_followup_push(cot: Cotizacion, seg: CotizacionSeguimiento) -> di
 
 def _send_daily_status_reminder(cot: Cotizacion, ahora: datetime) -> None:
     estatus_actual = (cot.estatus or "").strip().upper()
-    if not estatus_actual or estatus_actual == "100%":
+    if not estatus_actual or estatus_actual == "FINALIZADA":
         return
 
     body = (
@@ -2715,7 +2712,7 @@ def _build_matrix_xlsx(sheet_name: str, rows: list[list[str]], column_widths: Op
 
 from flask import (
     Flask, render_template, render_template_string, request, redirect, url_for,
-    flash, jsonify, Response, abort, g, current_app
+    flash, jsonify, Response, abort, g, current_app, send_file
 )
 
 from sqlalchemy import text, or_, and_, case
@@ -2857,6 +2854,17 @@ app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", DEFAULT_SECRET_KEY)
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+# Render monta el disco persistente de este servicio en /data. En desarrollo se
+# conserva static/uploads para no exigir una ruta especial en cada equipo.
+_configured_upload_root = (os.getenv("UPLOAD_STORAGE_ROOT") or "").strip()
+if _configured_upload_root:
+    UPLOAD_STORAGE_ROOT = Path(_configured_upload_root).expanduser().resolve()
+elif Path("/data").is_dir():
+    UPLOAD_STORAGE_ROOT = Path("/data/uploads")
+else:
+    UPLOAD_STORAGE_ROOT = Path(app.static_folder or "static").resolve() / "uploads"
+
 logger = logging.getLogger(__name__)
 
 db.init_app(app)
@@ -3239,8 +3247,6 @@ def ensure_schema():
             ("total", "ALTER TABLE cotizacion ADD COLUMN total FLOAT DEFAULT 0.0"),
             ("moneda", "ALTER TABLE cotizacion ADD COLUMN moneda VARCHAR(10) DEFAULT 'MXN'"),
             ("estatus_aprobacion", "ALTER TABLE cotizacion ADD COLUMN estatus_aprobacion VARCHAR(20) DEFAULT 'EN REVISIÓN'"),
-            ("resultado", "ALTER TABLE cotizacion ADD COLUMN resultado VARCHAR(20)"),
-            ("motivo_perdida", "ALTER TABLE cotizacion ADD COLUMN motivo_perdida TEXT"),
             ("especialidad", "ALTER TABLE cotizacion ADD COLUMN especialidad VARCHAR(160)"),
             ("especialidad_descripcion", "ALTER TABLE cotizacion ADD COLUMN especialidad_descripcion VARCHAR(500)"),
             ("notas", "ALTER TABLE cotizacion ADD COLUMN notas VARCHAR(3000)"),
@@ -3272,26 +3278,9 @@ def ensure_schema():
             """))
             db.session.execute(text("""
                 UPDATE cotizacion
-                SET estatus = '0%'
+                SET estatus = 'PENDIENTE'
                 WHERE UPPER(COALESCE(estatus, '')) IN ('APROBADO', 'APROBADA', 'AUTORIZADO', 'RECHAZADO', 'RECHAZADA', 'EN REVISIÓN', 'EN REVISION')
                    OR estatus IS NULL OR TRIM(estatus) = ''
-            """))
-            db.session.execute(text("""
-                UPDATE cotizacion
-                SET estatus = CASE UPPER(TRIM(COALESCE(estatus, '')))
-                    WHEN 'PENDIENTE' THEN '0%'
-                    WHEN 'PERDIDA' THEN '0%'
-                    WHEN 'ENVIADA' THEN '5%'
-                    WHEN 'EN CURSO' THEN '50%'
-                    WHEN 'O. TERMINADA' THEN '95%'
-                    WHEN 'FINALIZADA' THEN '100%'
-                    WHEN 'GANADA' THEN '100%'
-                    ELSE estatus
-                END
-                WHERE UPPER(TRIM(COALESCE(estatus, ''))) IN (
-                    'PENDIENTE', 'PERDIDA', 'ENVIADA', 'EN CURSO',
-                    'O. TERMINADA', 'FINALIZADA', 'GANADA'
-                )
             """))
             db.session.commit()
     except Exception as e:
@@ -3954,7 +3943,6 @@ def _build_dashboard_cotizaciones_query(
     cliente: str = "",
     especialidad: str = "",
     especialidad_descripcion: str = "",
-    resultado: str = "",
 ):
     q = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
     q = q.filter(Cotizacion.eliminada_en.is_(None))
@@ -3978,10 +3966,6 @@ def _build_dashboard_cotizaciones_query(
 
     if estatus:
         q = q.filter(Cotizacion.estatus == estatus)
-
-    resultado = (resultado or "").strip().upper()
-    if resultado in {"GANADA", "PERDIDA"}:
-        q = q.filter(db.func.upper(db.func.coalesce(Cotizacion.resultado, "")) == resultado)
 
     especialidad = (especialidad or "").strip().lower()
     if especialidad:
@@ -4871,7 +4855,7 @@ def build_import_payload_from_pdf(pdf_bytes: bytes, filename: str, responsable_h
     return {
         "folio": folio,
         "fecha": fecha.isoformat(sep=" "),
-        "estatus": "0%",
+        "estatus": "PENDIENTE",
         "responsable": responsable_hint or "",
         "cliente": {
             "nombre_cliente": cliente_nombre,
@@ -4932,13 +4916,13 @@ def _normalize_import_payload(payload: dict) -> dict:
     raw_aprobacion = (payload.get("estatus_aprobacion") or "").strip().upper()
     if raw_estatus in {"APROBADO", "APROBADA", "AUTORIZADO"}:
         raw_aprobacion = "APROBADA"
-        raw_estatus = "0%"
+        raw_estatus = "PENDIENTE"
     elif raw_estatus in {"RECHAZADO", "RECHAZADA"}:
         raw_aprobacion = "RECHAZADA"
-        raw_estatus = "0%"
+        raw_estatus = "PENDIENTE"
     elif raw_estatus in {"EN REVISION", "EN REVISIÓN"}:
         raw_aprobacion = "EN REVISIÓN"
-        raw_estatus = "0%"
+        raw_estatus = "PENDIENTE"
     if raw_aprobacion == "APROBADO" or raw_aprobacion == "AUTORIZADO":
         raw_aprobacion = "APROBADA"
     elif raw_aprobacion == "RECHAZADO":
@@ -4949,7 +4933,7 @@ def _normalize_import_payload(payload: dict) -> dict:
     return {
         "folio": (payload.get("folio") or payload.get("folio_externo") or "").strip() or None,
         "fecha": parse_datetime_flexible(payload.get("fecha")) or now_cdmx_naive(),
-        "estatus": raw_estatus if raw_estatus in VALID_ESTATUS_SEGUIMIENTO else "0%",
+        "estatus": raw_estatus if raw_estatus in VALID_ESTATUS_SEGUIMIENTO else "PENDIENTE",
         "estatus_aprobacion": raw_aprobacion if raw_aprobacion in VALID_ESTATUS_APROBACION else "EN REVISIÓN",
         "responsable": (payload.get("responsable") or "").strip() or None,
         "proyecto": (payload.get("proyecto") or payload.get("obra") or "").strip() or None,
@@ -5327,9 +5311,6 @@ def index():
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
-    resultado = (request.args.get("resultado") or "").strip().upper()
-    if resultado not in {"GANADA", "PERDIDA"}:
-        resultado = ""
     dashboard_filters = {
         "desde": desde,
         "hasta": hasta,
@@ -5337,7 +5318,6 @@ def index():
         "cliente": cliente,
         "especialidad": especialidad,
         "especialidad_descripcion": especialidad_descripcion,
-        "resultado": resultado,
     }
 
     try:
@@ -5348,11 +5328,10 @@ def index():
             cliente=cliente,
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
-            resultado=resultado,
         )
     except ValueError:
         base_query = _build_dashboard_cotizaciones_query()
-        dashboard_filters = {"desde": "", "hasta": "", "estatus": "", "cliente": "", "especialidad": "", "especialidad_descripcion": "", "resultado": ""}
+        dashboard_filters = {"desde": "", "hasta": "", "estatus": "", "cliente": "", "especialidad": "", "especialidad_descripcion": ""}
 
     total_cotizaciones = base_query.count()
     total_importe = (
@@ -5365,18 +5344,6 @@ def index():
     cotizaciones = pagination.items
 
     total_catalogo = Concepto.query.count()
-    responsables = [
-        row[0]
-        for row in (
-            _cotizaciones_base_query()
-            .with_entities(Cotizacion.responsable)
-            .filter(Cotizacion.responsable.isnot(None))
-            .filter(db.func.trim(Cotizacion.responsable) != "")
-            .distinct()
-            .order_by(Cotizacion.responsable)
-            .all()
-        )
-    ]
 
     return render_template(
         "dashboard.html",
@@ -5387,7 +5354,6 @@ def index():
         cotizaciones=cotizaciones,
         pagination=pagination,
         dashboard_filters=dashboard_filters,
-        responsables=responsables,
         valid_estatus=VALID_ESTATUS_SEGUIMIENTO,
         valid_estatus_aprobacion=VALID_ESTATUS_APROBACION,
         especialidades_cotizacion=ESPECIALIDADES_COTIZACION,
@@ -7522,7 +7488,7 @@ def crear_cotizacion():
         folio=generar_folio(),
         fecha=now_cdmx_naive(),
         cliente_id=cliente.id if cliente else None,
-        estatus=(f.get("estatus") or "0%").upper(),
+        estatus=(f.get("estatus") or "PENDIENTE").upper(),
         estatus_aprobacion=(f.get("estatus_aprobacion") or "EN REVISIÓN").upper(),
         especialidad=especialidad_form,
         especialidad_descripcion=(f.get("especialidad_descripcion") or "").strip()[:500] or None,
@@ -7727,7 +7693,7 @@ def actualizar_cotizacion(cot_id: int):
         c.cliente_id = cliente.id
 
     # === ENCABEZADO ===
-    estatus_form = (f.get("estatus") or c.estatus or "0%").upper()
+    estatus_form = (f.get("estatus") or c.estatus or "PENDIENTE").upper()
     if estatus_form not in VALID_ESTATUS_SEGUIMIENTO:
         flash("Selecciona un estatus de seguimiento válido.", "danger")
         return redirect(url_for("editar_cotizacion", cot_id=c.id))
@@ -7954,7 +7920,6 @@ def bulk_eliminar_filtradas():
     cliente_s = (filters.get("cliente") or "").strip().lower()
     especialidad_s = (filters.get("especialidad") or "").strip()
     especialidad_descripcion_s = (filters.get("especialidad_descripcion") or "").strip()
-    resultado_s = (filters.get("resultado") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -7964,7 +7929,6 @@ def bulk_eliminar_filtradas():
             cliente=cliente_s,
             especialidad=especialidad_s,
             especialidad_descripcion=especialidad_descripcion_s,
-            resultado=resultado_s,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -8081,17 +8045,6 @@ def view_cotizacion(cot_id: int):
 def cotizacion_seguimiento(cot_id: int):
     c = _cotizacion_activa_or_404(cot_id)
     require_owner_or_admin(c)
-    eventos_cronologia = [{
-        "fecha": c.fecha.strftime("%d/%m/%Y %H:%M") if c.fecha else "",
-        "titulo": "Cotización creada",
-        "detalle": c.proyecto or c.folio or "Inicio",
-    }]
-    for seg in sorted(c.seguimientos or [], key=lambda item: item.fecha_seguimiento or datetime.min):
-        eventos_cronologia.append({
-            "fecha": seg.fecha_seguimiento.strftime("%d/%m/%Y %H:%M") if seg.fecha_seguimiento else "",
-            "titulo": seg.autor or "Seguimiento",
-            "detalle": (seg.comentario or "").strip(),
-        })
     return render_template(
         "cotizacion_seguimiento.html",
         c=c,
@@ -8104,7 +8057,6 @@ def cotizacion_seguimiento(cot_id: int):
             ],
         ),
         seguimientos=c.seguimientos,
-        eventos_cronologia=eventos_cronologia,
         valid_estatus=VALID_ESTATUS,
         mention_users=_usuarios_menciones_payload(),
         title=f"Seguimiento {c.folio}",
@@ -8327,43 +8279,6 @@ def api_update_estatus_aprobacion(cot_id):
         "folio": c.folio,
         "estatus_aprobacion": nuevo,
         "mensaje": f"Estatus de aprobación de {c.folio} actualizado a {nuevo}."
-    })
-
-@app.route("/api/cotizaciones/<int:cot_id>/resultado", methods=["POST"])
-@login_required
-def api_update_resultado_cotizacion(cot_id):
-    c = _cotizacion_activa_or_404(cot_id)
-    require_owner_or_admin(c)
-    data = request.get_json(silent=True) or {}
-    resultado = (data.get("resultado") or "").strip().upper()
-    motivo = (data.get("motivo") or "").strip()
-    if resultado not in {"GANADA", "PERDIDA"}:
-        return jsonify({"ok": False, "error": "Resultado comercial inválido."}), 400
-    if resultado == "PERDIDA" and not motivo:
-        return jsonify({"ok": False, "error": "Captura el motivo por el que se perdió el trabajo."}), 400
-
-    anterior = (c.resultado or "").strip().upper()
-    c.resultado = resultado
-    c.motivo_perdida = motivo if resultado == "PERDIDA" else None
-    if anterior != resultado or (resultado == "PERDIDA" and motivo):
-        comentario = f"Resultado comercial: {resultado}."
-        if motivo:
-            comentario += f"\nMotivo de pérdida: {motivo}"
-        db.session.add(CotizacionSeguimiento(
-            cotizacion_id=c.id,
-            usuario_id=getattr(current_user, "id", None),
-            autor=responsable_actual() or getattr(current_user, "nombre", None) or "Sistema",
-            comentario=comentario,
-            fecha_seguimiento=now_cdmx_naive(),
-            actualizado_en=now_cdmx_naive(),
-        ))
-    db.session.commit()
-    return jsonify({
-        "ok": True,
-        "folio": c.folio,
-        "resultado": resultado,
-        "motivo_perdida": c.motivo_perdida or "",
-        "mensaje": f"{c.folio} marcada como {resultado}.",
     })
 
 # ---------------------------------------------------------
@@ -9346,7 +9261,6 @@ def export_dashboard_cotizaciones_xlsx():
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
-    resultado = (request.args.get("resultado") or "").strip()
 
     try:
         cotizaciones = (_build_dashboard_cotizaciones_query(
@@ -9356,7 +9270,6 @@ def export_dashboard_cotizaciones_xlsx():
             cliente=cliente,
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
-            resultado=resultado,
         ).order_by(Cotizacion.fecha.desc()).all())
     except ValueError as exc:
         abort(400, description=str(exc))
@@ -9606,7 +9519,6 @@ def export_dashboard_followups_pdf():
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
-    resultado = (request.args.get("resultado") or "").strip()
 
     try:
         cotizaciones = (
@@ -9617,7 +9529,6 @@ def export_dashboard_followups_pdf():
                 cliente=cliente,
                 especialidad=especialidad,
                 especialidad_descripcion=especialidad_descripcion,
-                resultado=resultado,
             )
             .order_by(Cotizacion.fecha.desc())
             .all()
@@ -9785,7 +9696,6 @@ def api_dashboard_filter_summary():
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
-    resultado = (request.args.get("resultado") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -9795,7 +9705,6 @@ def api_dashboard_filter_summary():
             cliente=cliente,
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
-            resultado=resultado,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -10073,18 +9982,7 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
             fontSize=9,
             leftIndent=8,
         )
-        # Una condicion vacia representa un renglon en blanco intencional.
-        # Asi, dos Enter en el textarea separan visualmente dos puntos.
-        def _linea_condicion_pdf(value: object) -> str:
-            texto = str(value).strip()
-            if not texto:
-                return ""
-            texto_normalizado = _normalize_text_for_match(texto).rstrip(":").strip()
-            if texto_normalizado == "clausulas":
-                return escape(texto)
-            return f"• {escape(texto)}"
-
-        bullets = "<br/>".join(_linea_condicion_pdf(x) for x in condiciones)
+        bullets = "<br/>".join([f"• {x}" for x in condiciones if str(x).strip()])
         elems.append(Paragraph(bullets, nota_style))
         elems.append(Spacer(1, 8))
 
@@ -10199,7 +10097,6 @@ def api_dashboard_metrics():
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
-    resultado = (request.args.get("resultado") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -10209,7 +10106,6 @@ def api_dashboard_metrics():
             cliente=cliente,
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
-            resultado=resultado,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -10246,7 +10142,6 @@ def api_dashboard_status_breakdown():
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
-    resultado = (request.args.get("resultado") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -10256,7 +10151,6 @@ def api_dashboard_status_breakdown():
             cliente=cliente,
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
-            resultado=resultado,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -10374,7 +10268,7 @@ def enviar_notificaciones_pendientes():
 
         cotizaciones = (
             Cotizacion.query
-            .filter(Cotizacion.eliminada_en.is_(None), db.func.upper(Cotizacion.estatus) != "100%")
+            .filter(Cotizacion.eliminada_en.is_(None), db.func.upper(Cotizacion.estatus) != "FINALIZADA")
             .all()
         )
 
@@ -11624,6 +11518,20 @@ def _gastos_file_ext(filename: str) -> str:
     return (filename or "").rsplit(".", 1)[-1].lower() if "." in (filename or "") else ""
 
 
+def _upload_storage_path(relative_path: str) -> Path:
+    """Resuelve una ruta guardada en DB dentro del almacén persistente."""
+    normalized = str(relative_path or "").replace("\\", "/").lstrip("/")
+    if normalized == "uploads":
+        normalized = ""
+    elif normalized.startswith("uploads/"):
+        normalized = normalized[len("uploads/"):]
+    candidate = (UPLOAD_STORAGE_ROOT / normalized).resolve()
+    root = UPLOAD_STORAGE_ROOT.resolve()
+    if candidate != root and root not in candidate.parents:
+        abort(404)
+    return candidate
+
+
 def _gastos_save_upload(uploaded, comprobacion_id: int) -> ComprobacionAdjunto | None:
     if not uploaded or not (uploaded.filename or "").strip():
         return None
@@ -11631,7 +11539,7 @@ def _gastos_save_upload(uploaded, comprobacion_id: int) -> ComprobacionAdjunto |
     if ext not in GASTOS_UPLOAD_EXTS:
         raise ValueError("Adjunta un PDF o imagen valida: pdf, png, jpg, jpeg o webp.")
 
-    upload_dir = Path(app.static_folder or "static") / "uploads" / "gastos_viaticos" / str(comprobacion_id)
+    upload_dir = UPLOAD_STORAGE_ROOT / "gastos_viaticos" / str(comprobacion_id)
     upload_dir.mkdir(parents=True, exist_ok=True)
     original = secure_filename(uploaded.filename) or f"comprobante.{ext}"
     stem = Path(original).stem[:80] or "comprobante"
@@ -12995,6 +12903,47 @@ def gastos_viaticos_detalle(gasto_id: int):
     )
 
 
+def _gastos_attachment_token_allows(gasto_id: int, token: str) -> bool:
+    if not token:
+        return False
+    try:
+        payload = _gastos_review_serializer().loads(token, max_age=60 * 60 * 24 * 45)
+    except (BadSignature, SignatureExpired):
+        return False
+    action = (payload.get("action") or "").strip()
+    if action not in {"view", "approve"}:
+        return False
+    if int(payload.get("gasto_id") or 0) == int(gasto_id):
+        return True
+    return int(gasto_id) in {
+        int(item) for item in (payload.get("gasto_ids") or []) if str(item).isdigit()
+    }
+
+
+@app.route("/gastos-viaticos/adjuntos/<int:adjunto_id>")
+def gastos_viaticos_adjunto(adjunto_id: int):
+    adjunto = ComprobacionAdjunto.query.get_or_404(adjunto_id)
+    gasto = adjunto.comprobacion
+    if current_user.is_authenticated:
+        require_gasto_owner_or_admin(gasto)
+    elif not _gastos_attachment_token_allows(gasto.id, request.args.get("token") or ""):
+        abort(403)
+
+    disk_path = _upload_storage_path(adjunto.ruta)
+    if not disk_path.is_file():
+        # Compatibilidad con archivos creados localmente antes del cambio.
+        legacy_path = (Path(app.static_folder or "static") / adjunto.ruta).resolve()
+        if not legacy_path.is_file():
+            abort(404)
+        disk_path = legacy_path
+    return send_file(
+        disk_path,
+        mimetype=adjunto.mime_type or None,
+        download_name=adjunto.nombre_original or adjunto.nombre_archivo,
+        conditional=True,
+    )
+
+
 @app.route("/gastos-viaticos/<int:gasto_id>/aprobar", methods=["POST"])
 @login_required
 def gastos_viaticos_marcar_aprobado(gasto_id: int):
@@ -13019,6 +12968,7 @@ def gastos_viaticos_revision(gasto_id: int):
         title=f"Comprobante {gasto.folio or gasto.id}",
         gasto=gasto,
         public_view=True,
+        attachment_token=token,
         approve_url=url_for("gastos_viaticos_revision_aprobar", gasto_id=gasto.id, token=token),
         gastos_badge_class=_gastos_badge_class,
     )
@@ -13033,13 +12983,15 @@ def gastos_viaticos_revision_aprobar(gasto_id: int):
     db.session.commit()
     if anterior != "APROBADO":
         _notify_gastos_authorized_finanzas([gasto])
+    token = request.args.get("token") or ""
     return render_template(
         "gastos_viaticos_detalle.html",
         title=f"Comprobante {gasto.folio or gasto.id}",
         gasto=gasto,
         public_view=True,
         approved_now=True,
-        approve_url=url_for("gastos_viaticos_revision_aprobar", gasto_id=gasto.id, token=request.args.get("token") or ""),
+        attachment_token=token,
+        approve_url=url_for("gastos_viaticos_revision_aprobar", gasto_id=gasto.id, token=token),
         gastos_badge_class=_gastos_badge_class,
     )
 
@@ -13055,6 +13007,7 @@ def gastos_viaticos_revision_grupo():
         title="Salida de gastos",
         gastos=gastos,
         public_view=True,
+        attachment_token=token,
         approved_now=False,
         grupo=_gastos_group_name(gastos[0]),
         fecha=_gastos_fecha_base(gastos[0]),
@@ -13085,6 +13038,7 @@ def gastos_viaticos_revision_grupo_aprobar():
         title="Salida de gastos",
         gastos=gastos,
         public_view=True,
+        attachment_token=token,
         approved_now=True,
         grupo=_gastos_group_name(gastos[0]),
         fecha=_gastos_fecha_base(gastos[0]),
@@ -14059,27 +14013,13 @@ def reportes_diarios_index():
         query = query.filter(ReporteDiario.fecha >= start, ReporteDiario.fecha < end)
 
     reportes = query.order_by(ReporteDiario.fecha.desc(), ReporteDiario.hora_envio.desc(), ReporteDiario.id.desc()).all()
-    borradores = [reporte for reporte in reportes if reporte.estatus == "BORRADOR"]
-    reportes_enviados = [reporte for reporte in reportes if reporte.estatus != "BORRADOR"]
     kanban = {status: [] for status in REPORTE_DIARIO_SEMAFORO}
-    for reporte in reportes_enviados:
+    for reporte in reportes:
         kanban.setdefault(reporte.semaforo or "SIN INCIDENCIAS", []).append(reporte)
-
-    editar_id = request.args.get("editar", type=int)
-    borrador_edicion = None
-    borrador_payload = {"actividades": [], "puntos": [], "prioridades": [], "tiempos": [], "riesgos": []}
-    if editar_id:
-        borrador_edicion = ReporteDiario.query.filter(
-            ReporteDiario.id == editar_id,
-            ReporteDiario.usuario_id == getattr(current_user, "id", None),
-            ReporteDiario.estatus == "BORRADOR",
-        ).first_or_404()
-        borrador_payload = _reporte_diario_payload(borrador_edicion)
 
     hoy = now_cdmx_naive().replace(hour=0, minute=0, second=0, microsecond=0)
     ya_envio_hoy = ReporteDiario.query.filter(
         ReporteDiario.usuario_id == getattr(current_user, "id", None),
-        ReporteDiario.estatus == "ENVIADO",
         ReporteDiario.fecha >= hoy,
         ReporteDiario.fecha < hoy + timedelta(days=1),
     ).first()
@@ -14088,7 +14028,6 @@ def reportes_diarios_index():
         "reportes_diarios.html",
         title="Reportes diarios",
         reportes=reportes,
-        borradores=borradores,
         kanban=kanban,
         q=q,
         semaforo=semaforo,
@@ -14099,8 +14038,6 @@ def reportes_diarios_index():
         fecha_hoy=now_cdmx_naive().strftime("%Y-%m-%d"),
         responsable_default=responsable_actual() or "",
         ya_envio_hoy=ya_envio_hoy,
-        borrador_edicion=borrador_edicion,
-        borrador_payload=borrador_payload,
         can_view_all=_reportes_diarios_can_view_all(),
     )
 
@@ -14108,65 +14045,26 @@ def reportes_diarios_index():
 @app.route("/reportes-diarios/crear", methods=["POST"])
 @login_required
 def reporte_diario_crear():
-    accion = (request.form.get("accion") or "enviar").strip().lower()
-    guardar_borrador = accion == "guardar"
-    reporte_id = request.form.get("reporte_id", type=int)
     reporte = _reporte_diario_from_form(request.form)
     if not reporte.colaborador:
-        message = "Captura el colaborador del reporte."
-        if request.accept_mimetypes.best == "application/json":
-            return jsonify({"ok": False, "message": message}), 400
-        flash(message, "warning")
+        flash("Captura el colaborador del reporte.", "warning")
         return redirect(url_for("reportes_diarios_index"))
-    if not guardar_borrador and not _json_loads_list(reporte.actividades_json):
-        message = "Agrega al menos una actividad realizada."
-        if request.accept_mimetypes.best == "application/json":
-            return jsonify({"ok": False, "message": message}), 400
-        flash(message, "warning")
+    if not _json_loads_list(reporte.actividades_json):
+        flash("Agrega al menos una actividad realizada.", "warning")
         return redirect(url_for("reportes_diarios_index"))
 
     start = reporte.fecha.replace(hour=0, minute=0, second=0, microsecond=0)
-    if reporte_id:
-        existing = ReporteDiario.query.filter(
-            ReporteDiario.id == reporte_id,
-            ReporteDiario.usuario_id == getattr(current_user, "id", None),
-            ReporteDiario.estatus == "BORRADOR",
-        ).first_or_404()
-    else:
-        existing = ReporteDiario.query.filter(
-            ReporteDiario.usuario_id == getattr(current_user, "id", None),
-            ReporteDiario.fecha >= start,
-            ReporteDiario.fecha < start + timedelta(days=1),
-        ).first()
+    existing = ReporteDiario.query.filter(
+        ReporteDiario.usuario_id == getattr(current_user, "id", None),
+        ReporteDiario.fecha >= start,
+        ReporteDiario.fecha < start + timedelta(days=1),
+    ).first()
     if existing:
-        if existing.estatus == "ENVIADO":
-            message = f"El reporte {existing.folio} de esa fecha ya fue enviado."
-            if request.accept_mimetypes.best == "application/json":
-                return jsonify({"ok": False, "message": message}), 409
-            flash(message, "warning")
-            return redirect(url_for("reporte_diario_detalle", reporte_id=existing.id))
-        for field in (
-            "colaborador", "puesto", "fecha", "cumplimiento", "semaforo",
-            "actividades_json", "puntos_importantes_json", "prioridades_siguientes_json",
-            "tiempos_json", "problemas_riesgos_json", "apoyo_direccion", "observaciones",
-        ):
-            setattr(existing, field, getattr(reporte, field))
-        reporte = existing
-    else:
-        db.session.add(reporte)
+        flash(f"Ya existe un reporte diario para esa fecha: {existing.folio}.", "warning")
+        return redirect(url_for("reporte_diario_detalle", reporte_id=existing.id))
 
-    reporte.estatus = "BORRADOR" if guardar_borrador else "ENVIADO"
-    if not guardar_borrador:
-        reporte.hora_envio = now_cdmx_naive()
+    db.session.add(reporte)
     db.session.commit()
-
-    if guardar_borrador:
-        message = f"Borrador {reporte.folio} guardado correctamente."
-        if request.accept_mimetypes.best == "application/json":
-            return jsonify({"ok": True, "message": message, "reporte_id": reporte.id})
-        flash(message, "success")
-        return redirect(url_for("reportes_diarios_index"))
-
     _notify_reporte_diario_created(reporte)
     flash(f"Reporte {reporte.folio} enviado correctamente.", "success")
     return redirect(url_for("reporte_diario_detalle", reporte_id=reporte.id))

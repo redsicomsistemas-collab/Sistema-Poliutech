@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MAR-VoiceRecognise</string>
+    <string name="server_label">Servidor Render</string>
+    <string name="server_not_configured">Sin configurar</string>
+    <string name="change_server">Cambiar servidor</string>
+    <string name="action_reload">Recargar</string>
+    <string name="action_logout">Cerrar sesión</string>
+    <string name="login_title">Acceso móvil</string>
+    <string name="user">Usuario</string>
+    <string name="password">Contraseña</string>
+    <string name="show_password">Mostrar contraseña</string>
+    <string name="login">Entrar</string>
+    <string name="summary_total_quotes">Cotizaciones</string>
+    <string name="summary_total_amount">Importe total</string>
+    <string name="summary_pending">Pendientes</string>
+    <string name="summary_won">Ganadas</string>
+    <string name="filter_status">Filtrar por estatus</string>
+    <string name="voice_quote_title">Cotización por voz</string>
+    <string name="voice_quote_hint">CLIENTE:&#10;EMPRESA:&#10;CORREO:&#10;TELEFONO:&#10;CIUDAD:&#10;&#10;CONCEPTO:&#10;UNIDAD:&#10;CANTIDAD:&#10;PRECIO:&#10;SISTEMA:&#10;&#10;OTRO CONCEPTO:&#10;UNIDAD:&#10;CANTIDAD:&#10;PRECIO:&#10;SISTEMA:</string>
+    <string name="voice_client_hint">Cliente detectado o manual</string>
+    <string name="voice_notes_hint">Notas opcionales</string>
+    <string name="voice_conditions_hint">Condiciones comerciales. Ejemplo: anticipo 50 por ciento. OTRA CONDICION ES QUE entrega en 15 días.</string>
+    <string name="voice_dictate">Dictar</string>
+    <string name="voice_dictate_conditions">Grabar condiciones</string>
+    <string name="voice_preview">Previsualizar</string>
+    <string name="voice_save">Guardar cotización</string>
+    <string name="voice_clear">Vaciar</string>
+    <string name="voice_open_panel">Abrir cotizacion por voz</string>
+    <string name="voice_close_panel">Ocultar cotizacion por voz</string>
+    <string name="voice_screen_title">Cotización por voz</string>
+    <string name="voice_preview_empty">Aquí aparecerá la interpretación del comando antes de guardar.</string>
+    <string name="latest_quotes">Cotizaciones</string>
+    <string name="no_quotes">No hay cotizaciones para este filtro.</string>
+    <string name="edit">Editar</string>
+    <string name="open_pdf">Abrir PDF</string>
+</resources>
