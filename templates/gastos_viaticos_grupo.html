@@ -146,7 +146,14 @@
               {{ '+' if gastos_monto_saldo(gasto) >= 0 else '-' }}${{ "{:,.2f}".format((gastos_monto_saldo(gasto))|abs) }} {{ gasto.moneda }}
             </td>
             <td><span class="badge bg-{{ gastos_badge_class(gasto.estatus) }}">{{ gasto.estatus }}</span></td>
-            <td><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('gastos_viaticos_detalle', gasto_id=gasto.id) }}">Detalle</a></td>
+            <td>
+              <div class="d-flex gap-2 flex-wrap">
+                <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('gastos_viaticos_detalle', gasto_id=gasto.id) }}">Detalle</a>
+                <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editarComprobante{{ gasto.id }}">
+                  Editar comprobante
+                </button>
+              </div>
+            </td>
           </tr>
           {% endfor %}
         </tbody>
@@ -154,6 +161,37 @@
     </div>
   </div>
 </div>
+
+{% for gasto in gastos %}
+<div class="modal fade" id="editarComprobante{{ gasto.id }}" tabindex="-1" aria-labelledby="editarComprobanteLabel{{ gasto.id }}" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('gastos_viaticos_reemplazar_comprobante', gasto_id=gasto.id) }}" enctype="multipart/form-data">
+        <div class="modal-header">
+          <h5 class="modal-title" id="editarComprobanteLabel{{ gasto.id }}">Actualizar comprobante · {{ gasto.folio or ("#" ~ gasto.id) }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-info py-2">Solamente se actualizará el archivo comprobante. Los datos del movimiento no se pueden modificar.</div>
+          <div class="row g-3 mb-3">
+            <div class="col-md-4"><div class="small text-muted">Proveedor</div><div class="fw-semibold">{{ gasto.proveedor or "Sin proveedor" }}</div></div>
+            <div class="col-md-5"><div class="small text-muted">Concepto</div><div class="fw-semibold">{{ gasto.concepto }}</div></div>
+            <div class="col-md-3"><div class="small text-muted">Total</div><div class="fw-bold">${{ "{:,.2f}".format(gasto.total or 0) }} {{ gasto.moneda }}</div></div>
+          </div>
+          <label class="form-label fw-semibold">Nuevo comprobante</label>
+          <input type="file" name="comprobante" class="form-control" accept="application/pdf,image/png,image/jpeg,image/webp" capture="environment" required>
+          <div class="form-text">El nuevo archivo reemplazará el comprobante anterior.</div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button class="btn btn-primary">Actualizar comprobante</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
 <script>
 (function () {
   const form = document.getElementById("grupoComprobacionForm");

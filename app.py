@@ -11835,7 +11835,7 @@ def _gastos_save_upload(uploaded, comprobacion_id: int) -> ComprobacionAdjunto |
     upload_dir.mkdir(parents=True, exist_ok=True)
     original = secure_filename(uploaded.filename) or f"comprobante.{ext}"
     stem = Path(original).stem[:80] or "comprobante"
-    filename = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{stem}.{ext}"
+    filename = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}_{stem}.{ext}"
     disk_path = upload_dir / filename
     uploaded.save(disk_path)
     rel_path = f"uploads/gastos_viaticos/{comprobacion_id}/{filename}"
@@ -13235,6 +13235,50 @@ def gastos_viaticos_adjunto(adjunto_id: int):
         download_name=adjunto.nombre_original or adjunto.nombre_archivo,
         conditional=True,
     )
+
+
+@app.route("/gastos-viaticos/<int:gasto_id>/comprobante", methods=["POST"])
+@login_required
+def gastos_viaticos_reemplazar_comprobante(gasto_id: int):
+    gasto = ComprobacionGasto.query.get_or_404(gasto_id)
+    require_gasto_owner_or_admin(gasto)
+    uploaded = request.files.get("comprobante")
+    redirect_grupo = url_for(
+        "gastos_viaticos_grupo_detalle",
+        tipo_agrupacion=gasto.tipo_agrupacion,
+        grupo=_gastos_group_name(gasto),
+        fecha=_gastos_fecha_key(gasto),
+        responsable=gasto.responsable or "",
+    )
+    if not uploaded or not (uploaded.filename or "").strip():
+        flash("Selecciona el nuevo comprobante.", "warning")
+        return redirect(redirect_grupo)
+
+    anteriores = list(gasto.adjuntos or [])
+    try:
+        nuevo = _gastos_save_upload(uploaded, gasto.id)
+        if nuevo is None:
+            raise ValueError("Selecciona el nuevo comprobante.")
+        for adjunto in anteriores:
+            db.session.delete(adjunto)
+        db.session.add(nuevo)
+        gasto.actualizado_en = now_cdmx_naive()
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        flash(str(exc), "warning")
+        return redirect(redirect_grupo)
+
+    for adjunto in anteriores:
+        try:
+            old_path = _upload_storage_path(adjunto.ruta)
+            if old_path.is_file() and old_path != _upload_storage_path(nuevo.ruta):
+                old_path.unlink()
+        except Exception:
+            logger.warning("No se pudo eliminar el comprobante anterior %s.", adjunto.ruta)
+
+    flash(f"Comprobante de {gasto.folio or gasto.id} actualizado.", "success")
+    return redirect(redirect_grupo)
 
 
 @app.route("/gastos-viaticos/<int:gasto_id>/aprobar", methods=["POST"])
