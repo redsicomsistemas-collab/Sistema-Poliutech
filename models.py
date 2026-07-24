@@ -308,6 +308,52 @@ class MobileDevice(db.Model):
         return f"<MobileDevice user={self.usuario_id} platform={self.plataforma} active={self.is_active}>"
 
 
+class NotificationRecipient(db.Model):
+    __tablename__ = "notification_recipient"
+
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(160), nullable=False)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True, index=True)
+    correo = db.Column(db.String(160))
+    telefono = db.Column(db.String(40))
+    activo = db.Column(db.Boolean, default=True, nullable=False)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    usuario = db.relationship("Usuario", backref=db.backref("notification_recipient_profiles", lazy=True))
+    suscripciones = db.relationship(
+        "NotificationSubscription",
+        backref="destinatario",
+        cascade="all, delete-orphan",
+        lazy=True,
+    )
+
+    def __repr__(self):
+        return f"<NotificationRecipient {self.nombre}>"
+
+
+class NotificationSubscription(db.Model):
+    __tablename__ = "notification_subscription"
+    __table_args__ = (
+        db.UniqueConstraint("destinatario_id", "evento", "canal", name="uq_notification_subscription"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    destinatario_id = db.Column(
+        db.Integer,
+        db.ForeignKey("notification_recipient.id"),
+        nullable=False,
+        index=True,
+    )
+    evento = db.Column(db.String(80), nullable=False, index=True)
+    canal = db.Column(db.String(20), nullable=False)
+    activo = db.Column(db.Boolean, default=True, nullable=False)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    def __repr__(self):
+        return f"<NotificationSubscription recipient={self.destinatario_id} {self.evento}/{self.canal}>"
+
+
 class RegistroObra(db.Model):
     __tablename__ = "registro_obra"
 

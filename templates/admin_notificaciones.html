@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block title %}Notificaciones{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+  <div>
+    <h2 class="fw-bold text-primary mb-1">🔔 Centro de notificaciones</h2>
+    <div class="text-muted">Define quién recibe cada aviso y por qué canal.</div>
+  </div>
+  <span class="badge rounded-pill bg-light text-dark border px-3 py-2">
+    {{ recipients|length }} destinatario{{ '' if recipients|length == 1 else 's' }}
+  </span>
+</div>
+
+<div class="alert alert-info border-0 shadow-sm">
+  Las reglas guardadas aquí tienen prioridad. Cuando un evento todavía no tenga reglas,
+  MAR conservará sus destinatarios actuales para evitar que se pierdan avisos.
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white py-3">
+    <h5 class="mb-0 fw-bold">Agregar destinatario</h5>
+  </div>
+  <div class="card-body">
+    <form method="post" class="row g-3">
+      <input type="hidden" name="action" value="save_recipient">
+      <div class="col-lg-3">
+        <label class="form-label fw-semibold">Usuario de MAR</label>
+        <select class="form-select" name="usuario_id">
+          <option value="">Externo / sin usuario</option>
+          {% for user in users %}
+          <option value="{{ user.id }}">{{ user.nombre_representante }} · {{ user.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-lg-3">
+        <label class="form-label fw-semibold">Nombre</label>
+        <input class="form-control" name="nombre" maxlength="160" placeholder="Persona, área o proveedor">
+      </div>
+      <div class="col-lg-2">
+        <label class="form-label fw-semibold">Correo</label>
+        <input class="form-control" name="correo" type="email" maxlength="160" placeholder="nombre@empresa.com">
+      </div>
+      <div class="col-lg-2">
+        <label class="form-label fw-semibold">WhatsApp</label>
+        <input class="form-control" name="telefono" maxlength="40" placeholder="+52 55...">
+      </div>
+      <div class="col-lg-2 d-flex align-items-end">
+        <input type="hidden" name="activo" value="1">
+        <button class="btn btn-primary w-100" type="submit">Agregar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if recipients %}
+<div class="accordion mb-4" id="recipientsAccordion">
+  {% for recipient in recipients %}
+  <div class="accordion-item border-0 shadow-sm mb-3 rounded overflow-hidden">
+    <h2 class="accordion-header">
+      <button class="accordion-button {{ 'collapsed' if not loop.first }}" type="button"
+              data-bs-toggle="collapse" data-bs-target="#recipient-{{ recipient.id }}">
+        <span class="me-3 fs-4">{{ '👤' if recipient.usuario else '📇' }}</span>
+        <span>
+          <strong>{{ recipient.nombre }}</strong>
+          <small class="d-block text-muted">
+            {{ recipient.correo or (recipient.usuario.correo if recipient.usuario else '') or 'Sin correo' }}
+            · {{ recipient.telefono or (recipient.usuario.telefono if recipient.usuario else '') or 'Sin WhatsApp' }}
+          </small>
+        </span>
+        {% if not recipient.activo %}
+        <span class="badge bg-secondary ms-3">Inactivo</span>
+        {% endif %}
+      </button>
+    </h2>
+    <div id="recipient-{{ recipient.id }}" class="accordion-collapse collapse {{ 'show' if loop.first }}"
+         data-bs-parent="#recipientsAccordion">
+      <div class="accordion-body p-0">
+        <form method="post">
+          <input type="hidden" name="action" value="save_rules">
+          <input type="hidden" name="recipient_id" value="{{ recipient.id }}">
+          <div class="table-responsive">
+            <table class="table align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th class="ps-4">Clase de notificación</th>
+                  {% for channel_key, channel_name in channel_catalog.items() %}
+                  <th class="text-center" style="width:130px">{{ channel_name }}</th>
+                  {% endfor %}
+                </tr>
+              </thead>
+              <tbody>
+                {% set state = selected.get(recipient.id, []) %}
+                {% for event_key, event_data in event_catalog.items() %}
+                <tr>
+                  <td class="ps-4">
+                    <div class="fw-semibold">{{ event_data[1] }}</div>
+                    <small class="text-muted">{{ event_data[0] }}</small>
+                  </td>
+                  {% for channel_key, channel_name in channel_catalog.items() %}
+                  <td class="text-center">
+                    <input class="form-check-input" type="checkbox"
+                           name="rule:{{ event_key }}:{{ channel_key }}" value="1"
+                           {% if (event_key, channel_key) in state %}checked{% endif %}
+                           {% if channel_key == 'push' and not recipient.usuario %}disabled
+                           title="La app móvil requiere un usuario de MAR"{% endif %}>
+                  </td>
+                  {% endfor %}
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="d-flex justify-content-between align-items-center border-top p-3">
+            <span class="small text-muted">La app móvil utiliza los dispositivos registrados por el usuario.</span>
+            <button class="btn btn-primary" type="submit">Guardar avisos</button>
+          </div>
+        </form>
+        <form method="post" class="border-top bg-light p-3 text-end"
+              onsubmit="return confirm('¿Eliminar este destinatario y todas sus reglas?');">
+          <input type="hidden" name="action" value="delete_recipient">
+          <input type="hidden" name="recipient_id" value="{{ recipient.id }}">
+          <button class="btn btn-sm btn-outline-danger" type="submit">Eliminar destinatario</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body text-center py-5 text-muted">
+    Agrega el primer destinatario para comenzar a personalizar los avisos.
+  </div>
+</div>
+{% endif %}
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white py-3">
+    <h5 class="mb-0 fw-bold">Configuración heredada</h5>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light">
+        <tr><th class="ps-4">Aviso</th><th>Destinatarios actuales</th><th>Canal</th></tr>
+      </thead>
+      <tbody>
+        {% for label, targets, channel in legacy_defaults %}
+        <tr>
+          <td class="ps-4 fw-semibold">{{ label }}</td>
+          <td class="text-break">{{ targets or 'Sin configurar' }}</td>
+          <td>{{ channel }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

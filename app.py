@@ -1857,7 +1857,7 @@ def _send_quote_status_push(cot: Cotizacion, previous_status: str, new_status: s
 
 def _send_quote_review_result_push(cot: Cotizacion, selected_status: str, reason: str = "") -> dict[str, int]:
     normalized = (selected_status or "").strip().upper()
-    target_ids = list(dict.fromkeys([
+    target_ids = notification_targets("cotizacion_resultado", "push") or list(dict.fromkeys([
         *_mobile_push_user_ids_for_quote_owner(cot),
         *_mobile_push_user_ids_for_aazcona(),
     ]))
@@ -1891,7 +1891,7 @@ def _send_quote_review_result_push(cot: Cotizacion, selected_status: str, reason
 
 
 def _send_quote_updated_push(cot: Cotizacion) -> dict[str, int]:
-    target_ids = list(dict.fromkeys([
+    target_ids = notification_targets("cotizacion_actualizada", "push") or list(dict.fromkeys([
         *_mobile_push_user_ids_for_quote_owner(cot),
         *_mobile_push_user_ids_for_approval_reviewer(),
         *_mobile_push_user_ids_for_aazcona(),
@@ -1927,7 +1927,7 @@ def _send_quote_updated_push(cot: Cotizacion) -> dict[str, int]:
 
 
 def _send_quote_approval_request_push(cot: Cotizacion) -> dict[str, int]:
-    reviewer_ids = _mobile_push_user_ids_for_approval_reviewer()
+    reviewer_ids = notification_targets("cotizacion_revision", "push") or _mobile_push_user_ids_for_approval_reviewer()
     hansel_ids = [18]
     tokens = _mobile_push_tokens_for_users(reviewer_ids)
     using_active_device_fallback = False
@@ -1985,7 +1985,7 @@ def _send_quote_created_notification(cot: Cotizacion) -> None:
             f"Fecha (CDMX): {cot.fecha.strftime('%d/%m/%Y %H:%M') if cot.fecha else ''}\\n"
             f"Total: {money(cot.total)}"
         )
-        send_whatsapp_multi(ADMIN_LIST, msg)
+        send_whatsapp_multi(notification_targets("cotizacion_nueva", "whatsapp") or ADMIN_LIST, msg)
     except Exception as exc:
         logger.warning("WhatsApp de creación falló: %s", exc)
 
@@ -1996,7 +1996,8 @@ def _send_quote_created_notification(cot: Cotizacion) -> None:
 
 
 def _send_quote_followup_push(cot: Cotizacion, seg: CotizacionSeguimiento) -> dict[str, int]:
-    tokens = _mobile_push_tokens_for_users(_mobile_push_user_ids_for_quote_owner(cot))
+    user_ids = notification_targets("cotizacion_seguimiento", "push") or _mobile_push_user_ids_for_quote_owner(cot)
+    tokens = _mobile_push_tokens_for_users(user_ids)
     preview = " ".join((seg.comentario or "").split())
     if len(preview) > 120:
         preview = preview[:117] + "..."
@@ -2378,7 +2379,7 @@ def _support_ticket_email_html(ticket: "TicketSoporte", detail_url: str) -> str:
 
 
 def _send_support_ticket_email(ticket: "TicketSoporte") -> None:
-    recipients = _parse_email_list(SUPPORT_TICKET_EMAIL)
+    recipients = notification_targets("ticket_soporte", "email") or _parse_email_list(SUPPORT_TICKET_EMAIL)
     if not recipients:
         raise ValueError("No hay correo configurado para soporte.")
     detail_url = url_for("soporte_ticket_detalle", ticket_id=ticket.id, _external=True)
@@ -2798,6 +2799,29 @@ FIREBASE_CREDENTIALS_FILE = os.getenv("FIREBASE_CREDENTIALS_FILE", "").strip()
 FIREBASE_CREDENTIALS_JSON = os.getenv("FIREBASE_CREDENTIALS_JSON", "").strip()
 PUSH_NOTIFICATIONS_ENABLED = os.getenv("PUSH_NOTIFICATIONS_ENABLED", "1").strip().lower() not in {"0", "false", "no"}
 
+NOTIFICATION_EVENT_CATALOG = {
+    "cotizacion_nueva": ("Cotizaciones", "Nueva cotización"),
+    "cotizacion_revision": ("Cotizaciones", "Solicitud de revisión o aprobación"),
+    "cotizacion_actualizada": ("Cotizaciones", "Cotización modificada"),
+    "cotizacion_resultado": ("Cotizaciones", "Aprobación o rechazo"),
+    "cotizacion_seguimiento": ("Cotizaciones", "Seguimiento pendiente"),
+    "ticket_soporte": ("Soporte", "Nuevo ticket de soporte"),
+    "usuario_alta_cambio": ("Administración", "Alta o modificación de usuario"),
+    "reporte_diario": ("Operación", "Nuevo reporte diario"),
+    "solicitud_fondos": ("Finanzas", "Nueva solicitud de fondos"),
+    "solicitud_fondos_resultado": ("Finanzas", "Resultado de solicitud de fondos"),
+    "finanzas_autorizacion": ("Finanzas", "Partida autorizada para finanzas"),
+    "gastos_revision": ("Gastos", "Comprobación enviada a revisión"),
+    "gastos_autorizados": ("Gastos", "Gastos autorizados"),
+    "prospecto_etiqueta": ("Prospectos", "Usuario etiquetado en prospecto"),
+    "cotizacion_etiqueta": ("Cotizaciones", "Usuario etiquetado en seguimiento"),
+}
+NOTIFICATION_CHANNEL_CATALOG = {
+    "email": "Correo",
+    "whatsapp": "WhatsApp",
+    "push": "App móvil",
+}
+
 # Usa SIEMPRE los modelos desde models.py para evitar duplicados
 from models import (
     db,
@@ -2809,6 +2833,8 @@ from models import (
     VoiceCommandLog,
     Usuario,
     MobileDevice,
+    NotificationRecipient,
+    NotificationSubscription,
     RegistroObra,
     RegistroObraSeguimiento,
     Prospecto,
@@ -3675,12 +3701,47 @@ def normalize_user_role(value: str) -> str:
     rol = (value or "").strip().upper()
     return "ADMIN" if rol == "ADMIN" else "USER"
 
+
+def notification_targets(evento: str, canal: str) -> list:
+    """Devuelve reglas explícitas del panel; una lista vacía conserva el respaldo legado."""
+    if evento not in NOTIFICATION_EVENT_CATALOG or canal not in NOTIFICATION_CHANNEL_CATALOG:
+        return []
+    rows = (
+        NotificationSubscription.query
+        .join(NotificationRecipient)
+        .filter(
+            NotificationSubscription.evento == evento,
+            NotificationSubscription.canal == canal,
+            NotificationSubscription.activo.is_(True),
+            NotificationRecipient.activo.is_(True),
+        )
+        .all()
+    )
+    values = []
+    seen = set()
+    for row in rows:
+        recipient = row.destinatario
+        user = recipient.usuario
+        value = None
+        if canal == "email":
+            value = (recipient.correo or (user.correo if user else "") or "").strip()
+        elif canal == "whatsapp":
+            value = (recipient.telefono or (user.telefono if user else "") or "").strip()
+        elif canal == "push" and user:
+            value = user.id
+        key = str(value or "").lower()
+        if value and key not in seen:
+            seen.add(key)
+            values.append(value)
+    return values
+
+
 def admin_users_base_query():
     admin_first = case((db.func.upper(Usuario.rol) == "ADMIN", 0), else_=1)
     return Usuario.query.order_by(admin_first, Usuario.nombre.asc())
 
 def _user_notification_recipients(usuario: Usuario) -> list[str]:
-    recipients = _parse_email_list(USER_CREATION_EMAIL)
+    recipients = notification_targets("usuario_alta_cambio", "email") or _parse_email_list(USER_CREATION_EMAIL)
     user_email = getattr(usuario, "correo", None)
     if user_email:
         recipients.extend(_parse_email_list(user_email))
@@ -8710,7 +8771,7 @@ def _unique_emails(*groups: list[str]) -> list[str]:
 
 
 def _finanzas_auth_notify_recipients() -> list[str]:
-    return _parse_email_list(FINANZAS_AUTH_NOTIFY_EMAILS)
+    return notification_targets("finanzas_autorizacion", "email") or _parse_email_list(FINANZAS_AUTH_NOTIFY_EMAILS)
 
 
 def _mobile_push_user_ids_for_finanzas_auth_notify() -> list[int]:
@@ -9122,7 +9183,7 @@ def _quote_review_mail_html(c: Cotizacion, approve_url: str, reject_url: str, re
 
 
 def _send_quote_review_email(c: Cotizacion) -> None:
-    recipients = _parse_email_list(COTIZACION_REVIEW_EMAIL)
+    recipients = notification_targets("cotizacion_revision", "email") or _parse_email_list(COTIZACION_REVIEW_EMAIL)
     bcc = _parse_email_list(COTIZACION_REVIEW_BCC_EMAIL)
     if not recipients:
         raise ValueError("No hay correo configurado para revision de cotizaciones.")
@@ -10586,6 +10647,111 @@ def admin_bitacora():
     )
 
 # ---------------------------------------------------------
+@app.route("/admin/notificaciones", methods=["GET", "POST"])
+@login_required
+def admin_notificaciones():
+    if not is_admin_account():
+        abort(403)
+
+    if request.method == "POST":
+        action = (request.form.get("action") or "").strip()
+        try:
+            if action == "save_recipient":
+                recipient_id = request.form.get("recipient_id", type=int)
+                recipient = NotificationRecipient.query.get(recipient_id) if recipient_id else NotificationRecipient()
+                if recipient_id and recipient is None:
+                    abort(404)
+                user_id = request.form.get("usuario_id", type=int)
+                user = db.session.get(Usuario, user_id) if user_id else None
+                nombre = (request.form.get("nombre") or "").strip()
+                correo = (request.form.get("correo") or "").strip()
+                telefono = (request.form.get("telefono") or "").strip()
+                if user:
+                    nombre = nombre or user.nombre_representante
+                if not nombre:
+                    raise ValueError("Indica el nombre del destinatario o selecciona un usuario.")
+                if not any([user, correo, telefono]):
+                    raise ValueError("El destinatario necesita un usuario, correo o teléfono.")
+                recipient.nombre = nombre
+                recipient.usuario_id = user.id if user else None
+                recipient.correo = correo or None
+                recipient.telefono = telefono or None
+                recipient.activo = request.form.get("activo") == "1"
+                db.session.add(recipient)
+                db.session.commit()
+                flash("Destinatario guardado. Ahora selecciona los avisos que recibirá.", "success")
+
+            elif action == "save_rules":
+                recipient_id = request.form.get("recipient_id", type=int)
+                recipient = db.session.get(NotificationRecipient, recipient_id)
+                if recipient is None:
+                    abort(404)
+                NotificationSubscription.query.filter_by(destinatario_id=recipient.id).delete()
+                for evento in NOTIFICATION_EVENT_CATALOG:
+                    for canal in NOTIFICATION_CHANNEL_CATALOG:
+                        if request.form.get(f"rule:{evento}:{canal}") == "1":
+                            db.session.add(NotificationSubscription(
+                                destinatario_id=recipient.id,
+                                evento=evento,
+                                canal=canal,
+                                activo=True,
+                            ))
+                db.session.commit()
+                flash(f"Notificaciones de {recipient.nombre} actualizadas.", "success")
+
+            elif action == "delete_recipient":
+                recipient_id = request.form.get("recipient_id", type=int)
+                recipient = db.session.get(NotificationRecipient, recipient_id)
+                if recipient is None:
+                    abort(404)
+                nombre = recipient.nombre
+                db.session.delete(recipient)
+                db.session.commit()
+                flash(f"Destinatario {nombre} eliminado.", "success")
+            else:
+                raise ValueError("Acción de configuración no reconocida.")
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), "danger")
+        except Exception:
+            db.session.rollback()
+            logger.exception("No se pudo guardar la configuración de notificaciones.")
+            flash("No se pudo guardar la configuración.", "danger")
+        return redirect(url_for("admin_notificaciones"))
+
+    recipients = NotificationRecipient.query.order_by(
+        NotificationRecipient.activo.desc(),
+        NotificationRecipient.nombre.asc(),
+    ).all()
+    users = Usuario.query.order_by(Usuario.nombre_visible.asc(), Usuario.nombre.asc()).all()
+    selected = {
+        recipient.id: {
+            (subscription.evento, subscription.canal)
+            for subscription in recipient.suscripciones
+            if subscription.activo
+        }
+        for recipient in recipients
+    }
+    legacy_defaults = [
+        ("Cotizaciones · revisión", COTIZACION_REVIEW_EMAIL, "Correo/WhatsApp"),
+        ("Cotizaciones · resultado", COTIZACION_RESPONSE_EMAIL, "Correo/WhatsApp"),
+        ("Gastos · revisión", GASTOS_REVIEW_EMAIL, "Correo/WhatsApp"),
+        ("Finanzas · autorizaciones", FINANZAS_AUTH_NOTIFY_EMAILS, "Correo/WhatsApp"),
+        ("Soporte", SUPPORT_TICKET_EMAIL, "Correo/WhatsApp"),
+        ("Usuarios · altas y cambios", USER_CREATION_EMAIL, "Correo/WhatsApp"),
+        ("Avisos generales", ", ".join(ADMIN_LIST), "WhatsApp"),
+    ]
+    return render_template(
+        "admin_notificaciones.html",
+        recipients=recipients,
+        users=users,
+        selected=selected,
+        event_catalog=NOTIFICATION_EVENT_CATALOG,
+        channel_catalog=NOTIFICATION_CHANNEL_CATALOG,
+        legacy_defaults=legacy_defaults,
+    )
+
+
 @app.route("/admin/usuarios", methods=["GET", "POST"])
 @login_required
 def admin_usuarios():
@@ -11020,7 +11186,7 @@ def _reporte_diario_mail_html(reporte: ReporteDiario, detail_url: str) -> str:
 
 
 def _send_reporte_diario_email(reporte: ReporteDiario) -> None:
-    recipients = _parse_email_list(REPORTE_DIARIO_TO_EMAIL)
+    recipients = notification_targets("reporte_diario", "email") or _parse_email_list(REPORTE_DIARIO_TO_EMAIL)
     bcc = _parse_email_list(REPORTE_DIARIO_BCC_EMAIL)
     detail_url = url_for("reporte_diario_detalle", reporte_id=reporte.id, _external=True)
     msg = EmailMessage()
@@ -11043,7 +11209,8 @@ def _send_reporte_diario_email(reporte: ReporteDiario) -> None:
 
 
 def _send_reporte_diario_push_hansel(reporte: ReporteDiario) -> dict[str, int]:
-    tokens = _mobile_push_tokens_for_users(_mobile_push_user_ids_for_hansel_only())
+    user_ids = notification_targets("reporte_diario", "push") or _mobile_push_user_ids_for_hansel_only()
+    tokens = _mobile_push_tokens_for_users(user_ids)
     if not tokens:
         logger.warning("Push reporte diario %s: Hjaramillo no tiene token movil activo.", reporte.folio or reporte.id)
     return _send_push_notification(
@@ -11152,7 +11319,7 @@ def _solicitud_recurso_mail_html(solicitud: SolicitudRecurso, detail_url: str) -
 
 
 def _send_solicitud_recurso_email(solicitud: SolicitudRecurso) -> None:
-    recipients = list(SOLICITUD_RECURSO_EMAILS)
+    recipients = notification_targets("solicitud_fondos", "email") or list(SOLICITUD_RECURSO_EMAILS)
     detail_url = url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id, _external=True)
     msg = EmailMessage()
     msg["Subject"] = f"Solicitud de fondos {solicitud.folio or solicitud.id}"
@@ -11173,7 +11340,7 @@ def _send_solicitud_recurso_email(solicitud: SolicitudRecurso) -> None:
 
 
 def _send_solicitud_recurso_push_hansel(solicitud: SolicitudRecurso) -> dict[str, int]:
-    user_ids = _mobile_push_user_ids_for_hansel_only()
+    user_ids = notification_targets("solicitud_fondos", "push") or _mobile_push_user_ids_for_hansel_only()
     tokens = _mobile_push_tokens_for_users(user_ids)
     if not tokens:
         logger.warning(
@@ -12323,7 +12490,8 @@ def _gastos_add_email_attachments(msg: EmailMessage, gasto: "ComprobacionGasto")
 
 
 def _send_gastos_review_push_hansel(gasto: "ComprobacionGasto") -> dict[str, int]:
-    tokens = _mobile_push_tokens_for_users(_mobile_push_user_ids_for_hansel_only())
+    user_ids = notification_targets("gastos_revision", "push") or _mobile_push_user_ids_for_hansel_only()
+    tokens = _mobile_push_tokens_for_users(user_ids)
     if not tokens:
         logger.warning("Push gasto %s: Hansel no tiene token movil activo.", gasto.folio or gasto.id)
     return _send_push_notification(
@@ -12384,7 +12552,7 @@ def _notify_gasto_created_for_review(gasto: "ComprobacionGasto") -> None:
 
 
 def _send_gastos_review_email(gasto: "ComprobacionGasto") -> None:
-    recipients = _parse_email_list(GASTOS_REVIEW_EMAIL)
+    recipients = notification_targets("gastos_revision", "email") or _parse_email_list(GASTOS_REVIEW_EMAIL)
     bcc = _parse_email_list(GASTOS_REVIEW_BCC_EMAIL)
     if not recipients:
         raise ValueError("No hay correo configurado para revision de gastos.")

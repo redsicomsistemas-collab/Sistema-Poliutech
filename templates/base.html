@@ -768,6 +768,7 @@
             <li><a class="dropdown-item" href="{{ url_for('altas_proveedores') }}">🗂️ Altas</a></li>
             <li><a class="dropdown-item" href="{{ url_for('papelera_cotizaciones') }}">🗑️ Papelera</a></li>
             {% if (current_user.nombre or "")|lower == "admin" %}
+            <li><a class="dropdown-item" href="{{ url_for('admin_notificaciones') }}">🔔 Notificaciones</a></li>
             <li><a class="dropdown-item" href="{{ url_for('admin_usuarios') }}">👥 Usuarios</a></li>
             <li><a class="dropdown-item" href="{{ url_for('admin_permisos') }}">🔐 Permisos</a></li>
             <li><a class="dropdown-item" href="{{ url_for('admin_bitacora') }}">🧾 Bitácora</a></li>
