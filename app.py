@@ -14280,7 +14280,28 @@ def reportes_diarios_index():
         end = start + timedelta(days=1)
         query = query.filter(ReporteDiario.fecha >= start, ReporteDiario.fecha < end)
 
-    reportes = query.order_by(ReporteDiario.fecha.desc(), ReporteDiario.hora_envio.desc(), ReporteDiario.id.desc()).all()
+    reportes = query.filter(ReporteDiario.estatus != "BORRADOR").order_by(
+        ReporteDiario.fecha.desc(), ReporteDiario.hora_envio.desc(), ReporteDiario.id.desc()
+    ).all()
+    borradores = _reportes_diarios_query().filter(
+        ReporteDiario.estatus == "BORRADOR"
+    ).order_by(ReporteDiario.actualizado_en.desc(), ReporteDiario.id.desc()).all()
+
+    borrador_edicion = None
+    editar_id = request.args.get("editar", type=int)
+    if editar_id:
+        borrador_edicion = ReporteDiario.query.filter_by(
+            id=editar_id,
+            estatus="BORRADOR",
+            usuario_id=getattr(current_user, "id", None),
+        ).first_or_404()
+    borrador_payload = _reporte_diario_payload(borrador_edicion) if borrador_edicion else {
+        "actividades": [],
+        "puntos": [],
+        "prioridades": [],
+        "tiempos": [],
+        "riesgos": [],
+    }
     kanban = {status: [] for status in REPORTE_DIARIO_SEMAFORO}
     for reporte in reportes:
         kanban.setdefault(reporte.semaforo or "SIN INCIDENCIAS", []).append(reporte)
@@ -14288,6 +14309,7 @@ def reportes_diarios_index():
     hoy = now_cdmx_naive().replace(hour=0, minute=0, second=0, microsecond=0)
     ya_envio_hoy = ReporteDiario.query.filter(
         ReporteDiario.usuario_id == getattr(current_user, "id", None),
+        ReporteDiario.estatus != "BORRADOR",
         ReporteDiario.fecha >= hoy,
         ReporteDiario.fecha < hoy + timedelta(days=1),
     ).first()
@@ -14296,6 +14318,9 @@ def reportes_diarios_index():
         "reportes_diarios.html",
         title="Reportes diarios",
         reportes=reportes,
+        borradores=borradores,
+        borrador_edicion=borrador_edicion,
+        borrador_payload=borrador_payload,
         kanban=kanban,
         q=q,
         semaforo=semaforo,
@@ -14313,24 +14338,60 @@ def reportes_diarios_index():
 @app.route("/reportes-diarios/crear", methods=["POST"])
 @login_required
 def reporte_diario_crear():
-    reporte = _reporte_diario_from_form(request.form)
+    accion = (request.form.get("accion") or "enviar").strip().lower()
+    guardar_borrador = accion == "guardar"
+    reporte_id = request.form.get("reporte_id", type=int)
+    reporte_form = _reporte_diario_from_form(request.form)
+
+    reporte = None
+    if reporte_id:
+        reporte = ReporteDiario.query.filter_by(
+            id=reporte_id,
+            estatus="BORRADOR",
+            usuario_id=getattr(current_user, "id", None),
+        ).first_or_404()
+
+        for field in (
+            "colaborador", "puesto", "fecha", "cumplimiento", "semaforo",
+            "actividades_json", "puntos_importantes_json",
+            "prioridades_siguientes_json", "tiempos_json",
+            "problemas_riesgos_json", "apoyo_direccion", "observaciones",
+        ):
+            setattr(reporte, field, getattr(reporte_form, field))
+    else:
+        reporte = reporte_form
+
     if not reporte.colaborador:
+        if guardar_borrador or request.accept_mimetypes.best == "application/json":
+            return jsonify(ok=False, message="Captura el colaborador del reporte."), 400
         flash("Captura el colaborador del reporte.", "warning")
         return redirect(url_for("reportes_diarios_index"))
-    if not _json_loads_list(reporte.actividades_json):
+    if not guardar_borrador and not _json_loads_list(reporte.actividades_json):
         flash("Agrega al menos una actividad realizada.", "warning")
         return redirect(url_for("reportes_diarios_index"))
+
+    if guardar_borrador:
+        reporte.estatus = "BORRADOR"
+        db.session.add(reporte)
+        db.session.commit()
+        return jsonify(ok=True, reporte_id=reporte.id, folio=reporte.folio)
 
     start = reporte.fecha.replace(hour=0, minute=0, second=0, microsecond=0)
     existing = ReporteDiario.query.filter(
         ReporteDiario.usuario_id == getattr(current_user, "id", None),
+        ReporteDiario.estatus != "BORRADOR",
         ReporteDiario.fecha >= start,
         ReporteDiario.fecha < start + timedelta(days=1),
-    ).first()
+    )
+    if reporte.id:
+        existing = existing.filter(ReporteDiario.id != reporte.id)
+    existing = existing.first()
     if existing:
         flash(f"Ya existe un reporte diario para esa fecha: {existing.folio}.", "warning")
         return redirect(url_for("reporte_diario_detalle", reporte_id=existing.id))
 
+    reporte.estatus = "ENVIADO"
+    reporte.hora_envio = now_cdmx_naive()
     db.session.add(reporte)
     db.session.commit()
     _notify_reporte_diario_created(reporte)
