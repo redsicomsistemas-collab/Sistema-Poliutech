@@ -2762,6 +2762,10 @@ META_WHATSAPP_PHONE_NUMBER_ID = os.getenv("META_WHATSAPP_PHONE_NUMBER_ID", "").s
 META_WHATSAPP_TEMPLATE_NAME = os.getenv("META_WHATSAPP_TEMPLATE_NAME", "mar_notificacion").strip()
 META_WHATSAPP_TEMPLATE_LANGUAGE = os.getenv("META_WHATSAPP_TEMPLATE_LANGUAGE", "es_MX").strip()
 META_GRAPH_API_VERSION = os.getenv("META_GRAPH_API_VERSION", "v23.0").strip()
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
+TWILIO_SMS_FROM = os.getenv("TWILIO_SMS_FROM", "").strip()
+TWILIO_MESSAGING_SERVICE_SID = os.getenv("TWILIO_MESSAGING_SERVICE_SID", "").strip()
 
 DEFAULT_ADMIN_WHATSAPP_RECIPIENTS = (
     "whatsapp:+5215521323076,whatsapp:+5215610035643,whatsapp:+14055619808"
@@ -3148,6 +3152,14 @@ def init_meta_whatsapp():
         print(f"[Meta WhatsApp] Plantilla: {META_WHATSAPP_TEMPLATE_NAME} ({META_WHATSAPP_TEMPLATE_LANGUAGE})")
     else:
         print("[Meta WhatsApp] Configuración incompleta. WhatsApp deshabilitado.")
+    if (
+        TWILIO_ACCOUNT_SID
+        and TWILIO_AUTH_TOKEN
+        and (TWILIO_SMS_FROM or TWILIO_MESSAGING_SERVICE_SID)
+    ):
+        print("[SMS] Respaldo Twilio configurado.")
+    else:
+        print("[SMS] Respaldo Twilio no configurado.")
 
 with app.app_context():
     init_meta_whatsapp()
@@ -5220,12 +5232,49 @@ def can_send_whatsapp() -> bool:
         and META_WHATSAPP_TEMPLATE_NAME
     )
 
+def can_send_sms() -> bool:
+    return bool(
+        TWILIO_ACCOUNT_SID
+        and TWILIO_AUTH_TOKEN
+        and (TWILIO_SMS_FROM or TWILIO_MESSAGING_SERVICE_SID)
+    )
+
+def _send_sms_twilio(recipient: str, body: str) -> None:
+    endpoint = (
+        "https://api.twilio.com/2010-04-01/Accounts/"
+        f"{TWILIO_ACCOUNT_SID}/Messages.json"
+    )
+    payload = {
+        "To": f"+{recipient}",
+        "Body": (body or "Notificación de Sistema MAR")[:1500],
+    }
+    if TWILIO_MESSAGING_SERVICE_SID:
+        payload["MessagingServiceSid"] = TWILIO_MESSAGING_SERVICE_SID
+    else:
+        payload["From"] = TWILIO_SMS_FROM
+    response = requests.post(
+        endpoint,
+        auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN),
+        data=payload,
+        timeout=30,
+    )
+    if not response.ok:
+        try:
+            error_detail = response.json()
+        except ValueError:
+            error_detail = response.text[:1000]
+        raise RuntimeError(
+            f"Twilio SMS HTTP {response.status_code}: {error_detail}"
+        )
+    message_sid = response.json().get("sid", "")
+    print(f"[SMS] Enviado a {recipient}; sid={message_sid}")
+
 def send_whatsapp_multi(to_list: Iterable[str], body: str) -> None:
     if not to_list:
         return
-    if not can_send_whatsapp():
+    if not can_send_whatsapp() and not can_send_sms():
         raise RuntimeError(
-            "Meta WhatsApp no está configurado. Faltan ACCESS_TOKEN, PHONE_NUMBER_ID o TEMPLATE_NAME."
+            "No hay canal disponible. Configura Meta WhatsApp o Twilio SMS."
         )
     title, separator, detail = (body or "").partition("\n\n")
     title = title.strip().strip("*") or "Notificación de Sistema MAR"
@@ -5239,49 +5288,61 @@ def send_whatsapp_multi(to_list: Iterable[str], body: str) -> None:
         if not to_norm:
             continue
         recipient = "".join(ch for ch in to_norm if ch.isdigit())
-        payload = {
-            "messaging_product": "whatsapp",
-            "recipient_type": "individual",
-            "to": recipient,
-            "type": "template",
-            "template": {
-                "name": META_WHATSAPP_TEMPLATE_NAME,
-                "language": {"code": META_WHATSAPP_TEMPLATE_LANGUAGE},
-                "components": [
-                    {
-                        "type": "body",
-                        "parameters": [
-                            {"type": "text", "text": title[:1024]},
-                            {"type": "text", "text": detail[:4096]},
-                        ],
-                    }
-                ],
-            },
-        }
-        try:
-            response = requests.post(
-                endpoint,
-                headers={
-                    "Authorization": f"Bearer {META_WHATSAPP_ACCESS_TOKEN}",
-                    "Content-Type": "application/json",
+        whatsapp_error: Exception | None = None
+        if can_send_whatsapp():
+            payload = {
+                "messaging_product": "whatsapp",
+                "recipient_type": "individual",
+                "to": recipient,
+                "type": "template",
+                "template": {
+                    "name": META_WHATSAPP_TEMPLATE_NAME,
+                    "language": {"code": META_WHATSAPP_TEMPLATE_LANGUAGE},
+                    "components": [
+                        {
+                            "type": "body",
+                            "parameters": [
+                                {"type": "text", "text": title[:1024]},
+                                {"type": "text", "text": detail[:4096]},
+                            ],
+                        }
+                    ],
                 },
-                json=payload,
-                timeout=30,
-            )
-            if not response.ok:
-                try:
-                    error_detail = response.json()
-                except ValueError:
-                    error_detail = response.text[:1000]
-                raise RuntimeError(
-                    f"Meta Graph API HTTP {response.status_code}: {error_detail}"
+            }
+            try:
+                response = requests.post(
+                    endpoint,
+                    headers={
+                        "Authorization": f"Bearer {META_WHATSAPP_ACCESS_TOKEN}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                    timeout=30,
                 )
-            message_id = ((response.json().get("messages") or [{}])[0]).get("id", "")
-            print(f"[Meta WhatsApp] Enviado a {recipient}; id={message_id}")
-        except Exception as e:
-            print(f"[Meta WhatsApp] ERROR enviando a {recipient}: {e}", file=sys.stderr)
-            traceback.print_exc()
-            raise
+                if not response.ok:
+                    try:
+                        error_detail = response.json()
+                    except ValueError:
+                        error_detail = response.text[:1000]
+                    raise RuntimeError(
+                        f"Meta Graph API HTTP {response.status_code}: {error_detail}"
+                    )
+                message_id = ((response.json().get("messages") or [{}])[0]).get("id", "")
+                print(f"[Meta WhatsApp] Enviado a {recipient}; id={message_id}")
+                continue
+            except Exception as exc:
+                whatsapp_error = exc
+                print(
+                    f"[Meta WhatsApp] Falló para {recipient}; intento respaldo SMS: {exc}",
+                    file=sys.stderr,
+                )
+
+        if can_send_sms():
+            _send_sms_twilio(recipient, f"{title}\n\n{detail}")
+            continue
+        if whatsapp_error:
+            raise whatsapp_error
+        raise RuntimeError("Twilio SMS no está configurado.")
 
 
 def _notification_phone_recipients(email_recipients: Iterable[str]) -> list[str]:
@@ -5352,8 +5413,8 @@ class _WhatsAppNotificationTransport:
         return None
 
     def send_message(self, msg: EmailMessage, to_addrs=None, **kwargs):
-        if not can_send_whatsapp():
-            raise RuntimeError("WhatsApp no está configurado; revisa las credenciales de Meta Cloud API.")
+        if not can_send_whatsapp() and not can_send_sms():
+            raise RuntimeError("No hay canal de notificaciones configurado.")
         direct_phone = str(msg.get("X-WhatsApp-To") or "").strip()
         if direct_phone:
             phones = [normalize_whatsapp(direct_phone)]
