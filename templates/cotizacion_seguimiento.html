@@ -41,6 +41,24 @@
     <div class="card-body">
       {% include "_cliente_seguimiento_card.html" %}
 
+      {% if c.resultado == 'GANADA' %}
+      <div class="alert alert-success d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div><strong>Trabajo ganado.</strong> Continúa registrando aquí los avances y acontecimientos de la obra.</div>
+        <span class="badge text-bg-success">GANADA</span>
+      </div>
+      <div class="card border-success-subtle mb-4">
+        <div class="card-body">
+          <h6 class="fw-bold text-success mb-3">Cronología de la obra</h6>
+          <div style="height: 280px;"><canvas id="chartCronologiaObra"></canvas></div>
+        </div>
+      </div>
+      {% elif c.resultado == 'PERDIDA' %}
+      <div class="alert alert-danger">
+        <strong>Trabajo perdido.</strong>
+        <div class="mt-1">{{ c.motivo_perdida or "Sin motivo registrado." }}</div>
+      </div>
+      {% endif %}
+
       <div class="row g-3 mb-3">
         <div class="col-md-3">
           <div class="border rounded p-3 h-100">
@@ -156,4 +174,47 @@
   </div>
   {% endfor %}
 </div>
+{% if c.resultado == 'GANADA' %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const eventos = {{ eventos_cronologia|tojson }};
+  const canvas = document.getElementById("chartCronologiaObra");
+  if (!canvas || typeof Chart === "undefined") return;
+  new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: eventos.map(evento => evento.fecha),
+      datasets: [{
+        label: "Acontecimientos registrados",
+        data: eventos.map((_, index) => index + 1),
+        borderColor: "#198754",
+        backgroundColor: "rgba(25, 135, 84, .16)",
+        pointBackgroundColor: "#198754",
+        pointRadius: 6,
+        pointHoverRadius: 8,
+        fill: true,
+        tension: .2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: items => eventos[items[0].dataIndex]?.titulo || "",
+            label: item => eventos[item.dataIndex]?.detalle || ""
+          }
+        }
+      },
+      scales: {
+        y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: "Eventos" } },
+        x: { title: { display: true, text: "Fecha" } }
+      }
+    }
+  });
+});
+</script>
+{% endif %}
 {% endblock %}

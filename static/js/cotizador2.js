@@ -148,6 +148,7 @@ function recalcTotals(){
 }
 
 document.addEventListener("DOMContentLoaded", ()=>{
+  const frm = document.getElementById("frm-cotizacion");
 
   // ============================================================
   // 🔹 AUTOCOMPLETAR CLIENTE (UI superior) — sin RFC
@@ -224,7 +225,6 @@ document.addEventListener("DOMContentLoaded", ()=>{
   // ============================================================
   // 🔹 ENVÍO + ABRIR PDF NUEVA PESTAÑA
   // ============================================================
-  const frm = document.getElementById("frm-cotizacion");
   if (frm) {
     frm.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -266,11 +266,13 @@ document.addEventListener("DOMContentLoaded", ()=>{
             }, 800);
           });
         } else {
+          frm.dispatchEvent(new CustomEvent("mar:save-failed"));
           if (submitBtn) submitBtn.disabled = false;
           Swal.fire("Error", "No se pudo guardar la cotización.", "error");
           console.warn("Respuesta inesperada:", text);
         }
       } catch (err) {
+        frm.dispatchEvent(new CustomEvent("mar:save-failed"));
         if (submitBtn) submitBtn.disabled = false;
         Swal.close();
         Swal.fire("Error", "No se pudo guardar la cotización.", "error");
