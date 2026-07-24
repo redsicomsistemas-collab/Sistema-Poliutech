@@ -17,42 +17,40 @@
 
 <div class="card shadow-sm mb-4">
   <div class="card-body">
-    <form method="get" class="row g-2 align-items-end">
-      <div class="col-md-9">
-        <label class="form-label fw-semibold">Buscar cuenta</label>
-        <input class="form-control" name="q" value="{{ q }}" placeholder="Usuario, nombre o correo">
-      </div>
-      <div class="col-md-3 d-grid">
-        <button class="btn btn-outline-primary">Buscar</button>
-      </div>
+    <form method="get">
+      <label class="form-label fw-semibold" for="usuarioPermisos">Seleccionar usuario</label>
+      <select class="form-select form-select-lg" id="usuarioPermisos" name="user_id" onchange="this.form.submit()">
+        <option value="">Selecciona una cuenta...</option>
+        {% for usuario in usuarios %}
+        <option value="{{ usuario.id }}" {% if usuario_seleccionado and usuario.id == usuario_seleccionado.id %}selected{% endif %}>
+          {{ usuario.nombre_visible or usuario.nombre }} — {{ usuario.nombre }}{% if usuario.correo %} — {{ usuario.correo }}{% endif %}
+        </option>
+        {% endfor %}
+      </select>
     </form>
   </div>
 </div>
 
-<div class="row g-4 mb-4">
-  {% for usuario in usuarios %}
-  {% set asignados = permisos_por_usuario.get(usuario.id, []) %}
-  <div class="col-12">
-    <div class="card shadow-sm">
+{% if usuario_seleccionado %}
+<div class="card shadow-sm mb-4">
       <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
         <div>
-          <span class="fw-bold">{{ usuario.nombre_visible or usuario.nombre }}</span>
-          <span class="text-muted ms-2">{{ usuario.nombre }} · {{ usuario.correo or "Sin correo" }}</span>
+          <span class="fw-bold">{{ usuario_seleccionado.nombre_visible or usuario_seleccionado.nombre }}</span>
+          <span class="text-muted ms-2">{{ usuario_seleccionado.nombre }} · {{ usuario_seleccionado.correo or "Sin correo" }}</span>
         </div>
-        <span class="badge {% if (usuario.rol or '')|upper == 'ADMIN' %}bg-dark{% else %}bg-primary{% endif %}">
-          {{ (usuario.rol or "USER")|upper }}
+        <span class="badge {% if (usuario_seleccionado.rol or '')|upper == 'ADMIN' %}bg-dark{% else %}bg-primary{% endif %}">
+          {{ (usuario_seleccionado.rol or "USER")|upper }}
         </span>
       </div>
       <div class="card-body">
-        <form method="post" action="{{ url_for('admin_permisos_actualizar', user_id=usuario.id) }}">
-          <input type="hidden" name="q" value="{{ q }}">
+        <form method="post" action="{{ url_for('admin_permisos_actualizar', user_id=usuario_seleccionado.id) }}">
           <div class="row g-3">
             {% for permiso in permission_catalog %}
             <div class="col-12 col-lg-6">
-              <label class="border rounded p-3 d-flex gap-3 h-100 {% if permiso.key in asignados %}border-primary bg-primary-subtle{% endif %}">
+              <label class="border rounded p-3 d-flex gap-3 h-100 {% if permiso.key in permisos_asignados %}border-primary bg-primary-subtle{% endif %}">
                 <input class="form-check-input flex-shrink-0" type="checkbox" name="permisos" value="{{ permiso.key }}"
-                       {% if permiso.key in asignados %}checked{% endif %}
-                       {% if (usuario.rol or '')|upper == 'ADMIN' %}disabled{% endif %}>
+                       {% if permiso.key in permisos_asignados %}checked{% endif %}
+                       {% if (usuario_seleccionado.rol or '')|upper == 'ADMIN' %}disabled{% endif %}>
                 <span>
                   <span class="badge bg-secondary mb-1">{{ permiso.group }}</span>
                   <span class="d-block fw-semibold">{{ permiso.name }}</span>
@@ -63,16 +61,14 @@
             {% endfor %}
           </div>
           <div class="d-flex justify-content-end mt-3">
-            <button class="btn btn-primary" {% if (usuario.rol or '')|upper == 'ADMIN' %}disabled{% endif %}>
+            <button class="btn btn-primary px-4" {% if (usuario_seleccionado.rol or '')|upper == 'ADMIN' %}disabled{% endif %}>
               Guardar permisos
             </button>
           </div>
         </form>
       </div>
-    </div>
-  </div>
-  {% else %}
-  <div class="col-12"><div class="alert alert-secondary">No se encontraron cuentas.</div></div>
-  {% endfor %}
 </div>
+{% else %}
+<div class="alert alert-secondary shadow-sm">Selecciona un usuario para consultar y modificar sus permisos.</div>
+{% endif %}
 {% endblock %}
