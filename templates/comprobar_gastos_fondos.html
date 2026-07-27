@@ -117,9 +117,71 @@
             <a class="btn btn-outline-primary w-100 mt-auto" href="{{ url_for('gastos_viaticos_grupo_detalle', tipo_agrupacion=grupo.tipo, grupo=grupo.nombre, fecha=grupo.fecha, responsable=grupo.responsable) }}">
               Abrir expediente
             </a>
+            {% if is_admin_gastos %}
+            <div class="d-grid d-sm-flex gap-2">
+              <button type="button" class="btn btn-primary flex-fill" data-bs-toggle="modal" data-bs-target="#editarExpediente{{ loop.index }}">
+                Editar
+              </button>
+              <form method="post" action="{{ url_for('comprobar_gastos_fondos_grupo_eliminar') }}" class="flex-fill" onsubmit="return confirm('¿Eliminar el expediente {{ grupo.nombre }} y sus {{ grupo.conteo }} movimiento(s)? Esta acción no se puede deshacer.');">
+                <input type="hidden" name="tipo_agrupacion_original" value="{{ grupo.tipo }}">
+                <input type="hidden" name="grupo_original" value="{{ grupo.nombre }}">
+                <input type="hidden" name="fecha_original" value="{{ grupo.fecha }}">
+                <input type="hidden" name="responsable_original" value="{{ grupo.responsable }}">
+                <button class="btn btn-danger w-100">Eliminar</button>
+              </form>
+            </div>
+            {% endif %}
           </div>
         </div>
       </div>
+      {% if is_admin_gastos %}
+      <div class="modal fade" id="editarExpediente{{ loop.index }}" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <form method="post" action="{{ url_for('comprobar_gastos_fondos_grupo_actualizar') }}">
+              <div class="modal-header">
+                <h5 class="modal-title">Editar expediente</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+              </div>
+              <div class="modal-body">
+                <input type="hidden" name="tipo_agrupacion_original" value="{{ grupo.tipo }}">
+                <input type="hidden" name="grupo_original" value="{{ grupo.nombre }}">
+                <input type="hidden" name="fecha_original" value="{{ grupo.fecha }}">
+                <input type="hidden" name="responsable_original" value="{{ grupo.responsable }}">
+                <div class="row g-3">
+                  <div class="col-sm-4">
+                    <label class="form-label">Tipo</label>
+                    <select name="tipo_agrupacion" class="form-select">
+                      <option value="PROYECTO" {% if grupo.tipo == "PROYECTO" %}selected{% endif %}>Proyecto</option>
+                      <option value="EVENTO" {% if grupo.tipo == "EVENTO" %}selected{% endif %}>Evento</option>
+                    </select>
+                  </div>
+                  <div class="col-sm-8">
+                    <label class="form-label">Nombre</label>
+                    <input name="grupo" class="form-control" value="{{ grupo.nombre }}" required>
+                  </div>
+                  <div class="col-sm-7">
+                    <label class="form-label">Responsable</label>
+                    <input name="responsable" class="form-control" value="{{ grupo.responsable }}">
+                  </div>
+                  <div class="col-sm-5">
+                    <label class="form-label">Fecha</label>
+                    <input type="date" name="fecha" class="form-control" value="{{ grupo.fecha }}" required>
+                  </div>
+                </div>
+                <div class="alert alert-warning mt-3 mb-0">
+                  Los cambios se aplicarán a los {{ grupo.conteo }} movimiento(s) del expediente.
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button class="btn btn-primary">Guardar cambios</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+      {% endif %}
       {% else %}
       <div class="col-12"><div class="text-center text-muted py-4">Todavía no hay expedientes consolidados.</div></div>
       {% endfor %}
