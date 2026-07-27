@@ -724,6 +724,7 @@ class SolicitudRecurso(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     folio = db.Column(db.String(40), unique=True, index=True)
+    nombre = db.Column(db.String(180), unique=True, nullable=False, index=True)
     fecha = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
     solicitante = db.Column(db.String(120), index=True)
     proyecto = db.Column(db.String(200), index=True)
