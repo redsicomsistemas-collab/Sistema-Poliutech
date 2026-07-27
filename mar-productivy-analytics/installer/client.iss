@@ -1,5 +1,5 @@
 #define AppName "MAR Productivy Analytics Agent"
-#define AppVersion "2.0.0"
+#define AppVersion "2.1.0"
 #define AgentExe "..\agent\publish\win-x64\MAR.Productivy.Analytics.Agent.exe"
 
 [Setup]
@@ -40,7 +40,7 @@ var
   DetailsPage: TInputQueryWizardPage;
   ConsentPage: TInputOptionWizardPage;
   DeviceId, DeviceKey, ConfigText: String;
-  Registered: Boolean;
+  Registered, ExistingInstall: Boolean;
 
 function JsonEscape(Value: String): String;
 begin
@@ -63,17 +63,23 @@ end;
 
 procedure InitializeWizard;
 begin
-  DetailsPage := CreateInputQueryPage(wpSelectDir, 'Conectar con el servidor', 'Datos de esta computadora', 'El instalador registrará este equipo automáticamente en tu panel local.');
-  DetailsPage.Add('Dirección del servidor (ejemplo: http://192.168.1.20:5080):', False);
+  ExistingInstall := FileExists(ExpandConstant('{autopf}\MAR Productivy Analytics Agent\agent.json'));
+  DetailsPage := CreateInputQueryPage(wpSelectDir, 'Conectar con el servidor', 'Datos de esta computadora', 'El instalador registrará este equipo automáticamente en MAR Productivy Analytics.');
+  DetailsPage.Add('Dirección del servidor:', False);
   DetailsPage.Add('Nombre del empleado:', False);
   DetailsPage.Add('Nombre de la computadora:', False);
   DetailsPage.Add('Equipo o departamento:', False);
-  DetailsPage.Values[0] := 'http://192.168.1.20:5080';
+  DetailsPage.Values[0] := 'https://mar-productivy-analytics.onrender.com';
   DetailsPage.Values[2] := GetComputerNameString;
   DetailsPage.Values[3] := 'General';
-  ConsentPage := CreateInputOptionPage(DetailsPage.ID, 'Privacidad y consentimiento', 'Aviso para el empleado', 'MAR Productivy Analytics registra aplicaciones utilizadas, títulos de ventana, tiempo activo e inactividad. No registra teclas, contraseñas, audio ni cámara. La información se envía únicamente al servidor local de la organización.', False, True);
+  ConsentPage := CreateInputOptionPage(DetailsPage.ID, 'Privacidad y consentimiento', 'Aviso para el empleado', 'MAR Productivy Analytics registra aplicaciones utilizadas, títulos de ventana, dominios web visitados, tiempo activo e inactividad. No guarda rutas web, búsquedas, contenido, teclas, contraseñas, audio ni cámara. La información se envía al panel protegido de la organización.', True, True);
   ConsentPage.Add('He leído el aviso y acepto el monitoreo laboral informado.');
-  ConsentPage.Selected[0] := False;
+  ConsentPage.SelectedValueIndex := -1;
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := ExistingInstall and (PageID = DetailsPage.ID);
 end;
 
 function RegisterDevice: Boolean;
@@ -114,12 +120,15 @@ begin
     end;
   end;
   if CurPageID = ConsentPage.ID then begin
-    if not ConsentPage.Selected[0] then begin
+    if ConsentPage.SelectedValueIndex <> 0 then begin
       MsgBox('Debes aceptar el aviso informado para instalar el agente.', mbError, MB_OK);
       Result := False;
       exit;
     end;
-    Registered := RegisterDevice;
+    if ExistingInstall then
+      Registered := True
+    else
+      Registered := RegisterDevice;
     Result := Registered;
   end;
 end;
@@ -129,6 +138,6 @@ var ResultCode: Integer;
 begin
   if CurStep = ssInstall then
     Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM MAR.Productivy.Analytics.Agent.exe /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  if (CurStep = ssPostInstall) and Registered then
+  if (CurStep = ssPostInstall) and Registered and not ExistingInstall then
     SaveStringToFile(ExpandConstant('{app}\agent.json'), ConfigText, False);
 end;

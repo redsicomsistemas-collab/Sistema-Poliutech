@@ -1,7 +1,13 @@
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Net.Http;
 using System.Net.Http.Json;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Threading.Tasks;
+using System.Windows.Automation;
 
 if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("MAR Productivy Analytics requiere Windows 10 u 11.");
 
@@ -13,7 +19,7 @@ if (!File.Exists(configPath)) {
 
 var config = JsonSerializer.Deserialize<AgentConfig>(await File.ReadAllTextAsync(configPath), JsonOptions.Default)
              ?? throw new InvalidOperationException("La configuración no es válida.");
-const string agentVersion = "2.0.0";
+const string agentVersion = "2.1.0";
 var agentData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MAR Productivy Analytics", "Agent");
 Directory.CreateDirectory(agentData);
 var spoolPath = Path.Combine(agentData, "spool.jsonl");
@@ -43,7 +49,7 @@ while (true) {
     if (previous is not null && current is not null) {
         var elapsed = Math.Clamp((int)(now - previousAt).TotalSeconds, 1, 60);
         var idle = Math.Min(elapsed, ForegroundReader.IdleSeconds());
-        pending.Add(new ActivityEvent(Guid.NewGuid().ToString("N"), previous.AppName, config.CollectWindowTitles ? previous.WindowTitle : "", previousAt, now, elapsed, idle));
+        pending.Add(new ActivityEvent(Guid.NewGuid().ToString("N"), previous.AppName, config.CollectWindowTitles ? previous.WindowTitle : "", previousAt, now, elapsed, idle, previous.Domain));
     }
     previous = current;
     previousAt = now;
@@ -72,8 +78,8 @@ while (true) {
 }
 
 record AgentConfig(string ServerUrl, string DeviceId, string DeviceKey, int SampleIntervalSeconds = 15, int SyncIntervalSeconds = 60, bool CollectWindowTitles = true);
-record ActivityEvent(string Id, string AppName, string WindowTitle, DateTimeOffset StartedAt, DateTimeOffset EndedAt, int DurationSeconds, int IdleSeconds);
-record ForegroundSample(string AppName, string WindowTitle);
+record ActivityEvent(string Id, string AppName, string WindowTitle, DateTimeOffset StartedAt, DateTimeOffset EndedAt, int DurationSeconds, int IdleSeconds, string? Domain);
+record ForegroundSample(string AppName, string WindowTitle, string? Domain);
 
 static class JsonOptions { public static readonly JsonSerializerOptions Default = new(JsonSerializerDefaults.Web); }
 
@@ -92,12 +98,40 @@ static class ForegroundReader {
             using var process = Process.GetProcessById((int)processId);
             var buffer = new char[512];
             var length = GetWindowText(window, buffer, buffer.Length);
-            return new ForegroundSample(process.ProcessName, length > 0 ? new string(buffer, 0, length) : "");
+            var appName = process.ProcessName;
+            return new ForegroundSample(appName, length > 0 ? new string(buffer, 0, length) : "", BrowserDomainReader.Read(window, appName));
         } catch { return null; }
     }
 
     public static int IdleSeconds() {
         var info = new LASTINPUTINFO { cbSize = (uint)Marshal.SizeOf<LASTINPUTINFO>() };
         return GetLastInputInfo(ref info) ? Math.Max(0, (int)((Environment.TickCount64 - info.dwTime) / 1000)) : 0;
+    }
+}
+
+static class BrowserDomainReader {
+    static readonly HashSet<string> Browsers = new(StringComparer.OrdinalIgnoreCase) { "chrome", "msedge", "firefox", "brave", "opera", "vivaldi" };
+
+    public static string? Read(IntPtr window, string processName) {
+        if (!Browsers.Contains(processName)) return null;
+        try {
+            var root = AutomationElement.FromHandle(window);
+            var edits = root.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit));
+            foreach (AutomationElement element in edits) {
+                if (!element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern)) continue;
+                var domain = ToDomain(((ValuePattern)pattern).Current.Value);
+                if (domain is not null) return domain;
+            }
+        } catch { }
+        return null;
+    }
+
+    static string? ToDomain(string? value) {
+        value = value?.Trim();
+        if (string.IsNullOrWhiteSpace(value) || value.Contains(' ')) return null;
+        var candidate = value.Contains("://", StringComparison.Ordinal) ? value : $"https://{value}";
+        if (!Uri.TryCreate(candidate, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https") || !uri.Host.Contains('.')) return null;
+        var host = uri.IdnHost.ToLowerInvariant();
+        return host.StartsWith("www.", StringComparison.Ordinal) ? host[4..] : host;
     }
 }

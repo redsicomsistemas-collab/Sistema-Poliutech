@@ -55,6 +55,7 @@ app.MapGet("/api/dashboard", (LocalStore store) => Results.Ok(store.Dashboard())
 app.MapGet("/api/devices", (LocalStore store) => Results.Ok(store.Devices()));
 app.MapGet("/api/activity", (LocalStore store) => Results.Ok(store.Activity()));
 app.MapGet("/api/applications", (LocalStore store) => Results.Ok(store.Applications()));
+app.MapGet("/api/websites", (LocalStore store) => Results.Ok(store.Websites()));
 app.MapGet("/api/report", (DateTimeOffset? from, DateTimeOffset? to, string? deviceId, LocalStore store) => Results.Ok(store.Report(from, to, deviceId)));
 app.MapGet("/api/report.csv", (DateTimeOffset? from, DateTimeOffset? to, string? deviceId, LocalStore store) => Results.File(Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(store.ReportCsv(from, to, deviceId))).ToArray(), "text/csv; charset=utf-8", $"MAR-reporte-{DateTime.Now:yyyyMMdd}.csv"));
 app.MapGet("/api/settings", (LocalStore store) => Results.Ok(store.Settings()));
@@ -108,7 +109,7 @@ static bool IsPrivateLanAddress(IPAddress address) {
 
 record NewDevice(string EmployeeName, string ComputerName, string? Team, string? DeviceId = null, string? DeviceKey = null, bool ConsentAccepted = false, string? ConsentVersion = null);
 record EventBatch(List<ActivityEvent> Events);
-record ActivityEvent(string Id, string AppName, string? WindowTitle, DateTimeOffset StartedAt, DateTimeOffset EndedAt, int DurationSeconds, int IdleSeconds);
+record ActivityEvent(string Id, string AppName, string? WindowTitle, DateTimeOffset StartedAt, DateTimeOffset EndedAt, int DurationSeconds, int IdleSeconds, string? Domain = null);
 record Device(string Id, string EmployeeName, string ComputerName, string Team, string SecretHash, DateTimeOffset CreatedAt, DateTimeOffset? LastSeenAt, string? AgentVersion = null, string? LastError = null, DateTimeOffset? ConsentAcceptedAt = null, string? ConsentVersion = null);
 
 sealed class LocalStore {
@@ -169,7 +170,7 @@ sealed class LocalStore {
     public int AddEvents(string deviceId, List<ActivityEvent> incoming) { lock (gate) {
         var known = events.Select(e => e.Id).ToHashSet();
         var valid = incoming.Take(500).Where(e => !known.Contains(e.Id) && !string.IsNullOrWhiteSpace(e.AppName) && e.DurationSeconds is > 0 and <= 86400).ToList();
-        foreach (var item in valid) { var type = Classify(item.AppName); events.Add(new(item.Id, deviceId, item.AppName[..Math.Min(item.AppName.Length, 160)], (item.WindowTitle ?? "")[..Math.Min((item.WindowTitle ?? "").Length, 300)], item.StartedAt, item.EndedAt, item.DurationSeconds, Math.Max(0, item.IdleSeconds), type.category, type.score)); }
+        foreach (var item in valid) { var type = Classify(item.AppName); events.Add(new(item.Id, deviceId, item.AppName[..Math.Min(item.AppName.Length, 160)], (item.WindowTitle ?? "")[..Math.Min((item.WindowTitle ?? "").Length, 300)], item.StartedAt, item.EndedAt, item.DurationSeconds, Math.Max(0, item.IdleSeconds), type.category, type.score, NormalizeDomain(item.Domain))); }
         var index = devices.FindIndex(d => d.Id == deviceId); if (index >= 0) devices[index] = devices[index] with { LastSeenAt = DateTimeOffset.UtcNow };
         Save(); return valid.Count;
     }}
@@ -203,6 +204,20 @@ sealed class LocalStore {
             .OrderByDescending(item => item.seconds).ToList();
         return new { applications };
     }}
+    public object Websites() { lock (gate) {
+        var since=DateTimeOffset.UtcNow.AddDays(-7);
+        var names=devices.ToDictionary(device=>device.Id,device=>new{device.EmployeeName,device.ComputerName,device.Team});
+        var websites=events.Where(item=>item.StartedAt>=since&&!string.IsNullOrWhiteSpace(item.Domain))
+            .GroupBy(item=>new{item.DeviceId,item.Domain})
+            .Select(group=>new{deviceId=group.Key.DeviceId,domain=group.Key.Domain,employeeName=names.TryGetValue(group.Key.DeviceId,out var device)?device.EmployeeName:"Desconocido",computerName=names.TryGetValue(group.Key.DeviceId,out device)?device.ComputerName:"Desconocido",team=names.TryGetValue(group.Key.DeviceId,out device)?device.Team:"",seconds=group.Sum(item=>Math.Max(0,item.DurationSeconds-item.IdleSeconds)),lastVisitedAt=group.Max(item=>item.EndedAt)})
+            .OrderByDescending(item=>item.seconds).ToList();
+        return new{websites};
+    }}
+    static string? NormalizeDomain(string? value) {
+        if(string.IsNullOrWhiteSpace(value))return null;
+        var domain=value.Trim().ToLowerInvariant();
+        return domain.Length<=253&&domain.All(character=>char.IsLetterOrDigit(character)||character is '.' or '-')?domain:null;
+    }
     public object Settings() { lock (gate) { return settings; }}
     public byte[] Backup() { lock(gate) { using var memory=new MemoryStream();using(var archive=new ZipArchive(memory,ZipArchiveMode.Create,true))foreach(var path in new[]{devicesPath,eventsPath,settingsPath})if(File.Exists(path)){var entry=archive.CreateEntry(Path.GetFileName(path),CompressionLevel.Optimal);using var target=entry.Open();using var source=File.OpenRead(path);source.CopyTo(target);}return memory.ToArray(); }}
     public void Restore(Stream source) { lock(gate) {
@@ -254,6 +269,6 @@ sealed class LocalStore {
     }}
 }
 
-record ActivityEventRecord(string Id, string DeviceId, string AppName, string WindowTitle, DateTimeOffset StartedAt, DateTimeOffset EndedAt, int DurationSeconds, int IdleSeconds, string Category, double ProductivityScore);
+record ActivityEventRecord(string Id, string DeviceId, string AppName, string WindowTitle, DateTimeOffset StartedAt, DateTimeOffset EndedAt, int DurationSeconds, int IdleSeconds, string Category, double ProductivityScore, string? Domain = null);
 record AppCategoryInput(string Category);
 record SystemSettings(string CompanyName = "MAR · POLIUTECH", string WorkdayStart = "09:00", string WorkdayEnd = "18:00", int IdleThresholdMinutes = 5, int RetentionDays = 365, bool CollectWindowTitles = true, Dictionary<string, string>? ApplicationCategories = null, string TimeZoneId = "Central Standard Time (Mexico)", string WorkDays = "1,2,3,4,5", string PrivacyNotice = "Este equipo registra aplicaciones, títulos de ventana, actividad e inactividad con fines de productividad. No registra teclas ni audio.", string ConsentVersion = "1.0");
