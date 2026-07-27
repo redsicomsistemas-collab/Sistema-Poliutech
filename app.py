@@ -12431,7 +12431,7 @@ def _gastos_save_upload(uploaded, comprobacion_id: int) -> ComprobacionAdjunto |
     upload_dir.mkdir(parents=True, exist_ok=True)
     original = secure_filename(uploaded.filename) or f"comprobante.{ext}"
     stem = Path(original).stem[:80] or "comprobante"
-    filename = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{stem}.{ext}"
+    filename = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}_{stem}.{ext}"
     disk_path = upload_dir / filename
     uploaded.save(disk_path)
     rel_path = f"uploads/gastos_viaticos/{comprobacion_id}/{filename}"
@@ -12945,7 +12945,8 @@ def _gastos_review_title(gastos: list["ComprobacionGasto"]) -> str:
 def _send_gastos_group_review_push_hansel(gastos: list["ComprobacionGasto"]) -> dict[str, int]:
     if not gastos:
         return {"sent": 0, "failed": 0}
-    tokens = _mobile_push_tokens_for_users(_mobile_push_user_ids_for_hansel_only())
+    user_ids = notification_targets("gastos_revision", "push") or _mobile_push_user_ids_for_hansel_only()
+    tokens = _mobile_push_tokens_for_users(user_ids)
     if not tokens:
         logger.warning("Push de grupo de gastos: Hansel no tiene token movil activo.")
     first = gastos[0]
@@ -13015,7 +13016,7 @@ def _send_gastos_review_email(gasto: "ComprobacionGasto") -> None:
 
 
 def _send_gastos_group_review_email(gastos: list["ComprobacionGasto"]) -> None:
-    recipients = _parse_email_list(GASTOS_REVIEW_EMAIL)
+    recipients = notification_targets("gastos_revision", "email") or _parse_email_list(GASTOS_REVIEW_EMAIL)
     bcc = _parse_email_list(GASTOS_REVIEW_BCC_EMAIL)
     if not recipients:
         raise ValueError("No hay correo configurado para revision de gastos.")
@@ -13680,13 +13681,41 @@ def gastos_viaticos_enviar_grupo():
     grupo = (request.form.get("grupo") or "").strip()
     fecha = (request.form.get("fecha") or "").strip()
     responsable = (request.form.get("responsable") or "").strip()
-    gastos = (
-        _gastos_group_query(tipo_agrupacion, grupo, fecha, responsable)
-        .order_by(ComprobacionGasto.fecha_comprobante.asc(), ComprobacionGasto.id.asc())
-        .all()
-    )
+    solicitud_recurso_id = int(parse_float(request.form.get("solicitud_recurso_id"), 0) or 0)
+    if solicitud_recurso_id:
+        solicitud = SolicitudRecurso.query.get_or_404(solicitud_recurso_id)
+        if not (_gastos_can_view_all() or solicitud.usuario_id == getattr(current_user, "id", None)):
+            abort(403)
+        gastos = (
+            ComprobacionGasto.query
+            .filter(
+                ComprobacionGasto.solicitud_recurso_id == solicitud.id,
+                ComprobacionGasto.estatus == "PENDIENTE",
+                ComprobacionGasto.tipo_gasto != "RECURSO",
+            )
+            .order_by(ComprobacionGasto.fecha_comprobante.asc(), ComprobacionGasto.id.asc())
+            .all()
+        )
+        grupo = solicitud.folio or grupo
+    else:
+        gastos = (
+            _gastos_group_query(tipo_agrupacion, grupo, fecha, responsable)
+            .order_by(ComprobacionGasto.fecha_comprobante.asc(), ComprobacionGasto.id.asc())
+            .all()
+        )
     if not gastos:
         flash("No hay gastos pendientes en esa salida para enviar a revision.", "info")
+        return _gastos_redirect()
+    sin_comprobante = [gasto for gasto in gastos if not (gasto.adjuntos or [])]
+    if sin_comprobante:
+        folios = ", ".join(gasto.folio or f"#{gasto.id}" for gasto in sin_comprobante[:5])
+        extra = f" y {len(sin_comprobante) - 5} mas" if len(sin_comprobante) > 5 else ""
+        flash(
+            f"No se envio el expediente. Falta adjuntar comprobante en {folios}{extra}.",
+            "warning",
+        )
+        if solicitud_recurso_id:
+            return redirect(url_for("solicitud_recurso_comprobar", solicitud_id=solicitud_recurso_id))
         return _gastos_redirect()
     for gasto in gastos:
         gasto.estatus = "EN REVISION"
@@ -13727,6 +13756,7 @@ def gastos_viaticos_grupo_detalle():
     grupo = (request.args.get("grupo") or "").strip()
     fecha = (request.args.get("fecha") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
+    solicitud_id = int(parse_float(request.args.get("solicitud_id"), 0) or 0)
     gastos = (
         _gastos_group_all_query(tipo_agrupacion, grupo, fecha, responsable)
         .order_by(ComprobacionGasto.tipo_gasto.desc(), ComprobacionGasto.fecha_comprobante.asc(), ComprobacionGasto.id.asc())
@@ -13735,9 +13765,11 @@ def gastos_viaticos_grupo_detalle():
     if not gastos:
         abort(404)
 
-    solicitud = None
+    solicitud = SolicitudRecurso.query.get(solicitud_id) if solicitud_id else None
+    if solicitud and not (_gastos_can_view_all() or solicitud.usuario_id == getattr(current_user, "id", None)):
+        abort(403)
     for gasto in gastos:
-        if getattr(gasto, "solicitud_recurso", None):
+        if solicitud is None and getattr(gasto, "solicitud_recurso", None):
             solicitud = gasto.solicitud_recurso
             break
     if solicitud is None:
@@ -13836,6 +13868,61 @@ def gastos_viaticos_adjunto(adjunto_id: int):
         download_name=adjunto.nombre_original or adjunto.nombre_archivo,
         conditional=True,
     )
+
+
+@app.route("/gastos-viaticos/<int:gasto_id>/comprobante", methods=["POST"])
+@login_required
+def gastos_viaticos_reemplazar_comprobante(gasto_id: int):
+    gasto = ComprobacionGasto.query.get_or_404(gasto_id)
+    require_gasto_owner_or_admin(gasto)
+    uploaded = request.files.get("comprobante")
+    if not uploaded or not (uploaded.filename or "").strip():
+        flash("Selecciona el nuevo comprobante.", "warning")
+        return redirect(url_for(
+            "gastos_viaticos_grupo_detalle",
+            tipo_agrupacion=gasto.tipo_agrupacion,
+            grupo=_gastos_group_name(gasto),
+            fecha=_gastos_fecha_key(gasto),
+            responsable=gasto.responsable or "",
+        ))
+
+    anteriores = list(gasto.adjuntos or [])
+    try:
+        nuevo = _gastos_save_upload(uploaded, gasto.id)
+        if nuevo is None:
+            raise ValueError("Selecciona el nuevo comprobante.")
+        for adjunto in anteriores:
+            db.session.delete(adjunto)
+        db.session.add(nuevo)
+        gasto.actualizado_en = now_cdmx_naive()
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        flash(str(exc), "warning")
+        return redirect(url_for(
+            "gastos_viaticos_grupo_detalle",
+            tipo_agrupacion=gasto.tipo_agrupacion,
+            grupo=_gastos_group_name(gasto),
+            fecha=_gastos_fecha_key(gasto),
+            responsable=gasto.responsable or "",
+        ))
+
+    for adjunto in anteriores:
+        try:
+            old_path = _upload_storage_path(adjunto.ruta)
+            if old_path.is_file() and old_path != _upload_storage_path(nuevo.ruta):
+                old_path.unlink()
+        except Exception:
+            logger.warning("No se pudo eliminar el comprobante anterior %s.", adjunto.ruta)
+
+    flash(f"Comprobante de {gasto.folio or gasto.id} actualizado.", "success")
+    return redirect(url_for(
+        "gastos_viaticos_grupo_detalle",
+        tipo_agrupacion=gasto.tipo_agrupacion,
+        grupo=_gastos_group_name(gasto),
+        fecha=_gastos_fecha_key(gasto),
+        responsable=gasto.responsable or "",
+    ))
 
 
 @app.route("/gastos-viaticos/<int:gasto_id>/aprobar", methods=["POST"])
@@ -15129,6 +15216,26 @@ def solicitud_recurso_detalle(solicitud_id: int):
         estatus_options=SOLICITUD_RECURSO_ESTATUS,
         can_manage_fondos=has_permission("fondos.gestionar_solicitudes"),
     )
+
+
+@app.route("/solicitudes-recursos/<int:solicitud_id>/comprobar")
+@login_required
+def solicitud_recurso_comprobar(solicitud_id: int):
+    solicitud = SolicitudRecurso.query.get_or_404(solicitud_id)
+    if not (_gastos_can_view_all() or solicitud.usuario_id == getattr(current_user, "id", None)):
+        abort(403)
+    if (solicitud.estatus or "").upper() != "AUTORIZADA":
+        flash("El fondo debe estar autorizado antes de registrar comprobantes.", "warning")
+        return redirect(url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id))
+    fecha = _finanzas_fecha_input(solicitud.fecha or now_cdmx_naive())
+    return redirect(url_for(
+        "gastos_viaticos_grupo_detalle",
+        tipo_agrupacion="PROYECTO",
+        grupo=solicitud.proyecto or "Sin proyecto",
+        fecha=fecha,
+        responsable=solicitud.solicitante or "",
+        solicitud_id=solicitud.id,
+    ))
 
 
 @app.route("/solicitudes-recursos/<int:solicitud_id>/eliminar", methods=["POST"])

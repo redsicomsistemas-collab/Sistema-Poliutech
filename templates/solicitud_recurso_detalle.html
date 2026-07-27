@@ -51,7 +51,7 @@
     <div class="fw-bold">Fondo autorizado</div>
     <div>{{ solicitud.gasto_generado.folio }} · ${{ "{:,.2f}".format(solicitud.gasto_generado.total or 0) }} {{ solicitud.gasto_generado.moneda or "MXN" }}</div>
   </div>
-  <a class="btn btn-outline-success" href="{{ url_for('gastos_viaticos_detalle', gasto_id=solicitud.gasto_generado.id) }}">Ver fondo</a>
+  <a class="btn btn-success" href="{{ url_for('solicitud_recurso_comprobar', solicitud_id=solicitud.id) }}">Abrir expediente y comprobar</a>
 </div>
 {% endif %}
 
