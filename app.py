@@ -14096,17 +14096,29 @@ def gastos_viaticos_grupo_detalle():
     fecha = (request.args.get("fecha") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
     solicitud_id = int(parse_float(request.args.get("solicitud_id"), 0) or 0)
-    gastos = (
-        _gastos_group_all_query(tipo_agrupacion, grupo, fecha, responsable)
-        .order_by(ComprobacionGasto.tipo_gasto.desc(), ComprobacionGasto.fecha_comprobante.asc(), ComprobacionGasto.id.asc())
-        .all()
-    )
-    if not gastos:
-        abort(404)
-
     solicitud = SolicitudRecurso.query.get(solicitud_id) if solicitud_id else None
     if solicitud and not (_gastos_can_view_all() or solicitud.usuario_id == getattr(current_user, "id", None)):
         abort(403)
+    if solicitud:
+        tipo_agrupacion = "PROYECTO"
+        grupo = solicitud.nombre or solicitud.proyecto or solicitud.folio or "Sin proyecto"
+        fecha = _finanzas_fecha_input(solicitud.fecha or now_cdmx_naive())
+        responsable = solicitud.solicitante or ""
+        gastos = (
+            _gastos_apply_user_scope(ComprobacionGasto.query)
+            .filter(ComprobacionGasto.solicitud_recurso_id == solicitud.id)
+            .order_by(ComprobacionGasto.tipo_gasto.desc(), ComprobacionGasto.fecha_comprobante.asc(), ComprobacionGasto.id.asc())
+            .all()
+        )
+    else:
+        gastos = (
+            _gastos_group_all_query(tipo_agrupacion, grupo, fecha, responsable)
+            .order_by(ComprobacionGasto.tipo_gasto.desc(), ComprobacionGasto.fecha_comprobante.asc(), ComprobacionGasto.id.asc())
+            .all()
+        )
+        if not gastos:
+            abort(404)
+
     for gasto in gastos:
         if solicitud is None and getattr(gasto, "solicitud_recurso", None):
             solicitud = gasto.solicitud_recurso
@@ -15601,13 +15613,8 @@ def solicitud_recurso_comprobar(solicitud_id: int):
     if (solicitud.estatus or "").upper() != "AUTORIZADA":
         flash("El fondo debe estar autorizado antes de registrar comprobantes.", "warning")
         return redirect(url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id))
-    fecha = _finanzas_fecha_input(solicitud.fecha or now_cdmx_naive())
     return redirect(url_for(
         "gastos_viaticos_grupo_detalle",
-        tipo_agrupacion="PROYECTO",
-        grupo=solicitud.nombre or solicitud.proyecto or "Sin proyecto",
-        fecha=fecha,
-        responsable=solicitud.solicitante or "",
         solicitud_id=solicitud.id,
     ))
 
