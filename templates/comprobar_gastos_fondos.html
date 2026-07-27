@@ -14,6 +14,22 @@
   .fondo-money {
     font-variant-numeric: tabular-nums;
   }
+  .expediente-tabs {
+    gap: .5rem;
+    border-bottom: 0;
+  }
+  .expediente-tabs .nav-link {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 999px;
+    color: var(--bs-body-color);
+    font-weight: 600;
+    padding: .5rem .9rem;
+  }
+  .expediente-tabs .nav-link.active {
+    background: var(--bs-primary);
+    border-color: var(--bs-primary);
+    color: #fff;
+  }
 </style>
 
 <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 my-4">
@@ -193,9 +209,33 @@
     </div>
   </div>
   <div class="card-body">
-    <div class="row g-3">
+    {% if grupos %}
+    <ul class="nav expediente-tabs flex-nowrap overflow-auto mb-4" id="expedienteEstadoTabs" aria-label="Filtrar expedientes por estado">
+      {% for filtro, etiqueta in [
+        ("todos", "Todos"),
+        ("pendiente", "Pendientes"),
+        ("pendiente-envio", "Pendiente de envío"),
+        ("revision", "En revisión"),
+        ("enviado", "Enviados"),
+        ("rechazado", "Rechazados"),
+        ("cerrado", "Cerrados")
+      ] %}
+      <li class="nav-item">
+        <button type="button" class="nav-link {{ 'active' if filtro == 'todos' }}" data-expediente-filtro="{{ filtro }}">
+          {{ etiqueta }} <span class="badge {{ 'bg-light text-primary' if filtro == 'todos' else 'bg-secondary' }} ms-1">{{ conteos_grupos[filtro] }}</span>
+        </button>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    <div class="row g-3" id="expedientesGrid">
       {% for grupo in grupos %}
-      <div class="col-12 col-md-6 col-xl-4">
+      <div
+        class="col-12 col-md-6 col-xl-4 js-expediente-card"
+        data-estado="{{ grupo.estado_filtro }}"
+        data-pendiente="{{ '1' if grupo.es_pendiente else '0' }}"
+        data-enviado="{{ '1' if grupo.es_enviado else '0' }}"
+      >
         <div class="card fondo-card h-100">
           <div class="card-body d-flex flex-column gap-3">
             {% if is_admin_gastos %}
@@ -225,10 +265,12 @@
                 {{ '+' if (grupo.saldo or 0) >= 0 else '-' }}${{ "{:,.2f}".format((grupo.saldo or 0)|abs) }}
               </strong>
             </div>
-            {% if grupo.pendientes %}
+            {% if grupo.estado_filtro == "pendiente-envio" %}
             <span class="badge bg-warning text-dark align-self-start">{{ grupo.pendientes }} pendiente(s) de envío</span>
-            {% elif grupo.en_revision %}
+            {% elif grupo.estado_filtro == "revision" %}
             <span class="badge bg-info text-dark align-self-start">En revisión</span>
+            {% elif grupo.estado_filtro == "rechazado" %}
+            <span class="badge bg-danger align-self-start">Rechazado</span>
             {% else %}
             <span class="badge bg-success align-self-start">Cerrado</span>
             {% endif %}
@@ -303,11 +345,58 @@
       {% else %}
       <div class="col-12"><div class="text-center text-muted py-4">Todavía no hay expedientes consolidados.</div></div>
       {% endfor %}
+      <div class="col-12 d-none" id="sinExpedientesEstado">
+        <div class="text-center text-muted border rounded py-5">No hay expedientes en este estado.</div>
+      </div>
     </div>
   </div>
 </div>
 <script>
 (function () {
+  const tabs = Array.from(document.querySelectorAll("[data-expediente-filtro]"));
+  const cards = Array.from(document.querySelectorAll(".js-expediente-card"));
+  const emptyState = document.getElementById("sinExpedientesEstado");
+  const selectAll = document.getElementById("seleccionarTodosGrupos");
+
+  function expedienteCoincide(card, filtro) {
+    if (filtro === "todos") return true;
+    if (filtro === "pendiente") return card.dataset.pendiente === "1";
+    if (filtro === "enviado") return card.dataset.enviado === "1";
+    return card.dataset.estado === filtro;
+  }
+
+  function filtrarExpedientes(filtro) {
+    let visibles = 0;
+    cards.forEach(card => {
+      const visible = expedienteCoincide(card, filtro);
+      card.classList.toggle("d-none", !visible);
+      if (!visible) {
+        const checkbox = card.querySelector(".js-grupo-check");
+        if (checkbox) checkbox.checked = false;
+      } else {
+        visibles += 1;
+      }
+    });
+    tabs.forEach(tab => {
+      const active = tab.dataset.expedienteFiltro === filtro;
+      tab.classList.toggle("active", active);
+      tab.setAttribute("aria-selected", active ? "true" : "false");
+      const badge = tab.querySelector(".badge");
+      if (badge) {
+        badge.classList.toggle("bg-light", active);
+        badge.classList.toggle("text-primary", active);
+        badge.classList.toggle("bg-secondary", !active);
+      }
+    });
+    if (emptyState) emptyState.classList.toggle("d-none", visibles !== 0);
+    if (selectAll) {
+      selectAll.checked = false;
+      selectAll.dispatchEvent(new Event("change"));
+    }
+  }
+
+  tabs.forEach(tab => tab.addEventListener("click", () => filtrarExpedientes(tab.dataset.expedienteFiltro)));
+
   const form = document.getElementById("comprobarFondosForm");
   if (!form) return;
   const solicitud = document.getElementById("fondoSolicitud");
@@ -397,17 +486,23 @@
   const count = document.getElementById("gruposSeleccionadosCount");
 
   function updateSelection() {
+    const visibleChecks = checks.filter(check => !check.closest(".js-expediente-card")?.classList.contains("d-none"));
     const selected = checks.filter(check => check.checked).length;
     if (count) count.textContent = String(selected);
     if (button) button.disabled = selected === 0;
     if (selectAll) {
-      selectAll.checked = checks.length > 0 && selected === checks.length;
-      selectAll.indeterminate = selected > 0 && selected < checks.length;
+      const visibleSelected = visibleChecks.filter(check => check.checked).length;
+      selectAll.checked = visibleChecks.length > 0 && visibleSelected === visibleChecks.length;
+      selectAll.indeterminate = visibleSelected > 0 && visibleSelected < visibleChecks.length;
     }
   }
 
   selectAll?.addEventListener("change", function () {
-    checks.forEach(check => { check.checked = selectAll.checked; });
+    checks.forEach(check => {
+      if (!check.closest(".js-expediente-card")?.classList.contains("d-none")) {
+        check.checked = selectAll.checked;
+      }
+    });
     updateSelection();
   });
   checks.forEach(check => check.addEventListener("change", updateSelection));
