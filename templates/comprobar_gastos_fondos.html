@@ -49,6 +49,93 @@
 </div>
 
 <div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-primary text-white fw-bold">Capturar gastos del fondo</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('gastos_viaticos_crear') }}" enctype="multipart/form-data" id="comprobarFondosForm">
+      <input type="hidden" name="origen" value="comprobar_fondos">
+      <input type="hidden" name="tipo_agrupacion" value="PROYECTO">
+      <input type="hidden" name="proyecto" id="fondoProyecto">
+      <input type="hidden" name="estatus" value="PENDIENTE">
+      <input type="hidden" name="responsable" value="{{ responsable_default }}">
+      <input type="hidden" name="fecha_salida" value="{{ fecha_hoy }}">
+      <input type="hidden" name="compra_agrupada" id="compraAgrupadaValue" value="0">
+
+      <div class="row g-3 align-items-end mb-3">
+        <div class="col-lg-7">
+          <label class="form-label fw-bold">Solicitud de fondos</label>
+          <select name="solicitud_recurso_id" id="fondoSolicitud" class="form-select" required>
+            <option value="">Selecciona una solicitud autorizada</option>
+            {% for solicitud in solicitudes_saldo %}
+            <option
+              value="{{ solicitud.id }}"
+              data-nombre="{{ solicitud.nombre }}"
+              data-proyecto="{{ solicitud.proyecto }}"
+              data-aprobado="{{ solicitud.aprobado }}"
+              data-comprobado="{{ solicitud.comprobado }}"
+              data-pendiente="{{ solicitud.pendiente_revision }}"
+              data-saldo="{{ solicitud.saldo }}"
+              data-partidas='{{ solicitud.partidas|tojson|forceescape }}'
+            >{{ solicitud.nombre }} · {{ solicitud.folio }} · ${{ "{:,.2f}".format(solicitud.aprobado or 0) }}</option>
+            {% endfor %}
+          </select>
+          <div class="form-text">El gasto quedará ligado a esta solicitud para calcular su saldo.</div>
+        </div>
+        <div class="col-lg-5">
+          <div class="form-check form-switch border rounded p-3 ps-5">
+            <input class="form-check-input" type="checkbox" id="compraAgrupada">
+            <label class="form-check-label fw-bold" for="compraAgrupada">COMPRA AGRUPADA</label>
+            <div class="small text-muted">Actívala para capturar y enviar varios gastos juntos.</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="fondoResumen" class="row g-2 mb-3 d-none">
+        <div class="col-6 col-lg-3"><div class="border rounded p-2"><span class="small text-muted d-block">Autorizado</span><strong class="text-success" id="resumenAprobado">$0.00</strong></div></div>
+        <div class="col-6 col-lg-3"><div class="border rounded p-2"><span class="small text-muted d-block">Comprobado</span><strong id="resumenComprobado">$0.00</strong></div></div>
+        <div class="col-6 col-lg-3"><div class="border rounded p-2"><span class="small text-muted d-block">Pendiente revisión</span><strong class="text-warning" id="resumenPendiente">$0.00</strong></div></div>
+        <div class="col-6 col-lg-3"><div class="border rounded p-2"><span class="small text-muted d-block">Saldo</span><strong id="resumenSaldo">$0.00</strong></div></div>
+        <div class="col-12"><div class="alert alert-light border mb-0 py-2"><strong>Partidas solicitadas:</strong> <span id="resumenPartidas">—</span></div></div>
+      </div>
+
+      <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+        <div class="fw-bold">Gasto(s) a comprobar</div>
+        <button type="button" class="btn btn-outline-primary btn-sm d-none" id="agregarGastoFondo">Agregar otro gasto</button>
+      </div>
+      <div class="table-responsive border rounded mb-3">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Tipo</th><th>Proveedor</th><th style="min-width:220px">Concepto</th><th>Fecha</th>
+              <th>Subtotal</th><th>IVA</th><th>Total</th><th>Comprobante</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="gastosFondoRows">
+            <tr class="js-gasto-fondo-row">
+              <td><select name="tipo_gasto[]" class="form-select form-select-sm">{% for item in gasto_tipos %}<option value="{{ item }}">{{ item }}</option>{% endfor %}</select></td>
+              <td><input name="proveedor[]" class="form-control form-control-sm"></td>
+              <td><input name="concepto[]" class="form-control form-control-sm" required></td>
+              <td><input type="date" name="fecha_comprobante[]" class="form-control form-control-sm" value="{{ fecha_hoy }}" required></td>
+              <td><input type="number" step="any" min="0" name="subtotal[]" class="form-control form-control-sm js-fondo-subtotal"></td>
+              <td><input type="number" step="any" min="0" name="iva[]" class="form-control form-control-sm js-fondo-iva" value="0"></td>
+              <td><input type="number" step="any" min="0" name="total[]" class="form-control form-control-sm js-fondo-total" required></td>
+              <td><input type="file" name="comprobante[]" class="form-control form-control-sm" accept="application/pdf,image/png,image/jpeg,image/webp" required></td>
+              <td><button type="button" class="btn btn-sm btn-outline-danger js-quitar-gasto-fondo">Quitar</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="alert alert-info py-2">
+        <strong>Guardar</strong> conserva los gastos sin notificar. <strong>Enviar</strong> los manda a revisión; si es compra agrupada, enviará juntos todos los gastos pendientes de esa solicitud.
+      </div>
+      <div class="d-flex flex-column flex-sm-row justify-content-end gap-2">
+        <button class="btn btn-outline-primary" name="accion" value="guardar">Guardar sin enviar</button>
+        <button class="btn btn-success" name="accion" value="enviar">Enviar a revisión</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
   <div class="card-header bg-primary text-white fw-bold">Fondos autorizados por comprobar</div>
   <div class="card-body">
     <div class="row g-3">
@@ -59,7 +146,8 @@
             <div class="d-flex justify-content-between gap-3">
               <div>
                 <div class="fw-bold text-primary">{{ solicitud.folio }}</div>
-                <div class="h5 fw-bold mb-1">{{ solicitud.proyecto }}</div>
+                <div class="h5 fw-bold mb-1">{{ solicitud.nombre }}</div>
+                <div class="small fw-semibold">{{ solicitud.proyecto }}</div>
                 <div class="small text-muted">{{ solicitud.solicitante or "Sin solicitante" }}</div>
               </div>
               <span class="badge bg-success align-self-start">AUTORIZADO</span>
@@ -218,6 +306,88 @@
     </div>
   </div>
 </div>
+<script>
+(function () {
+  const form = document.getElementById("comprobarFondosForm");
+  if (!form) return;
+  const solicitud = document.getElementById("fondoSolicitud");
+  const proyecto = document.getElementById("fondoProyecto");
+  const agrupada = document.getElementById("compraAgrupada");
+  const agrupadaValue = document.getElementById("compraAgrupadaValue");
+  const addButton = document.getElementById("agregarGastoFondo");
+  const rows = document.getElementById("gastosFondoRows");
+  const resumen = document.getElementById("fondoResumen");
+  const money = value => Number(value || 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
+
+  function updateSolicitud() {
+    const option = solicitud.options[solicitud.selectedIndex];
+    if (!option?.value) {
+      proyecto.value = "";
+      resumen.classList.add("d-none");
+      return;
+    }
+    proyecto.value = option.dataset.proyecto || option.dataset.nombre || "";
+    document.getElementById("resumenAprobado").textContent = money(option.dataset.aprobado);
+    document.getElementById("resumenComprobado").textContent = money(option.dataset.comprobado);
+    document.getElementById("resumenPendiente").textContent = money(option.dataset.pendiente);
+    const saldo = Number(option.dataset.saldo || 0);
+    const saldoEl = document.getElementById("resumenSaldo");
+    saldoEl.textContent = money(saldo);
+    saldoEl.className = saldo >= 0 ? "text-success" : "text-danger";
+    let partidas = [];
+    try { partidas = JSON.parse(option.dataset.partidas || "[]"); } catch (_) {}
+    document.getElementById("resumenPartidas").textContent = partidas.length
+      ? partidas.map(item => `${item.cantidad} × ${item.concepto}: ${money(item.total)}`).join(" · ")
+      : "Sin partidas registradas";
+    resumen.classList.remove("d-none");
+  }
+
+  function bindRow(row) {
+    const subtotal = row.querySelector(".js-fondo-subtotal");
+    const iva = row.querySelector(".js-fondo-iva");
+    const total = row.querySelector(".js-fondo-total");
+    const updateTotal = () => {
+      if (subtotal.value !== "" || iva.value !== "") {
+        total.value = (Number(subtotal.value || 0) + Number(iva.value || 0)).toFixed(2);
+      }
+    };
+    subtotal.addEventListener("input", updateTotal);
+    iva.addEventListener("input", updateTotal);
+    row.querySelector(".js-quitar-gasto-fondo").addEventListener("click", () => {
+      if (rows.querySelectorAll(".js-gasto-fondo-row").length > 1) row.remove();
+    });
+  }
+
+  function addRow() {
+    const base = rows.querySelector(".js-gasto-fondo-row");
+    const clone = base.cloneNode(true);
+    clone.querySelectorAll("input").forEach(input => {
+      if (input.type === "date") input.value = "{{ fecha_hoy }}";
+      else if (input.classList.contains("js-fondo-iva")) input.value = "0";
+      else input.value = "";
+    });
+    clone.querySelector("select").selectedIndex = 0;
+    rows.appendChild(clone);
+    bindRow(clone);
+    clone.querySelector('input[name="proveedor[]"]').focus();
+  }
+
+  function updateAgrupada() {
+    agrupadaValue.value = agrupada.checked ? "1" : "0";
+    addButton.classList.toggle("d-none", !agrupada.checked);
+    if (!agrupada.checked) {
+      Array.from(rows.querySelectorAll(".js-gasto-fondo-row")).slice(1).forEach(row => row.remove());
+    }
+  }
+
+  solicitud.addEventListener("change", updateSolicitud);
+  agrupada.addEventListener("change", updateAgrupada);
+  addButton.addEventListener("click", addRow);
+  rows.querySelectorAll(".js-gasto-fondo-row").forEach(bindRow);
+  updateAgrupada();
+  updateSolicitud();
+})();
+</script>
 {% if is_admin_gastos %}
 <script>
 (function () {
