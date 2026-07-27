@@ -416,10 +416,12 @@
             <td>
               <div class="d-flex flex-wrap gap-1">
                 <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('gastos_viaticos_detalle', gasto_id=gasto.id) }}">Detalle</a>
+                {% if gastos_can_view_all %}
                 <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editar-gasto-{{ gasto.id }}">Editar</button>
                 <form method="post" action="{{ url_for('gastos_viaticos_eliminar', gasto_id=gasto.id) }}" onsubmit="return confirm('Eliminar la comprobacion {{ gasto.folio }}?');">
                   <button class="btn btn-sm btn-outline-danger">Eliminar</button>
                 </form>
+                {% endif %}
               </div>
             </td>
           </tr>
@@ -432,11 +434,12 @@
   </div>
 </div>
 
+{% if gastos_can_view_all %}
 {% for gasto in comprobaciones %}
 <div class="modal fade" id="editar-gasto-{{ gasto.id }}" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
-      <form method="post" action="{{ url_for('gastos_viaticos_actualizar', gasto_id=gasto.id) }}">
+      <form method="post" action="{{ url_for('gastos_viaticos_actualizar', gasto_id=gasto.id) }}" enctype="multipart/form-data">
         <div class="modal-header">
           <h5 class="modal-title">Editar {{ gasto.folio }}</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
@@ -457,6 +460,7 @@
             <div class="col-md-4"><label class="form-label">Metodo pago</label><input name="metodo_pago" class="form-control" value="{{ gasto.metodo_pago or '' }}"></div>
             <div class="col-md-4"><label class="form-label">Referencia</label><input name="referencia" class="form-control" value="{{ gasto.referencia or '' }}"></div>
             <div class="col-md-8"><label class="form-label">Notas</label><input name="notas" class="form-control" value="{{ gasto.notas or '' }}"></div>
+            <div class="col-md-12"><label class="form-label">Reemplazar comprobante (opcional)</label><input type="file" name="comprobante" class="form-control" accept="application/pdf,image/png,image/jpeg,image/webp"></div>
           </div>
         </div>
         <div class="modal-footer">
@@ -468,6 +472,7 @@
   </div>
 </div>
 {% endfor %}
+{% endif %}
 
 <div class="modal fade" id="aiNotasModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
