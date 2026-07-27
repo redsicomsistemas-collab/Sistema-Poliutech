@@ -13398,6 +13398,79 @@ def comprobar_gastos_fondos():
     )
 
 
+def _comprobar_fondos_group_from_form():
+    tipo = (request.form.get("tipo_agrupacion_original") or "").strip().upper()
+    grupo = (request.form.get("grupo_original") or "").strip()
+    fecha = (request.form.get("fecha_original") or "").strip()
+    responsable = (request.form.get("responsable_original") or "").strip()
+    gastos = _gastos_group_all_query(tipo, grupo, fecha, responsable).all()
+    if not gastos:
+        abort(404)
+    return gastos
+
+
+@app.route("/comprobar-gastos-fondos/grupo/actualizar", methods=["POST"])
+@login_required
+def comprobar_gastos_fondos_grupo_actualizar():
+    require_gastos_admin()
+    gastos = _comprobar_fondos_group_from_form()
+    nuevo_tipo = (request.form.get("tipo_agrupacion") or "").strip().upper()
+    nuevo_grupo = (request.form.get("grupo") or "").strip()
+    nuevo_responsable = (request.form.get("responsable") or "").strip()
+    nueva_fecha = _parse_date_or_none(request.form.get("fecha"))
+    if nuevo_tipo not in GASTOS_AGRUPACIONES or not nuevo_grupo or not nueva_fecha:
+        flash("Completa el tipo, nombre y fecha del expediente.", "warning")
+        return redirect(url_for("comprobar_gastos_fondos"))
+
+    solicitudes = {}
+    now = now_cdmx_naive()
+    for gasto in gastos:
+        gasto.tipo_agrupacion = nuevo_tipo
+        gasto.proyecto = nuevo_grupo if nuevo_tipo == "PROYECTO" else None
+        gasto.evento = nuevo_grupo if nuevo_tipo == "EVENTO" else None
+        gasto.responsable = nuevo_responsable or None
+        gasto.fecha_comprobante = nueva_fecha
+        gasto.actualizado_en = now
+        if getattr(gasto, "solicitud_recurso", None):
+            solicitudes[gasto.solicitud_recurso.id] = gasto.solicitud_recurso
+    for solicitud in solicitudes.values():
+        solicitud.proyecto = nuevo_grupo
+        solicitud.solicitante = nuevo_responsable or solicitud.solicitante
+        solicitud.actualizado_en = now
+    db.session.commit()
+    flash(f"Expediente '{nuevo_grupo}' actualizado.", "success")
+    return redirect(url_for("comprobar_gastos_fondos"))
+
+
+@app.route("/comprobar-gastos-fondos/grupo/eliminar", methods=["POST"])
+@login_required
+def comprobar_gastos_fondos_grupo_eliminar():
+    require_gastos_admin()
+    gastos = _comprobar_fondos_group_from_form()
+    grupo = _gastos_group_name(gastos[0])
+    gasto_ids = [gasto.id for gasto in gastos]
+    rutas_adjuntos = [adjunto.ruta for gasto in gastos for adjunto in (gasto.adjuntos or [])]
+    solicitudes = SolicitudRecurso.query.filter(
+        SolicitudRecurso.gasto_generado_id.in_(gasto_ids)
+    ).all()
+    for solicitud in solicitudes:
+        solicitud.gasto_generado_id = None
+        solicitud.gasto_generado_en = None
+    for gasto in gastos:
+        db.session.delete(gasto)
+    db.session.commit()
+
+    for ruta in rutas_adjuntos:
+        try:
+            disk_path = _upload_storage_path(ruta)
+            if disk_path.is_file():
+                disk_path.unlink()
+        except Exception:
+            logger.warning("No se pudo eliminar el adjunto del expediente %s.", ruta)
+    flash(f"Expediente '{grupo}' eliminado con {len(gastos)} movimiento(s).", "success")
+    return redirect(url_for("comprobar_gastos_fondos"))
+
+
 def _gastos_admin_query():
     if not _gastos_admin_can_view():
         abort(403)
