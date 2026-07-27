@@ -169,9 +169,14 @@
             <td>
               <div class="d-flex gap-2 flex-wrap">
                 <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('gastos_viaticos_detalle', gasto_id=gasto.id) }}">Detalle</a>
+                {% if gastos_can_view_all %}
                 <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editarComprobante{{ gasto.id }}">
-                  Editar comprobante
+                  Editar
                 </button>
+                <form method="post" action="{{ url_for('gastos_viaticos_eliminar', gasto_id=gasto.id) }}" onsubmit="return confirm('¿Eliminar permanentemente la comprobación {{ gasto.folio or ('#' ~ gasto.id) }}?');">
+                  <button class="btn btn-sm btn-outline-danger">Eliminar</button>
+                </form>
+                {% endif %}
               </div>
             </td>
           </tr>
@@ -182,35 +187,48 @@
   </div>
 </div>
 
+{% if gastos_can_view_all %}
 {% for gasto in gastos %}
 <div class="modal fade" id="editarComprobante{{ gasto.id }}" tabindex="-1" aria-labelledby="editarComprobanteLabel{{ gasto.id }}" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered">
     <div class="modal-content">
-      <form method="post" action="{{ url_for('gastos_viaticos_reemplazar_comprobante', gasto_id=gasto.id) }}" enctype="multipart/form-data">
+      <form method="post" action="{{ url_for('gastos_viaticos_actualizar', gasto_id=gasto.id) }}" enctype="multipart/form-data">
         <div class="modal-header">
-          <h5 class="modal-title" id="editarComprobanteLabel{{ gasto.id }}">Actualizar comprobante · {{ gasto.folio or ("#" ~ gasto.id) }}</h5>
+          <h5 class="modal-title" id="editarComprobanteLabel{{ gasto.id }}">Editar gasto · {{ gasto.folio or ("#" ~ gasto.id) }}</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
         </div>
         <div class="modal-body">
-          <div class="alert alert-info py-2">Solamente se actualizará el archivo comprobante. Los datos del movimiento no se pueden modificar.</div>
-          <div class="row g-3 mb-3">
-            <div class="col-md-4"><div class="small text-muted">Proveedor</div><div class="fw-semibold">{{ gasto.proveedor or "Sin proveedor" }}</div></div>
-            <div class="col-md-5"><div class="small text-muted">Concepto</div><div class="fw-semibold">{{ gasto.concepto }}</div></div>
-            <div class="col-md-3"><div class="small text-muted">Total</div><div class="fw-bold">${{ "{:,.2f}".format(gasto.total or 0) }} {{ gasto.moneda }}</div></div>
+          <div class="row g-3">
+            <div class="col-md-4"><label class="form-label">Proyecto</label><input name="proyecto" class="form-control" value="{{ gasto.proyecto or '' }}"></div>
+            <div class="col-md-4"><label class="form-label">Evento</label><input name="evento" class="form-control" value="{{ gasto.evento or '' }}"></div>
+            <div class="col-md-4"><label class="form-label">Estatus</label><select name="estatus" class="form-select">{% for item in estatus_options %}<option value="{{ item }}" {% if gasto.estatus == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></div>
+            <div class="col-md-4"><label class="form-label">Proveedor</label><input name="proveedor" class="form-control" value="{{ gasto.proveedor or '' }}"></div>
+            <div class="col-md-5"><label class="form-label">Concepto</label><input name="concepto" class="form-control" value="{{ gasto.concepto or '' }}" required></div>
+            <div class="col-md-3"><label class="form-label">Fecha</label><input type="date" name="fecha_comprobante" class="form-control" value="{{ fecha_input(gasto.fecha_comprobante) }}"></div>
+            <div class="col-md-4"><label class="form-label">Quién hizo la compra</label><input name="responsable" class="form-control" value="{{ gasto.responsable or '' }}"></div>
+            <div class="col-md-2"><label class="form-label">Subtotal</label><input type="number" step="any" min="0" name="subtotal" class="form-control" value="{{ gasto.subtotal or 0 }}"></div>
+            <div class="col-md-2"><label class="form-label">IVA</label><input type="number" step="any" min="0" name="iva" class="form-control" value="{{ gasto.iva or 0 }}"></div>
+            <div class="col-md-2"><label class="form-label">Total</label><input type="number" step="any" min="0" name="total" class="form-control" value="{{ gasto.total or 0 }}" required></div>
+            <div class="col-md-2"><label class="form-label">Moneda</label><input name="moneda" class="form-control" value="{{ gasto.moneda or 'MXN' }}"></div>
+            <div class="col-md-4"><label class="form-label">Método de pago</label><input name="metodo_pago" class="form-control" value="{{ gasto.metodo_pago or '' }}"></div>
+            <div class="col-md-4"><label class="form-label">Referencia</label><input name="referencia" class="form-control" value="{{ gasto.referencia or '' }}"></div>
+            <div class="col-md-8"><label class="form-label">Notas</label><input name="notas" class="form-control" value="{{ gasto.notas or '' }}"></div>
+            <div class="col-12">
+              <label class="form-label fw-semibold">Reemplazar comprobante (opcional)</label>
+              <input type="file" name="comprobante" class="form-control" accept="application/pdf,image/png,image/jpeg,image/webp">
+            </div>
           </div>
-          <label class="form-label fw-semibold">Nuevo comprobante</label>
-          <input type="file" name="comprobante" class="form-control" accept="application/pdf,image/png,image/jpeg,image/webp" capture="environment" required>
-          <div class="form-text">El nuevo archivo reemplazará el comprobante anterior.</div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button class="btn btn-primary">Actualizar comprobante</button>
+          <button class="btn btn-primary">Guardar cambios</button>
         </div>
       </form>
     </div>
   </div>
 </div>
 {% endfor %}
+{% endif %}
 
 <script>
 (function () {
