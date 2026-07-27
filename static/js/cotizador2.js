@@ -172,7 +172,6 @@ document.addEventListener("DOMContentLoaded", ()=>{
         div.onclick = ()=>{
           input.value = it.nombre_cliente || "";
           document.getElementById("empresa").value = it.empresa || "";
-          document.getElementById("responsable").value = it.responsable || "";
           document.getElementById("correo").value = it.correo || "";
           document.getElementById("telefono").value = it.telefono || "";
           document.getElementById("direccion").value = it.direccion || "";

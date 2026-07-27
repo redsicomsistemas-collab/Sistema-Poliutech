@@ -85,14 +85,8 @@
             </select>
           </div>
           <div class="col-md-8">
-            <label for="responsable" class="form-label fw-bold text-primary">Responsable</label>
-            <textarea
-              id="responsable"
-              name="responsable"
-              class="form-control"
-              rows="2"
-              placeholder="Responsable de la cotización"
-            >{{ c.responsable or "" }}</textarea>
+            <label class="form-label fw-bold text-primary">Usuario que realizó la cotización</label>
+            <input type="text" class="form-control" value="{{ c.responsable or 'Sin asignar' }}" readonly aria-readonly="true">
           </div>
         </div>
 

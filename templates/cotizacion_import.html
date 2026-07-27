@@ -162,8 +162,8 @@
           <input type="file" id="cotizacion_pdf" name="cotizacion_pdf" class="form-control" accept="application/pdf,.pdf" required>
         </div>
         <div class="col-lg-3">
-          <label for="responsable_destino" class="form-label fw-semibold">Responsable</label>
-          <input type="text" id="responsable_destino" name="responsable_destino" class="form-control" placeholder="Opcional">
+          <label class="form-label fw-semibold">Usuario que realiza la importación</label>
+          <input type="text" class="form-control" value="{{ current_user.nombre_representante }}" readonly aria-readonly="true">
         </div>
         <div class="col-lg-2 d-grid">
           <button type="submit" class="btn btn-success fw-bold">Importar PDF</button>
