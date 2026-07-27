@@ -84,8 +84,25 @@
 
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-light">
-    <div class="fw-bold">Expedientes consolidados</div>
-    <div class="small text-muted">Cada tarjeta abre todos los movimientos y comprobantes del grupo.</div>
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+      <div>
+        <div class="fw-bold">Expedientes consolidados</div>
+        <div class="small text-muted">Cada tarjeta abre todos los movimientos y comprobantes del grupo.</div>
+      </div>
+      {% if is_admin_gastos and grupos %}
+      <form id="bulkDeleteGroups" method="post" action="{{ url_for('comprobar_gastos_fondos_grupos_eliminar') }}" onsubmit="return confirmarEliminacionMultiple();">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <div class="form-check mb-0">
+            <input class="form-check-input" type="checkbox" id="seleccionarTodosGrupos">
+            <label class="form-check-label" for="seleccionarTodosGrupos">Seleccionar todos</label>
+          </div>
+          <button class="btn btn-danger" id="eliminarGruposSeleccionados" disabled>
+            Eliminar seleccionados (<span id="gruposSeleccionadosCount">0</span>)
+          </button>
+        </div>
+      </form>
+      {% endif %}
+    </div>
   </div>
   <div class="card-body">
     <div class="row g-3">
@@ -93,6 +110,19 @@
       <div class="col-12 col-md-6 col-xl-4">
         <div class="card fondo-card h-100">
           <div class="card-body d-flex flex-column gap-3">
+            {% if is_admin_gastos %}
+            <div class="form-check">
+              <input
+                class="form-check-input js-grupo-check"
+                type="checkbox"
+                name="grupos[]"
+                value="{{ grupo.ids|join(',') }}"
+                id="seleccionarGrupo{{ loop.index }}"
+                form="bulkDeleteGroups"
+              >
+              <label class="form-check-label fw-semibold" for="seleccionarGrupo{{ loop.index }}">Seleccionar expediente</label>
+            </div>
+            {% endif %}
             <div>
               <div class="d-flex justify-content-between gap-2">
                 <span class="badge bg-secondary">{{ grupo.tipo }}</span>
@@ -188,4 +218,39 @@
     </div>
   </div>
 </div>
+{% if is_admin_gastos %}
+<script>
+(function () {
+  const selectAll = document.getElementById("seleccionarTodosGrupos");
+  const checks = Array.from(document.querySelectorAll(".js-grupo-check"));
+  const button = document.getElementById("eliminarGruposSeleccionados");
+  const count = document.getElementById("gruposSeleccionadosCount");
+
+  function updateSelection() {
+    const selected = checks.filter(check => check.checked).length;
+    if (count) count.textContent = String(selected);
+    if (button) button.disabled = selected === 0;
+    if (selectAll) {
+      selectAll.checked = checks.length > 0 && selected === checks.length;
+      selectAll.indeterminate = selected > 0 && selected < checks.length;
+    }
+  }
+
+  selectAll?.addEventListener("change", function () {
+    checks.forEach(check => { check.checked = selectAll.checked; });
+    updateSelection();
+  });
+  checks.forEach(check => check.addEventListener("change", updateSelection));
+  updateSelection();
+
+  window.confirmarEliminacionMultiple = function () {
+    const selected = checks.filter(check => check.checked).length;
+    if (!selected) return false;
+    return window.confirm(
+      `¿Eliminar ${selected} expediente(s) y todos sus movimientos? Esta acción no se puede deshacer.`
+    );
+  };
+})();
+</script>
+{% endif %}
 {% endblock %}
