@@ -13366,9 +13366,13 @@ def comprobar_gastos_fondos():
         key = (gasto.tipo_agrupacion or "PROYECTO", nombre, fecha, responsable)
         item = grupos.setdefault(key, {
             "nombre": nombre,
+            "ids": [],
             "conteo": 0,
             "pendientes": 0,
             "en_revision": 0,
+            "aprobados": 0,
+            "rechazados": 0,
+            "reembolsados": 0,
             "recursos": 0.0,
             "gastos": 0.0,
             "saldo": 0.0,
@@ -13376,6 +13380,7 @@ def comprobar_gastos_fondos():
             "fecha": fecha,
             "responsable": responsable,
         })
+        item["ids"].append(gasto.id)
         item["conteo"] += 1
         item["saldo"] += _gastos_monto_saldo(gasto)
         if _gastos_es_recurso(gasto) and (gasto.estatus or "") != "RECHAZADO":
@@ -13386,11 +13391,54 @@ def comprobar_gastos_fondos():
             item["pendientes"] += 1
         elif not _gastos_es_recurso(gasto) and (gasto.estatus or "") == "EN REVISION":
             item["en_revision"] += 1
+        elif not _gastos_es_recurso(gasto) and (gasto.estatus or "") == "APROBADO":
+            item["aprobados"] += 1
+        elif not _gastos_es_recurso(gasto) and (gasto.estatus or "") == "RECHAZADO":
+            item["rechazados"] += 1
+        elif not _gastos_es_recurso(gasto) and (gasto.estatus or "") == "REEMBOLSADO":
+            item["reembolsados"] += 1
+
+    grupos_ordenados = sorted(
+        grupos.values(),
+        key=lambda item: (item["fecha"], item["conteo"]),
+        reverse=True,
+    )
+    for item in grupos_ordenados:
+        if item["pendientes"]:
+            item["estado_filtro"] = "pendiente-envio"
+            item["estado_label"] = "Pendiente de envío"
+        elif item["en_revision"]:
+            item["estado_filtro"] = "revision"
+            item["estado_label"] = "En revisión"
+        elif item["rechazados"]:
+            item["estado_filtro"] = "rechazado"
+            item["estado_label"] = "Rechazado"
+        else:
+            item["estado_filtro"] = "cerrado"
+            item["estado_label"] = "Cerrado"
+        item["es_pendiente"] = bool(item["pendientes"] or item["en_revision"])
+        item["es_enviado"] = bool(
+            item["en_revision"]
+            or item["aprobados"]
+            or item["rechazados"]
+            or item["reembolsados"]
+        )
+
+    conteos_grupos = {
+        "todos": len(grupos_ordenados),
+        "pendiente": sum(1 for item in grupos_ordenados if item["es_pendiente"]),
+        "pendiente-envio": sum(1 for item in grupos_ordenados if item["estado_filtro"] == "pendiente-envio"),
+        "revision": sum(1 for item in grupos_ordenados if item["estado_filtro"] == "revision"),
+        "enviado": sum(1 for item in grupos_ordenados if item["es_enviado"]),
+        "rechazado": sum(1 for item in grupos_ordenados if item["estado_filtro"] == "rechazado"),
+        "cerrado": sum(1 for item in grupos_ordenados if item["estado_filtro"] == "cerrado"),
+    }
 
     return render_template(
         "comprobar_gastos_fondos.html",
         title="Comprobar gastos de fondos",
-        grupos=sorted(grupos.values(), key=lambda item: (item["fecha"], item["conteo"]), reverse=True),
+        grupos=grupos_ordenados,
+        conteos_grupos=conteos_grupos,
         solicitudes_saldo=solicitudes_saldo,
         total_fondos=sum(float(item["aprobado"] or 0) for item in solicitudes_saldo),
         total_comprobado=sum(float(item["comprobado"] or 0) for item in solicitudes_saldo),
