@@ -2730,6 +2730,7 @@ from flask import (
 )
 
 from sqlalchemy import text, or_, and_, case
+from sqlalchemy.exc import IntegrityError
 
 # ReportLab (PDF)
 from reportlab.lib.pagesizes import A4
@@ -3522,11 +3523,21 @@ def ensure_schema():
     try:
         sr_cols = _table_columns("solicitud_recurso")
         for col, stmt in [
+            ("nombre", "ALTER TABLE solicitud_recurso ADD COLUMN nombre VARCHAR(180)"),
             ("gasto_generado_id", "ALTER TABLE solicitud_recurso ADD COLUMN gasto_generado_id INTEGER"),
             ("gasto_generado_en", "ALTER TABLE solicitud_recurso ADD COLUMN gasto_generado_en TIMESTAMP"),
         ]:
             if col not in sr_cols:
                 db.session.execute(text(stmt))
+        db.session.execute(text("""
+            UPDATE solicitud_recurso
+            SET nombre = COALESCE(NULLIF(TRIM(folio), ''), 'Solicitud ' || id)
+            WHERE nombre IS NULL OR TRIM(nombre) = ''
+        """))
+        db.session.execute(text("""
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_solicitud_recurso_nombre_lower
+            ON solicitud_recurso (LOWER(nombre))
+        """))
         db.session.commit()
     except Exception as e:
         print("⚠️ ensure_schema(solicitud_recurso):", e)
@@ -12155,7 +12166,7 @@ def _solicitud_recurso_registrar_gasto(solicitud: SolicitudRecurso) -> Comprobac
         db.session.add(gasto)
 
     gasto.tipo_agrupacion = "PROYECTO"
-    gasto.proyecto = (solicitud.proyecto or "").strip() or None
+    gasto.proyecto = (solicitud.nombre or solicitud.proyecto or "").strip() or None
     gasto.evento = None
     gasto.tipo_gasto = "RECURSO"
     gasto.estatus = "APROBADO"
@@ -12362,6 +12373,7 @@ def _solicitudes_recurso_saldos(comprobaciones: list["ComprobacionGasto"]) -> li
         by_id[solicitud.id] = {
             "id": solicitud.id,
             "folio": solicitud.folio or f"#{solicitud.id}",
+            "nombre": (solicitud.nombre or "").strip() or solicitud.folio or f"Solicitud {solicitud.id}",
             "proyecto": (solicitud.proyecto or "").strip() or "Sin proyecto",
             "solicitante": solicitud.solicitante or "",
             "aprobado": float(solicitud.total or 0),
@@ -12369,6 +12381,15 @@ def _solicitudes_recurso_saldos(comprobaciones: list["ComprobacionGasto"]) -> li
             "pendiente_revision": 0.0,
             "saldo": float(solicitud.total or 0),
             "movimientos": 0,
+            "partidas": [
+                {
+                    "cantidad": float(partida.cantidad or 0),
+                    "concepto": partida.concepto or "",
+                    "importe": float(partida.importe or 0),
+                    "total": float(partida.total or 0),
+                }
+                for partida in (solicitud.partidas or [])
+            ],
         }
 
     for gasto in comprobaciones:
@@ -13359,6 +13380,15 @@ def comprobar_gastos_fondos():
         .all()
     )
     solicitudes_saldo = _solicitudes_recurso_saldos(comprobaciones)
+    if not _gastos_can_view_all():
+        allowed_ids = {
+            solicitud.id
+            for solicitud in SolicitudRecurso.query.filter_by(
+                usuario_id=getattr(current_user, "id", None),
+                estatus="AUTORIZADA",
+            ).all()
+        }
+        solicitudes_saldo = [item for item in solicitudes_saldo if item["id"] in allowed_ids]
     grupos: dict[tuple[str, str, str, str], dict] = {}
     for gasto in comprobaciones:
         nombre = _gastos_group_name(gasto)
@@ -13397,6 +13427,9 @@ def comprobar_gastos_fondos():
         total_comprobado=sum(float(item["comprobado"] or 0) for item in solicitudes_saldo),
         total_saldo=sum(float(item["saldo"] or 0) for item in solicitudes_saldo),
         is_admin_gastos=is_admin(),
+        gasto_tipos=tuple(item for item in GASTOS_TIPOS if item != "RECURSO"),
+        fecha_hoy=now_cdmx_naive().strftime("%Y-%m-%d"),
+        responsable_default=responsable_actual() or "",
     )
 
 
@@ -13436,7 +13469,7 @@ def comprobar_gastos_fondos_grupo_actualizar():
         if getattr(gasto, "solicitud_recurso", None):
             solicitudes[gasto.solicitud_recurso.id] = gasto.solicitud_recurso
     for solicitud in solicitudes.values():
-        solicitud.proyecto = nuevo_grupo
+        solicitud.nombre = nuevo_grupo
         solicitud.solicitante = nuevo_responsable or solicitud.solicitante
         solicitud.actualizado_en = now
     db.session.commit()
@@ -13758,6 +13791,9 @@ def gastos_viaticos_analizar():
 @login_required
 def gastos_viaticos_crear():
     f = request.form
+    accion = (f.get("accion") or "guardar").strip().lower()
+    enviar_ahora = accion == "enviar"
+    compra_agrupada = f.get("compra_agrupada") == "1"
     tipo_agrupacion = (f.get("tipo_agrupacion") or "PROYECTO").strip().upper()
     if tipo_agrupacion not in GASTOS_AGRUPACIONES:
         tipo_agrupacion = "PROYECTO"
@@ -13796,8 +13832,10 @@ def gastos_viaticos_crear():
         if not solicitud_recurso:
             flash("Selecciona una solicitud de fondos autorizada para comprobar.", "warning")
             return _gastos_redirect()
+        if not (_gastos_can_view_all() or solicitud_recurso.usuario_id == getattr(current_user, "id", None)):
+            abort(403)
         tipo_agrupacion = "PROYECTO"
-        proyecto = (solicitud_recurso.proyecto or "").strip() or proyecto
+        proyecto = (solicitud_recurso.nombre or solicitud_recurso.proyecto or "").strip() or proyecto
         estatus = "PENDIENTE"
 
     gastos_creados: list[ComprobacionGasto] = []
@@ -13866,11 +13904,64 @@ def gastos_viaticos_crear():
 
     db.session.commit()
     grupo = proyecto if tipo_agrupacion == "PROYECTO" else evento
+    if enviar_ahora:
+        gastos_envio = gastos_creados
+        if compra_agrupada and solicitud_recurso:
+            gastos_envio = (
+                ComprobacionGasto.query
+                .filter(
+                    ComprobacionGasto.solicitud_recurso_id == solicitud_recurso.id,
+                    ComprobacionGasto.estatus == "PENDIENTE",
+                    ComprobacionGasto.tipo_gasto != "RECURSO",
+                )
+                .order_by(ComprobacionGasto.fecha_comprobante.asc(), ComprobacionGasto.id.asc())
+                .all()
+            )
+        sin_comprobante = [gasto for gasto in gastos_envio if not (gasto.adjuntos or [])]
+        if sin_comprobante:
+            flash(
+                "Los gastos se guardaron, pero no se enviaron porque todos deben tener comprobante.",
+                "warning",
+            )
+            return redirect(url_for("comprobar_gastos_fondos"))
+        for gasto in gastos_envio:
+            gasto.estatus = "EN REVISION"
+            gasto.actualizado_en = now_cdmx_naive()
+        db.session.commit()
+        errores_envio = []
+        try:
+            _send_gastos_group_review_email(gastos_envio)
+        except Exception as exc:
+            errores_envio.append(f"correo: {exc}")
+            logger.exception("No se pudo enviar la comprobación de gastos %s", grupo)
+        try:
+            _send_gastos_group_review_push_hansel(gastos_envio)
+        except Exception as exc:
+            errores_envio.append(f"notificación: {exc}")
+            logger.warning("No se pudo enviar la notificación de gastos %s: %s", grupo, exc)
+        if errores_envio:
+            flash(
+                f"Los gastos quedaron en revisión, pero falló el envío de {'; '.join(errores_envio)}.",
+                "warning",
+            )
+        else:
+            flash(
+                (
+                    f"Se enviaron {len(gastos_envio)} gasto(s) juntos para revisión."
+                    if compra_agrupada
+                    else "El gasto se envió para revisión."
+                ),
+                "success",
+            )
+        return redirect(url_for("comprobar_gastos_fondos"))
+
     flash(
-        f"Salida '{grupo}' registrada con {len(gastos_creados)} gasto(s). "
-        "Cuando termines el grupo, usa 'Enviar salida' para mandar una sola notificación.",
+        f"Se guardaron {len(gastos_creados)} gasto(s) sin enviar notificaciones. "
+        "Puedes continuar capturando y enviarlos cuando el expediente esté completo.",
         "success",
     )
+    if f.get("origen") == "comprobar_fondos":
+        return redirect(url_for("comprobar_gastos_fondos"))
     return _gastos_redirect()
 
 
@@ -15335,6 +15426,7 @@ def solicitudes_recursos_index():
         like = f"%{q}%"
         query = query.filter(or_(
             SolicitudRecurso.folio.ilike(like),
+            SolicitudRecurso.nombre.ilike(like),
             SolicitudRecurso.solicitante.ilike(like),
             SolicitudRecurso.proyecto.ilike(like),
             SolicitudRecurso.notas.ilike(like),
@@ -15365,6 +15457,19 @@ def solicitudes_recursos_index():
 @login_required
 def solicitud_recurso_crear():
     f = request.form
+    nombre = (f.get("nombre") or "").strip()
+    if not nombre:
+        flash("Asigna un nombre único a la solicitud de fondos.", "warning")
+        return redirect(url_for("solicitudes_recursos_index"))
+    nombre_repetido = SolicitudRecurso.query.filter(
+        db.func.lower(db.func.trim(SolicitudRecurso.nombre)) == nombre.lower()
+    ).first()
+    if nombre_repetido:
+        flash(
+            f"Ya existe una solicitud llamada '{nombre}'. Usa un nombre diferente; no se permiten nombres repetidos.",
+            "warning",
+        )
+        return redirect(url_for("solicitudes_recursos_index"))
     proyecto = (f.get("proyecto") or "").strip()
     if not proyecto:
         flash("Selecciona o captura el proyecto para agrupar la solicitud de fondos.", "warning")
@@ -15372,6 +15477,7 @@ def solicitud_recurso_crear():
 
     solicitud = SolicitudRecurso(
         folio=_solicitud_recurso_next_folio(),
+        nombre=nombre,
         fecha=now_cdmx_naive(),
         solicitante=(f.get("solicitante") or responsable_actual() or "").strip() or None,
         proyecto=proyecto,
@@ -15405,7 +15511,15 @@ def solicitud_recurso_crear():
         return redirect(url_for("solicitudes_recursos_index"))
 
     _solicitud_recurso_recalcular(solicitud)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        flash(
+            f"Ya existe una solicitud llamada '{nombre}'. Usa un nombre diferente.",
+            "warning",
+        )
+        return redirect(url_for("solicitudes_recursos_index"))
     _notify_solicitud_recurso_created(solicitud)
     flash(f"Solicitud {solicitud.folio} registrada.", "success")
     return redirect(url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id))
@@ -15443,7 +15557,7 @@ def solicitud_recurso_comprobar(solicitud_id: int):
     return redirect(url_for(
         "gastos_viaticos_grupo_detalle",
         tipo_agrupacion="PROYECTO",
-        grupo=solicitud.proyecto or "Sin proyecto",
+        grupo=solicitud.nombre or solicitud.proyecto or "Sin proyecto",
         fecha=fecha,
         responsable=solicitud.solicitante or "",
         solicitud_id=solicitud.id,

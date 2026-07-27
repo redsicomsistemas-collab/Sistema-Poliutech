@@ -50,6 +50,11 @@
     <form method="post" action="{{ url_for('solicitud_recurso_crear') }}" id="solicitud-recursos-form">
       <div class="row g-3">
         <div class="col-md-4">
+          <label class="form-label">Nombre único de la solicitud</label>
+          <input name="nombre" class="form-control" placeholder="Ej. Fondo visita Pfizer julio 2026" required>
+          <div class="form-text text-danger fw-semibold">No repitas nombres: el sistema bloqueará cualquier nombre que ya exista.</div>
+        </div>
+        <div class="col-md-4">
           <label class="form-label">Solicitante</label>
           <input name="solicitante" class="form-control" value="{{ current_user.nombre if current_user.is_authenticated else '' }}">
         </div>
@@ -62,7 +67,7 @@
             {% endfor %}
           </datalist>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-12">
           <label class="form-label">Notas</label>
           <input name="notas" class="form-control">
         </div>
@@ -112,7 +117,7 @@
     <form method="get" action="{{ url_for('solicitudes_recursos_index') }}" class="row g-2 align-items-end">
       <div class="col-md-6">
         <label class="form-label">Buscar</label>
-        <input name="q" class="form-control" value="{{ q }}" placeholder="Folio, solicitante, proyecto, descripcion o notas">
+        <input name="q" class="form-control" value="{{ q }}" placeholder="Nombre, folio, solicitante, proyecto, descripción o notas">
       </div>
       <div class="col-md-4">
         <label class="form-label">Estatus</label>
@@ -134,6 +139,7 @@
         <thead>
           <tr>
             <th>Folio</th>
+            <th>Nombre</th>
             <th>Fecha</th>
             <th>Solicitante</th>
             <th>Proyecto</th>
@@ -146,6 +152,7 @@
           {% for solicitud in solicitudes %}
           <tr>
             <td class="fw-bold">{{ solicitud.folio }}</td>
+            <td class="fw-semibold">{{ solicitud.nombre or solicitud.folio }}</td>
             <td>{{ solicitud.fecha.strftime("%d/%m/%Y") if solicitud.fecha else "" }}</td>
             <td>{{ solicitud.solicitante or "" }}</td>
             <td>{{ solicitud.proyecto or "" }}</td>
@@ -168,7 +175,7 @@
           </tr>
           {% else %}
           <tr>
-            <td colspan="7" class="text-center text-muted py-4">No hay solicitudes de fondos con estos filtros.</td>
+            <td colspan="8" class="text-center text-muted py-4">No hay solicitudes de fondos con estos filtros.</td>
           </tr>
           {% endfor %}
         </tbody>
