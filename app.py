@@ -12398,6 +12398,12 @@ def require_gasto_owner_or_admin(gasto: "ComprobacionGasto") -> None:
     abort(403)
 
 
+def require_gastos_admin() -> None:
+    """Restringe las acciones destructivas de gastos al rol ADMIN."""
+    if not is_admin():
+        abort(403)
+
+
 def require_gasto_view_access(gasto: "ComprobacionGasto") -> None:
     if _gastos_can_view_all():
         return
@@ -13876,7 +13882,7 @@ def gastos_viaticos_adjunto(adjunto_id: int):
 @login_required
 def gastos_viaticos_reemplazar_comprobante(gasto_id: int):
     gasto = ComprobacionGasto.query.get_or_404(gasto_id)
-    require_gasto_owner_or_admin(gasto)
+    require_gastos_admin()
     uploaded = request.files.get("comprobante")
     if not uploaded or not (uploaded.filename or "").strip():
         flash("Selecciona el nuevo comprobante.", "warning")
@@ -14035,7 +14041,7 @@ def gastos_viaticos_revision_grupo_aprobar():
 @login_required
 def gastos_viaticos_actualizar(gasto_id: int):
     gasto = ComprobacionGasto.query.get_or_404(gasto_id)
-    require_gasto_owner_or_admin(gasto)
+    require_gastos_admin()
     f = request.form
     estatus = (f.get("estatus") or gasto.estatus or "PENDIENTE").strip().upper()
     if estatus not in GASTOS_ESTATUS:
@@ -14056,12 +14062,35 @@ def gastos_viaticos_actualizar(gasto_id: int):
     gasto.moneda = (f.get("moneda") or "MXN").strip().upper()[:10] or "MXN"
     gasto.metodo_pago = (f.get("metodo_pago") or "").strip() or None
     gasto.notas = (f.get("notas") or "").strip() or None
-    if is_admin():
-        gasto.responsable = (f.get("responsable") or "").strip() or gasto.responsable
-    else:
-        gasto.responsable = responsable_actual() or gasto.responsable
+    gasto.responsable = (f.get("responsable") or "").strip() or gasto.responsable
     gasto.actualizado_en = now_cdmx_naive()
-    db.session.commit()
+
+    uploaded = request.files.get("comprobante")
+    anteriores = []
+    nuevo = None
+    try:
+        if uploaded and (uploaded.filename or "").strip():
+            anteriores = list(gasto.adjuntos or [])
+            nuevo = _gastos_save_upload(uploaded, gasto.id)
+            if nuevo is None:
+                raise ValueError("No se pudo guardar el nuevo comprobante.")
+            for adjunto in anteriores:
+                db.session.delete(adjunto)
+            db.session.add(nuevo)
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        flash(str(exc), "warning")
+        return _gastos_redirect()
+
+    if nuevo is not None:
+        for adjunto in anteriores:
+            try:
+                old_path = _upload_storage_path(adjunto.ruta)
+                if old_path.is_file() and old_path != _upload_storage_path(nuevo.ruta):
+                    old_path.unlink()
+            except Exception:
+                logger.warning("No se pudo eliminar el comprobante anterior %s.", adjunto.ruta)
     if estatus == "APROBADO" and anterior != "APROBADO":
         _notify_gastos_authorized_finanzas([gasto])
     flash(f"Comprobacion {gasto.folio} actualizada.", "success")
@@ -14072,7 +14101,7 @@ def gastos_viaticos_actualizar(gasto_id: int):
 @login_required
 def gastos_viaticos_eliminar(gasto_id: int):
     gasto = ComprobacionGasto.query.get_or_404(gasto_id)
-    require_gasto_owner_or_admin(gasto)
+    require_gastos_admin()
     folio = gasto.folio or f"#{gasto.id}"
     db.session.delete(gasto)
     db.session.commit()
