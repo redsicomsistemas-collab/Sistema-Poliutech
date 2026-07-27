@@ -77,8 +77,8 @@
         <input type="text" id="telefono" name="telefono" class="form-control">
       </div>
       <div class="col-md-4">
-        <label for="responsable">Responsable</label>
-        <input type="text" class="form-control" id="responsable" name="responsable" placeholder="Nombre del responsable">
+        <label class="form-label fw-semibold">Usuario que realiza la cotización</label>
+        <input type="text" class="form-control" value="{{ current_user.nombre_representante }}" readonly aria-readonly="true">
       </div>
     </div>
 

@@ -4259,6 +4259,7 @@ def _build_dashboard_cotizaciones_query(
     cliente: str = "",
     especialidad: str = "",
     especialidad_descripcion: str = "",
+    responsable: str = "",
 ):
     q = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
     q = q.filter(Cotizacion.eliminada_en.is_(None))
@@ -4282,6 +4283,12 @@ def _build_dashboard_cotizaciones_query(
 
     if estatus:
         q = q.filter(Cotizacion.estatus == estatus)
+
+    responsable = (responsable or "").strip().lower()
+    if responsable:
+        q = q.filter(
+            db.func.lower(db.func.coalesce(Cotizacion.responsable, "")) == responsable
+        )
 
     especialidad = (especialidad or "").strip().lower()
     if especialidad:
@@ -5298,7 +5305,11 @@ def _pick_import_folio(preferred_folio: Optional[str]) -> str:
 
 def import_external_quote_payload(payload: dict, source_label: Optional[str] = None) -> Cotizacion:
     normalized = _normalize_import_payload(payload)
-    responsable_final = normalized["responsable"] or None
+    # En una importación iniciada desde la aplicación, el autor siempre es el
+    # usuario autenticado; nunca se confía en un responsable enviado en el archivo.
+    responsable_final = responsable_actual() or None
+    if not responsable_final:
+        abort(403, description="No se pudo identificar al usuario de la sesión.")
     cliente = _find_or_create_cliente_import(normalized["cliente"], responsable_final)
 
     subtotal = 0.0
@@ -5777,6 +5788,7 @@ def index():
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
+    responsable = (request.args.get("responsable") or "").strip()
     dashboard_filters = {
         "desde": desde,
         "hasta": hasta,
@@ -5784,6 +5796,7 @@ def index():
         "cliente": cliente,
         "especialidad": especialidad,
         "especialidad_descripcion": especialidad_descripcion,
+        "responsable": responsable,
     }
 
     try:
@@ -5794,10 +5807,11 @@ def index():
             cliente=cliente,
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
+            responsable=responsable,
         )
     except ValueError:
         base_query = _build_dashboard_cotizaciones_query()
-        dashboard_filters = {"desde": "", "hasta": "", "estatus": "", "cliente": "", "especialidad": "", "especialidad_descripcion": ""}
+        dashboard_filters = {"desde": "", "hasta": "", "estatus": "", "cliente": "", "especialidad": "", "especialidad_descripcion": "", "responsable": ""}
 
     total_cotizaciones = base_query.count()
     total_importe = (
@@ -5810,6 +5824,17 @@ def index():
     cotizaciones = pagination.items
 
     total_catalogo = Concepto.query.count()
+    responsables_cotizacion = [
+        value
+        for (value,) in (
+            _cotizaciones_base_query()
+            .with_entities(Cotizacion.responsable)
+            .filter(Cotizacion.responsable.isnot(None), Cotizacion.responsable != "")
+            .distinct()
+            .order_by(Cotizacion.responsable)
+            .all()
+        )
+    ]
 
     return render_template(
         "dashboard.html",
@@ -5823,6 +5848,7 @@ def index():
         valid_estatus=VALID_ESTATUS_SEGUIMIENTO,
         valid_estatus_aprobacion=VALID_ESTATUS_APROBACION,
         especialidades_cotizacion=ESPECIALIDADES_COTIZACION,
+        responsables_cotizacion=responsables_cotizacion,
         show_splash=True
     )
 
@@ -7752,7 +7778,9 @@ def importar_cotizacion_externa():
 
     if request.method == "POST":
         uploaded = request.files.get("cotizacion_pdf")
-        responsable_destino = (request.form.get("responsable_destino") or "").strip() or responsable_actual()
+        responsable_destino = responsable_actual()
+        if not responsable_destino:
+            abort(403, description="No se pudo identificar al usuario de la sesión.")
 
         if not uploaded or not (uploaded.filename or "").strip():
             flash("Selecciona un PDF antes de importar.", "danger")
@@ -7901,16 +7929,10 @@ def crear_cotizacion():
     ciudad_trabajo = (f.get("ciudad_trabajo") or "").strip().upper() or None
     moneda = normalize_moneda(f.get("moneda"))
 
-    # === responsable_final ===
-    # USER: siempre su nombre (primer nombre)
-    # ADMIN: puede mandar responsable desde form; si no manda, queda vacío
-    if is_admin():
-        responsable_final = (f.get("responsable") or "").strip()
-        # si admin dejó vacío, NO inventamos; queda None
-    else:
-        responsable_final = responsable_actual()
-
-    responsable_final = responsable_final or None
+    # El autor de la cotización se toma exclusivamente de la sesión.
+    responsable_final = responsable_actual() or None
+    if not responsable_final:
+        abort(403, description="No se pudo identificar al usuario de la sesión.")
 
     # --- CREAR O BUSCAR CLIENTE ---
     cliente = None
@@ -8114,13 +8136,6 @@ def actualizar_cotizacion(cot_id: int):
     cliente_nombre = (f.get("cliente") or f.get("cliente_nombre") or "").strip()
     empresa = (f.get("empresa") or "").strip()
 
-    # solo admin puede reasignar responsable
-    if is_admin():
-        responsable_form = (f.get("responsable") or "").strip()
-        responsable_final = responsable_form or c.responsable
-    else:
-        responsable_final = responsable_actual() or c.responsable
-
     correo = (f.get("correo") or "").strip()
     telefono = (f.get("telefono") or "").strip()
     direccion = (f.get("direccion") or "").strip()
@@ -8140,7 +8155,7 @@ def actualizar_cotizacion(cot_id: int):
             cliente = Cliente(
                 nombre_cliente=cliente_nombre,
                 empresa=empresa or None,
-                responsable=responsable_final or None,
+                responsable=c.responsable or None,
                 correo=correo or None,
                 telefono=telefono or None,
                 direccion=direccion or None,
@@ -8151,7 +8166,6 @@ def actualizar_cotizacion(cot_id: int):
             print(f"[INFO] Nuevo cliente agregado (en actualización): {cliente_nombre}")
         else:
             cliente.empresa = empresa or None
-            cliente.responsable = responsable_final or None
             cliente.correo = correo or None
             cliente.telefono = telefono or None
             cliente.direccion = direccion or None
@@ -8168,7 +8182,6 @@ def actualizar_cotizacion(cot_id: int):
     c.especialidad = especialidad_form
     c.especialidad_descripcion = (f.get("especialidad_descripcion") or "").strip()[:500] or None
     c.notas = (f.get("notas") or "").strip()
-    c.responsable = (responsable_final or c.responsable)
     c.proyecto = (f.get("proyecto") or "").strip() or None
     c.ciudad_trabajo = (f.get("ciudad_trabajo") or "").strip().upper() or None
     c.moneda = normalize_moneda(f.get("moneda") or getattr(c, "moneda", None))
@@ -8386,6 +8399,7 @@ def bulk_eliminar_filtradas():
     cliente_s = (filters.get("cliente") or "").strip().lower()
     especialidad_s = (filters.get("especialidad") or "").strip()
     especialidad_descripcion_s = (filters.get("especialidad_descripcion") or "").strip()
+    responsable_s = (filters.get("responsable") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -8395,6 +8409,7 @@ def bulk_eliminar_filtradas():
             cliente=cliente_s,
             especialidad=especialidad_s,
             especialidad_descripcion=especialidad_descripcion_s,
+            responsable=responsable_s,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -8535,7 +8550,6 @@ def crear_cotizacion_seguimiento(cot_id: int):
     require_owner_or_admin(c)
 
     nuevo_estatus = (request.form.get("estatus") or "").strip().upper()
-    nuevo_responsable = (request.form.get("responsable") or "").strip()
     comentario = (request.form.get("comentario") or "").strip()
     tagged_users = _usuarios_mencionados_en_comentario(comentario)
     hubo_cambio = False
@@ -8548,12 +8562,8 @@ def crear_cotizacion_seguimiento(cot_id: int):
             c.estatus = nuevo_estatus
             hubo_cambio = True
 
-    if nuevo_responsable != (c.responsable or "").strip():
-        c.responsable = nuevo_responsable
-        hubo_cambio = True
-
     if not comentario and not hubo_cambio:
-        flash("Haz un cambio de estatus/responsable o escribe un comentario para guardar.", "warning")
+        flash("Haz un cambio de estatus o escribe un comentario para guardar.", "warning")
         return redirect(url_for("cotizacion_seguimiento", cot_id=c.id))
 
     seg = None
@@ -9727,6 +9737,7 @@ def export_dashboard_cotizaciones_xlsx():
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
+    responsable = (request.args.get("responsable") or "").strip()
 
     try:
         cotizaciones = (_build_dashboard_cotizaciones_query(
@@ -9736,6 +9747,7 @@ def export_dashboard_cotizaciones_xlsx():
             cliente=cliente,
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
+            responsable=responsable,
         ).order_by(Cotizacion.fecha.desc()).all())
     except ValueError as exc:
         abort(400, description=str(exc))
@@ -9770,6 +9782,8 @@ def export_dashboard_cotizaciones_xlsx():
         filtros_texto.append(f"Especialidad: {especialidad}")
     if especialidad_descripcion:
         filtros_texto.append(f"Descripción: {especialidad_descripcion}")
+    if responsable:
+        filtros_texto.append(f"Usuario: {responsable}")
     if not filtros_texto:
         filtros_texto.append("Sin filtros")
 
@@ -9985,6 +9999,7 @@ def export_dashboard_followups_pdf():
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
+    responsable = (request.args.get("responsable") or "").strip()
 
     try:
         cotizaciones = (
@@ -9995,6 +10010,7 @@ def export_dashboard_followups_pdf():
                 cliente=cliente,
                 especialidad=especialidad,
                 especialidad_descripcion=especialidad_descripcion,
+                responsable=responsable,
             )
             .order_by(Cotizacion.fecha.desc())
             .all()
@@ -10162,6 +10178,7 @@ def api_dashboard_filter_summary():
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
+    responsable = (request.args.get("responsable") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -10171,6 +10188,7 @@ def api_dashboard_filter_summary():
             cliente=cliente,
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
+            responsable=responsable,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -10563,6 +10581,7 @@ def api_dashboard_metrics():
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
+    responsable = (request.args.get("responsable") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -10572,6 +10591,7 @@ def api_dashboard_metrics():
             cliente=cliente,
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
+            responsable=responsable,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -10608,6 +10628,7 @@ def api_dashboard_status_breakdown():
     cliente = (request.args.get("cliente") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
+    responsable = (request.args.get("responsable") or "").strip()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -10617,6 +10638,7 @@ def api_dashboard_status_breakdown():
             cliente=cliente,
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
+            responsable=responsable,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
