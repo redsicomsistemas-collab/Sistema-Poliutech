@@ -3024,6 +3024,7 @@ def _demo_module_for_path(path: str) -> str | None:
         ("/ordenes-compra", "compras"),
         ("/proveedor", "compras"),
         ("/gastos", "gastos"),
+        ("/comprobar-gastos-fondos", "gastos"),
         ("/solicitudes-recursos", "fondos"),
         ("/estado-cuenta-recursos", "fondos"),
         ("/reportes-diarios", "reportes"),
@@ -13223,6 +13224,7 @@ def _gastos_query_from_request():
 @login_required
 def gastos_viaticos_index():
     query, q, agrupacion, estatus = _gastos_query_from_request()
+    query = query.filter(ComprobacionGasto.tipo_gasto != "RECURSO")
     comprobaciones = query.order_by(ComprobacionGasto.fecha_registro.desc(), ComprobacionGasto.id.desc()).all()
     total_recursos = sum(float(g.total or 0) for g in comprobaciones if _gastos_es_recurso(g) and (g.estatus or "") != "RECHAZADO")
     total_gastos = sum(float(g.total or 0) for g in comprobaciones if not _gastos_es_recurso(g) and (g.estatus or "") != "RECHAZADO")
@@ -13310,7 +13312,58 @@ def gastos_viaticos_index():
         fecha_input=_finanzas_fecha_input,
         responsable_default=responsable_actual() or "",
         gastos_can_view_all=is_admin(),
+        mostrar_consolidados=False,
         project_options=_known_project_names(),
+    )
+
+
+@app.route("/comprobar-gastos-fondos")
+@login_required
+def comprobar_gastos_fondos():
+    comprobaciones = (
+        _gastos_apply_user_scope(ComprobacionGasto.query)
+        .order_by(ComprobacionGasto.fecha_registro.desc(), ComprobacionGasto.id.desc())
+        .all()
+    )
+    solicitudes_saldo = _solicitudes_recurso_saldos(comprobaciones)
+    grupos: dict[tuple[str, str, str, str], dict] = {}
+    for gasto in comprobaciones:
+        nombre = _gastos_group_name(gasto)
+        fecha = _gastos_fecha_key(gasto)
+        responsable = (gasto.responsable or "").strip()
+        key = (gasto.tipo_agrupacion or "PROYECTO", nombre, fecha, responsable)
+        item = grupos.setdefault(key, {
+            "nombre": nombre,
+            "conteo": 0,
+            "pendientes": 0,
+            "en_revision": 0,
+            "recursos": 0.0,
+            "gastos": 0.0,
+            "saldo": 0.0,
+            "tipo": gasto.tipo_agrupacion or "PROYECTO",
+            "fecha": fecha,
+            "responsable": responsable,
+        })
+        item["conteo"] += 1
+        item["saldo"] += _gastos_monto_saldo(gasto)
+        if _gastos_es_recurso(gasto) and (gasto.estatus or "") != "RECHAZADO":
+            item["recursos"] += float(gasto.total or 0)
+        elif not _gastos_es_recurso(gasto) and (gasto.estatus or "") != "RECHAZADO":
+            item["gastos"] += float(gasto.total or 0)
+        if not _gastos_es_recurso(gasto) and (gasto.estatus or "") == "PENDIENTE":
+            item["pendientes"] += 1
+        elif not _gastos_es_recurso(gasto) and (gasto.estatus or "") == "EN REVISION":
+            item["en_revision"] += 1
+
+    return render_template(
+        "comprobar_gastos_fondos.html",
+        title="Comprobar gastos de fondos",
+        grupos=sorted(grupos.values(), key=lambda item: (item["fecha"], item["conteo"]), reverse=True),
+        solicitudes_saldo=solicitudes_saldo,
+        total_fondos=sum(float(item["aprobado"] or 0) for item in solicitudes_saldo),
+        total_comprobado=sum(float(item["comprobado"] or 0) for item in solicitudes_saldo),
+        total_saldo=sum(float(item["saldo"] or 0) for item in solicitudes_saldo),
+        is_admin_gastos=is_admin(),
     )
 
 
