@@ -44,6 +44,7 @@ VALID_ESTATUS_SEGUIMIENTO = [
     "GANADA",
     "PERDIDA",
 ]
+PORCENTAJES_SEGUIMIENTO = [f"{porcentaje}%" for porcentaje in range(0, 101, 10)]
 VALID_ESTATUS_APROBACION = [
     "APROBADA",
     "RECHAZADA",
@@ -5846,6 +5847,7 @@ def index():
         pagination=pagination,
         dashboard_filters=dashboard_filters,
         valid_estatus=VALID_ESTATUS_SEGUIMIENTO,
+        valid_estatus_filtro=VALID_ESTATUS_SEGUIMIENTO + PORCENTAJES_SEGUIMIENTO,
         valid_estatus_aprobacion=VALID_ESTATUS_APROBACION,
         especialidades_cotizacion=ESPECIALIDADES_COTIZACION,
         responsables_cotizacion=responsables_cotizacion,

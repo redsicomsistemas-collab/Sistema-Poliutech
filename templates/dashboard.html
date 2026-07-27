@@ -309,7 +309,7 @@
           <label class="form-label small fw-bold text-secondary mb-1">Seguimiento</label>
           <select id="filtro-estatus" class="form-select form-select-sm">
             <option value="">Todos</option>
-            {% for estado in valid_estatus %}
+            {% for estado in valid_estatus_filtro %}
             <option value="{{ estado }}" {% if dashboard_filters.estatus == estado %}selected{% endif %}>{{ estado }}</option>
             {% endfor %}
           </select>
