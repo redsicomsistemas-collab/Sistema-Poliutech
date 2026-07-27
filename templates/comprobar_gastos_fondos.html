@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Comprobar gastos de fondos{% endblock %}
+
+{% block content %}
+<style>
+  .fondo-card {
+    border: 1px solid var(--bs-border-color);
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .fondo-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 .5rem 1rem rgba(15, 23, 42, .1);
+  }
+  .fondo-money {
+    font-variant-numeric: tabular-nums;
+  }
+</style>
+
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 my-4">
+  <div>
+    <div class="text-uppercase small fw-bold text-muted">Módulo independiente</div>
+    <h2 class="fw-bold text-primary mb-1">Comprobar gastos de fondos</h2>
+    <div class="text-muted">Consulta fondos autorizados y abre cada expediente consolidado para agregar o revisar comprobantes.</div>
+  </div>
+  <a href="{{ url_for('gastos_viaticos_index') }}" class="btn btn-outline-secondary">Ir a gastos individuales</a>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <div class="small text-muted">Fondos autorizados</div>
+      <div class="h3 fw-bold text-success fondo-money mb-0">+${{ "{:,.2f}".format(total_fondos or 0) }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <div class="small text-muted">Gastos comprobados</div>
+      <div class="h3 fw-bold text-primary fondo-money mb-0">-${{ "{:,.2f}".format(total_comprobado or 0) }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <div class="small text-muted">Saldo por comprobar</div>
+      <div class="h3 fw-bold {{ 'text-success' if (total_saldo or 0) >= 0 else 'text-danger' }} fondo-money mb-0">
+        {{ '+' if (total_saldo or 0) >= 0 else '-' }}${{ "{:,.2f}".format((total_saldo or 0)|abs) }}
+      </div>
+    </div></div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-primary text-white fw-bold">Fondos autorizados por comprobar</div>
+  <div class="card-body">
+    <div class="row g-3">
+      {% for solicitud in solicitudes_saldo %}
+      <div class="col-12 col-lg-6">
+        <div class="card fondo-card h-100">
+          <div class="card-body d-flex flex-column gap-3">
+            <div class="d-flex justify-content-between gap-3">
+              <div>
+                <div class="fw-bold text-primary">{{ solicitud.folio }}</div>
+                <div class="h5 fw-bold mb-1">{{ solicitud.proyecto }}</div>
+                <div class="small text-muted">{{ solicitud.solicitante or "Sin solicitante" }}</div>
+              </div>
+              <span class="badge bg-success align-self-start">AUTORIZADO</span>
+            </div>
+            <div class="row g-2 small">
+              <div class="col-4"><span class="text-muted d-block">Aprobado</span><strong class="text-success">${{ "{:,.2f}".format(solicitud.aprobado or 0) }}</strong></div>
+              <div class="col-4"><span class="text-muted d-block">Comprobado</span><strong>${{ "{:,.2f}".format(solicitud.comprobado or 0) }}</strong></div>
+              <div class="col-4"><span class="text-muted d-block">Saldo</span><strong class="{{ 'text-success' if (solicitud.saldo or 0) >= 0 else 'text-danger' }}">${{ "{:,.2f}".format(solicitud.saldo or 0) }}</strong></div>
+            </div>
+            <a class="btn btn-primary w-100 mt-auto" href="{{ url_for('solicitud_recurso_comprobar', solicitud_id=solicitud.id) }}">
+              {{ "Continuar comprobación" if solicitud.movimientos else "Comenzar comprobación" }}
+            </a>
+          </div>
+        </div>
+      </div>
+      {% else %}
+      <div class="col-12"><div class="text-center text-muted py-4">No hay fondos autorizados pendientes de comprobación.</div></div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-light">
+    <div class="fw-bold">Expedientes consolidados</div>
+    <div class="small text-muted">Cada tarjeta abre todos los movimientos y comprobantes del grupo.</div>
+  </div>
+  <div class="card-body">
+    <div class="row g-3">
+      {% for grupo in grupos %}
+      <div class="col-12 col-md-6 col-xl-4">
+        <div class="card fondo-card h-100">
+          <div class="card-body d-flex flex-column gap-3">
+            <div>
+              <div class="d-flex justify-content-between gap-2">
+                <span class="badge bg-secondary">{{ grupo.tipo }}</span>
+                <span class="small text-muted">{{ grupo.fecha }}</span>
+              </div>
+              <div class="h5 fw-bold mt-2 mb-1">{{ grupo.nombre }}</div>
+              <div class="small text-muted">{{ grupo.responsable or "Sin comprador" }} · {{ grupo.conteo }} movimiento(s)</div>
+            </div>
+            <div class="d-flex justify-content-between border-top pt-2">
+              <span class="text-muted">Saldo</span>
+              <strong class="{{ 'text-success' if (grupo.saldo or 0) >= 0 else 'text-danger' }}">
+                {{ '+' if (grupo.saldo or 0) >= 0 else '-' }}${{ "{:,.2f}".format((grupo.saldo or 0)|abs) }}
+              </strong>
+            </div>
+            {% if grupo.pendientes %}
+            <span class="badge bg-warning text-dark align-self-start">{{ grupo.pendientes }} pendiente(s) de envío</span>
+            {% elif grupo.en_revision %}
+            <span class="badge bg-info text-dark align-self-start">En revisión</span>
+            {% else %}
+            <span class="badge bg-success align-self-start">Cerrado</span>
+            {% endif %}
+            <a class="btn btn-outline-primary w-100 mt-auto" href="{{ url_for('gastos_viaticos_grupo_detalle', tipo_agrupacion=grupo.tipo, grupo=grupo.nombre, fecha=grupo.fecha, responsable=grupo.responsable) }}">
+              Abrir expediente
+            </a>
+          </div>
+        </div>
+      </div>
+      {% else %}
+      <div class="col-12"><div class="text-center text-muted py-4">Todavía no hay expedientes consolidados.</div></div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

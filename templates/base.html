@@ -748,7 +748,8 @@
         {% if endpoint_exists('facturacion.index') %}
         <a class="nav-link" href="{{ url_for('facturacion.index') }}">🧾 Facturacion</a>
         {% endif %}
-        <a class="nav-link" href="{{ url_for('gastos_viaticos_index') }}">🧾 Comprobar fondos y gastos</a>
+        <a class="nav-link" href="{{ url_for('gastos_viaticos_index') }}">🧾 Gastos</a>
+        <a class="nav-link" href="{{ url_for('comprobar_gastos_fondos') }}">📑 Comprobar gastos de fondos</a>
         {% if estado_cuenta_recursos_can_view() %}
         <a class="nav-link" href="{{ url_for('estado_cuenta_recursos_panel') }}">💳 Edo. fondos</a>
         {% endif %}
