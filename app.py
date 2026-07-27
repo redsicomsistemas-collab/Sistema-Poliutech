@@ -13262,6 +13262,7 @@ def gastos_viaticos_index():
         key = (gasto.tipo_agrupacion or "PROYECTO", nombre, fecha, responsable)
         item = grupos.setdefault(key, {
             "nombre": nombre,
+            "ids": [],
             "conteo": 0,
             "pendientes": 0,
             "en_revision": 0,
@@ -13273,6 +13274,7 @@ def gastos_viaticos_index():
             "fecha": fecha,
             "responsable": responsable,
         })
+        item["ids"].append(gasto.id)
         item["conteo"] += 1
         item["total"] += float(gasto.total or 0)
         item["saldo"] += _gastos_monto_saldo(gasto)
@@ -13411,13 +13413,12 @@ def comprobar_gastos_fondos_grupo_actualizar():
     return redirect(url_for("comprobar_gastos_fondos"))
 
 
-@app.route("/comprobar-gastos-fondos/grupo/eliminar", methods=["POST"])
-@login_required
-def comprobar_gastos_fondos_grupo_eliminar():
-    require_gastos_admin()
-    gastos = _comprobar_fondos_group_from_form()
-    grupo = _gastos_group_name(gastos[0])
-    gasto_ids = [gasto.id for gasto in gastos]
+def _comprobar_fondos_eliminar_gastos(gastos):
+    unique_gastos = {gasto.id: gasto for gasto in gastos if getattr(gasto, "id", None)}
+    gastos = list(unique_gastos.values())
+    if not gastos:
+        return 0
+    gasto_ids = list(unique_gastos)
     rutas_adjuntos = [adjunto.ruta for gasto in gastos for adjunto in (gasto.adjuntos or [])]
     solicitudes = SolicitudRecurso.query.filter(
         SolicitudRecurso.gasto_generado_id.in_(gasto_ids)
@@ -13436,7 +13437,41 @@ def comprobar_gastos_fondos_grupo_eliminar():
                 disk_path.unlink()
         except Exception:
             logger.warning("No se pudo eliminar el adjunto del expediente %s.", ruta)
-    flash(f"Expediente '{grupo}' eliminado con {len(gastos)} movimiento(s).", "success")
+    return len(gastos)
+
+
+@app.route("/comprobar-gastos-fondos/grupo/eliminar", methods=["POST"])
+@login_required
+def comprobar_gastos_fondos_grupo_eliminar():
+    require_gastos_admin()
+    gastos = _comprobar_fondos_group_from_form()
+    grupo = _gastos_group_name(gastos[0])
+    eliminados = _comprobar_fondos_eliminar_gastos(gastos)
+    flash(f"Expediente '{grupo}' eliminado con {eliminados} movimiento(s).", "success")
+    return redirect(url_for("comprobar_gastos_fondos"))
+
+
+@app.route("/comprobar-gastos-fondos/grupos/eliminar", methods=["POST"])
+@login_required
+def comprobar_gastos_fondos_grupos_eliminar():
+    require_gastos_admin()
+    selecciones = request.form.getlist("grupos[]")
+    grupos_ids = []
+    for seleccion in selecciones:
+        ids = {int(value) for value in (seleccion or "").split(",") if value.strip().isdigit()}
+        if ids:
+            grupos_ids.append(ids)
+    if not grupos_ids:
+        flash("Selecciona al menos un expediente para eliminar.", "warning")
+        return redirect(url_for("comprobar_gastos_fondos"))
+
+    ids_unicos = set().union(*grupos_ids)
+    gastos = ComprobacionGasto.query.filter(ComprobacionGasto.id.in_(ids_unicos)).all()
+    eliminados = _comprobar_fondos_eliminar_gastos(gastos)
+    flash(
+        f"Se eliminaron {len(grupos_ids)} expediente(s) y {eliminados} movimiento(s).",
+        "success",
+    )
     return redirect(url_for("comprobar_gastos_fondos"))
 
 
