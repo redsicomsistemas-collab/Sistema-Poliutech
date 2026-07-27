@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Fondos y gastos{% endblock %}
+{% block title %}Gastos{% endblock %}
 
 {% block content %}
 <style>
@@ -63,8 +63,8 @@
 </style>
 <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 my-4">
   <div>
-    <h2 class="fw-bold text-primary mb-1">Fondos y gastos</h2>
-    <div class="text-muted">Solicita dinero, registra compras y comprueba cada fondo desde un solo lugar.</div>
+    <h2 class="fw-bold text-primary mb-1">Gastos</h2>
+    <div class="text-muted">Registra y consulta cada gasto de forma individual.</div>
   </div>
   <div class="d-flex gap-2">
     <button type="button" id="btnPorImagen" class="btn btn-primary fw-semibold">POR IMAGEN</button>
@@ -77,23 +77,15 @@
   <div class="col-md-3">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-body">
-        <div class="text-muted small">Dinero aprobado</div>
-        <div class="h3 fw-bold text-success mb-0">+${{ "{:,.2f}".format(total_recursos or 0) }}</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
         <div class="text-muted small">Gastos registrados</div>
-        <div class="h3 fw-bold text-primary mb-0">-${{ "{:,.2f}".format(total_gastos or 0) }}</div>
+        <div class="h3 fw-bold text-primary mb-0">${{ "{:,.2f}".format(total_general or 0) }}</div>
       </div>
     </div>
   </div>
   <div class="col-md-3">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-body">
-        <div class="text-muted small">Pendiente / revision</div>
+        <div class="text-muted small">Pendientes / revisión</div>
         <div class="h3 fw-bold text-warning mb-0">${{ "{:,.2f}".format(total_pendiente or 0) }}</div>
       </div>
     </div>
@@ -101,16 +93,23 @@
   <div class="col-md-3">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-body">
-        <div class="text-muted small">Saldo total</div>
-        <div class="h3 fw-bold {{ 'text-success' if (saldo_total or 0) >= 0 else 'text-danger' }} mb-0">
-          {{ '+' if (saldo_total or 0) >= 0 else '-' }}${{ "{:,.2f}".format((saldo_total or 0)|abs) }}
-        </div>
-        <div class="small text-muted">{{ "A favor" if (saldo_total or 0) >= 0 else "En contra" }}</div>
+        <div class="text-muted small">Aprobados</div>
+        <div class="h3 fw-bold text-success mb-0">${{ "{:,.2f}".format(total_aprobado or 0) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Comprobantes</div>
+        <div class="h3 fw-bold mb-0">{{ comprobaciones|length }}</div>
+        <div class="small text-muted">Registros individuales</div>
       </div>
     </div>
   </div>
 </div>
 
+{% if mostrar_consolidados %}
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-header bg-light fw-bold">Solicitudes aprobadas por comprobar</div>
   <div class="card-body p-0">
@@ -159,11 +158,12 @@
     </div>
   </div>
 </div>
+{% endif %}
 
 <div class="row g-4 mb-4">
-  <div class="col-xl-8">
+  <div class="col-12">
     <div class="card border-0 shadow-sm h-100">
-      <div class="card-header bg-primary text-white fw-bold">Registrar compra con dinero propio</div>
+      <div class="card-header bg-primary text-white fw-bold">Registrar gasto</div>
       <div class="card-body">
         <div id="aiStatus" class="alert alert-info d-none mb-3"></div>
         <form method="post" action="{{ url_for('gastos_viaticos_crear') }}" enctype="multipart/form-data" class="row g-3" id="gastoForm">
@@ -172,7 +172,7 @@
           <input type="file" name="comprobante" id="comprobanteFile" class="d-none" accept="application/pdf,image/png,image/jpeg,image/webp" capture="environment">
 
           <div class="col-md-3">
-            <label class="form-label">La salida es por</label>
+            <label class="form-label">Clasificar por</label>
             <select name="tipo_agrupacion" id="tipoAgrupacion" class="form-select">
               <option value="PROYECTO">Proyecto</option>
               <option value="EVENTO">Evento</option>
@@ -192,11 +192,11 @@
             <input name="evento" id="evento" class="form-control" placeholder="Evento, viaje o actividad">
           </div>
           <div class="col-md-3">
-            <label class="form-label">Fecha salida</label>
+            <label class="form-label">Fecha del gasto</label>
             <input type="date" name="fecha_salida" id="fecha_salida" class="form-control">
           </div>
           <div class="col-md-3">
-            <label class="form-label">Responsable de la salida</label>
+            <label class="form-label">Responsable del gasto</label>
             <input name="responsable" id="responsable" class="form-control" value="{{ responsable_default }}" placeholder="Nombre" {% if not gastos_can_view_all %}readonly{% endif %}>
           </div>
           <div class="col-md-2">
@@ -215,8 +215,7 @@
 
           <div class="col-12">
             <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
-              <div class="fw-bold">Gastos de esta salida</div>
-              <button type="button" class="btn btn-outline-primary btn-sm" id="addGastoRow">Agregar renglon</button>
+              <div class="fw-bold">Datos del gasto</div>
             </div>
             <div class="table-responsive border rounded">
               <table class="table table-sm mb-0 salida-lines-table">
@@ -264,13 +263,14 @@
             </div>
           </div>
           <div class="col-md-3 ms-auto d-grid">
-            <button class="btn btn-success">Guardar salida</button>
+            <button class="btn btn-success">Guardar gasto</button>
           </div>
         </form>
       </div>
     </div>
   </div>
 
+  {% if mostrar_consolidados %}
   <div class="col-xl-4">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-header bg-light fw-bold">Salidas agrupadas</div>
@@ -328,6 +328,7 @@
       </div>
     </div>
   </div>
+  {% endif %}
 </div>
 
 <div class="card border-0 shadow-sm mb-4">
@@ -373,7 +374,7 @@
             <th class="col-comprobante">Comprobante</th>
             <th class="col-compra">Compra</th>
             <th class="col-fecha">Fecha</th>
-            <th class="col-total">Saldo</th>
+            <th class="col-total">Total</th>
             <th class="col-ia">IA</th>
             <th class="col-estatus">Estatus</th>
             <th class="col-adjuntos">Adjuntos</th>
@@ -395,8 +396,8 @@
             </td>
             <td class="cell-wrap">{{ gasto.responsable or "-" }}</td>
             <td>{{ gasto.fecha_comprobante.strftime("%d/%m/%Y") if gasto.fecha_comprobante else "-" }}</td>
-            <td class="fw-bold {{ 'text-success' if gastos_monto_saldo(gasto) >= 0 else 'text-danger' }}">
-              {{ '+' if gastos_monto_saldo(gasto) >= 0 else '-' }}${{ "{:,.2f}".format((gastos_monto_saldo(gasto))|abs) }} {{ gasto.moneda }}
+            <td class="fw-bold text-primary">
+              ${{ "{:,.2f}".format(gasto.total or 0) }} {{ gasto.moneda }}
             </td>
             <td>
               {% if gasto.ai_confianza %}
