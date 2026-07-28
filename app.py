@@ -4115,6 +4115,25 @@ def _usuario_nombre_representante(user: Usuario | None) -> str:
     nombre = (getattr(user, "nombre", "") or "").strip()
     return nombre
 
+@app.template_global()
+def nombre_visible_usuario(usuario_o_nombre) -> str:
+    """
+    Convierte un nombre de acceso guardado históricamente (p. ej. JDLC) en el
+    nombre visible del usuario. Si no existe coincidencia, conserva el valor.
+    """
+    if isinstance(usuario_o_nombre, Usuario):
+        return _usuario_nombre_representante(usuario_o_nombre)
+
+    nombre = str(usuario_o_nombre or "").strip()
+    if not nombre:
+        return ""
+
+    usuario = Usuario.query.filter(or_(
+        db.func.lower(Usuario.nombre) == nombre.lower(),
+        db.func.lower(db.func.coalesce(Usuario.nombre_visible, "")) == nombre.lower(),
+    )).first()
+    return _usuario_nombre_representante(usuario) if usuario else nombre
+
 def responsable_actual() -> str:
     """
     Nombre visible del usuario autenticado para representante/autor.
@@ -10366,7 +10385,7 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
             Paragraph(f"<b>Fecha:</b> {c.fecha.strftime('%d/%m/%Y %H:%M')}", styles["Encabezado"]),
         ],
         [
-            Paragraph(f"<b>Responsable:</b> {c.responsable or ''}", styles["Encabezado"]),
+            Paragraph(f"<b>Responsable:</b> {escape(nombre_visible_usuario(c.responsable))}", styles["Encabezado"]),
             Paragraph(f"<b>Cliente:</b> {cliente_nombre}", styles["Encabezado"]),
         ],
         [
