@@ -3,7 +3,7 @@
 
   const previewUrls = new WeakMap();
   const initializedInputs = new WeakSet();
-  const supportedNames = /(^|_|\[)(comprobante|factura_archivo|pago_archivo|cotizacion_pdf)(\]|$)/i;
+  const supportedNames = /(comprobante|factura_archivo|pago_archivo|cotizacion_pdf)/i;
   const supportedTypes = /^(application\/pdf|image\/)/i;
 
   function isSupportedInput(input) {
