@@ -13953,13 +13953,6 @@ def gastos_viaticos_crear():
                 .order_by(ComprobacionGasto.fecha_comprobante.asc(), ComprobacionGasto.id.asc())
                 .all()
             )
-        sin_comprobante = [gasto for gasto in gastos_envio if not (gasto.adjuntos or [])]
-        if sin_comprobante:
-            flash(
-                "Los gastos se guardaron, pero no se enviaron porque todos deben tener comprobante.",
-                "warning",
-            )
-            return redirect(url_for("comprobar_gastos_fondos"))
         for gasto in gastos_envio:
             gasto.estatus = "EN REVISION"
             gasto.actualizado_en = now_cdmx_naive()
@@ -14032,17 +14025,6 @@ def gastos_viaticos_enviar_grupo():
         )
     if not gastos:
         flash("No hay gastos pendientes en esa salida para enviar a revision.", "info")
-        return _gastos_redirect()
-    sin_comprobante = [gasto for gasto in gastos if not (gasto.adjuntos or [])]
-    if sin_comprobante:
-        folios = ", ".join(gasto.folio or f"#{gasto.id}" for gasto in sin_comprobante[:5])
-        extra = f" y {len(sin_comprobante) - 5} mas" if len(sin_comprobante) > 5 else ""
-        flash(
-            f"No se envio el expediente. Falta adjuntar comprobante en {folios}{extra}.",
-            "warning",
-        )
-        if solicitud_recurso_id:
-            return redirect(url_for("solicitud_recurso_comprobar", solicitud_id=solicitud_recurso_id))
         return _gastos_redirect()
     for gasto in gastos:
         gasto.estatus = "EN REVISION"
