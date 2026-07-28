@@ -16,6 +16,8 @@ def format_pdf_condition_lines(values: list[object]) -> str:
         if not text:
             lines.append("")
         elif _normalize_heading(text) == "clausulas":
+            if lines and lines[-1] != "":
+                lines.append("")
             lines.append(escape(text))
         else:
             lines.append(f"• {escape(text)}")
