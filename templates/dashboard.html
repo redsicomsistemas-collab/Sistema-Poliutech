@@ -427,7 +427,7 @@
                 </a>
               </td>
               <td>{{ c.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
-              <td>{{ c.responsable or 'Sin asignar' }}</td>
+              <td>{{ nombre_visible_usuario(c.responsable) or 'Sin asignar' }}</td>
               <td class="cell-cliente">{{ c.cliente.nombre_cliente if c.cliente else '' }}</td>
               <td class="cell-empresa">{{ c.cliente.empresa if c.cliente else '' }}</td>
               <td class="cell-especialidad">{{ c.especialidad or '' }}</td>
