@@ -17,6 +17,7 @@ from email.message import EmailMessage
 from email.utils import getaddresses
 from html import escape
 import xml.etree.ElementTree as ET
+from utils.pdf_conditions import format_pdf_condition_lines
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from werkzeug.utils import secure_filename
 try:
@@ -10573,7 +10574,7 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
             fontSize=9,
             leftIndent=8,
         )
-        bullets = "<br/>".join([f"• {x}" for x in condiciones if str(x).strip()])
+        bullets = format_pdf_condition_lines(condiciones)
         elems.append(Paragraph(bullets, nota_style))
         elems.append(Spacer(1, 8))
 
