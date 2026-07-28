@@ -86,7 +86,7 @@
           </div>
           <div class="col-md-8">
             <label class="form-label fw-bold text-primary">Usuario que realizó la cotización</label>
-            <input type="text" class="form-control" value="{{ c.responsable or 'Sin asignar' }}" readonly aria-readonly="true">
+            <input type="text" class="form-control" value="{{ nombre_visible_usuario(c.responsable) or 'Sin asignar' }}" readonly aria-readonly="true">
           </div>
         </div>
 
