@@ -134,7 +134,10 @@
               <td><input type="number" step="any" min="0" name="subtotal[]" class="form-control form-control-sm js-fondo-subtotal"></td>
               <td><input type="number" step="any" min="0" name="iva[]" class="form-control form-control-sm js-fondo-iva" value="0"></td>
               <td><input type="number" step="any" min="0" name="total[]" class="form-control form-control-sm js-fondo-total" required></td>
-              <td><input type="file" name="comprobante[]" class="form-control form-control-sm" accept="application/pdf,image/png,image/jpeg,image/webp" required></td>
+              <td>
+                <input type="file" name="comprobante[]" class="form-control form-control-sm" accept="application/pdf,image/png,image/jpeg,image/webp">
+                <div class="form-text">Opcional</div>
+              </td>
               <td><button type="button" class="btn btn-sm btn-outline-danger js-quitar-gasto-fondo">Quitar</button></td>
             </tr>
           </tbody>
