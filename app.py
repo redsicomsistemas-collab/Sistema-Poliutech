@@ -2079,6 +2079,107 @@ def _send_due_quote_followup_reminders() -> None:
         db.session.commit()
 
 
+def _quote_assignment_notification_users(asignado: Usuario) -> list[Usuario]:
+    users = Usuario.query.filter(
+        db.or_(
+            db.func.upper(Usuario.rol) == "ADMIN",
+            Usuario.id == 18,
+            db.func.lower(db.func.coalesce(Usuario.correo, "")) == "hjaramillo@poliutech.com",
+            db.func.lower(db.func.coalesce(Usuario.nombre, "")).like("hansel%"),
+            db.func.lower(db.func.coalesce(Usuario.nombre_visible, "")).like("hansel%"),
+        )
+    ).all()
+    users.append(asignado)
+    return list({user.id: user for user in users if user and user.id}.values())
+
+
+def _send_quote_assignment_notifications(
+    cotizaciones: list[Cotizacion],
+    asignado: Usuario,
+    asignado_por: Usuario,
+    proximo_seguimiento: datetime,
+    prioridad: str,
+    instruccion: str,
+) -> dict[str, dict[str, int]]:
+    recipients = _quote_assignment_notification_users(asignado)
+    folios = [str(cot.folio or f"#{cot.id}") for cot in cotizaciones]
+    shown_folios = ", ".join(folios[:10])
+    if len(folios) > 10:
+        shown_folios += f" y {len(folios) - 10} más"
+    detalle_url = url_for("index", bandeja="mis", _external=True)
+    subject = f"Seguimiento asignado · {len(cotizaciones)} cotización(es)"
+    body = (
+        f"Asesor asignado: {asignado.nombre_representante}\n"
+        f"Asignó: {asignado_por.nombre_representante}\n"
+        f"Cotizaciones: {shown_folios}\n"
+        f"Próximo seguimiento: {proximo_seguimiento.strftime('%d/%m/%Y %H:%M')}\n"
+        f"Prioridad: {prioridad}\n"
+        f"Instrucción: {instruccion or 'Sin instrucción adicional'}\n\n"
+        f"Abrir seguimiento: {detalle_url}"
+    )
+    results = {
+        "email": {"sent": 0, "failed": 0},
+        "whatsapp": {"sent": 0, "failed": 0},
+        "push": {"sent": 0, "failed": 0},
+    }
+
+    emails = list(dict.fromkeys(
+        (user.correo or "").strip().lower()
+        for user in recipients
+        if (user.correo or "").strip()
+    ))
+    if emails:
+        try:
+            msg = EmailMessage()
+            msg["Subject"] = subject
+            msg["From"] = f"SISTEMA MAR <{SMTP_FROM or SMTP_USERNAME}>"
+            msg["To"] = ", ".join(emails)
+            msg.set_content(body)
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
+                smtp.starttls()
+                smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+                smtp.send_message(msg)
+            results["email"]["sent"] = len(emails)
+        except Exception:
+            results["email"]["failed"] = len(emails)
+            logger.exception("No se pudo enviar correo de asignación de cotización")
+
+    phones = list(dict.fromkeys(
+        (user.telefono or "").strip()
+        for user in recipients
+        if (user.telefono or "").strip()
+    ))
+    for admin_phone in ADMIN_LIST:
+        if admin_phone and admin_phone not in phones:
+            phones.append(admin_phone)
+    if phones:
+        try:
+            send_whatsapp_multi(phones, f"*{subject}*\n\n{body}")
+            results["whatsapp"]["sent"] = len(phones)
+        except Exception:
+            results["whatsapp"]["failed"] = len(phones)
+            logger.exception("No se pudo enviar WhatsApp de asignación de cotización")
+
+    user_ids = [user.id for user in recipients]
+    tokens = _mobile_push_tokens_for_users(user_ids)
+    try:
+        results["push"] = _send_push_notification(
+            tokens,
+            title=subject,
+            body=f"{asignado.nombre_representante} · {shown_folios} · {prioridad}",
+            data={
+                "type": "quote_assignment",
+                "usuario_id": str(asignado.id),
+                "cotizacion_id": str(cotizaciones[0].id if len(cotizaciones) == 1 else ""),
+                "folios": shown_folios,
+            },
+        )
+    except Exception:
+        results["push"]["failed"] = len(tokens)
+        logger.exception("No se pudo enviar push de asignación de cotización")
+    return results
+
+
 def _send_push_notification(tokens: list[str], title: str, body: str, data: Optional[dict[str, str]] = None) -> dict[str, int]:
     if is_demo_user():
         logger.info("Push simulado en cuenta demo: %s", title)
@@ -8663,8 +8764,11 @@ def asignar_cotizaciones():
         return jsonify({"error": "No se recibieron cotizaciones válidas."}), 400
 
     actualizadas = []
+    notification_results = {}
     try:
         cotizaciones = _cotizaciones_activas_query().filter(Cotizacion.id.in_(norm_ids)).all()
+        if not cotizaciones:
+            return jsonify({"error": "No se encontraron cotizaciones activas para asignar."}), 404
         for cot in cotizaciones:
             fecha_asignacion = now_cdmx_naive()
             if cot.responsable_usuario_id != usuario.id:
@@ -8685,26 +8789,30 @@ def asignar_cotizaciones():
             cot.recordatorio_seguimiento_en = None
             actualizadas.append(cot.id)
         db.session.commit()
-        try:
-            tokens = _mobile_push_tokens_for_users([usuario.id])
-            _send_push_notification(
-                tokens,
-                title=f"{len(actualizadas)} seguimiento(s) asignado(s)",
-                body=f"Prioridad {prioridad}. Próximo contacto: {proximo_seguimiento.strftime('%d/%m/%Y %H:%M')}.",
-                data={"type": "quote_assignment", "usuario_id": str(usuario.id)},
-            )
-        except Exception:
-            logger.exception("No se pudo enviar la notificación de asignación")
     except Exception as exc:
         db.session.rollback()
         logger.exception("No se pudieron asignar cotizaciones")
         return jsonify({"error": str(exc)}), 500
+
+    try:
+        notification_results = _send_quote_assignment_notifications(
+            cotizaciones=cotizaciones,
+            asignado=usuario,
+            asignado_por=current_user,
+            proximo_seguimiento=proximo_seguimiento,
+            prioridad=prioridad,
+            instruccion=instruccion,
+        )
+    except Exception:
+        logger.exception("La asignación se guardó, pero falló la preparación de notificaciones")
+        notification_results = {"error": "La asignación se guardó; uno o más avisos no pudieron enviarse."}
 
     return jsonify({
         "updated": len(actualizadas),
         "updated_ids": actualizadas,
         "usuario_id": usuario.id,
         "responsable": usuario.nombre_representante,
+        "notifications": notification_results,
     })
 
 
