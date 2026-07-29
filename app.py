@@ -2845,6 +2845,7 @@ from models import (
     Cotizacion,
     CotizacionDetalle,
     CotizacionSeguimiento,
+    CotizacionAsignacion,
     VoiceCommandLog,
     Usuario,
     MobileDevice,
@@ -3390,6 +3391,10 @@ def ensure_schema():
                 db.session.execute(text("ALTER TABLE cotizacion ADD COLUMN responsable VARCHAR(120)"))
                 db.session.commit()
                 print("✅ Campo 'responsable' agregado en 'cotizacion'.")
+        if "responsable_usuario_id" not in cols_cot:
+            db.session.execute(text("ALTER TABLE cotizacion ADD COLUMN responsable_usuario_id INTEGER"))
+            db.session.commit()
+            print("✅ Campo 'responsable_usuario_id' agregado en 'cotizacion'.")
     except Exception as e:
         print("⚠️ ensure_schema(cotizacion.responsable):", e)
 
@@ -4145,6 +4150,8 @@ def responsable_actual() -> str:
 
 def require_owner_or_admin(cot: Cotizacion) -> None:
     if is_admin():
+        return
+    if getattr(current_user, "id", None) and cot.responsable_usuario_id == current_user.id:
         return
     ra = responsable_actual()
     if not ra or (cot.responsable or "") != ra:
@@ -5868,6 +5875,10 @@ def index():
         )
     ]
 
+    usuarios_asignables = Usuario.query.order_by(
+        db.func.lower(db.func.coalesce(Usuario.nombre_visible, Usuario.nombre))
+    ).all()
+
     return render_template(
         "dashboard.html",
         title="Sistema MAR",
@@ -5882,6 +5893,7 @@ def index():
         valid_estatus_aprobacion=VALID_ESTATUS_APROBACION,
         especialidades_cotizacion=ESPECIALIDADES_COTIZACION,
         responsables_cotizacion=responsables_cotizacion,
+        usuarios_asignables=usuarios_asignables,
         show_splash=True
     )
 
@@ -8410,6 +8422,65 @@ def bulk_eliminar_cotizaciones():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/cotizaciones/asignar", methods=["POST"])
+@login_required
+def asignar_cotizaciones():
+    if not is_admin():
+        return jsonify({"error": "Solo el administrador puede asignar cotizaciones."}), 403
+
+    payload = request.get_json(silent=True) or {}
+    try:
+        usuario_id = int(payload.get("usuario_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Selecciona un usuario registrado."}), 400
+
+    usuario = Usuario.query.get(usuario_id)
+    if not usuario:
+        return jsonify({"error": "El usuario seleccionado no existe."}), 404
+
+    ids = payload.get("ids")
+    if not isinstance(ids, list):
+        return jsonify({"error": "Selecciona al menos una cotización."}), 400
+
+    norm_ids = []
+    for value in ids:
+        try:
+            norm_ids.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    norm_ids = list(dict.fromkeys(norm_ids))[:500]
+    if not norm_ids:
+        return jsonify({"error": "No se recibieron cotizaciones válidas."}), 400
+
+    actualizadas = []
+    try:
+        cotizaciones = _cotizaciones_activas_query().filter(Cotizacion.id.in_(norm_ids)).all()
+        for cot in cotizaciones:
+            if cot.responsable_usuario_id != usuario.id:
+                db.session.add(CotizacionAsignacion(
+                    cotizacion_id=cot.id,
+                    usuario_anterior_id=cot.responsable_usuario_id,
+                    usuario_nuevo_id=usuario.id,
+                    asignado_por_id=getattr(current_user, "id", None),
+                    asignado_en=now_cdmx_naive(),
+                ))
+                cot.responsable_usuario_id = usuario.id
+                cot.responsable = usuario.nombre_representante
+            actualizadas.append(cot.id)
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        logger.exception("No se pudieron asignar cotizaciones")
+        return jsonify({"error": str(exc)}), 500
+
+    return jsonify({
+        "updated": len(actualizadas),
+        "updated_ids": actualizadas,
+        "usuario_id": usuario.id,
+        "responsable": usuario.nombre_representante,
+    })
 
 
 @app.route("/cotizaciones/bulk-eliminar-filtradas", methods=["POST"])

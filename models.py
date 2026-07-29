@@ -69,6 +69,7 @@ class Cotizacion(db.Model):
     notas = db.Column(db.String(3000))
     last_whatsapp_at = db.Column(db.DateTime, nullable=True)
     responsable = db.Column(db.String(120))  # sustituye a “representante”
+    responsable_usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True, index=True)
     proyecto = db.Column(db.String(200))
     ciudad_trabajo = db.Column(db.String(120))
     area_total = db.Column(db.Float, default=0.0)
@@ -90,6 +91,7 @@ class Cotizacion(db.Model):
         cascade="all, delete-orphan",
         order_by="CotizacionSeguimiento.fecha_seguimiento.desc()"
     )
+    responsable_usuario = db.relationship("Usuario", foreign_keys=[responsable_usuario_id])
 
     def __repr__(self):
         return f"<Cotizacion {self.folio or self.id}>"
@@ -229,6 +231,22 @@ class CotizacionSeguimiento(db.Model):
 
     def __repr__(self):
         return f"<CotizacionSeguimiento cotizacion={self.cotizacion_id} autor={self.autor}>"
+
+
+class CotizacionAsignacion(db.Model):
+    __tablename__ = "cotizacion_asignacion"
+
+    id = db.Column(db.Integer, primary_key=True)
+    cotizacion_id = db.Column(db.Integer, db.ForeignKey("cotizacion.id"), nullable=False, index=True)
+    usuario_anterior_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
+    usuario_nuevo_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=False, index=True)
+    asignado_por_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
+    asignado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    cotizacion = db.relationship("Cotizacion", backref=db.backref("historial_asignaciones", lazy=True))
+    usuario_anterior = db.relationship("Usuario", foreign_keys=[usuario_anterior_id])
+    usuario_nuevo = db.relationship("Usuario", foreign_keys=[usuario_nuevo_id])
+    asignado_por = db.relationship("Usuario", foreign_keys=[asignado_por_id])
 
 
 class VoiceCommandLog(db.Model):
