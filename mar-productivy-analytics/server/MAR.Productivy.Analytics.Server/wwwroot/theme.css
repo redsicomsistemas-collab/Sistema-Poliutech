@@ -125,6 +125,23 @@ html[data-theme="dark"] nav a.active {
   color: #0c3c78;
 }
 html[data-theme="dark"] header { border-color: var(--line); }
+.employee-sites { margin-top: 18px; }
+.employee-sites-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 15px;
+  border-left: 4px solid var(--gold);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--ink);
+}
+.employee-sites-title strong,
+.employee-sites-title small { display: block; }
+.employee-sites-title strong { font-size: 14px; }
+.employee-sites-title small { margin-top: 3px; color: var(--muted); font-size: 10px; }
+.employee-sites-title > span { color: var(--mar); font-size: 11px; font-weight: 700; }
 
 @media (max-width: 520px) {
   .theme-toggle { right: 12px; bottom: 12px; }

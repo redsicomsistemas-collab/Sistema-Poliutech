@@ -208,9 +208,10 @@ sealed class LocalStore {
         var since=DateTimeOffset.UtcNow.AddDays(-7);
         var names=devices.ToDictionary(device=>device.Id,device=>new{device.EmployeeName,device.ComputerName,device.Team});
         var websites=events.Where(item=>item.StartedAt>=since&&!string.IsNullOrWhiteSpace(item.Domain))
-            .GroupBy(item=>new{item.DeviceId,item.Domain})
-            .Select(group=>new{deviceId=group.Key.DeviceId,domain=group.Key.Domain,employeeName=names.TryGetValue(group.Key.DeviceId,out var device)?device.EmployeeName:"Desconocido",computerName=names.TryGetValue(group.Key.DeviceId,out device)?device.ComputerName:"Desconocido",team=names.TryGetValue(group.Key.DeviceId,out device)?device.Team:"",seconds=group.Sum(item=>Math.Max(0,item.DurationSeconds-item.IdleSeconds)),lastVisitedAt=group.Max(item=>item.EndedAt)})
-            .OrderByDescending(item=>item.seconds).ToList();
+            .Select(item=>new{eventItem=item,employeeName=names.TryGetValue(item.DeviceId,out var device)?device.EmployeeName:"Desconocido",computerName=names.TryGetValue(item.DeviceId,out device)?device.ComputerName:"Desconocido",team=names.TryGetValue(item.DeviceId,out device)?device.Team:""})
+            .GroupBy(item=>new{item.employeeName,item.eventItem.Domain})
+            .Select(group=>new{domain=group.Key.Domain,employeeName=group.Key.employeeName,computers=string.Join(", ",group.Select(item=>item.computerName).Distinct()),team=string.Join(", ",group.Select(item=>item.team).Where(value=>!string.IsNullOrWhiteSpace(value)).Distinct()),seconds=group.Sum(item=>Math.Max(0,item.eventItem.DurationSeconds-item.eventItem.IdleSeconds)),lastVisitedAt=group.Max(item=>item.eventItem.EndedAt)})
+            .OrderBy(item=>item.employeeName).ThenByDescending(item=>item.seconds).ToList();
         return new{websites};
     }}
     static string? NormalizeDomain(string? value) {
