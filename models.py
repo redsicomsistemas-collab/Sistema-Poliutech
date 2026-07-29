@@ -70,6 +70,13 @@ class Cotizacion(db.Model):
     last_whatsapp_at = db.Column(db.DateTime, nullable=True)
     responsable = db.Column(db.String(120))  # sustituye a “representante”
     responsable_usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True, index=True)
+    asignado_en = db.Column(db.DateTime, nullable=True)
+    asignado_por_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
+    proximo_seguimiento = db.Column(db.DateTime, nullable=True, index=True)
+    ultimo_contacto = db.Column(db.DateTime, nullable=True)
+    prioridad = db.Column(db.String(20), nullable=True, default="MEDIA")
+    instruccion_asignacion = db.Column(db.Text, nullable=True)
+    recordatorio_seguimiento_en = db.Column(db.DateTime, nullable=True)
     proyecto = db.Column(db.String(200))
     ciudad_trabajo = db.Column(db.String(120))
     area_total = db.Column(db.Float, default=0.0)
@@ -92,6 +99,7 @@ class Cotizacion(db.Model):
         order_by="CotizacionSeguimiento.fecha_seguimiento.desc()"
     )
     responsable_usuario = db.relationship("Usuario", foreign_keys=[responsable_usuario_id])
+    asignado_por_usuario = db.relationship("Usuario", foreign_keys=[asignado_por_id])
 
     def __repr__(self):
         return f"<Cotizacion {self.folio or self.id}>"
