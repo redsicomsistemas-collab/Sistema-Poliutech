@@ -2042,6 +2042,43 @@ def _send_daily_status_reminder(cot: Cotizacion, ahora: datetime) -> None:
     db.session.commit()
 
 
+def _send_due_quote_followup_reminders() -> None:
+    ahora = now_cdmx_naive()
+    inicio_hoy = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
+    limite = inicio_hoy + timedelta(days=1)
+    pendientes = (
+        _cotizaciones_activas_query()
+        .filter(
+            Cotizacion.responsable_usuario_id.isnot(None),
+            Cotizacion.proximo_seguimiento.isnot(None),
+            Cotizacion.proximo_seguimiento < limite,
+            db.or_(
+                Cotizacion.recordatorio_seguimiento_en.is_(None),
+                Cotizacion.recordatorio_seguimiento_en < inicio_hoy,
+            ),
+        )
+        .order_by(Cotizacion.proximo_seguimiento.asc())
+        .limit(100)
+        .all()
+    )
+    for cot in pendientes:
+        tokens = _mobile_push_tokens_for_users([cot.responsable_usuario_id])
+        vencida = cot.proximo_seguimiento < inicio_hoy
+        _send_push_notification(
+            tokens,
+            title=("Seguimiento vencido" if vencida else "Seguimiento para hoy"),
+            body=f"{cot.folio or 'Cotización'} · {cot.cliente.nombre_cliente if cot.cliente else 'Cliente'}",
+            data={
+                "type": "quote_followup_due",
+                "cotizacion_id": str(cot.id),
+                "folio": str(cot.folio or ""),
+            },
+        )
+        cot.recordatorio_seguimiento_en = ahora
+    if pendientes:
+        db.session.commit()
+
+
 def _send_push_notification(tokens: list[str], title: str, body: str, data: Optional[dict[str, str]] = None) -> dict[str, int]:
     if is_demo_user():
         logger.info("Push simulado en cuenta demo: %s", title)
@@ -3411,6 +3448,19 @@ def ensure_schema():
             db.session.execute(text("ALTER TABLE cotizacion ADD COLUMN responsable_usuario_id INTEGER"))
             db.session.commit()
             print("✅ Campo 'responsable_usuario_id' agregado en 'cotizacion'.")
+        for col, stmt in [
+            ("asignado_en", "ALTER TABLE cotizacion ADD COLUMN asignado_en TIMESTAMP NULL"),
+            ("asignado_por_id", "ALTER TABLE cotizacion ADD COLUMN asignado_por_id INTEGER"),
+            ("proximo_seguimiento", "ALTER TABLE cotizacion ADD COLUMN proximo_seguimiento TIMESTAMP NULL"),
+            ("ultimo_contacto", "ALTER TABLE cotizacion ADD COLUMN ultimo_contacto TIMESTAMP NULL"),
+            ("prioridad", "ALTER TABLE cotizacion ADD COLUMN prioridad VARCHAR(20) DEFAULT 'MEDIA'"),
+            ("instruccion_asignacion", "ALTER TABLE cotizacion ADD COLUMN instruccion_asignacion TEXT"),
+            ("recordatorio_seguimiento_en", "ALTER TABLE cotizacion ADD COLUMN recordatorio_seguimiento_en TIMESTAMP NULL"),
+        ]:
+            if col not in cols_cot:
+                db.session.execute(text(stmt))
+                db.session.commit()
+                print(f"✅ Campo '{col}' agregado en 'cotizacion'.")
     except Exception as e:
         print("⚠️ ensure_schema(cotizacion.responsable):", e)
 
@@ -3765,6 +3815,23 @@ def setup_admin():
 # ---------------------------------------------------------
 def is_admin() -> bool:
     return bool(getattr(current_user, "is_authenticated", False) and (getattr(current_user, "rol", "") or "").upper() == "ADMIN")
+
+def can_manage_quote_assignments() -> bool:
+    if is_admin():
+        return True
+    if not getattr(current_user, "is_authenticated", False):
+        return False
+    identities = {
+        (getattr(current_user, "nombre", "") or "").strip().lower(),
+        (getattr(current_user, "nombre_visible", "") or "").strip().lower(),
+    }
+    email = (getattr(current_user, "correo", "") or "").strip().lower()
+    return (
+        getattr(current_user, "id", None) == 18
+        or email == "hjaramillo@poliutech.com"
+        or "hansel" in identities
+        or any(value.startswith("hansel ") for value in identities)
+    )
 
 def is_admin_account() -> bool:
     nombre = (getattr(current_user, "nombre", "") or "").strip().lower()
@@ -4391,7 +4458,7 @@ def _build_dashboard_cotizaciones_query(
 def _cotizaciones_base_query():
     q = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
     q = q.filter(Cotizacion.eliminada_en.is_(None))
-    if not is_admin():
+    if not is_admin() and not can_manage_quote_assignments():
         q = q.filter(Cotizacion.responsable == responsable_actual())
     return q
 
@@ -5904,6 +5971,7 @@ def index():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
+    bandeja = (request.args.get("bandeja") or "").strip().lower() if can_manage_quote_assignments() else ""
     dashboard_filters = {
         "desde": desde,
         "hasta": hasta,
@@ -5912,6 +5980,7 @@ def index():
         "especialidad": especialidad,
         "especialidad_descripcion": especialidad_descripcion,
         "responsable": responsable,
+        "bandeja": bandeja,
     }
 
     try:
@@ -5927,6 +5996,23 @@ def index():
     except ValueError:
         base_query = _build_dashboard_cotizaciones_query()
         dashboard_filters = {"desde": "", "hasta": "", "estatus": "", "cliente": "", "especialidad": "", "especialidad_descripcion": "", "responsable": ""}
+
+    ahora = now_cdmx_naive()
+    inicio_hoy = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
+    fin_hoy = inicio_hoy + timedelta(days=1)
+    if bandeja == "mis":
+        base_query = base_query.filter(Cotizacion.responsable_usuario_id == current_user.id)
+    elif bandeja == "sin_asignar":
+        base_query = base_query.filter(Cotizacion.responsable_usuario_id.is_(None))
+    elif bandeja == "vencidas":
+        base_query = base_query.filter(Cotizacion.proximo_seguimiento < inicio_hoy)
+    elif bandeja == "hoy":
+        base_query = base_query.filter(
+            Cotizacion.proximo_seguimiento >= inicio_hoy,
+            Cotizacion.proximo_seguimiento < fin_hoy,
+        )
+    elif bandeja == "proximas":
+        base_query = base_query.filter(Cotizacion.proximo_seguimiento >= fin_hoy)
 
     total_cotizaciones = base_query.count()
     total_importe = (
@@ -5954,6 +6040,41 @@ def index():
     usuarios_asignables = Usuario.query.order_by(
         db.func.lower(db.func.coalesce(Usuario.nombre_visible, Usuario.nombre))
     ).all()
+    seguimiento_metricas = {}
+    carga_asesores = []
+    if can_manage_quote_assignments():
+        try:
+            _send_due_quote_followup_reminders()
+        except Exception:
+            db.session.rollback()
+            logger.exception("No se pudieron enviar recordatorios de seguimiento")
+        seguimiento_base = _cotizaciones_activas_query()
+        seguimiento_metricas = {
+            "vencidas": seguimiento_base.filter(Cotizacion.proximo_seguimiento < inicio_hoy).count(),
+            "hoy": seguimiento_base.filter(
+                Cotizacion.proximo_seguimiento >= inicio_hoy,
+                Cotizacion.proximo_seguimiento < fin_hoy,
+            ).count(),
+            "proximas": seguimiento_base.filter(Cotizacion.proximo_seguimiento >= fin_hoy).count(),
+            "sin_asignar": seguimiento_base.filter(Cotizacion.responsable_usuario_id.is_(None)).count(),
+        }
+        carga_asesores = (
+            db.session.query(
+                Usuario.nombre,
+                Usuario.nombre_visible,
+                db.func.count(Cotizacion.id),
+            )
+            .outerjoin(
+                Cotizacion,
+                db.and_(
+                    Cotizacion.responsable_usuario_id == Usuario.id,
+                    Cotizacion.eliminada_en.is_(None),
+                ),
+            )
+            .group_by(Usuario.id, Usuario.nombre, Usuario.nombre_visible)
+            .order_by(db.func.count(Cotizacion.id).desc())
+            .all()
+        )
 
     return render_template(
         "dashboard.html",
@@ -5969,6 +6090,9 @@ def index():
         especialidades_cotizacion=ESPECIALIDADES_COTIZACION,
         responsables_cotizacion=responsables_cotizacion,
         usuarios_asignables=usuarios_asignables,
+        can_manage_assignments=can_manage_quote_assignments(),
+        seguimiento_metricas=seguimiento_metricas,
+        carga_asesores=carga_asesores,
         show_splash=True
     )
 
@@ -8502,10 +8626,19 @@ def bulk_eliminar_cotizaciones():
 @app.route("/cotizaciones/asignar", methods=["POST"])
 @login_required
 def asignar_cotizaciones():
-    if not is_admin():
-        return jsonify({"error": "Solo el administrador puede asignar cotizaciones."}), 403
+    if not can_manage_quote_assignments():
+        return jsonify({"error": "Solo Hansel y los administradores pueden asignar cotizaciones."}), 403
 
     payload = request.get_json(silent=True) or {}
+    proximo_raw = (payload.get("proximo_seguimiento") or "").strip()
+    try:
+        proximo_seguimiento = datetime.strptime(proximo_raw, "%Y-%m-%dT%H:%M")
+    except (TypeError, ValueError):
+        return jsonify({"error": "La fecha del próximo seguimiento es obligatoria."}), 400
+    prioridad = (payload.get("prioridad") or "MEDIA").strip().upper()
+    if prioridad not in {"BAJA", "MEDIA", "ALTA", "URGENTE"}:
+        return jsonify({"error": "Selecciona una prioridad válida."}), 400
+    instruccion = (payload.get("instruccion") or "").strip()
     try:
         usuario_id = int(payload.get("usuario_id"))
     except (TypeError, ValueError):
@@ -8533,18 +8666,35 @@ def asignar_cotizaciones():
     try:
         cotizaciones = _cotizaciones_activas_query().filter(Cotizacion.id.in_(norm_ids)).all()
         for cot in cotizaciones:
+            fecha_asignacion = now_cdmx_naive()
             if cot.responsable_usuario_id != usuario.id:
                 db.session.add(CotizacionAsignacion(
                     cotizacion_id=cot.id,
                     usuario_anterior_id=cot.responsable_usuario_id,
                     usuario_nuevo_id=usuario.id,
                     asignado_por_id=getattr(current_user, "id", None),
-                    asignado_en=now_cdmx_naive(),
+                    asignado_en=fecha_asignacion,
                 ))
                 cot.responsable_usuario_id = usuario.id
                 cot.responsable = usuario.nombre_representante
+            cot.asignado_en = fecha_asignacion
+            cot.asignado_por_id = getattr(current_user, "id", None)
+            cot.proximo_seguimiento = proximo_seguimiento
+            cot.prioridad = prioridad
+            cot.instruccion_asignacion = instruccion or None
+            cot.recordatorio_seguimiento_en = None
             actualizadas.append(cot.id)
         db.session.commit()
+        try:
+            tokens = _mobile_push_tokens_for_users([usuario.id])
+            _send_push_notification(
+                tokens,
+                title=f"{len(actualizadas)} seguimiento(s) asignado(s)",
+                body=f"Prioridad {prioridad}. Próximo contacto: {proximo_seguimiento.strftime('%d/%m/%Y %H:%M')}.",
+                data={"type": "quote_assignment", "usuario_id": str(usuario.id)},
+            )
+        except Exception:
+            logger.exception("No se pudo enviar la notificación de asignación")
     except Exception as exc:
         db.session.rollback()
         logger.exception("No se pudieron asignar cotizaciones")
@@ -8719,6 +8869,7 @@ def cotizacion_seguimiento(cot_id: int):
         seguimientos=c.seguimientos,
         valid_estatus=VALID_ESTATUS,
         mention_users=_usuarios_menciones_payload(),
+        can_manage_assignments=can_manage_quote_assignments(),
         title=f"Seguimiento {c.folio}",
     )
 
@@ -8757,6 +8908,7 @@ def crear_cotizacion_seguimiento(cot_id: int):
             actualizado_en=now_cdmx_naive(),
         )
         db.session.add(seg)
+        c.ultimo_contacto = now_cdmx_naive()
 
     db.session.commit()
 
