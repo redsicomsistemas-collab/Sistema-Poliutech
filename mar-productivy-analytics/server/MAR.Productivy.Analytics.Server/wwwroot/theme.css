@@ -142,8 +142,40 @@ html[data-theme="dark"] header { border-color: var(--line); }
 .employee-sites-title strong { font-size: 14px; }
 .employee-sites-title small { margin-top: 3px; color: var(--muted); font-size: 10px; }
 .employee-sites-title > span { color: var(--mar); font-size: 11px; font-weight: 700; }
+.activity-controls {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+}
+.activity-controls label {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+.activity-controls select {
+  display: block;
+  min-width: 230px;
+  height: 38px;
+  margin-top: 5px;
+  padding: 0 34px 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--field);
+  color: var(--ink);
+}
+.activity-filter-summary {
+  margin: 8px 0 12px;
+  padding: 9px 12px;
+  border-radius: 7px;
+  background: var(--surface-soft);
+  color: var(--mar);
+  font-size: 11px;
+  font-weight: 700;
+}
 
 @media (max-width: 520px) {
   .theme-toggle { right: 12px; bottom: 12px; }
   .theme-toggle span:last-child { display: none; }
+  .activity-controls { width: 100%; align-items: stretch; flex-direction: column; }
+  .activity-controls select { width: 100%; min-width: 0; }
 }
