@@ -2992,6 +2992,7 @@ from models import (
     CotizacionDetalle,
     CotizacionSeguimiento,
     CotizacionAsignacion,
+    ProyectoAsignacion,
     CotizacionInstruccion,
     VoiceCommandLog,
     Usuario,
@@ -6233,15 +6234,55 @@ def proyectos():
         .order_by(db.func.max(Cotizacion.fecha).desc())
         .all()
     )
-    total_proyectos = len(rows)
+    proyectos_rows = []
+    for row in rows:
+        responsables = (
+            _cotizaciones_activas_query()
+            .filter(_project_key_expr() == row.key)
+            .with_entities(Cotizacion.responsable_usuario_id, Cotizacion.responsable)
+            .distinct()
+            .all()
+        )
+        responsables_ids = {item.responsable_usuario_id for item in responsables if item.responsable_usuario_id}
+        responsables_nombres = {
+            (item.responsable or "").strip() for item in responsables if (item.responsable or "").strip()
+        }
+        if len(responsables_ids) == 1:
+            responsable_id = next(iter(responsables_ids))
+            responsable_nombre = next(iter(responsables_nombres), "Asignado")
+        elif not responsables_ids and len(responsables_nombres) == 1:
+            responsable_id = None
+            responsable_nombre = next(iter(responsables_nombres))
+        elif responsables_ids or responsables_nombres:
+            responsable_id = None
+            responsable_nombre = "Asignación mixta"
+        else:
+            responsable_id = None
+            responsable_nombre = "Sin asignar"
+        proyectos_rows.append({
+            "key": row.key,
+            "nombre": row.nombre,
+            "cotizaciones": row.cotizaciones,
+            "total": row.total,
+            "ultima_fecha": row.ultima_fecha,
+            "responsable_id": responsable_id,
+            "responsable_nombre": responsable_nombre,
+        })
+
+    total_proyectos = len(proyectos_rows)
     total_cotizaciones = sum(int(r.cotizaciones or 0) for r in rows)
     total_importe = sum(float(r.total or 0) for r in rows)
+    usuarios_asignables = Usuario.query.order_by(
+        db.func.lower(db.func.coalesce(Usuario.nombre_visible, Usuario.nombre))
+    ).all()
     return render_template(
         "proyectos.html",
-        proyectos=rows,
+        proyectos=proyectos_rows,
         total_proyectos=total_proyectos,
         total_cotizaciones=total_cotizaciones,
         total_importe=total_importe,
+        usuarios_asignables=usuarios_asignables,
+        can_manage_assignments=can_manage_quote_assignments(),
         title="Proyectos - Sistema MAR",
     )
 
@@ -6283,6 +6324,13 @@ def proyecto_detalle():
         "labels": VALID_ESTATUS,
         "counts": [status_map.get(estado, 0) for estado in VALID_ESTATUS],
     }
+    proyecto_clave = nombre.strip().lower() if nombre != "Sin proyecto" else "sin proyecto"
+    historial_asignaciones = (
+        ProyectoAsignacion.query
+        .filter(ProyectoAsignacion.proyecto_clave == proyecto_clave)
+        .order_by(ProyectoAsignacion.asignado_en.desc())
+        .all()
+    )
 
     return render_template(
         "proyecto_detalle.html",
@@ -6292,9 +6340,129 @@ def proyecto_detalle():
         promedio_importe=promedio_importe,
         monthly_series=monthly_series,
         status_series=status_series,
+        historial_asignaciones=historial_asignaciones,
         valid_estatus=VALID_ESTATUS,
         title=f"Proyecto {nombre} - Sistema MAR",
     )
+
+
+@app.route("/proyectos/asignar", methods=["POST"])
+@login_required
+def asignar_proyecto():
+    if not can_manage_quote_assignments():
+        return jsonify({"error": "Solo Hansel y los administradores pueden asignar proyectos."}), 403
+
+    payload = request.get_json(silent=True) or {}
+    proyecto = (payload.get("proyecto") or "").strip()
+    proximo_raw = (payload.get("proximo_seguimiento") or "").strip()
+    try:
+        proximo_seguimiento = datetime.strptime(proximo_raw, "%Y-%m-%dT%H:%M")
+    except (TypeError, ValueError):
+        return jsonify({"error": "La fecha del próximo seguimiento es obligatoria."}), 400
+    prioridad = (payload.get("prioridad") or "MEDIA").strip().upper()
+    if prioridad not in {"BAJA", "MEDIA", "ALTA", "URGENTE"}:
+        return jsonify({"error": "Selecciona una prioridad válida."}), 400
+    instruccion = (payload.get("instruccion") or "").strip()
+    try:
+        usuario_id = int(payload.get("usuario_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Selecciona un usuario registrado."}), 400
+    if not proyecto:
+        return jsonify({"error": "Selecciona un proyecto válido."}), 400
+
+    usuario = Usuario.query.get(usuario_id)
+    if not usuario:
+        return jsonify({"error": "El usuario seleccionado no existe."}), 404
+
+    proyecto_clave = proyecto.lower() if proyecto.lower() != "sin proyecto" else "sin proyecto"
+    q = _cotizaciones_activas_query()
+    if proyecto_clave == "sin proyecto":
+        q = q.filter(or_(Cotizacion.proyecto.is_(None), db.func.trim(Cotizacion.proyecto) == ""))
+    else:
+        q = q.filter(db.func.lower(db.func.trim(Cotizacion.proyecto)) == proyecto_clave)
+    cotizaciones = q.all()
+    if not cotizaciones:
+        return jsonify({"error": "El proyecto ya no contiene cotizaciones activas."}), 404
+
+    anteriores = {cot.responsable_usuario_id for cot in cotizaciones if cot.responsable_usuario_id}
+    usuario_anterior_id = next(iter(anteriores)) if len(anteriores) == 1 else None
+    actualizadas = 0
+    fecha_asignacion = now_cdmx_naive()
+    try:
+        for cot in cotizaciones:
+            instruccion_anterior = (cot.instruccion_asignacion or "").strip()
+            if instruccion_anterior and not cot.instrucciones_asignacion:
+                db.session.add(CotizacionInstruccion(
+                    cotizacion_id=cot.id,
+                    usuario_id=cot.asignado_por_id,
+                    autor=(cot.asignado_por_usuario.nombre_representante if cot.asignado_por_usuario else "Asignación anterior"),
+                    instruccion=instruccion_anterior,
+                    creada_en=cot.asignado_en or fecha_asignacion,
+                ))
+            if cot.responsable_usuario_id != usuario.id:
+                db.session.add(CotizacionAsignacion(
+                    cotizacion_id=cot.id,
+                    usuario_anterior_id=cot.responsable_usuario_id,
+                    usuario_nuevo_id=usuario.id,
+                    asignado_por_id=getattr(current_user, "id", None),
+                    asignado_en=fecha_asignacion,
+                ))
+            cot.responsable_usuario_id = usuario.id
+            cot.responsable = usuario.nombre_representante
+            cot.asignado_en = fecha_asignacion
+            cot.asignado_por_id = getattr(current_user, "id", None)
+            cot.proximo_seguimiento = proximo_seguimiento
+            cot.prioridad = prioridad
+            cot.instruccion_asignacion = instruccion or None
+            cot.recordatorio_seguimiento_en = None
+            if instruccion:
+                db.session.add(CotizacionInstruccion(
+                    cotizacion_id=cot.id,
+                    usuario_id=getattr(current_user, "id", None),
+                    autor=current_user.nombre_representante,
+                    instruccion=instruccion,
+                    creada_en=fecha_asignacion,
+                ))
+            actualizadas += 1
+
+        db.session.add(ProyectoAsignacion(
+            proyecto_clave=proyecto_clave,
+            proyecto_nombre=proyecto,
+            usuario_anterior_id=usuario_anterior_id,
+            usuario_nuevo_id=usuario.id,
+            asignado_por_id=getattr(current_user, "id", None),
+            cotizaciones_afectadas=actualizadas,
+            proximo_seguimiento=proximo_seguimiento,
+            prioridad=prioridad,
+            instruccion=instruccion or None,
+            asignado_en=fecha_asignacion,
+        ))
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        logger.exception("No se pudo asignar el proyecto")
+        return jsonify({"error": str(exc)}), 500
+
+    try:
+        notification_results = _send_quote_assignment_notifications(
+            cotizaciones=cotizaciones,
+            asignado=usuario,
+            asignado_por=current_user,
+            proximo_seguimiento=proximo_seguimiento,
+            prioridad=prioridad,
+            instruccion=instruccion,
+        )
+    except Exception:
+        logger.exception("El proyecto se asignó, pero falló la preparación de notificaciones")
+        notification_results = {"error": "La asignación se guardó; uno o más avisos no pudieron enviarse."}
+
+    return jsonify({
+        "updated": actualizadas,
+        "proyecto": proyecto,
+        "usuario_id": usuario.id,
+        "responsable": usuario.nombre_representante,
+        "notifications": notification_results,
+    })
 
 
 @app.route("/cotizador/voz/transcribir", methods=["POST"])

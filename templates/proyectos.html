@@ -4,7 +4,7 @@
 <div class="d-flex justify-content-between align-items-center mt-4 mb-3 flex-wrap gap-2">
   <div>
     <h2 class="mb-1 fw-bold text-primary">Proyectos</h2>
-    <div class="text-muted">Cada proyecto muestra cuantas cotizaciones contiene y la suma de sus importes.</div>
+    <div class="text-muted">Asigna el proyecto completo y consulta sus cotizaciones, seguimiento y bitácora.</div>
   </div>
   <a href="{{ url_for('cotizador') }}" class="btn btn-success fw-bold">Nueva cotizacion</a>
 </div>
@@ -45,6 +45,7 @@
             <th>Proyecto</th>
             <th class="text-center">Cotizaciones</th>
             <th class="text-end">Importe total</th>
+            <th>Responsable y seguimiento</th>
             <th>Ultima cotizacion</th>
             <th class="text-center">Acciones</th>
           </tr>
@@ -58,6 +59,28 @@
               <div class="fw-bold text-success">${{ "{:,.2f}".format(p.total or 0) }}</div>
               <div class="small text-muted">{{ p.cotizaciones }} cotizaciones sumadas</div>
             </td>
+            <td>
+              <div class="fw-semibold mb-2">{{ p.responsable_nombre }}</div>
+              {% if can_manage_assignments %}
+              <div class="d-grid gap-2">
+                <select class="form-select form-select-sm project-assignee">
+                  <option value="">Seleccionar usuario...</option>
+                  {% for usuario in usuarios_asignables %}
+                  <option value="{{ usuario.id }}" {% if p.responsable_id == usuario.id %}selected{% endif %}>{{ usuario.nombre_representante }} ({{ usuario.nombre }})</option>
+                  {% endfor %}
+                </select>
+                <input type="datetime-local" class="form-control form-control-sm project-next-followup" title="Próximo seguimiento obligatorio">
+                <select class="form-select form-select-sm project-priority">
+                  <option value="BAJA">Baja</option>
+                  <option value="MEDIA" selected>Media</option>
+                  <option value="ALTA">Alta</option>
+                  <option value="URGENTE">Urgente</option>
+                </select>
+                <input class="form-control form-control-sm project-instruction" placeholder="Instrucción de asignación">
+                <button type="button" class="btn btn-primary btn-sm btn-assign-project" data-proyecto="{{ p.nombre }}">Asignar proyecto</button>
+              </div>
+              {% endif %}
+            </td>
             <td>{{ p.ultima_fecha.strftime('%Y-%m-%d %H:%M') if p.ultima_fecha else '-' }}</td>
             <td class="text-center">
               <a href="{{ url_for('proyecto_detalle', proyecto=p.nombre) }}" class="btn btn-outline-primary btn-sm">Ver cotizaciones</a>
@@ -65,7 +88,7 @@
           </tr>
           {% else %}
           <tr>
-            <td colspan="5" class="text-center text-muted py-4">Todavia no hay cotizaciones registradas.</td>
+            <td colspan="6" class="text-center text-muted py-4">Todavia no hay cotizaciones registradas.</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -73,5 +96,54 @@
     </div>
   </div>
 </div>
+
+{% if can_manage_assignments %}
+<script>
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest(".btn-assign-project");
+  if (!button) return;
+  const container = button.closest("td");
+  const select = container?.querySelector(".project-assignee");
+  const usuarioId = Number.parseInt(select?.value || "", 10);
+  const proximoSeguimiento = container?.querySelector(".project-next-followup")?.value || "";
+  if (!Number.isFinite(usuarioId) || !proximoSeguimiento) {
+    await Swal.fire({ icon: "warning", title: "Completa usuario y próximo seguimiento" });
+    return;
+  }
+  const proyecto = button.dataset.proyecto || "";
+  const usuario = select.options[select.selectedIndex]?.text || "el usuario";
+  const confirmacion = await Swal.fire({
+    icon: "question",
+    title: "Asignar proyecto",
+    html: `Se asignará el proyecto <b>${proyecto}</b> y todas sus cotizaciones a <b>${usuario}</b>.`,
+    showCancelButton: true,
+    confirmButtonText: "Asignar proyecto",
+    cancelButtonText: "Cancelar",
+  });
+  if (!confirmacion.isConfirmed) return;
+  try {
+    button.disabled = true;
+    const response = await fetch("{{ url_for('asignar_proyecto') }}", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        proyecto,
+        usuario_id: usuarioId,
+        proximo_seguimiento: proximoSeguimiento,
+        prioridad: container.querySelector(".project-priority")?.value || "MEDIA",
+        instruccion: container.querySelector(".project-instruction")?.value || "",
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data?.error || "No se pudo asignar el proyecto.");
+    await Swal.fire({ icon: "success", title: "Proyecto asignado", text: `${data.updated || 0} cotización(es) actualizadas para ${data.responsable}.` });
+    window.location.reload();
+  } catch (error) {
+    button.disabled = false;
+    await Swal.fire({ icon: "error", title: "No se pudo asignar", text: error?.message || "Error desconocido" });
+  }
+});
+</script>
+{% endif %}
 
 {% endblock %}
