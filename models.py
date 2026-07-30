@@ -257,6 +257,28 @@ class CotizacionAsignacion(db.Model):
     asignado_por = db.relationship("Usuario", foreign_keys=[asignado_por_id])
 
 
+class CotizacionInstruccion(db.Model):
+    __tablename__ = "cotizacion_instruccion"
+
+    id = db.Column(db.Integer, primary_key=True)
+    cotizacion_id = db.Column(db.Integer, db.ForeignKey("cotizacion.id"), nullable=False, index=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True, index=True)
+    autor = db.Column(db.String(120), nullable=False)
+    instruccion = db.Column(db.Text, nullable=False)
+    creada_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    cotizacion = db.relationship(
+        "Cotizacion",
+        backref=db.backref(
+            "instrucciones_asignacion",
+            lazy=True,
+            cascade="all, delete-orphan",
+            order_by="CotizacionInstruccion.creada_en.desc()",
+        ),
+    )
+    usuario = db.relationship("Usuario", foreign_keys=[usuario_id])
+
+
 class VoiceCommandLog(db.Model):
     __tablename__ = "voice_command_log"
 
