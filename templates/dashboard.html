@@ -315,8 +315,17 @@
           </select>
         </div>
         <div class="col-xl-2 col-lg-3 col-md-6">
-          <label class="form-label small fw-bold text-secondary mb-1">Cliente / Empresa / Proyecto</label>
+          <label class="form-label small fw-bold text-secondary mb-1">Cliente / Empresa</label>
           <input type="text" id="filtro-cliente" class="form-control form-control-sm" placeholder="Buscar..." value="{{ dashboard_filters.cliente }}">
+        </div>
+        <div class="col-xl-2 col-lg-3 col-md-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Proyecto</label>
+          <select id="filtro-proyecto" class="form-select form-select-sm">
+            <option value="">Todos</option>
+            {% for proyecto in proyectos_cotizacion %}
+            <option value="{{ proyecto }}" {% if dashboard_filters.proyecto == proyecto %}selected{% endif %}>{{ proyecto }}</option>
+            {% endfor %}
+          </select>
         </div>
         <div class="col-xl-2 col-lg-3 col-md-6">
           <label class="form-label small fw-bold text-secondary mb-1">Especialidad</label>
@@ -496,19 +505,19 @@
         <nav aria-label="Paginacion de cotizaciones">
           <ul class="pagination pagination-sm mb-0">
             <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
-              <a class="page-link" href="{{ url_for('index', page=pagination.prev_num, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente, especialidad=dashboard_filters.especialidad, especialidad_descripcion=dashboard_filters.especialidad_descripcion, responsable=dashboard_filters.responsable) if pagination.has_prev else '#' }}">Anterior</a>
+              <a class="page-link" href="{{ url_for('index', page=pagination.prev_num, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente, proyecto=dashboard_filters.proyecto, especialidad=dashboard_filters.especialidad, especialidad_descripcion=dashboard_filters.especialidad_descripcion, responsable=dashboard_filters.responsable) if pagination.has_prev else '#' }}">Anterior</a>
             </li>
             {% for p in pagination.iter_pages(left_edge=1, left_current=1, right_current=2, right_edge=1) %}
               {% if p %}
               <li class="page-item {% if p == pagination.page %}active{% endif %}">
-                <a class="page-link" href="{{ url_for('index', page=p, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente, especialidad=dashboard_filters.especialidad, especialidad_descripcion=dashboard_filters.especialidad_descripcion, responsable=dashboard_filters.responsable) }}">{{ p }}</a>
+                <a class="page-link" href="{{ url_for('index', page=p, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente, proyecto=dashboard_filters.proyecto, especialidad=dashboard_filters.especialidad, especialidad_descripcion=dashboard_filters.especialidad_descripcion, responsable=dashboard_filters.responsable) }}">{{ p }}</a>
               </li>
               {% else %}
               <li class="page-item disabled"><span class="page-link">...</span></li>
               {% endif %}
             {% endfor %}
             <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
-              <a class="page-link" href="{{ url_for('index', page=pagination.next_num, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente, especialidad=dashboard_filters.especialidad, especialidad_descripcion=dashboard_filters.especialidad_descripcion, responsable=dashboard_filters.responsable) if pagination.has_next else '#' }}">Siguiente</a>
+              <a class="page-link" href="{{ url_for('index', page=pagination.next_num, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente, proyecto=dashboard_filters.proyecto, especialidad=dashboard_filters.especialidad, especialidad_descripcion=dashboard_filters.especialidad_descripcion, responsable=dashboard_filters.responsable) if pagination.has_next else '#' }}">Siguiente</a>
             </li>
           </ul>
         </nav>
@@ -530,6 +539,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const hasta = document.getElementById("filtro-hasta");
   const estatus = document.getElementById("filtro-estatus");
   const cliente = document.getElementById("filtro-cliente");
+  const proyecto = document.getElementById("filtro-proyecto");
   const especialidad = document.getElementById("filtro-especialidad");
   const especialidadDescripcion = document.getElementById("filtro-especialidad-descripcion");
   const responsable = document.getElementById("filtro-responsable");
@@ -575,6 +585,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (hasta?.value) params.set("hasta", hasta.value);
     if (estatus?.value) params.set("estatus", estatus.value);
     if (cliente?.value.trim()) params.set("cliente", cliente.value.trim());
+    if (proyecto?.value.trim()) params.set("proyecto", proyecto.value.trim());
     if (especialidad?.value.trim()) params.set("especialidad", especialidad.value.trim());
     if (especialidadDescripcion?.value.trim()) params.set("especialidad_descripcion", especialidadDescripcion.value.trim());
     if (responsable?.value.trim()) params.set("responsable", responsable.value.trim());
@@ -997,6 +1008,7 @@ document.addEventListener("DOMContentLoaded", () => {
             hasta: (hasta?.value || ""),
             estatus: (estatus?.value || ""),
             cliente: (cliente?.value || ""),
+            proyecto: (proyecto?.value || ""),
             especialidad: (especialidad?.value || ""),
             especialidad_descripcion: (especialidadDescripcion?.value || ""),
             responsable: (responsable?.value || ""),
@@ -1086,7 +1098,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   let clienteFilterTimer = null;
-  [desde, hasta, estatus, especialidad, responsable].forEach((el) => {
+  [desde, hasta, estatus, proyecto, especialidad, responsable].forEach((el) => {
     el?.addEventListener("change", aplicarFiltrosDashboard);
   });
   [cliente, especialidadDescripcion].forEach((el) => el?.addEventListener("input", () => {

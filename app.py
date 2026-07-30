@@ -4296,6 +4296,7 @@ def _build_dashboard_cotizaciones_query(
     hasta: str = "",
     estatus: str = "",
     cliente: str = "",
+    proyecto: str = "",
     especialidad: str = "",
     especialidad_descripcion: str = "",
     responsable: str = "",
@@ -4352,6 +4353,12 @@ def _build_dashboard_cotizaciones_query(
             db.func.lower(db.func.coalesce(Cotizacion.proyecto, "")).like(pattern),
             db.func.lower(db.func.coalesce(Cotizacion.especialidad, "")).like(pattern),
         ))
+
+    proyecto = (proyecto or "").strip().lower()
+    if proyecto:
+        q = q.filter(
+            db.func.lower(db.func.trim(db.func.coalesce(Cotizacion.proyecto, ""))) == proyecto
+        )
 
     return q
 
@@ -5825,6 +5832,7 @@ def index():
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
+    proyecto = (request.args.get("proyecto") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
@@ -5833,6 +5841,7 @@ def index():
         "hasta": hasta,
         "estatus": estatus,
         "cliente": cliente,
+        "proyecto": proyecto,
         "especialidad": especialidad,
         "especialidad_descripcion": especialidad_descripcion,
         "responsable": responsable,
@@ -5844,13 +5853,14 @@ def index():
             hasta=hasta,
             estatus=estatus,
             cliente=cliente,
+            proyecto=proyecto,
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
         )
     except ValueError:
         base_query = _build_dashboard_cotizaciones_query()
-        dashboard_filters = {"desde": "", "hasta": "", "estatus": "", "cliente": "", "especialidad": "", "especialidad_descripcion": "", "responsable": ""}
+        dashboard_filters = {"desde": "", "hasta": "", "estatus": "", "cliente": "", "proyecto": "", "especialidad": "", "especialidad_descripcion": "", "responsable": ""}
 
     total_cotizaciones = base_query.count()
     total_importe = (
@@ -5893,6 +5903,7 @@ def index():
         valid_estatus_aprobacion=VALID_ESTATUS_APROBACION,
         especialidades_cotizacion=ESPECIALIDADES_COTIZACION,
         responsables_cotizacion=responsables_cotizacion,
+        proyectos_cotizacion=_known_project_names(),
         usuarios_asignables=usuarios_asignables,
         show_splash=True
     )
@@ -8501,6 +8512,7 @@ def bulk_eliminar_filtradas():
     hasta_s = (filters.get("hasta") or "").strip()
     estatus_s = (filters.get("estatus") or "").strip()
     cliente_s = (filters.get("cliente") or "").strip().lower()
+    proyecto_s = (filters.get("proyecto") or "").strip()
     especialidad_s = (filters.get("especialidad") or "").strip()
     especialidad_descripcion_s = (filters.get("especialidad_descripcion") or "").strip()
     responsable_s = (filters.get("responsable") or "").strip()
@@ -8511,6 +8523,7 @@ def bulk_eliminar_filtradas():
             hasta=hasta_s,
             estatus=estatus_s,
             cliente=cliente_s,
+            proyecto=proyecto_s,
             especialidad=especialidad_s,
             especialidad_descripcion=especialidad_descripcion_s,
             responsable=responsable_s,
@@ -9839,6 +9852,7 @@ def export_dashboard_cotizaciones_xlsx():
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
+    proyecto = (request.args.get("proyecto") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
@@ -9849,6 +9863,7 @@ def export_dashboard_cotizaciones_xlsx():
             hasta=hasta,
             estatus=estatus,
             cliente=cliente,
+            proyecto=proyecto,
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
@@ -9882,6 +9897,8 @@ def export_dashboard_cotizaciones_xlsx():
         filtros_texto.append(f"Estatus: {estatus}")
     if cliente:
         filtros_texto.append(f"Cliente/Empresa: {cliente}")
+    if proyecto:
+        filtros_texto.append(f"Proyecto: {proyecto}")
     if especialidad:
         filtros_texto.append(f"Especialidad: {especialidad}")
     if especialidad_descripcion:
@@ -10101,6 +10118,7 @@ def export_dashboard_followups_pdf():
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
+    proyecto = (request.args.get("proyecto") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
@@ -10112,6 +10130,7 @@ def export_dashboard_followups_pdf():
                 hasta=hasta,
                 estatus=estatus,
                 cliente=cliente,
+                proyecto=proyecto,
                 especialidad=especialidad,
                 especialidad_descripcion=especialidad_descripcion,
                 responsable=responsable,
@@ -10185,6 +10204,8 @@ def export_dashboard_followups_pdf():
         filtros_texto.append(f"Estatus: {estatus}")
     if cliente:
         filtros_texto.append(f"Cliente/Empresa: {cliente}")
+    if proyecto:
+        filtros_texto.append(f"Proyecto: {proyecto}")
     if especialidad:
         filtros_texto.append(f"Especialidad: {especialidad}")
     if not filtros_texto:
@@ -10280,6 +10301,7 @@ def api_dashboard_filter_summary():
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
+    proyecto = (request.args.get("proyecto") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
@@ -10290,6 +10312,7 @@ def api_dashboard_filter_summary():
             hasta=hasta,
             estatus=estatus,
             cliente=cliente,
+            proyecto=proyecto,
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
@@ -10683,6 +10706,7 @@ def api_dashboard_metrics():
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
+    proyecto = (request.args.get("proyecto") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
@@ -10693,6 +10717,7 @@ def api_dashboard_metrics():
             hasta=hasta,
             estatus=estatus,
             cliente=cliente,
+            proyecto=proyecto,
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
@@ -10730,6 +10755,7 @@ def api_dashboard_status_breakdown():
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
     cliente = (request.args.get("cliente") or "").strip()
+    proyecto = (request.args.get("proyecto") or "").strip()
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
@@ -10740,6 +10766,7 @@ def api_dashboard_status_breakdown():
             hasta=hasta,
             estatus=estatus,
             cliente=cliente,
+            proyecto=proyecto,
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
