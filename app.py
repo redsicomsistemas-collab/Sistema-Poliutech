@@ -2992,6 +2992,7 @@ from models import (
     CotizacionDetalle,
     CotizacionSeguimiento,
     CotizacionAsignacion,
+    CotizacionInstruccion,
     VoiceCommandLog,
     Usuario,
     MobileDevice,
@@ -8782,6 +8783,20 @@ def asignar_cotizaciones():
             return jsonify({"error": "No se encontraron cotizaciones activas para asignar."}), 404
         for cot in cotizaciones:
             fecha_asignacion = now_cdmx_naive()
+            instruccion_anterior = (cot.instruccion_asignacion or "").strip()
+            if instruccion_anterior and not cot.instrucciones_asignacion:
+                autor_anterior = (
+                    cot.asignado_por_usuario.nombre_representante
+                    if cot.asignado_por_usuario
+                    else "Asignación anterior"
+                )
+                db.session.add(CotizacionInstruccion(
+                    cotizacion_id=cot.id,
+                    usuario_id=cot.asignado_por_id,
+                    autor=autor_anterior,
+                    instruccion=instruccion_anterior,
+                    creada_en=cot.asignado_en or fecha_asignacion,
+                ))
             if cot.responsable_usuario_id != usuario.id:
                 db.session.add(CotizacionAsignacion(
                     cotizacion_id=cot.id,
@@ -8797,6 +8812,14 @@ def asignar_cotizaciones():
             cot.proximo_seguimiento = proximo_seguimiento
             cot.prioridad = prioridad
             cot.instruccion_asignacion = instruccion or None
+            if instruccion:
+                db.session.add(CotizacionInstruccion(
+                    cotizacion_id=cot.id,
+                    usuario_id=getattr(current_user, "id", None),
+                    autor=current_user.nombre_representante,
+                    instruccion=instruccion,
+                    creada_en=fecha_asignacion,
+                ))
             cot.recordatorio_seguimiento_en = None
             actualizadas.append(cot.id)
         db.session.commit()
@@ -8825,6 +8848,61 @@ def asignar_cotizaciones():
         "responsable": usuario.nombre_representante,
         "notifications": notification_results,
     })
+
+
+@app.route("/cotizaciones/<int:cot_id>/instrucciones")
+@login_required
+def cotizacion_instrucciones(cot_id: int):
+    cot = _cotizacion_activa_or_404(cot_id)
+    if not can_manage_quote_assignments():
+        require_owner_or_admin(cot)
+
+    instrucciones = list(cot.instrucciones_asignacion)
+    instruccion_legacy = None
+    if not instrucciones and (cot.instruccion_asignacion or "").strip():
+        instruccion_legacy = {
+            "autor": (
+                cot.asignado_por_usuario.nombre_representante
+                if cot.asignado_por_usuario
+                else "Asignación anterior"
+            ),
+            "instruccion": cot.instruccion_asignacion.strip(),
+            "creada_en": cot.asignado_en,
+        }
+
+    return render_template(
+        "cotizacion_instrucciones.html",
+        c=cot,
+        instrucciones=instrucciones,
+        instruccion_legacy=instruccion_legacy,
+        title=f"Instrucciones {cot.folio}",
+    )
+
+
+@app.route("/cotizaciones/<int:cot_id>/instrucciones", methods=["POST"])
+@login_required
+def crear_cotizacion_instruccion(cot_id: int):
+    cot = _cotizacion_activa_or_404(cot_id)
+    if not can_manage_quote_assignments():
+        require_owner_or_admin(cot)
+
+    instruccion = (request.form.get("instruccion") or "").strip()
+    if not instruccion:
+        flash("Escribe una instrucción para guardarla.", "warning")
+        return redirect(url_for("cotizacion_instrucciones", cot_id=cot.id))
+
+    ahora = now_cdmx_naive()
+    db.session.add(CotizacionInstruccion(
+        cotizacion_id=cot.id,
+        usuario_id=getattr(current_user, "id", None),
+        autor=current_user.nombre_representante,
+        instruccion=instruccion,
+        creada_en=ahora,
+    ))
+    cot.instruccion_asignacion = instruccion
+    db.session.commit()
+    flash("Instrucción agregada al historial.", "success")
+    return redirect(url_for("cotizacion_instrucciones", cot_id=cot.id))
 
 
 @app.route("/cotizaciones/bulk-eliminar-filtradas", methods=["POST"])

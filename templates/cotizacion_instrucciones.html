@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Instrucciones {{ c.folio }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div>
+      <h2 class="mb-1 text-primary">Instrucciones de {{ c.folio }}</h2>
+      <div class="text-muted">
+        {{ c.cliente.nombre_cliente if c.cliente else "Sin cliente" }}
+        {% if c.proyecto %} · {{ c.proyecto }}{% endif %}
+      </div>
+    </div>
+    <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">Volver al dashboard</a>
+  </div>
+
+  <div class="card shadow-sm border-0 mb-4">
+    <div class="card-body">
+      <form method="post" action="{{ url_for('crear_cotizacion_instruccion', cot_id=c.id) }}">
+        <label for="instruccion" class="form-label fw-bold text-primary">Nueva instrucción</label>
+        <textarea
+          id="instruccion"
+          name="instruccion"
+          class="form-control"
+          rows="4"
+          maxlength="5000"
+          required
+          placeholder="Escribe la nueva indicación. Las anteriores permanecerán en el historial."
+        ></textarea>
+        <div class="d-flex justify-content-end mt-3">
+          <button type="submit" class="btn btn-primary">Guardar instrucción</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Historial</h4>
+    <span class="badge text-bg-secondary">
+      {{ instrucciones|length + (1 if instruccion_legacy else 0) }}
+    </span>
+  </div>
+
+  {% for item in instrucciones %}
+  <div class="card shadow-sm border-0 mb-3">
+    <div class="card-body">
+      <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
+        <strong>{{ item.autor }}</strong>
+        <span class="text-muted small">
+          {{ item.creada_en.strftime('%Y-%m-%d %H:%M') if item.creada_en else "—" }}
+        </span>
+      </div>
+      <div style="white-space:pre-wrap">{{ item.instruccion }}</div>
+    </div>
+  </div>
+  {% endfor %}
+
+  {% if instruccion_legacy %}
+  <div class="card shadow-sm border-0 mb-3">
+    <div class="card-body">
+      <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
+        <strong>{{ instruccion_legacy.autor }}</strong>
+        <span class="text-muted small">
+          {{ instruccion_legacy.creada_en.strftime('%Y-%m-%d %H:%M') if instruccion_legacy.creada_en else "Registro anterior" }}
+        </span>
+      </div>
+      <div style="white-space:pre-wrap">{{ instruccion_legacy.instruccion }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if not instrucciones and not instruccion_legacy %}
+  <div class="alert alert-light border text-center text-muted">
+    Aún no hay instrucciones para esta cotización.
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

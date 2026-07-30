@@ -497,7 +497,17 @@
               <td>{{ c.proximo_seguimiento.strftime('%Y-%m-%d %H:%M') if c.proximo_seguimiento else '—' }}</td>
               <td>{{ c.ultimo_contacto.strftime('%Y-%m-%d %H:%M') if c.ultimo_contacto else '—' }}</td>
               <td><span class="badge {% if c.prioridad == 'URGENTE' %}text-bg-danger{% elif c.prioridad == 'ALTA' %}text-bg-warning{% elif c.prioridad == 'BAJA' %}text-bg-secondary{% else %}text-bg-primary{% endif %}">{{ c.prioridad or 'MEDIA' }}</span></td>
-              <td style="max-width:260px;white-space:normal">{{ c.instruccion_asignacion or '—' }}</td>
+              <td class="text-center">
+                <a href="{{ url_for('cotizacion_instrucciones', cot_id=c.id) }}" class="btn btn-outline-primary btn-sm">
+                  VER
+                  {% set total_instrucciones = c.instrucciones_asignacion|length %}
+                  {% if total_instrucciones %}
+                  <span class="badge text-bg-primary ms-1">{{ total_instrucciones }}</span>
+                  {% elif c.instruccion_asignacion %}
+                  <span class="badge text-bg-secondary ms-1">1</span>
+                  {% endif %}
+                </a>
+              </td>
               <td>{{ c.asignado_por_usuario.nombre_representante if c.asignado_por_usuario else '—' }}</td>
               {% endif %}
               <td class="cell-cliente">{{ c.cliente.nombre_cliente if c.cliente else '' }}</td>
