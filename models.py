@@ -257,6 +257,26 @@ class CotizacionAsignacion(db.Model):
     asignado_por = db.relationship("Usuario", foreign_keys=[asignado_por_id])
 
 
+class ProyectoAsignacion(db.Model):
+    __tablename__ = "proyecto_asignacion"
+
+    id = db.Column(db.Integer, primary_key=True)
+    proyecto_clave = db.Column(db.String(220), nullable=False, index=True)
+    proyecto_nombre = db.Column(db.String(220), nullable=False)
+    usuario_anterior_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
+    usuario_nuevo_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=False, index=True)
+    asignado_por_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
+    cotizaciones_afectadas = db.Column(db.Integer, default=0, nullable=False)
+    proximo_seguimiento = db.Column(db.DateTime, nullable=True)
+    prioridad = db.Column(db.String(20), nullable=True)
+    instruccion = db.Column(db.Text, nullable=True)
+    asignado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    usuario_anterior = db.relationship("Usuario", foreign_keys=[usuario_anterior_id])
+    usuario_nuevo = db.relationship("Usuario", foreign_keys=[usuario_nuevo_id])
+    asignado_por = db.relationship("Usuario", foreign_keys=[asignado_por_id])
+
+
 class CotizacionInstruccion(db.Model):
     __tablename__ = "cotizacion_instruccion"
 
