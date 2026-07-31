@@ -17,6 +17,7 @@ from email.message import EmailMessage
 from email.utils import getaddresses
 from html import escape
 import xml.etree.ElementTree as ET
+from utils.pdf_conditions import format_pdf_condition_lines
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from werkzeug.utils import secure_filename
 try:
@@ -36,13 +37,18 @@ except Exception:
 # por el usuario y, cuando aplique, la trazabilidad de la zona.
 DEFAULT_CONDICIONES: list[str] = []
 VALID_ESTATUS_SEGUIMIENTO = [
-    "ENVIADA",
-    "PENDIENTE",
-    "EN CURSO",
-    "O. TERMINADA",
-    "FINALIZADA",
-    "GANADA",
-    "PERDIDA",
+    "0%",
+    "5%",
+    "10%",
+    "20%",
+    "30%",
+    "40%",
+    "50%",
+    "70%",
+    "80%",
+    "90%",
+    "95%",
+    "100%",
 ]
 PORCENTAJES_SEGUIMIENTO = [f"{porcentaje}%" for porcentaje in range(0, 101, 10)]
 VALID_ESTATUS_APROBACION = [
@@ -1615,7 +1621,7 @@ def _create_mobile_voice_quote(preview: dict, user: Usuario) -> Cotizacion:
         folio=generar_folio(),
         fecha=now_cdmx_naive(),
         cliente_id=cliente.id if cliente else None,
-        estatus="PENDIENTE",
+        estatus="0%",
         estatus_aprobacion="EN REVISIÓN",
         notas="\n".join(part for part in notes_parts if part).strip() or None,
         responsable=responsible,
@@ -1835,7 +1841,7 @@ def _mobile_push_user_ids_for_aazcona() -> list[int]:
 
 
 def _send_quote_status_push(cot: Cotizacion, previous_status: str, new_status: str) -> dict[str, int]:
-    if (new_status or "").strip().upper() == "FINALIZADA":
+    if (new_status or "").strip().upper() == "100%":
         return {"sent": 0, "failed": 0}
     pdf_url = _mobile_quote_pdf_url(cot.id)
     owner_ids = _mobile_push_user_ids_for_quote_owner(cot)
@@ -2021,7 +2027,7 @@ def _send_quote_followup_push(cot: Cotizacion, seg: CotizacionSeguimiento) -> di
 
 def _send_daily_status_reminder(cot: Cotizacion, ahora: datetime) -> None:
     estatus_actual = (cot.estatus or "").strip().upper()
-    if not estatus_actual or estatus_actual == "FINALIZADA":
+    if not estatus_actual or estatus_actual == "100%":
         return
 
     body = (
@@ -2035,6 +2041,144 @@ def _send_daily_status_reminder(cot: Cotizacion, ahora: datetime) -> None:
     _send_quote_status_push(cot, estatus_actual, estatus_actual)
     cot.last_whatsapp_at = ahora
     db.session.commit()
+
+
+def _send_due_quote_followup_reminders() -> None:
+    ahora = now_cdmx_naive()
+    inicio_hoy = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
+    limite = inicio_hoy + timedelta(days=1)
+    pendientes = (
+        _cotizaciones_activas_query()
+        .filter(
+            Cotizacion.responsable_usuario_id.isnot(None),
+            Cotizacion.proximo_seguimiento.isnot(None),
+            Cotizacion.proximo_seguimiento < limite,
+            db.or_(
+                Cotizacion.recordatorio_seguimiento_en.is_(None),
+                Cotizacion.recordatorio_seguimiento_en < inicio_hoy,
+            ),
+        )
+        .order_by(Cotizacion.proximo_seguimiento.asc())
+        .limit(100)
+        .all()
+    )
+    for cot in pendientes:
+        tokens = _mobile_push_tokens_for_users([cot.responsable_usuario_id])
+        vencida = cot.proximo_seguimiento < inicio_hoy
+        _send_push_notification(
+            tokens,
+            title=("Seguimiento vencido" if vencida else "Seguimiento para hoy"),
+            body=f"{cot.folio or 'Cotización'} · {cot.cliente.nombre_cliente if cot.cliente else 'Cliente'}",
+            data={
+                "type": "quote_followup_due",
+                "cotizacion_id": str(cot.id),
+                "folio": str(cot.folio or ""),
+            },
+        )
+        cot.recordatorio_seguimiento_en = ahora
+    if pendientes:
+        db.session.commit()
+
+
+def _quote_assignment_notification_users(asignado: Usuario) -> list[Usuario]:
+    users = Usuario.query.filter(
+        db.or_(
+            db.func.upper(Usuario.rol) == "ADMIN",
+            Usuario.id == 18,
+            db.func.lower(db.func.coalesce(Usuario.correo, "")) == "hjaramillo@poliutech.com",
+            db.func.lower(db.func.coalesce(Usuario.nombre, "")).like("hansel%"),
+            db.func.lower(db.func.coalesce(Usuario.nombre_visible, "")).like("hansel%"),
+        )
+    ).all()
+    users.append(asignado)
+    return list({user.id: user for user in users if user and user.id}.values())
+
+
+def _send_quote_assignment_notifications(
+    cotizaciones: list[Cotizacion],
+    asignado: Usuario,
+    asignado_por: Usuario,
+    proximo_seguimiento: datetime,
+    prioridad: str,
+    instruccion: str,
+) -> dict[str, dict[str, int]]:
+    recipients = _quote_assignment_notification_users(asignado)
+    folios = [str(cot.folio or f"#{cot.id}") for cot in cotizaciones]
+    shown_folios = ", ".join(folios[:10])
+    if len(folios) > 10:
+        shown_folios += f" y {len(folios) - 10} más"
+    detalle_url = url_for("index", bandeja="mis", _external=True)
+    subject = f"Seguimiento asignado · {len(cotizaciones)} cotización(es)"
+    body = (
+        f"Asesor asignado: {asignado.nombre_representante}\n"
+        f"Asignó: {asignado_por.nombre_representante}\n"
+        f"Cotizaciones: {shown_folios}\n"
+        f"Próximo seguimiento: {proximo_seguimiento.strftime('%d/%m/%Y %H:%M')}\n"
+        f"Prioridad: {prioridad}\n"
+        f"Instrucción: {instruccion or 'Sin instrucción adicional'}\n\n"
+        f"Abrir seguimiento: {detalle_url}"
+    )
+    results = {
+        "email": {"sent": 0, "failed": 0},
+        "whatsapp": {"sent": 0, "failed": 0},
+        "push": {"sent": 0, "failed": 0},
+    }
+
+    emails = list(dict.fromkeys(
+        (user.correo or "").strip().lower()
+        for user in recipients
+        if (user.correo or "").strip()
+    ))
+    if emails:
+        try:
+            msg = EmailMessage()
+            msg["Subject"] = subject
+            msg["From"] = f"SISTEMA MAR <{SMTP_FROM or SMTP_USERNAME}>"
+            msg["To"] = ", ".join(emails)
+            msg.set_content(body)
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
+                smtp.starttls()
+                smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+                smtp.send_message(msg)
+            results["email"]["sent"] = len(emails)
+        except Exception:
+            results["email"]["failed"] = len(emails)
+            logger.exception("No se pudo enviar correo de asignación de cotización")
+
+    phones = list(dict.fromkeys(
+        (user.telefono or "").strip()
+        for user in recipients
+        if (user.telefono or "").strip()
+    ))
+    for admin_phone in ADMIN_LIST:
+        if admin_phone and admin_phone not in phones:
+            phones.append(admin_phone)
+    if phones:
+        try:
+            send_whatsapp_multi(phones, f"*{subject}*\n\n{body}")
+            results["whatsapp"]["sent"] = len(phones)
+        except Exception:
+            results["whatsapp"]["failed"] = len(phones)
+            logger.exception("No se pudo enviar WhatsApp de asignación de cotización")
+
+    user_ids = [user.id for user in recipients]
+    tokens = _mobile_push_tokens_for_users(user_ids)
+    try:
+        results["push"] = _send_push_notification(
+            tokens,
+            title=subject,
+            body=f"{asignado.nombre_representante} · {shown_folios} · {prioridad}",
+            data={
+                "type": "quote_assignment",
+                "usuario_id": str(asignado.id),
+                "cotizacion_id": str(cotizaciones[0].id if len(cotizaciones) == 1 else ""),
+                "folios": shown_folios,
+            },
+        )
+    except Exception:
+        results["push"]["failed"] = len(tokens)
+        logger.exception("No se pudo enviar push de asignación de cotización")
+    return results
 
 
 def _send_push_notification(tokens: list[str], title: str, body: str, data: Optional[dict[str, str]] = None) -> dict[str, int]:
@@ -2748,8 +2892,7 @@ except Exception:
     Workbook = None  # la app sigue arrancando aunque falte openpyxl
     get_column_letter = None
 
-# WhatsApp Cloud API (Meta) + Scheduler
-from apscheduler.schedulers.background import BackgroundScheduler
+# WhatsApp Cloud API (Meta)
 
 # Auth (Flask-Login)
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
@@ -2773,6 +2916,10 @@ META_WHATSAPP_PHONE_NUMBER_ID = os.getenv("META_WHATSAPP_PHONE_NUMBER_ID", "").s
 META_WHATSAPP_TEMPLATE_NAME = os.getenv("META_WHATSAPP_TEMPLATE_NAME", "mar_notificacion").strip()
 META_WHATSAPP_TEMPLATE_LANGUAGE = os.getenv("META_WHATSAPP_TEMPLATE_LANGUAGE", "es_MX").strip()
 META_GRAPH_API_VERSION = os.getenv("META_GRAPH_API_VERSION", "v23.0").strip()
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
+TWILIO_SMS_FROM = os.getenv("TWILIO_SMS_FROM", "").strip()
+TWILIO_MESSAGING_SERVICE_SID = os.getenv("TWILIO_MESSAGING_SERVICE_SID", "").strip()
 
 DEFAULT_ADMIN_WHATSAPP_RECIPIENTS = (
     "whatsapp:+5215521323076,whatsapp:+5215610035643,whatsapp:+14055619808"
@@ -3293,6 +3440,14 @@ def init_meta_whatsapp():
         print(f"[Meta WhatsApp] Plantilla: {META_WHATSAPP_TEMPLATE_NAME} ({META_WHATSAPP_TEMPLATE_LANGUAGE})")
     else:
         print("[Meta WhatsApp] Configuración incompleta. WhatsApp deshabilitado.")
+    if (
+        TWILIO_ACCOUNT_SID
+        and TWILIO_AUTH_TOKEN
+        and (TWILIO_SMS_FROM or TWILIO_MESSAGING_SERVICE_SID)
+    ):
+        print("[SMS] Respaldo Twilio configurado.")
+    else:
+        print("[SMS] Respaldo Twilio no configurado.")
 
 with app.app_context():
     init_meta_whatsapp()
@@ -3463,9 +3618,26 @@ def ensure_schema():
             """))
             db.session.execute(text("""
                 UPDATE cotizacion
-                SET estatus = 'PENDIENTE'
+                SET estatus = '0%'
                 WHERE UPPER(COALESCE(estatus, '')) IN ('APROBADO', 'APROBADA', 'AUTORIZADO', 'RECHAZADO', 'RECHAZADA', 'EN REVISIÓN', 'EN REVISION')
                    OR estatus IS NULL OR TRIM(estatus) = ''
+            """))
+            db.session.execute(text("""
+                UPDATE cotizacion
+                SET estatus = CASE UPPER(TRIM(COALESCE(estatus, '')))
+                    WHEN 'PENDIENTE' THEN '0%'
+                    WHEN 'PERDIDA' THEN '0%'
+                    WHEN 'ENVIADA' THEN '5%'
+                    WHEN 'EN CURSO' THEN '50%'
+                    WHEN 'O. TERMINADA' THEN '95%'
+                    WHEN 'FINALIZADA' THEN '100%'
+                    WHEN 'GANADA' THEN '100%'
+                    ELSE estatus
+                END
+                WHERE UPPER(TRIM(COALESCE(estatus, ''))) IN (
+                    'PENDIENTE', 'PERDIDA', 'ENVIADA', 'EN CURSO',
+                    'O. TERMINADA', 'FINALIZADA', 'GANADA'
+                )
             """))
             db.session.commit()
     except Exception as e:
@@ -3767,6 +3939,23 @@ def setup_admin():
 # ---------------------------------------------------------
 def is_admin() -> bool:
     return bool(getattr(current_user, "is_authenticated", False) and (getattr(current_user, "rol", "") or "").upper() == "ADMIN")
+
+def can_manage_quote_assignments() -> bool:
+    if is_admin():
+        return True
+    if not getattr(current_user, "is_authenticated", False):
+        return False
+    identities = {
+        (getattr(current_user, "nombre", "") or "").strip().lower(),
+        (getattr(current_user, "nombre_visible", "") or "").strip().lower(),
+    }
+    email = (getattr(current_user, "correo", "") or "").strip().lower()
+    return (
+        getattr(current_user, "id", None) == 18
+        or email == "hjaramillo@poliutech.com"
+        or "hansel" in identities
+        or any(value.startswith("hansel ") for value in identities)
+    )
 
 def is_admin_account() -> bool:
     nombre = (getattr(current_user, "nombre", "") or "").strip().lower()
@@ -4406,7 +4595,7 @@ def _build_dashboard_cotizaciones_query(
 def _cotizaciones_base_query():
     q = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
     q = q.filter(Cotizacion.eliminada_en.is_(None))
-    if not is_admin():
+    if not is_admin() and not can_manage_quote_assignments():
         q = q.filter(Cotizacion.responsable == responsable_actual())
     return q
 
@@ -5265,7 +5454,7 @@ def build_import_payload_from_pdf(pdf_bytes: bytes, filename: str, responsable_h
     return {
         "folio": folio,
         "fecha": fecha.isoformat(sep=" "),
-        "estatus": "PENDIENTE",
+        "estatus": "0%",
         "responsable": responsable_hint or "",
         "cliente": {
             "nombre_cliente": cliente_nombre,
@@ -5326,13 +5515,13 @@ def _normalize_import_payload(payload: dict) -> dict:
     raw_aprobacion = (payload.get("estatus_aprobacion") or "").strip().upper()
     if raw_estatus in {"APROBADO", "APROBADA", "AUTORIZADO"}:
         raw_aprobacion = "APROBADA"
-        raw_estatus = "PENDIENTE"
+        raw_estatus = "0%"
     elif raw_estatus in {"RECHAZADO", "RECHAZADA"}:
         raw_aprobacion = "RECHAZADA"
-        raw_estatus = "PENDIENTE"
+        raw_estatus = "0%"
     elif raw_estatus in {"EN REVISION", "EN REVISIÓN"}:
         raw_aprobacion = "EN REVISIÓN"
-        raw_estatus = "PENDIENTE"
+        raw_estatus = "0%"
     if raw_aprobacion == "APROBADO" or raw_aprobacion == "AUTORIZADO":
         raw_aprobacion = "APROBADA"
     elif raw_aprobacion == "RECHAZADO":
@@ -5343,7 +5532,7 @@ def _normalize_import_payload(payload: dict) -> dict:
     return {
         "folio": (payload.get("folio") or payload.get("folio_externo") or "").strip() or None,
         "fecha": parse_datetime_flexible(payload.get("fecha")) or now_cdmx_naive(),
-        "estatus": raw_estatus if raw_estatus in VALID_ESTATUS_SEGUIMIENTO else "PENDIENTE",
+        "estatus": raw_estatus if raw_estatus in VALID_ESTATUS_SEGUIMIENTO else "0%",
         "estatus_aprobacion": raw_aprobacion if raw_aprobacion in VALID_ESTATUS_APROBACION else "EN REVISIÓN",
         "responsable": (payload.get("responsable") or "").strip() or None,
         "proyecto": (payload.get("proyecto") or payload.get("obra") or "").strip() or None,
@@ -5547,15 +5736,52 @@ def can_send_whatsapp() -> bool:
         and META_WHATSAPP_TEMPLATE_NAME
     )
 
+def can_send_sms() -> bool:
+    return bool(
+        TWILIO_ACCOUNT_SID
+        and TWILIO_AUTH_TOKEN
+        and (TWILIO_SMS_FROM or TWILIO_MESSAGING_SERVICE_SID)
+    )
+
+def _send_sms_twilio(recipient: str, body: str) -> None:
+    endpoint = (
+        "https://api.twilio.com/2010-04-01/Accounts/"
+        f"{TWILIO_ACCOUNT_SID}/Messages.json"
+    )
+    payload = {
+        "To": f"+{recipient}",
+        "Body": (body or "Notificación de Sistema MAR")[:1500],
+    }
+    if TWILIO_MESSAGING_SERVICE_SID:
+        payload["MessagingServiceSid"] = TWILIO_MESSAGING_SERVICE_SID
+    else:
+        payload["From"] = TWILIO_SMS_FROM
+    response = requests.post(
+        endpoint,
+        auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN),
+        data=payload,
+        timeout=30,
+    )
+    if not response.ok:
+        try:
+            error_detail = response.json()
+        except ValueError:
+            error_detail = response.text[:1000]
+        raise RuntimeError(
+            f"Twilio SMS HTTP {response.status_code}: {error_detail}"
+        )
+    message_sid = response.json().get("sid", "")
+    print(f"[SMS] Enviado a {recipient}; sid={message_sid}")
+
 def send_whatsapp_multi(to_list: Iterable[str], body: str) -> None:
     if is_demo_user():
         logger.info("WhatsApp simulado en cuenta demo.")
         return
     if not to_list:
         return
-    if not can_send_whatsapp():
+    if not can_send_whatsapp() and not can_send_sms():
         raise RuntimeError(
-            "Meta WhatsApp no está configurado. Faltan ACCESS_TOKEN, PHONE_NUMBER_ID o TEMPLATE_NAME."
+            "No hay canal disponible. Configura Meta WhatsApp o Twilio SMS."
         )
     title, separator, detail = (body or "").partition("\n\n")
     title = title.strip().strip("*") or "Notificación de Sistema MAR"
@@ -5569,49 +5795,61 @@ def send_whatsapp_multi(to_list: Iterable[str], body: str) -> None:
         if not to_norm:
             continue
         recipient = "".join(ch for ch in to_norm if ch.isdigit())
-        payload = {
-            "messaging_product": "whatsapp",
-            "recipient_type": "individual",
-            "to": recipient,
-            "type": "template",
-            "template": {
-                "name": META_WHATSAPP_TEMPLATE_NAME,
-                "language": {"code": META_WHATSAPP_TEMPLATE_LANGUAGE},
-                "components": [
-                    {
-                        "type": "body",
-                        "parameters": [
-                            {"type": "text", "text": title[:1024]},
-                            {"type": "text", "text": detail[:4096]},
-                        ],
-                    }
-                ],
-            },
-        }
-        try:
-            response = requests.post(
-                endpoint,
-                headers={
-                    "Authorization": f"Bearer {META_WHATSAPP_ACCESS_TOKEN}",
-                    "Content-Type": "application/json",
+        whatsapp_error: Exception | None = None
+        if can_send_whatsapp():
+            payload = {
+                "messaging_product": "whatsapp",
+                "recipient_type": "individual",
+                "to": recipient,
+                "type": "template",
+                "template": {
+                    "name": META_WHATSAPP_TEMPLATE_NAME,
+                    "language": {"code": META_WHATSAPP_TEMPLATE_LANGUAGE},
+                    "components": [
+                        {
+                            "type": "body",
+                            "parameters": [
+                                {"type": "text", "text": title[:1024]},
+                                {"type": "text", "text": detail[:4096]},
+                            ],
+                        }
+                    ],
                 },
-                json=payload,
-                timeout=30,
-            )
-            if not response.ok:
-                try:
-                    error_detail = response.json()
-                except ValueError:
-                    error_detail = response.text[:1000]
-                raise RuntimeError(
-                    f"Meta Graph API HTTP {response.status_code}: {error_detail}"
+            }
+            try:
+                response = requests.post(
+                    endpoint,
+                    headers={
+                        "Authorization": f"Bearer {META_WHATSAPP_ACCESS_TOKEN}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                    timeout=30,
                 )
-            message_id = ((response.json().get("messages") or [{}])[0]).get("id", "")
-            print(f"[Meta WhatsApp] Enviado a {recipient}; id={message_id}")
-        except Exception as e:
-            print(f"[Meta WhatsApp] ERROR enviando a {recipient}: {e}", file=sys.stderr)
-            traceback.print_exc()
-            raise
+                if not response.ok:
+                    try:
+                        error_detail = response.json()
+                    except ValueError:
+                        error_detail = response.text[:1000]
+                    raise RuntimeError(
+                        f"Meta Graph API HTTP {response.status_code}: {error_detail}"
+                    )
+                message_id = ((response.json().get("messages") or [{}])[0]).get("id", "")
+                print(f"[Meta WhatsApp] Enviado a {recipient}; id={message_id}")
+                continue
+            except Exception as exc:
+                whatsapp_error = exc
+                print(
+                    f"[Meta WhatsApp] Falló para {recipient}; intento respaldo SMS: {exc}",
+                    file=sys.stderr,
+                )
+
+        if can_send_sms():
+            _send_sms_twilio(recipient, f"{title}\n\n{detail}")
+            continue
+        if whatsapp_error:
+            raise whatsapp_error
+        raise RuntimeError("Twilio SMS no está configurado.")
 
 
 def _notification_phone_recipients(email_recipients: Iterable[str]) -> list[str]:
@@ -5682,8 +5920,8 @@ class _WhatsAppNotificationTransport:
         return None
 
     def send_message(self, msg: EmailMessage, to_addrs=None, **kwargs):
-        if not can_send_whatsapp():
-            raise RuntimeError("WhatsApp no está configurado; revisa las credenciales de Meta Cloud API.")
+        if not can_send_whatsapp() and not can_send_sms():
+            raise RuntimeError("No hay canal de notificaciones configurado.")
         direct_phone = str(msg.get("X-WhatsApp-To") or "").strip()
         if direct_phone:
             phones = [normalize_whatsapp(direct_phone)]
@@ -5792,8 +6030,7 @@ def _send_password_reset_email(usuario: Usuario, reset_url: str) -> None:
     msg = EmailMessage()
     msg["Subject"] = "Restablece tu acceso a Sistema MAR"
     msg["From"] = f"SISTEMA MAR <{SMTP_FROM or SMTP_USERNAME}>"
-    msg["To"] = usuario.correo or "whatsapp@mar.local"
-    msg["X-WhatsApp-To"] = usuario.telefono or ""
+    msg["To"] = usuario.correo
     msg.set_content(
         "Recibimos una solicitud para restablecer tu contraseña de Sistema MAR.\n\n"
         f"Abre este enlace (válido durante 30 minutos):\n{reset_url}\n\n"
@@ -5828,13 +6065,13 @@ def forgot_password():
         usuario = Usuario.query.filter(
             db.or_(db.func.lower(Usuario.correo) == identity, db.func.lower(Usuario.nombre) == identity)
         ).first()
-        if usuario and (usuario.telefono or "").strip():
+        if usuario and (usuario.correo or "").strip():
             try:
                 reset_url = url_for("reset_password", token=_password_reset_token(usuario), _external=True)
                 _send_password_reset_email(usuario, reset_url)
             except Exception:
                 logger.exception("No se pudo enviar el correo de recuperación para usuario id=%s", usuario.id)
-        flash("Si los datos coinciden con una cuenta, recibirás un enlace por WhatsApp en unos minutos.", "success")
+        flash("Si los datos coinciden con una cuenta, recibirás un enlace por correo en unos minutos.", "success")
         return redirect(url_for("forgot_password"))
     return render_template("forgot_password.html", title="Recuperar acceso")
 
@@ -5880,6 +6117,7 @@ def index():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
+    bandeja = (request.args.get("bandeja") or "").strip().lower() if can_manage_quote_assignments() else ""
     dashboard_filters = {
         "desde": desde,
         "hasta": hasta,
@@ -5889,6 +6127,7 @@ def index():
         "especialidad": especialidad,
         "especialidad_descripcion": especialidad_descripcion,
         "responsable": responsable,
+        "bandeja": bandeja,
     }
 
     try:
@@ -8272,7 +8511,7 @@ def crear_cotizacion():
         folio=generar_folio(),
         fecha=now_cdmx_naive(),
         cliente_id=cliente.id if cliente else None,
-        estatus=(f.get("estatus") or "PENDIENTE").upper(),
+        estatus=(f.get("estatus") or "0%").upper(),
         estatus_aprobacion=(f.get("estatus_aprobacion") or "EN REVISIÓN").upper(),
         especialidad=especialidad_form,
         especialidad_descripcion=(f.get("especialidad_descripcion") or "").strip()[:500] or None,
@@ -8469,7 +8708,7 @@ def actualizar_cotizacion(cot_id: int):
         c.cliente_id = cliente.id
 
     # === ENCABEZADO ===
-    estatus_form = (f.get("estatus") or c.estatus or "PENDIENTE").upper()
+    estatus_form = (f.get("estatus") or c.estatus or "0%").upper()
     if estatus_form not in VALID_ESTATUS_SEGUIMIENTO:
         flash("Selecciona un estatus de seguimiento válido.", "danger")
         return redirect(url_for("editar_cotizacion", cot_id=c.id))
@@ -8897,6 +9136,7 @@ def cotizacion_seguimiento(cot_id: int):
         seguimientos=c.seguimientos,
         valid_estatus=VALID_ESTATUS,
         mention_users=_usuarios_menciones_payload(),
+        can_manage_assignments=can_manage_quote_assignments(),
         title=f"Seguimiento {c.folio}",
     )
 
@@ -8935,6 +9175,7 @@ def crear_cotizacion_seguimiento(cot_id: int):
             actualizado_en=now_cdmx_naive(),
         )
         db.session.add(seg)
+        c.ultimo_contacto = now_cdmx_naive()
 
     db.session.commit()
 
@@ -10833,7 +11074,7 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
             fontSize=9,
             leftIndent=8,
         )
-        bullets = "<br/>".join([f"• {x}" for x in condiciones if str(x).strip()])
+        bullets = format_pdf_condition_lines(condiciones)
         elems.append(Paragraph(bullets, nota_style))
         elems.append(Spacer(1, 8))
 
@@ -11108,53 +11349,6 @@ def debug_mobile_devices_hansel():
             for row in rows
         ],
     })
-
-@app.route("/debug/force_reminders")
-@login_required
-def debug_force_reminders():
-    if not is_admin():
-        abort(403)
-    try:
-        enviar_notificaciones_pendientes()
-        return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-def enviar_notificaciones_pendientes():
-    with app.app_context():
-        ahora = now_cdmx_naive()
-        inicio_hoy = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
-
-        cotizaciones = (
-            Cotizacion.query
-            .filter(Cotizacion.eliminada_en.is_(None), db.func.upper(Cotizacion.estatus) != "FINALIZADA")
-            .all()
-        )
-
-        for cot in cotizaciones:
-            if cot.last_whatsapp_at is not None and cot.last_whatsapp_at >= inicio_hoy:
-                continue
-            try:
-                _send_daily_status_reminder(cot, ahora)
-            except Exception as e:
-                print(f"[Scheduler] ERROR recordatorio ({cot.folio}): {e}", file=sys.stderr)
-
-scheduler: Optional[BackgroundScheduler] = None
-try:
-    if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
-        scheduler = BackgroundScheduler(timezone=TZ_CDMX, daemon=True)
-        scheduler.add_job(
-            enviar_notificaciones_pendientes,
-            "cron",
-            hour=10,
-            minute=0,
-            id="daily_quotes_status_reminder",
-            replace_existing=True
-        )
-        scheduler.start()
-        print("[Scheduler] Iniciado (10:00 AM CDMX).")
-except Exception as e:
-    print(f"[Scheduler] No pudo iniciar: {e}", file=sys.stderr)
 
 @app.route("/admin/bitacora")
 @login_required
@@ -11560,19 +11754,21 @@ def admin_usuarios():
         if not nombre_visible:
             flash("El nombre es obligatorio.", "danger")
             return redirect(url_for("admin_usuarios"))
-        if not telefono or not normalize_whatsapp(telefono):
-            flash("Captura un WhatsApp mexicano válido, por ejemplo 56-1003-5643.", "danger")
+        if not correo:
+            flash("El correo del usuario es obligatorio.", "danger")
             return redirect(url_for("admin_usuarios"))
-        if correo:
-            try:
-                correos_usuario = _parse_email_list(correo)
-            except ValueError as exc:
-                flash(str(exc), "danger")
-                return redirect(url_for("admin_usuarios"))
-            if len(correos_usuario) != 1:
-                flash("Captura un solo correo para el usuario.", "danger")
-                return redirect(url_for("admin_usuarios"))
-            correo = correos_usuario[0]
+        try:
+            correos_usuario = _parse_email_list(correo)
+        except ValueError as exc:
+            flash(str(exc), "danger")
+            return redirect(url_for("admin_usuarios"))
+        if len(correos_usuario) != 1:
+            flash("Captura un solo correo para el usuario.", "danger")
+            return redirect(url_for("admin_usuarios"))
+        correo = correos_usuario[0]
+        if telefono and not normalize_whatsapp(telefono):
+            flash("El teléfono debe ser mexicano, por ejemplo 56-1003-5643.", "danger")
+            return redirect(url_for("admin_usuarios"))
         if not password:
             flash("La contrasena es obligatoria para crear un usuario.", "danger")
             return redirect(url_for("admin_usuarios"))
@@ -11582,7 +11778,7 @@ def admin_usuarios():
             flash("Ya existe un usuario con ese usuario.", "danger")
             return redirect(url_for("admin_usuarios"))
 
-        nuevo = Usuario(nombre=nombre, nombre_visible=nombre_visible, correo=correo or None, telefono=telefono, rol=rol)
+        nuevo = Usuario(nombre=nombre, nombre_visible=nombre_visible, correo=correo, telefono=telefono or None, rol=rol)
         nuevo.set_password(password)
         db.session.add(nuevo)
         db.session.commit()
@@ -11641,19 +11837,21 @@ def admin_usuario_editar(user_id: int):
     if not nombre_visible:
         flash("El nombre es obligatorio.", "danger")
         return redirect(url_for("admin_usuarios"))
-    if not telefono or not normalize_whatsapp(telefono):
-        flash("Captura un WhatsApp mexicano válido, por ejemplo 56-1003-5643.", "danger")
+    if not correo:
+        flash("El correo del usuario es obligatorio.", "danger")
         return redirect(url_for("admin_usuarios"))
-    if correo:
-        try:
-            correos_usuario = _parse_email_list(correo)
-        except ValueError as exc:
-            flash(str(exc), "danger")
-            return redirect(url_for("admin_usuarios"))
-        if len(correos_usuario) != 1:
-            flash("Captura un solo correo para el usuario.", "danger")
-            return redirect(url_for("admin_usuarios"))
-        correo = correos_usuario[0]
+    try:
+        correos_usuario = _parse_email_list(correo)
+    except ValueError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("admin_usuarios"))
+    if len(correos_usuario) != 1:
+        flash("Captura un solo correo para el usuario.", "danger")
+        return redirect(url_for("admin_usuarios"))
+    correo = correos_usuario[0]
+    if telefono and not normalize_whatsapp(telefono):
+        flash("El teléfono debe ser mexicano, por ejemplo 56-1003-5643.", "danger")
+        return redirect(url_for("admin_usuarios"))
 
     duplicado = Usuario.query.filter(
         db.func.lower(Usuario.nombre) == nombre.lower(),
@@ -11674,8 +11872,8 @@ def admin_usuario_editar(user_id: int):
 
     usuario.nombre = nombre
     usuario.nombre_visible = nombre_visible
-    usuario.correo = correo or None
-    usuario.telefono = telefono
+    usuario.correo = correo
+    usuario.telefono = telefono or None
     usuario.rol = rol
     if password:
         usuario.set_password(password)

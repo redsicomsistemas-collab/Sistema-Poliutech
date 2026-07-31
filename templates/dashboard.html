@@ -241,6 +241,34 @@
   </div>
 </div>
 
+{% if can_manage_assignments %}
+<div class="card border-primary shadow-sm mb-4">
+  <div class="card-body">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+      <h5 class="mb-0">Seguimiento comercial</h5>
+      <div class="btn-group flex-wrap">
+        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('index', bandeja='mis') }}">Mis cotizaciones</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('index', bandeja='sin_asignar') }}">Sin asignar</a>
+      </div>
+    </div>
+    <div class="row g-2 text-center">
+      <div class="col-6 col-lg-3"><a class="card card-body text-decoration-none border-danger" href="{{ url_for('index', bandeja='vencidas') }}"><strong class="fs-3 text-danger">{{ seguimiento_metricas.vencidas or 0 }}</strong><span>Vencidas</span></a></div>
+      <div class="col-6 col-lg-3"><a class="card card-body text-decoration-none border-warning" href="{{ url_for('index', bandeja='hoy') }}"><strong class="fs-3 text-warning">{{ seguimiento_metricas.hoy or 0 }}</strong><span>Para hoy</span></a></div>
+      <div class="col-6 col-lg-3"><a class="card card-body text-decoration-none border-success" href="{{ url_for('index', bandeja='proximas') }}"><strong class="fs-3 text-success">{{ seguimiento_metricas.proximas or 0 }}</strong><span>Próximas</span></a></div>
+      <div class="col-6 col-lg-3"><a class="card card-body text-decoration-none border-secondary" href="{{ url_for('index', bandeja='sin_asignar') }}"><strong class="fs-3 text-secondary">{{ seguimiento_metricas.sin_asignar or 0 }}</strong><span>Sin asignar</span></a></div>
+    </div>
+    <details class="mt-3">
+      <summary class="fw-semibold">Carga por asesor</summary>
+      <div class="d-flex flex-wrap gap-2 mt-2">
+        {% for nombre, nombre_visible, cantidad in carga_asesores %}
+        <span class="badge text-bg-light border">{{ nombre_visible or nombre }}: {{ cantidad }}</span>
+        {% endfor %}
+      </div>
+    </details>
+  </div>
+</div>
+{% endif %}
+
 <div class="row g-3 mb-4 dashboard-actions-row">
   <div class="col-md-3">
     <a href="{{ url_for('ordenes_compra_index') }}" class="btn btn-primary w-100 shadow-sm py-3 fw-bold">
@@ -356,17 +384,19 @@
             <button id="btn-limpiar-filtros" type="button" class="btn btn-outline-secondary btn-sm">Limpiar</button>
           </div>
         </div>
-        {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
+        {% if can_manage_assignments %}
         <div class="col-12 mt-1 dashboard-bulk-actions">
           <span class="small text-secondary me-2" id="bulk-selected-label">Seleccionadas: <b id="bulk-selected-count">0</b></span>
           <span class="small text-secondary me-2" id="bulk-visible-label">Visibles: <b id="bulk-visible-count">0</b></span>
 
+          {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
           <button id="btn-bulk-delete" class="btn btn-danger btn-sm" disabled>
             🗑️ Eliminar seleccionadas
           </button>
           <button id="btn-bulk-delete-visible" class="btn btn-outline-danger btn-sm" disabled>
             🗑️ Eliminar visibles (filtradas)
           </button>
+          {% endif %}
         </div>
         {% endif %}
       </div>
@@ -384,6 +414,14 @@
               <th>Folio</th>
               <th>Fecha</th>
               <th>Usuario</th>
+              {% if can_manage_assignments %}
+              <th>Fecha asignación</th>
+              <th>Próximo seguimiento</th>
+              <th>Último contacto</th>
+              <th>Prioridad</th>
+              <th>Instrucción</th>
+              <th>Asignó</th>
+              {% endif %}
               <th>Cliente</th>
               <th>Empresa</th>
               <th>Especialidad</th>
@@ -406,7 +444,7 @@
                 data-cliente="{{ (c.cliente.nombre_cliente if c.cliente else '')|lower }}"
                 data-empresa="{{ (c.cliente.empresa if c.cliente else '')|lower }}"
                 data-proyecto="{{ (c.proyecto or '')|lower }}">
-              {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
+              {% if can_manage_assignments %}
               <td class="text-center quote-select-cell">
                 {% set estatus_flag = (c.estatus_aprobacion or 'EN REVISIÓN')|upper %}
                 {% if estatus_flag in ['APROBADA'] %}
@@ -473,7 +511,7 @@
                   data-email="{{ c.cliente.correo if c.cliente and c.cliente.correo else '' }}"
                 >📧</button>
                 {% endif %}
-                {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
+              {% if can_manage_assignments %}
                 <a href="{{ url_for('eliminar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-danger btn-sm" title="Eliminar">🗑️</a>
                 {% endif %}
               </td>
@@ -526,6 +564,7 @@
 <script>
 document.addEventListener("DOMContentLoaded", () => {
   const IS_ADMIN = {{ 'true' if (current_user.is_authenticated and current_user.rol == 'ADMIN') else 'false' }};
+  const CAN_MANAGE_ASSIGNMENTS = {{ 'true' if can_manage_assignments else 'false' }};
   const desde = document.getElementById("filtro-desde");
   const hasta = document.getElementById("filtro-hasta");
   const estatus = document.getElementById("filtro-estatus");
@@ -839,7 +878,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function updateBulkDeleteState() {
-    if (!IS_ADMIN) return;
+    if (!CAN_MANAGE_ASSIGNMENTS) return;
     const allChecks = Array.from(document.querySelectorAll(".chk-cot"));
     const anyChecked = allChecks.some(chk => chk.checked);
     const checkedCount = allChecks.filter(chk => chk.checked).length;
@@ -863,7 +902,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  if (IS_ADMIN && chkAll) {
+  if (CAN_MANAGE_ASSIGNMENTS && chkAll) {
     chkAll.addEventListener("change", () => {
       const visible = getVisibleRowCheckboxes();
       visible.forEach(chk => (chk.checked = chkAll.checked));
@@ -871,7 +910,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  if (IS_ADMIN) {
+  if (CAN_MANAGE_ASSIGNMENTS) {
     document.addEventListener("change", (e) => {
       if (e.target && e.target.classList.contains("chk-cot")) {
         updateBulkDeleteState();
@@ -880,17 +919,17 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function confirmIfGanadas(ids) {
-    // detectar si hay GANADA en selección
+    // advertir cuando se eliminan cotizaciones con seguimiento completo
     const ganadas = ids.filter(id => {
       const tr = document.querySelector(`#tablaCotizaciones tr[data-id="${id}"]`);
-      return tr && (tr.dataset.estatus || "").toUpperCase() === "GANADA";
+      return tr && (tr.dataset.estatus || "").toUpperCase() === "100%";
     });
     if (ganadas.length === 0) return true;
 
     const step1 = await Swal.fire({
       icon: "warning",
-      title: "¡Ojo! Hay cotizaciones GANADAS",
-      html: `Estás por eliminar <b>${ganadas.length}</b> cotización(es) con estatus <b>GANADA</b>.<br><br>Para continuar escribe <b>ELIMINAR</b>.`,
+      title: "¡Ojo! Hay cotizaciones al 100%",
+      html: `Estás por eliminar <b>${ganadas.length}</b> cotización(es) con seguimiento <b>100%</b>.<br><br>Para continuar escribe <b>ELIMINAR</b>.`,
       input: "text",
       inputPlaceholder: "Escribe ELIMINAR",
       showCancelButton: true,

@@ -2,6 +2,32 @@
 {% block title %}Seguimiento {{ c.folio }}{% endblock %}
 
 {% block content %}
+{% if can_manage_assignments %}
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h5>Asignación de seguimiento</h5>
+    <div class="row g-2">
+      <div class="col-md-4"><strong>Asesor:</strong> {{ c.responsable_usuario.nombre_representante if c.responsable_usuario else 'Sin asignar' }}</div>
+      <div class="col-md-4"><strong>Asignada:</strong> {{ c.asignado_en.strftime('%d/%m/%Y %H:%M') if c.asignado_en else '—' }}</div>
+      <div class="col-md-4"><strong>Asignó:</strong> {{ c.asignado_por_usuario.nombre_representante if c.asignado_por_usuario else '—' }}</div>
+      <div class="col-md-4"><strong>Próximo seguimiento:</strong> {{ c.proximo_seguimiento.strftime('%d/%m/%Y %H:%M') if c.proximo_seguimiento else '—' }}</div>
+      <div class="col-md-4"><strong>Último contacto:</strong> {{ c.ultimo_contacto.strftime('%d/%m/%Y %H:%M') if c.ultimo_contacto else '—' }}</div>
+      <div class="col-md-4"><strong>Prioridad:</strong> {{ c.prioridad or 'MEDIA' }}</div>
+      <div class="col-12"><strong>Instrucción:</strong> {{ c.instruccion_asignacion or '—' }}</div>
+    </div>
+    {% if c.historial_asignaciones %}
+    <details class="mt-3">
+      <summary class="fw-semibold">Historial de reasignaciones</summary>
+      <ul class="mt-2 mb-0">
+        {% for item in c.historial_asignaciones|sort(attribute='asignado_en', reverse=true) %}
+        <li>{{ item.asignado_en.strftime('%d/%m/%Y %H:%M') }} · {{ item.usuario_nuevo.nombre_representante }} · por {{ item.asignado_por.nombre_representante if item.asignado_por else 'Sistema' }}</li>
+        {% endfor %}
+      </ul>
+    </details>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
 <style>
   .followup-page {
     max-width: 1100px;

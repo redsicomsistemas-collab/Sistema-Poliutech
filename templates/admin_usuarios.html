@@ -36,12 +36,12 @@
             <input type="text" name="nombre_visible" class="form-control" placeholder="Ej. Rafael Martinez" required>
           </div>
           <div class="col-12">
-            <label class="form-label fw-semibold">WhatsApp</label>
-            <input type="tel" name="telefono" class="form-control" placeholder="56-1003-5643" pattern="[0-9]{2}-[0-9]{4}-[0-9]{4}" title="Usa el formato 56-1003-5643" required>
+            <label class="form-label fw-semibold">Correo</label>
+            <input type="email" name="correo" class="form-control" placeholder="usuario@poliutech.com" required>
           </div>
           <div class="col-12">
-            <label class="form-label fw-semibold">Correo (opcional)</label>
-            <input type="email" name="correo" class="form-control" placeholder="usuario@poliutech.com">
+            <label class="form-label fw-semibold">Teléfono (opcional)</label>
+            <input type="tel" name="telefono" class="form-control" placeholder="56-1003-5643" pattern="[0-9]{2}-[0-9]{4}-[0-9]{4}" title="Usa el formato 56-1003-5643">
           </div>
           <div class="col-12">
             <label class="form-label fw-semibold">Contrasena</label>
@@ -93,7 +93,7 @@
                   <div class="fw-bold">{{ usuario.nombre_visible or usuario.nombre }}</div>
                   <div class="small text-muted">Usuario: {{ usuario.nombre }}</div>
                   <div class="small text-muted">{{ usuario.correo or "Sin correo" }}</div>
-                  <div class="small text-success">WhatsApp: {{ usuario.telefono or "Sin número" }}</div>
+                  <div class="small text-muted">Teléfono: {{ usuario.telefono or "Sin número" }}</div>
                   <div class="small text-muted">ID {{ usuario.id }}</div>
                 </td>
                 <td>
@@ -110,10 +110,10 @@
                       <input type="text" name="nombre_visible" value="{{ usuario.nombre_visible or usuario.nombre }}" class="form-control" placeholder="Nombre" required>
                     </div>
                     <div class="col-12 col-lg-4">
-                      <input type="tel" name="telefono" value="{{ usuario.telefono or '' }}" class="form-control" placeholder="56-1003-5643" pattern="[0-9]{2}-[0-9]{4}-[0-9]{4}" title="Usa el formato 56-1003-5643" required>
+                      <input type="email" name="correo" value="{{ usuario.correo or '' }}" class="form-control" placeholder="Correo" required>
                     </div>
                     <div class="col-12 col-lg-4">
-                      <input type="email" name="correo" value="{{ usuario.correo or '' }}" class="form-control" placeholder="Correo (opcional)">
+                      <input type="tel" name="telefono" value="{{ usuario.telefono or '' }}" class="form-control" placeholder="Teléfono (opcional)" pattern="[0-9]{2}-[0-9]{4}-[0-9]{4}" title="Usa el formato 56-1003-5643">
                     </div>
                     <div class="col-12 col-lg-4">
                       <input type="password" name="password" class="form-control" placeholder="Nueva contrasena (opcional)">
