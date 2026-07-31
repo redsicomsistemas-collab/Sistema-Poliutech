@@ -759,7 +759,7 @@
       <button class="mobile-menu-toggle" type="button" id="mobileMenuToggle" aria-label="Abrir menu" aria-controls="sideMenu" aria-expanded="false">
         ☰
       </button>
-      <a class="topbar-brand d-flex align-items-center" href="{{ url_for('index') }}">
+      <a class="topbar-brand d-flex align-items-center" href="{{ url_for('demo_inicio') if is_demo_account else url_for('index') }}">
         {% if company_branding and company_branding.logo_path %}
         <img src="{{ url_for('static', filename=company_branding.logo_path) }}" alt="Logotipo {{ company_branding.nombre_comercial }}" class="me-2 topbar-logo">
         {% else %}
@@ -770,8 +770,8 @@
       </a>
 
       <div class="topbar-primary-actions">
-        <a class="quote-cta fw-bold" href="{{ url_for('cotizador') }}">💰 COTIZAR</a>
-        <a class="quote-cta invoice-cta fw-bold" href="{{ url_for('facturacion.nueva') }}">🧾 FACTURAR</a>
+        {% if not is_demo_account or 'cotizaciones' in demo_modules %}<a class="quote-cta fw-bold" href="{{ url_for('cotizador') }}">💰 COTIZAR</a>{% endif %}
+        {% if not is_demo_account or 'facturacion' in demo_modules %}<a class="quote-cta invoice-cta fw-bold" href="{{ url_for('facturacion.nueva') }}">🧾 FACTURAR</a>{% endif %}
       </div>
 
       {% if current_user.is_authenticated %}
@@ -785,7 +785,7 @@
         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userMenu">
           <li><span class="dropdown-item-text fw-semibold">{{ current_user.nombre }}</span></li>
           <li><hr class="dropdown-divider"></li>
-          <li><a class="dropdown-item" href="{{ url_for('reportes_diarios_index') }}">🗓️ Reportes diarios</a></li>
+          {% if not is_demo_account or 'reportes' in demo_modules %}<li><a class="dropdown-item" href="{{ url_for('reportes_diarios_index') }}">🗓️ Reportes diarios</a></li>{% endif %}
           {% if can_view_eval_departamental %}
           <li><a class="dropdown-item" href="{{ url_for('reportes_diarios_evaluacion') }}">📊 Evaluacion departamental</a></li>
           {% endif %}
@@ -802,8 +802,8 @@
     <aside class="side-menu" id="sideMenu" aria-label="Menu principal">
       <div class="mobile-menu-tools">
         <div class="topbar-primary-actions">
-          <a class="quote-cta fw-bold" href="{{ url_for('cotizador') }}">💰 COTIZAR</a>
-          <a class="quote-cta invoice-cta fw-bold" href="{{ url_for('facturacion.nueva') }}">🧾 FACTURAR</a>
+          {% if not is_demo_account or 'cotizaciones' in demo_modules %}<a class="quote-cta fw-bold" href="{{ url_for('cotizador') }}">💰 COTIZAR</a>{% endif %}
+          {% if not is_demo_account or 'facturacion' in demo_modules %}<a class="quote-cta invoice-cta fw-bold" href="{{ url_for('facturacion.nueva') }}">🧾 FACTURAR</a>{% endif %}
         </div>
         <div class="mobile-user-card">
           <button class="mobile-user-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#mobileUserActions" aria-expanded="false" aria-controls="mobileUserActions">
@@ -811,7 +811,7 @@
             <span>▾</span>
           </button>
           <div class="collapse mobile-user-actions" id="mobileUserActions">
-            <a href="{{ url_for('reportes_diarios_index') }}">🗓️ Reportes diarios</a>
+            {% if not is_demo_account or 'reportes' in demo_modules %}<a href="{{ url_for('reportes_diarios_index') }}">🗓️ Reportes diarios</a>{% endif %}
             {% if can_view_eval_departamental %}
             <a href="{{ url_for('reportes_diarios_evaluacion') }}">📊 Evaluacion departamental</a>
             {% endif %}
@@ -828,6 +828,16 @@
       {% set menu_rrhh_open = menu_endpoint in ['rrhh_index', 'rrhh_crear', 'rrhh_detalle', 'rrhh_revisar', 'rrhh_adjunto'] %}
       {% set menu_admin_open = menu_endpoint in ['altas_proveedores', 'papelera_cotizaciones', 'admin_demos', 'admin_personalizacion', 'admin_notificaciones', 'admin_usuarios', 'admin_permisos', 'admin_bitacora'] %}
       <nav class="nav flex-column" id="sideMenuCategories">
+        {% if is_demo_account %}
+        <div class="menu-category">
+          <a class="nav-link" href="{{ url_for('demo_inicio') }}">🏠 Inicio</a>
+        </div>
+        {% for item in demo_module_items %}
+        <div class="menu-category">
+          <a class="nav-link" href="{{ url_for(item.endpoint) }}"><span>{{ item.icon }} {{ item.label }}</span></a>
+        </div>
+        {% endfor %}
+        {% else %}
         <div class="menu-category">
           <button class="nav-link menu-category-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#menuGeneral" aria-expanded="{{ 'true' if menu_general_open else 'false' }}"><span>🏠 General</span><span class="menu-category-chevron">▼</span></button>
           <div class="collapse {{ 'show' if menu_general_open }} menu-category-items" id="menuGeneral"><a class="nav-link" href="{{ url_for('index') }}">🏠 Inicio</a><a class="nav-link" href="{{ url_for('proyectos') }}">📁 Proyectos</a></div>
@@ -862,6 +872,7 @@
           <button class="nav-link menu-category-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#menuAdmin" aria-expanded="{{ 'true' if menu_admin_open else 'false' }}"><span>⚙️ Administración</span><span class="menu-category-chevron">▼</span></button>
           <div class="collapse {{ 'show' if menu_admin_open }} menu-category-items" id="menuAdmin"><a class="nav-link" href="{{ url_for('altas_proveedores') }}">🗂️ Altas</a><a class="nav-link" href="{{ url_for('papelera_cotizaciones') }}">🗑️ Papelera</a>{% if (current_user.nombre or "")|lower == "admin" %}<a class="nav-link" href="{{ url_for('admin_demos') }}">🧪 Demos</a><a class="nav-link" href="{{ url_for('admin_personalizacion') }}">🎨 Personalización</a><a class="nav-link" href="{{ url_for('admin_notificaciones') }}">🔔 Notificaciones</a><a class="nav-link" href="{{ url_for('admin_usuarios') }}">👥 Usuarios</a><a class="nav-link" href="{{ url_for('admin_permisos') }}">🔐 Permisos</a><a class="nav-link" href="{{ url_for('admin_bitacora') }}">🧾 Bitácora</a>{% endif %}</div>
         </div>
+        {% endif %}
         {% endif %}
       </nav>
     </aside>
@@ -1438,5 +1449,6 @@ document.addEventListener('DOMContentLoaded', function () {
 })();
 </script>
 <script src="{{ url_for('static', filename='js/comprobante_preview.js', v='20260728-2') }}"></script>
+{% block scripts %}{% endblock %}
 </body>
 </html>

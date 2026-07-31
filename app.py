@@ -3134,14 +3134,22 @@ def _require_login_everywhere():
     return redirect(url_for("login", next=nxt))
 
 
-DEMO_MODULE_CATALOG = {
-    "cotizaciones": "Cotizaciones y clientes",
-    "compras": "Compras y proveedores",
-    "gastos": "Gastos y viáticos",
-    "fondos": "Solicitudes de fondos",
-    "reportes": "Reportes diarios",
-    "inventario": "Inventario",
+DEMO_MODULE_META = {
+    "cotizaciones": {"label": "Cotizaciones y clientes", "icon": "💰", "endpoint": "list_cotizaciones", "group": "Comercial", "description": "Cotiza, administra clientes y da seguimiento comercial."},
+    "proyectos": {"label": "Proyectos", "icon": "📁", "endpoint": "proyectos", "group": "General", "description": "Concentra cotizaciones y avances por proyecto."},
+    "crm": {"label": "Leads y prospectos", "icon": "🤝", "endpoint": "prospectos", "group": "Comercial", "description": "Organiza oportunidades, obras y seguimientos."},
+    "compras": {"label": "Compras y proveedores", "icon": "🧾", "endpoint": "ordenes_compra_index", "group": "Operación", "description": "Controla órdenes de compra y proveedores."},
+    "inventario": {"label": "Inventario", "icon": "📦", "endpoint": "inventario_index", "group": "Operación", "description": "Consulta existencias, movimientos y kardex."},
+    "precios_unitarios": {"label": "Precios unitarios", "icon": "🧮", "endpoint": "pu.obras_index", "group": "Operación", "description": "Integra análisis de precios y presupuestos de obra."},
+    "fondos": {"label": "Solicitudes de fondos", "icon": "💵", "endpoint": "solicitudes_recursos_index", "group": "Finanzas", "description": "Solicita, autoriza y comprueba recursos."},
+    "finanzas": {"label": "Panel financiero", "icon": "🏦", "endpoint": "finanzas_index", "group": "Finanzas", "description": "Visualiza movimientos y estado financiero."},
+    "facturacion": {"label": "Facturación", "icon": "🧾", "endpoint": "facturacion.index", "group": "Finanzas", "description": "Administra facturas y configuración fiscal."},
+    "gastos": {"label": "Gastos y viáticos", "icon": "💸", "endpoint": "gastos_viaticos_index", "group": "Finanzas", "description": "Registra comprobantes, viáticos y revisiones."},
+    "reportes": {"label": "Reportes diarios", "icon": "🗓️", "endpoint": "reportes_diarios_index", "group": "Gestión", "description": "Documenta actividades y avance diario."},
+    "rrhh": {"label": "Recursos Humanos", "icon": "👥", "endpoint": "rrhh_index", "group": "Gestión", "description": "Gestiona solicitudes y justificantes del personal."},
+    "soporte": {"label": "Soporte", "icon": "🎫", "endpoint": "soporte_tickets", "group": "Gestión", "description": "Registra y consulta solicitudes de soporte."},
 }
+DEMO_MODULE_CATALOG = {key: value["label"] for key, value in DEMO_MODULE_META.items()}
 
 
 def _demo_for_user(usuario=None) -> DemoEnvironment | None:
@@ -3164,6 +3172,25 @@ def _demo_modules(demo: DemoEnvironment | None) -> set[str]:
         return set()
 
 
+def _demo_module_order(demo: DemoEnvironment | None) -> list[str]:
+    if not demo:
+        return []
+    try:
+        values = json.loads(demo.modulos or "[]")
+    except (TypeError, ValueError):
+        values = []
+    result = []
+    for value in values:
+        key = str(value)
+        if key in DEMO_MODULE_META and key not in result:
+            result.append(key)
+    return result
+
+
+def _demo_module_items(demo: DemoEnvironment | None) -> list[dict]:
+    return [dict(key=key, **DEMO_MODULE_META[key]) for key in _demo_module_order(demo)]
+
+
 def is_demo_user() -> bool:
     try:
         return bool(getattr(current_user, "is_authenticated", False) and _demo_for_user())
@@ -3174,17 +3201,29 @@ def is_demo_user() -> bool:
 def _demo_module_for_path(path: str) -> str | None:
     path = (path or "").lower()
     for prefix, module in (
+        ("/api/dashboard", "cotizaciones"),
+        ("/api/cotizaciones", "cotizaciones"),
+        ("/api/clientes", "cotizaciones"),
         ("/cotiz", "cotizaciones"),
         ("/clientes", "cotizaciones"),
         ("/catalog", "cotizaciones"),
+        ("/proyectos", "proyectos"),
+        ("/prospectos", "crm"),
+        ("/registro-obras", "crm"),
         ("/ordenes-compra", "compras"),
         ("/proveedor", "compras"),
+        ("/altas", "compras"),
+        ("/inventario", "inventario"),
+        ("/pu", "precios_unitarios"),
         ("/gastos", "gastos"),
         ("/comprobar-gastos-fondos", "gastos"),
         ("/solicitudes-recursos", "fondos"),
         ("/estado-cuenta-recursos", "fondos"),
+        ("/finanzas", "finanzas"),
+        ("/facturacion", "facturacion"),
         ("/reportes-diarios", "reportes"),
-        ("/inventario", "inventario"),
+        ("/recursos-humanos", "rrhh"),
+        ("/soporte", "soporte"),
     ):
         if path.startswith(prefix):
             return module
@@ -3198,6 +3237,9 @@ def _enforce_demo_access():
     demo = _demo_for_user()
     if not demo:
         return
+    if request.path.startswith("/admin/"):
+        flash("Las herramientas administrativas no están disponibles en la demostración.", "warning")
+        return redirect(url_for("demo_inicio"))
     now = now_cdmx_naive()
     if demo.estado != "ACTIVA" or demo.fecha_vencimiento < now:
         if demo.estado == "ACTIVA":
@@ -3223,9 +3265,10 @@ def inject_demo_context():
             "active_demo": demo,
             "is_demo_account": bool(demo),
             "demo_modules": _demo_modules(demo),
+            "demo_module_items": _demo_module_items(demo),
         }
     except Exception:
-        return {"active_demo": None, "is_demo_account": False, "demo_modules": set()}
+        return {"active_demo": None, "is_demo_account": False, "demo_modules": set(), "demo_module_items": []}
 
 # ---------------------------------------------------------
 # Bitácora de actividad (Audit Log)
@@ -6107,6 +6150,8 @@ def logout():
 @app.route("/")
 @login_required
 def index():
+    if is_demo_user():
+        return redirect(url_for("demo_inicio"))
     page = request.args.get("page", 1, type=int)
     per_page = 20
     desde = (request.args.get("desde") or "").strip()
@@ -6189,6 +6234,19 @@ def index():
         proyectos_cotizacion=_known_project_names(),
         usuarios_asignables=usuarios_asignables,
         show_splash=True
+    )
+
+
+@app.route("/demo/inicio")
+@login_required
+def demo_inicio():
+    demo = _demo_for_user()
+    if not demo:
+        return redirect(url_for("index"))
+    return render_template(
+        "demo_inicio.html",
+        title=f"{demo.empresa} · Demo MAR",
+        modules=_demo_module_items(demo),
     )
 
 @app.route("/cotizador")
@@ -11434,6 +11492,19 @@ def _demo_username(empresa: str) -> str:
     return candidate
 
 
+def _requested_demo_modules() -> list[str]:
+    raw_order = (request.form.get("modules_order") or "").strip()
+    candidates = raw_order.split(",") if raw_order else request.form.getlist("modulos")
+    modules = []
+    for value in candidates:
+        key = str(value).strip()
+        if key in DEMO_MODULE_CATALOG and key not in modules:
+            modules.append(key)
+    if not modules:
+        raise ValueError("Selecciona por lo menos un módulo para la demostración.")
+    return modules
+
+
 def _seed_demo_environment(demo: DemoEnvironment) -> None:
     user = demo.usuario
     responsable = user.nombre_representante
@@ -11495,7 +11566,7 @@ def admin_demos():
                 correo = (request.form.get("correo") or "").strip()
                 telefono = (request.form.get("telefono") or "").strip()
                 days = max(1, min(request.form.get("dias", type=int) or 7, 60))
-                modules = [key for key in request.form.getlist("modulos") if key in DEMO_MODULE_CATALOG]
+                modules = _requested_demo_modules()
                 if not empresa or not contacto:
                     raise ValueError("Empresa y contacto son obligatorios.")
                 username = _demo_username(empresa)
@@ -11516,7 +11587,7 @@ def admin_demos():
                     correo=correo or None,
                     telefono=telefono or None,
                     usuario_id=user.id,
-                    modulos=json.dumps(modules or list(DEMO_MODULE_CATALOG)),
+                    modulos=json.dumps(modules),
                     estado="ACTIVA",
                     fecha_inicio=now_cdmx_naive(),
                     fecha_vencimiento=now_cdmx_naive() + timedelta(days=days),
@@ -11561,6 +11632,9 @@ def admin_demos():
                         "empresa": demo.empresa,
                     }
                     flash("Contraseña temporal restablecida. Cópiala antes de salir.", "success")
+                elif action == "update_config":
+                    demo.modulos = json.dumps(_requested_demo_modules())
+                    flash(f"Configuración de {demo.empresa} actualizada.", "success")
                 else:
                     raise ValueError("Acción de demo no reconocida.")
                 db.session.commit()
@@ -11584,6 +11658,8 @@ def admin_demos():
         "admin_demos.html",
         demos=demos,
         module_catalog=DEMO_MODULE_CATALOG,
+        module_meta=DEMO_MODULE_META,
+        demo_module_orders={demo.id: _demo_module_order(demo) for demo in demos},
         generated_credentials=generated_credentials,
         now=now,
     )
