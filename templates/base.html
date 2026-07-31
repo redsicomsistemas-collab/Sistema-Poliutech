@@ -850,7 +850,12 @@
         </div>
         <div class="menu-category">
           <button class="nav-link menu-category-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#menuRRHH" aria-expanded="{{ 'true' if menu_rrhh_open else 'false' }}"><span>👥 Recursos Humanos</span><span class="menu-category-chevron">▼</span></button>
-          <div class="collapse {{ 'show' if menu_rrhh_open }} menu-category-items" id="menuRRHH"><a class="nav-link" href="{{ url_for('rrhh_index') }}">🏖️ Solicitudes y justificantes</a></div>
+          <div class="collapse {{ 'show' if menu_rrhh_open }} menu-category-items" id="menuRRHH">
+            <a class="nav-link" href="{{ url_for('rrhh_index', tipo='VACACIONES') }}">🏖️ Vacaciones</a>
+            <a class="nav-link" href="{{ url_for('rrhh_index', tipo='PERMISO') }}">🕐 Permisos</a>
+            <a class="nav-link" href="{{ url_for('rrhh_index', tipo='JUSTIFICANTE') }}">📎 Justificantes</a>
+            <a class="nav-link" href="{{ url_for('rrhh_index') }}">📋 Todos los expedientes</a>
+          </div>
         </div>
         {% if current_user.is_authenticated and ((current_user.rol or "")|upper == "ADMIN" or (current_user.nombre or "")|lower == "admin") %}
         <div class="menu-category">
