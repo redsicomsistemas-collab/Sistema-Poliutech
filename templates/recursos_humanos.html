@@ -6,6 +6,13 @@
   {% if can_manage %}<span class="badge bg-primary fs-6">Vista de autorizador</span>{% endif %}
 </div>
 
+<div class="d-flex flex-wrap gap-2 mb-4" aria-label="Secciones de Recursos Humanos">
+  <a class="btn {{ 'btn-primary' if tipo == 'VACACIONES' else 'btn-outline-primary' }}" href="{{ url_for('rrhh_index', tipo='VACACIONES') }}">🏖️ Vacaciones</a>
+  <a class="btn {{ 'btn-primary' if tipo == 'PERMISO' else 'btn-outline-primary' }}" href="{{ url_for('rrhh_index', tipo='PERMISO') }}">🕐 Permisos</a>
+  <a class="btn {{ 'btn-primary' if tipo == 'JUSTIFICANTE' else 'btn-outline-primary' }}" href="{{ url_for('rrhh_index', tipo='JUSTIFICANTE') }}">📎 Justificantes</a>
+  <a class="btn {{ 'btn-dark' if not tipo else 'btn-outline-dark' }}" href="{{ url_for('rrhh_index') }}">Todos</a>
+</div>
+
 <div class="row g-3 mb-4">
   <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-body"><div class="small text-muted">Registros visibles</div><div class="display-6 fw-bold">{{ solicitudes|length }}</div></div></div></div>
   <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-body"><div class="small text-muted">Pendientes</div><div class="display-6 fw-bold text-warning">{{ counts.get('PENDIENTE', 0) }}</div></div></div></div>
@@ -18,7 +25,7 @@
   <div class="card-body">
     <form method="post" action="{{ url_for('rrhh_crear') }}" enctype="multipart/form-data" id="rrhhForm">
       <div class="row g-3">
-        <div class="col-md-4"><label class="form-label">Tipo</label><select class="form-select" name="tipo" id="rrhhTipo" required>{% for value, label in tipos.items() %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></div>
+        <div class="col-md-4"><label class="form-label">Tipo</label><select class="form-select" name="tipo" id="rrhhTipo" required>{% for value, label in tipos.items() %}<option value="{{ value }}" {% if tipo == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
         <div class="col-md-4"><label class="form-label">Empresa</label><input class="form-control" name="empresa" value="Poliutech" required></div>
         <div class="col-md-4"><label class="form-label">Departamento / área</label><input class="form-control" name="departamento" placeholder="Ej. Operaciones"></div>
         <div class="col-md-3"><label class="form-label">Fecha inicial</label><input type="date" class="form-control" name="fecha_inicio" required></div>
