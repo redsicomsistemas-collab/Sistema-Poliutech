@@ -74,13 +74,6 @@ class Cotizacion(db.Model):
     last_whatsapp_at = db.Column(db.DateTime, nullable=True)
     responsable = db.Column(db.String(120))  # sustituye a “representante”
     responsable_usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True, index=True)
-    asignado_en = db.Column(db.DateTime, nullable=True)
-    asignado_por_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
-    proximo_seguimiento = db.Column(db.DateTime, nullable=True, index=True)
-    ultimo_contacto = db.Column(db.DateTime, nullable=True)
-    prioridad = db.Column(db.String(20), nullable=True, default="MEDIA")
-    instruccion_asignacion = db.Column(db.Text, nullable=True)
-    recordatorio_seguimiento_en = db.Column(db.DateTime, nullable=True)
     proyecto = db.Column(db.String(200))
     ciudad_trabajo = db.Column(db.String(120))
     area_total = db.Column(db.Float, default=0.0)
@@ -103,7 +96,6 @@ class Cotizacion(db.Model):
         order_by="CotizacionSeguimiento.fecha_seguimiento.desc()"
     )
     responsable_usuario = db.relationship("Usuario", foreign_keys=[responsable_usuario_id])
-    asignado_por_usuario = db.relationship("Usuario", foreign_keys=[asignado_por_id])
 
     def __repr__(self):
         return f"<Cotizacion {self.folio or self.id}>"
@@ -273,36 +265,11 @@ class ProyectoAsignacion(db.Model):
     usuario_nuevo_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=False, index=True)
     asignado_por_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
     cotizaciones_afectadas = db.Column(db.Integer, default=0, nullable=False)
-    proximo_seguimiento = db.Column(db.DateTime, nullable=True)
-    prioridad = db.Column(db.String(20), nullable=True)
-    instruccion = db.Column(db.Text, nullable=True)
     asignado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     usuario_anterior = db.relationship("Usuario", foreign_keys=[usuario_anterior_id])
     usuario_nuevo = db.relationship("Usuario", foreign_keys=[usuario_nuevo_id])
     asignado_por = db.relationship("Usuario", foreign_keys=[asignado_por_id])
-
-
-class CotizacionInstruccion(db.Model):
-    __tablename__ = "cotizacion_instruccion"
-
-    id = db.Column(db.Integer, primary_key=True)
-    cotizacion_id = db.Column(db.Integer, db.ForeignKey("cotizacion.id"), nullable=False, index=True)
-    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True, index=True)
-    autor = db.Column(db.String(120), nullable=False)
-    instruccion = db.Column(db.Text, nullable=False)
-    creada_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
-
-    cotizacion = db.relationship(
-        "Cotizacion",
-        backref=db.backref(
-            "instrucciones_asignacion",
-            lazy=True,
-            cascade="all, delete-orphan",
-            order_by="CotizacionInstruccion.creada_en.desc()",
-        ),
-    )
-    usuario = db.relationship("Usuario", foreign_keys=[usuario_id])
 
 
 class VoiceCommandLog(db.Model):
@@ -671,6 +638,41 @@ class ActivityLog(db.Model):
 
     def __repr__(self):
         return f"<ActivityLog {self.fecha} {self.usuario} {self.metodo} {self.ruta}>"
+
+
+class SolicitudRH(db.Model):
+    """Expediente unificado de vacaciones, permisos y justificantes."""
+    __tablename__ = "solicitud_rh"
+
+    id = db.Column(db.Integer, primary_key=True)
+    folio = db.Column(db.String(40), unique=True, nullable=False, index=True)
+    tipo = db.Column(db.String(20), nullable=False, index=True)
+    empleado_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True, index=True)
+    empleado_nombre = db.Column(db.String(160), nullable=False)
+    empleado_correo = db.Column(db.String(160))
+    empresa = db.Column(db.String(160), default="Poliutech", nullable=False)
+    departamento = db.Column(db.String(120))
+    motivo = db.Column(db.Text)
+    fecha_inicio = db.Column(db.Date, nullable=False, index=True)
+    fecha_fin = db.Column(db.Date, nullable=False, index=True)
+    hora_inicio = db.Column(db.String(10))
+    hora_fin = db.Column(db.String(10))
+    dias_solicitados = db.Column(db.Integer, default=1, nullable=False)
+    archivo_nombre = db.Column(db.String(260))
+    archivo_ruta = db.Column(db.String(500))
+    estatus = db.Column(db.String(20), default="PENDIENTE", nullable=False, index=True)
+    observaciones_revision = db.Column(db.Text)
+    revisado_por_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
+    revisado_por_nombre = db.Column(db.String(160))
+    revisado_en = db.Column(db.DateTime)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    empleado = db.relationship("Usuario", foreign_keys=[empleado_id], backref=db.backref("solicitudes_rh", lazy=True))
+    revisado_por = db.relationship("Usuario", foreign_keys=[revisado_por_id])
+
+    def __repr__(self):
+        return f"<SolicitudRH {self.folio} {self.tipo} {self.estatus}>"
 
 
 class InventarioProducto(db.Model):

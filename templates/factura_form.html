@@ -21,7 +21,13 @@
         <select name="cliente_id" class="form-select">
           <option value="">Sin vincular</option>
           {% for cliente in clientes %}
-          <option value="{{ cliente.id }}" data-razon-social="{{ cliente.razon_social or cliente.empresa or cliente.nombre_cliente }}" data-rfc="{{ cliente.rfc or '' }}" data-regimen="{{ cliente.regimen_fiscal or '' }}" data-cp="{{ cliente.codigo_postal_fiscal or '' }}" data-uso-cfdi="{{ cliente.uso_cfdi or 'G03' }}" {% if cotizacion and cotizacion.cliente_id == cliente.id %}selected{% endif %}>
+          <option value="{{ cliente.id }}"
+                  data-razon-social="{{ cliente.razon_social or cliente.empresa or cliente.nombre_cliente }}"
+                  data-rfc="{{ cliente.rfc or '' }}"
+                  data-regimen="{{ cliente.regimen_fiscal or '' }}"
+                  data-cp="{{ cliente.codigo_postal_fiscal or '' }}"
+                  data-uso-cfdi="{{ cliente.uso_cfdi or 'G03' }}"
+                  {% if cotizacion and cotizacion.cliente_id == cliente.id %}selected{% endif %}>
             {{ cliente.empresa or cliente.nombre_cliente }}{% if cliente.rfc %} - {{ cliente.rfc }}{% endif %}
           </option>
           {% endfor %}

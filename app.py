@@ -50,6 +50,7 @@ VALID_ESTATUS_SEGUIMIENTO = [
     "95%",
     "100%",
 ]
+PORCENTAJES_SEGUIMIENTO = [f"{porcentaje}%" for porcentaje in range(0, 101, 10)]
 VALID_ESTATUS_APROBACION = [
     "APROBADA",
     "RECHAZADA",
@@ -2948,6 +2949,9 @@ GASTOS_REVIEW_BCC_EMAIL = ""
 FINANZAS_AUTH_NOTIFY_EMAILS = "mescalera@poliutech.com,miguele@poliutech.com"
 SUPPORT_TICKET_EMAIL = (os.getenv("SUPPORT_TICKET_EMAIL") or "sistemas@poliutech.com").strip()
 USER_CREATION_EMAIL = "sistemas@poliutech.com"
+RH_APPROVAL_EMAILS = "mescalera@poliutech.com,hjaramillo@poliutech.com"
+RH_AUDIT_EMAIL = "sistemas@poliutech.com"
+RH_ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".doc", ".docx"}
 COTIZACION_TRASH_RETENTION_DAYS = 30
 REGISTRO_MAIL_HOST = os.getenv("REGISTRO_MAIL_HOST", "servidor15.escala.net.mx").strip()
 REGISTRO_MAIL_PORT = int(os.getenv("REGISTRO_MAIL_PORT", "26"))
@@ -2960,6 +2964,8 @@ FIREBASE_CREDENTIALS_JSON = os.getenv("FIREBASE_CREDENTIALS_JSON", "").strip()
 PUSH_NOTIFICATIONS_ENABLED = os.getenv("PUSH_NOTIFICATIONS_ENABLED", "1").strip().lower() not in {"0", "false", "no"}
 
 NOTIFICATION_EVENT_CATALOG = {
+    "rrhh_solicitud": ("Recursos Humanos", "Nueva solicitud o justificante"),
+    "rrhh_resultado": ("Recursos Humanos", "Resultado de solicitud"),
     "cotizacion_nueva": ("Cotizaciones", "Nueva cotización"),
     "cotizacion_revision": ("Cotizaciones", "Solicitud de revisión o aprobación"),
     "cotizacion_actualizada": ("Cotizaciones", "Cotización modificada"),
@@ -2993,7 +2999,6 @@ from models import (
     CotizacionSeguimiento,
     CotizacionAsignacion,
     ProyectoAsignacion,
-    CotizacionInstruccion,
     VoiceCommandLog,
     Usuario,
     MobileDevice,
@@ -3009,6 +3014,7 @@ from models import (
     TicketComentario,
     TicketAdjunto,
     ActivityLog,
+    SolicitudRH,
     InventarioProducto,
     InventarioMovimiento,
     OrdenCompra,
@@ -3551,19 +3557,6 @@ def ensure_schema():
             db.session.execute(text("ALTER TABLE cotizacion ADD COLUMN responsable_usuario_id INTEGER"))
             db.session.commit()
             print("✅ Campo 'responsable_usuario_id' agregado en 'cotizacion'.")
-        for col, stmt in [
-            ("asignado_en", "ALTER TABLE cotizacion ADD COLUMN asignado_en TIMESTAMP NULL"),
-            ("asignado_por_id", "ALTER TABLE cotizacion ADD COLUMN asignado_por_id INTEGER"),
-            ("proximo_seguimiento", "ALTER TABLE cotizacion ADD COLUMN proximo_seguimiento TIMESTAMP NULL"),
-            ("ultimo_contacto", "ALTER TABLE cotizacion ADD COLUMN ultimo_contacto TIMESTAMP NULL"),
-            ("prioridad", "ALTER TABLE cotizacion ADD COLUMN prioridad VARCHAR(20) DEFAULT 'MEDIA'"),
-            ("instruccion_asignacion", "ALTER TABLE cotizacion ADD COLUMN instruccion_asignacion TEXT"),
-            ("recordatorio_seguimiento_en", "ALTER TABLE cotizacion ADD COLUMN recordatorio_seguimiento_en TIMESTAMP NULL"),
-        ]:
-            if col not in cols_cot:
-                db.session.execute(text(stmt))
-                db.session.commit()
-                print(f"✅ Campo '{col}' agregado en 'cotizacion'.")
     except Exception as e:
         print("⚠️ ensure_schema(cotizacion.responsable):", e)
 
@@ -3970,6 +3963,12 @@ def is_admin_account() -> bool:
 
 
 PERMISSION_CATALOG = (
+    {
+        "key": "rrhh.gestionar",
+        "group": "Recursos Humanos",
+        "name": "Gestionar solicitudes de RR. HH.",
+        "description": "Permite consultar todos los expedientes y aprobar o rechazar vacaciones y permisos.",
+    },
     {
         "key": "gastos.ver_todos",
         "group": "Gastos y fondos",
@@ -5937,6 +5936,14 @@ class _WhatsAppNotificationTransport:
         send_whatsapp_multi(phones, _email_message_as_whatsapp(msg))
 
 
+# Conserva el transporte SMTP real para módulos que requieren correo explícito.
+_SMTP_EMAIL_TRANSPORT = smtplib.SMTP
+
+# A partir de aquí cualquier notificación heredada que todavía construya un
+# EmailMessage usa WhatsApp. Esto cubre altas, cotizaciones, menciones, soporte,
+# reportes, recursos, gastos y recuperación de contraseña sin dejar rutas SMTP.
+smtplib.SMTP = _WhatsAppNotificationTransport
+
 # ---------------------------------------------------------
 # 🔐 Login / Logout
 # ---------------------------------------------------------
@@ -6138,23 +6145,6 @@ def index():
         base_query = _build_dashboard_cotizaciones_query()
         dashboard_filters = {"desde": "", "hasta": "", "estatus": "", "cliente": "", "proyecto": "", "especialidad": "", "especialidad_descripcion": "", "responsable": ""}
 
-    ahora = now_cdmx_naive()
-    inicio_hoy = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
-    fin_hoy = inicio_hoy + timedelta(days=1)
-    if bandeja == "mis":
-        base_query = base_query.filter(Cotizacion.responsable_usuario_id == current_user.id)
-    elif bandeja == "sin_asignar":
-        base_query = base_query.filter(Cotizacion.responsable_usuario_id.is_(None))
-    elif bandeja == "vencidas":
-        base_query = base_query.filter(Cotizacion.proximo_seguimiento < inicio_hoy)
-    elif bandeja == "hoy":
-        base_query = base_query.filter(
-            Cotizacion.proximo_seguimiento >= inicio_hoy,
-            Cotizacion.proximo_seguimiento < fin_hoy,
-        )
-    elif bandeja == "proximas":
-        base_query = base_query.filter(Cotizacion.proximo_seguimiento >= fin_hoy)
-
     total_cotizaciones = base_query.count()
     total_importe = (
         base_query.with_entities(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar()
@@ -6181,41 +6171,6 @@ def index():
     usuarios_asignables = Usuario.query.order_by(
         db.func.lower(db.func.coalesce(Usuario.nombre_visible, Usuario.nombre))
     ).all()
-    seguimiento_metricas = {}
-    carga_asesores = []
-    if can_manage_quote_assignments():
-        try:
-            _send_due_quote_followup_reminders()
-        except Exception:
-            db.session.rollback()
-            logger.exception("No se pudieron enviar recordatorios de seguimiento")
-        seguimiento_base = _cotizaciones_activas_query()
-        seguimiento_metricas = {
-            "vencidas": seguimiento_base.filter(Cotizacion.proximo_seguimiento < inicio_hoy).count(),
-            "hoy": seguimiento_base.filter(
-                Cotizacion.proximo_seguimiento >= inicio_hoy,
-                Cotizacion.proximo_seguimiento < fin_hoy,
-            ).count(),
-            "proximas": seguimiento_base.filter(Cotizacion.proximo_seguimiento >= fin_hoy).count(),
-            "sin_asignar": seguimiento_base.filter(Cotizacion.responsable_usuario_id.is_(None)).count(),
-        }
-        carga_asesores = (
-            db.session.query(
-                Usuario.nombre,
-                Usuario.nombre_visible,
-                db.func.count(Cotizacion.id),
-            )
-            .outerjoin(
-                Cotizacion,
-                db.and_(
-                    Cotizacion.responsable_usuario_id == Usuario.id,
-                    Cotizacion.eliminada_en.is_(None),
-                ),
-            )
-            .group_by(Usuario.id, Usuario.nombre, Usuario.nombre_visible)
-            .order_by(db.func.count(Cotizacion.id).desc())
-            .all()
-        )
 
     return render_template(
         "dashboard.html",
@@ -6227,14 +6182,12 @@ def index():
         pagination=pagination,
         dashboard_filters=dashboard_filters,
         valid_estatus=VALID_ESTATUS_SEGUIMIENTO,
+        valid_estatus_filtro=VALID_ESTATUS_SEGUIMIENTO + PORCENTAJES_SEGUIMIENTO,
         valid_estatus_aprobacion=VALID_ESTATUS_APROBACION,
         especialidades_cotizacion=ESPECIALIDADES_COTIZACION,
         responsables_cotizacion=responsables_cotizacion,
         proyectos_cotizacion=_known_project_names(),
         usuarios_asignables=usuarios_asignables,
-        can_manage_assignments=can_manage_quote_assignments(),
-        seguimiento_metricas=seguimiento_metricas,
-        carga_asesores=carga_asesores,
         show_splash=True
     )
 
@@ -6310,7 +6263,6 @@ def proyectos():
         total_cotizaciones=total_cotizaciones,
         total_importe=total_importe,
         usuarios_asignables=usuarios_asignables,
-        can_manage_assignments=can_manage_quote_assignments(),
         title="Proyectos - Sistema MAR",
     )
 
@@ -6377,20 +6329,11 @@ def proyecto_detalle():
 @app.route("/proyectos/asignar", methods=["POST"])
 @login_required
 def asignar_proyecto():
-    if not can_manage_quote_assignments():
-        return jsonify({"error": "Solo Hansel y los administradores pueden asignar proyectos."}), 403
+    if not is_admin():
+        return jsonify({"error": "Solo el administrador puede asignar proyectos."}), 403
 
     payload = request.get_json(silent=True) or {}
     proyecto = (payload.get("proyecto") or "").strip()
-    proximo_raw = (payload.get("proximo_seguimiento") or "").strip()
-    try:
-        proximo_seguimiento = datetime.strptime(proximo_raw, "%Y-%m-%dT%H:%M")
-    except (TypeError, ValueError):
-        return jsonify({"error": "La fecha del próximo seguimiento es obligatoria."}), 400
-    prioridad = (payload.get("prioridad") or "MEDIA").strip().upper()
-    if prioridad not in {"BAJA", "MEDIA", "ALTA", "URGENTE"}:
-        return jsonify({"error": "Selecciona una prioridad válida."}), 400
-    instruccion = (payload.get("instruccion") or "").strip()
     try:
         usuario_id = int(payload.get("usuario_id"))
     except (TypeError, ValueError):
@@ -6415,42 +6358,19 @@ def asignar_proyecto():
     anteriores = {cot.responsable_usuario_id for cot in cotizaciones if cot.responsable_usuario_id}
     usuario_anterior_id = next(iter(anteriores)) if len(anteriores) == 1 else None
     actualizadas = 0
-    fecha_asignacion = now_cdmx_naive()
     try:
         for cot in cotizaciones:
-            instruccion_anterior = (cot.instruccion_asignacion or "").strip()
-            if instruccion_anterior and not cot.instrucciones_asignacion:
-                db.session.add(CotizacionInstruccion(
-                    cotizacion_id=cot.id,
-                    usuario_id=cot.asignado_por_id,
-                    autor=(cot.asignado_por_usuario.nombre_representante if cot.asignado_por_usuario else "Asignación anterior"),
-                    instruccion=instruccion_anterior,
-                    creada_en=cot.asignado_en or fecha_asignacion,
-                ))
-            if cot.responsable_usuario_id != usuario.id:
-                db.session.add(CotizacionAsignacion(
-                    cotizacion_id=cot.id,
-                    usuario_anterior_id=cot.responsable_usuario_id,
-                    usuario_nuevo_id=usuario.id,
-                    asignado_por_id=getattr(current_user, "id", None),
-                    asignado_en=fecha_asignacion,
-                ))
+            if cot.responsable_usuario_id == usuario.id:
+                continue
+            db.session.add(CotizacionAsignacion(
+                cotizacion_id=cot.id,
+                usuario_anterior_id=cot.responsable_usuario_id,
+                usuario_nuevo_id=usuario.id,
+                asignado_por_id=getattr(current_user, "id", None),
+                asignado_en=now_cdmx_naive(),
+            ))
             cot.responsable_usuario_id = usuario.id
             cot.responsable = usuario.nombre_representante
-            cot.asignado_en = fecha_asignacion
-            cot.asignado_por_id = getattr(current_user, "id", None)
-            cot.proximo_seguimiento = proximo_seguimiento
-            cot.prioridad = prioridad
-            cot.instruccion_asignacion = instruccion or None
-            cot.recordatorio_seguimiento_en = None
-            if instruccion:
-                db.session.add(CotizacionInstruccion(
-                    cotizacion_id=cot.id,
-                    usuario_id=getattr(current_user, "id", None),
-                    autor=current_user.nombre_representante,
-                    instruccion=instruccion,
-                    creada_en=fecha_asignacion,
-                ))
             actualizadas += 1
 
         db.session.add(ProyectoAsignacion(
@@ -6460,10 +6380,7 @@ def asignar_proyecto():
             usuario_nuevo_id=usuario.id,
             asignado_por_id=getattr(current_user, "id", None),
             cotizaciones_afectadas=actualizadas,
-            proximo_seguimiento=proximo_seguimiento,
-            prioridad=prioridad,
-            instruccion=instruccion or None,
-            asignado_en=fecha_asignacion,
+            asignado_en=now_cdmx_naive(),
         ))
         db.session.commit()
     except Exception as exc:
@@ -6471,25 +6388,11 @@ def asignar_proyecto():
         logger.exception("No se pudo asignar el proyecto")
         return jsonify({"error": str(exc)}), 500
 
-    try:
-        notification_results = _send_quote_assignment_notifications(
-            cotizaciones=cotizaciones,
-            asignado=usuario,
-            asignado_por=current_user,
-            proximo_seguimiento=proximo_seguimiento,
-            prioridad=prioridad,
-            instruccion=instruccion,
-        )
-    except Exception:
-        logger.exception("El proyecto se asignó, pero falló la preparación de notificaciones")
-        notification_results = {"error": "La asignación se guardó; uno o más avisos no pudieron enviarse."}
-
     return jsonify({
         "updated": actualizadas,
         "proyecto": proyecto,
         "usuario_id": usuario.id,
         "responsable": usuario.nombre_representante,
-        "notifications": notification_results,
     })
 
 
@@ -8425,7 +8328,14 @@ def clientes_index():
         query = query.filter(Cliente.responsable == responsable_actual())
     if q:
         like = f"%{q}%"
-        query = query.filter(or_(Cliente.nombre_cliente.ilike(like), Cliente.empresa.ilike(like), Cliente.razon_social.ilike(like), Cliente.rfc.ilike(like), Cliente.correo.ilike(like), Cliente.telefono.ilike(like)))
+        query = query.filter(or_(
+            Cliente.nombre_cliente.ilike(like),
+            Cliente.empresa.ilike(like),
+            Cliente.razon_social.ilike(like),
+            Cliente.rfc.ilike(like),
+            Cliente.correo.ilike(like),
+            Cliente.telefono.ilike(like),
+        ))
     clientes_pag = query.order_by(Cliente.id.desc()).paginate(page=page, per_page=20, error_out=False)
     editar = None
     editar_id = request.args.get("editar", type=int)
@@ -8434,7 +8344,14 @@ def clientes_index():
         if editar is None:
             abort(404)
         require_cliente_owner_or_admin(editar)
-    return render_template("clientes.html", clientes=clientes_pag.items, clientes_pag=clientes_pag, editar=editar, q=q, title="Clientes - Sistema MAR")
+    return render_template(
+        "clientes.html",
+        clientes=clientes_pag.items,
+        clientes_pag=clientes_pag,
+        editar=editar,
+        q=q,
+        title="Clientes - Sistema MAR",
+    )
 
 
 @app.post("/clientes/guardar")
@@ -8446,6 +8363,7 @@ def clientes_guardar():
         if cliente is None:
             abort(404)
         require_cliente_owner_or_admin(cliente)
+
     nombre = (request.form.get("nombre_cliente") or "").strip()
     razon_social = (request.form.get("razon_social") or "").strip().upper()
     rfc = (request.form.get("rfc") or "").strip().upper()
@@ -8460,6 +8378,7 @@ def clientes_guardar():
     if not re.fullmatch(r"\d{3}", regimen) or not re.fullmatch(r"\d{5}", codigo_postal):
         flash("El regimen debe tener 3 digitos y el codigo postal 5 digitos.", "warning")
         return redirect(url_for("clientes_index", editar=cliente_id or None))
+
     cliente.nombre_cliente = nombre
     cliente.empresa = (request.form.get("empresa") or "").strip() or None
     cliente.razon_social = razon_social
@@ -8998,19 +8917,10 @@ def bulk_eliminar_cotizaciones():
 @app.route("/cotizaciones/asignar", methods=["POST"])
 @login_required
 def asignar_cotizaciones():
-    if not can_manage_quote_assignments():
-        return jsonify({"error": "Solo Hansel y los administradores pueden asignar cotizaciones."}), 403
+    if not is_admin():
+        return jsonify({"error": "Solo el administrador puede asignar cotizaciones."}), 403
 
     payload = request.get_json(silent=True) or {}
-    proximo_raw = (payload.get("proximo_seguimiento") or "").strip()
-    try:
-        proximo_seguimiento = datetime.strptime(proximo_raw, "%Y-%m-%dT%H:%M")
-    except (TypeError, ValueError):
-        return jsonify({"error": "La fecha del próximo seguimiento es obligatoria."}), 400
-    prioridad = (payload.get("prioridad") or "MEDIA").strip().upper()
-    if prioridad not in {"BAJA", "MEDIA", "ALTA", "URGENTE"}:
-        return jsonify({"error": "Selecciona una prioridad válida."}), 400
-    instruccion = (payload.get("instruccion") or "").strip()
     try:
         usuario_id = int(payload.get("usuario_id"))
     except (TypeError, ValueError):
@@ -9035,51 +8945,19 @@ def asignar_cotizaciones():
         return jsonify({"error": "No se recibieron cotizaciones válidas."}), 400
 
     actualizadas = []
-    notification_results = {}
     try:
         cotizaciones = _cotizaciones_activas_query().filter(Cotizacion.id.in_(norm_ids)).all()
-        if not cotizaciones:
-            return jsonify({"error": "No se encontraron cotizaciones activas para asignar."}), 404
         for cot in cotizaciones:
-            fecha_asignacion = now_cdmx_naive()
-            instruccion_anterior = (cot.instruccion_asignacion or "").strip()
-            if instruccion_anterior and not cot.instrucciones_asignacion:
-                autor_anterior = (
-                    cot.asignado_por_usuario.nombre_representante
-                    if cot.asignado_por_usuario
-                    else "Asignación anterior"
-                )
-                db.session.add(CotizacionInstruccion(
-                    cotizacion_id=cot.id,
-                    usuario_id=cot.asignado_por_id,
-                    autor=autor_anterior,
-                    instruccion=instruccion_anterior,
-                    creada_en=cot.asignado_en or fecha_asignacion,
-                ))
             if cot.responsable_usuario_id != usuario.id:
                 db.session.add(CotizacionAsignacion(
                     cotizacion_id=cot.id,
                     usuario_anterior_id=cot.responsable_usuario_id,
                     usuario_nuevo_id=usuario.id,
                     asignado_por_id=getattr(current_user, "id", None),
-                    asignado_en=fecha_asignacion,
+                    asignado_en=now_cdmx_naive(),
                 ))
                 cot.responsable_usuario_id = usuario.id
                 cot.responsable = usuario.nombre_representante
-            cot.asignado_en = fecha_asignacion
-            cot.asignado_por_id = getattr(current_user, "id", None)
-            cot.proximo_seguimiento = proximo_seguimiento
-            cot.prioridad = prioridad
-            cot.instruccion_asignacion = instruccion or None
-            if instruccion:
-                db.session.add(CotizacionInstruccion(
-                    cotizacion_id=cot.id,
-                    usuario_id=getattr(current_user, "id", None),
-                    autor=current_user.nombre_representante,
-                    instruccion=instruccion,
-                    creada_en=fecha_asignacion,
-                ))
-            cot.recordatorio_seguimiento_en = None
             actualizadas.append(cot.id)
         db.session.commit()
     except Exception as exc:
@@ -9087,81 +8965,12 @@ def asignar_cotizaciones():
         logger.exception("No se pudieron asignar cotizaciones")
         return jsonify({"error": str(exc)}), 500
 
-    try:
-        notification_results = _send_quote_assignment_notifications(
-            cotizaciones=cotizaciones,
-            asignado=usuario,
-            asignado_por=current_user,
-            proximo_seguimiento=proximo_seguimiento,
-            prioridad=prioridad,
-            instruccion=instruccion,
-        )
-    except Exception:
-        logger.exception("La asignación se guardó, pero falló la preparación de notificaciones")
-        notification_results = {"error": "La asignación se guardó; uno o más avisos no pudieron enviarse."}
-
     return jsonify({
         "updated": len(actualizadas),
         "updated_ids": actualizadas,
         "usuario_id": usuario.id,
         "responsable": usuario.nombre_representante,
-        "notifications": notification_results,
     })
-
-
-@app.route("/cotizaciones/<int:cot_id>/instrucciones")
-@login_required
-def cotizacion_instrucciones(cot_id: int):
-    cot = _cotizacion_activa_or_404(cot_id)
-    if not can_manage_quote_assignments():
-        require_owner_or_admin(cot)
-
-    instrucciones = list(cot.instrucciones_asignacion)
-    instruccion_legacy = None
-    if not instrucciones and (cot.instruccion_asignacion or "").strip():
-        instruccion_legacy = {
-            "autor": (
-                cot.asignado_por_usuario.nombre_representante
-                if cot.asignado_por_usuario
-                else "Asignación anterior"
-            ),
-            "instruccion": cot.instruccion_asignacion.strip(),
-            "creada_en": cot.asignado_en,
-        }
-
-    return render_template(
-        "cotizacion_instrucciones.html",
-        c=cot,
-        instrucciones=instrucciones,
-        instruccion_legacy=instruccion_legacy,
-        title=f"Instrucciones {cot.folio}",
-    )
-
-
-@app.route("/cotizaciones/<int:cot_id>/instrucciones", methods=["POST"])
-@login_required
-def crear_cotizacion_instruccion(cot_id: int):
-    cot = _cotizacion_activa_or_404(cot_id)
-    if not can_manage_quote_assignments():
-        require_owner_or_admin(cot)
-
-    instruccion = (request.form.get("instruccion") or "").strip()
-    if not instruccion:
-        flash("Escribe una instrucción para guardarla.", "warning")
-        return redirect(url_for("cotizacion_instrucciones", cot_id=cot.id))
-
-    ahora = now_cdmx_naive()
-    db.session.add(CotizacionInstruccion(
-        cotizacion_id=cot.id,
-        usuario_id=getattr(current_user, "id", None),
-        autor=current_user.nombre_representante,
-        instruccion=instruccion,
-        creada_en=ahora,
-    ))
-    cot.instruccion_asignacion = instruccion
-    db.session.commit()
-    flash("Instrucción agregada al historial.", "success")
-    return redirect(url_for("cotizacion_instrucciones", cot_id=cot.id))
 
 
 @app.route("/cotizaciones/bulk-eliminar-filtradas", methods=["POST"])
@@ -14924,16 +14733,15 @@ def gastos_viaticos_reemplazar_comprobante(gasto_id: int):
     gasto = ComprobacionGasto.query.get_or_404(gasto_id)
     require_gastos_admin()
     uploaded = request.files.get("comprobante")
-    redirect_grupo = url_for(
-        "gastos_viaticos_grupo_detalle",
-        tipo_agrupacion=gasto.tipo_agrupacion,
-        grupo=_gastos_group_name(gasto),
-        fecha=_gastos_fecha_key(gasto),
-        responsable=gasto.responsable or "",
-    )
     if not uploaded or not (uploaded.filename or "").strip():
         flash("Selecciona el nuevo comprobante.", "warning")
-        return redirect(redirect_grupo)
+        return redirect(url_for(
+            "gastos_viaticos_grupo_detalle",
+            tipo_agrupacion=gasto.tipo_agrupacion,
+            grupo=_gastos_group_name(gasto),
+            fecha=_gastos_fecha_key(gasto),
+            responsable=gasto.responsable or "",
+        ))
 
     anteriores = list(gasto.adjuntos or [])
     try:
@@ -14948,7 +14756,13 @@ def gastos_viaticos_reemplazar_comprobante(gasto_id: int):
     except ValueError as exc:
         db.session.rollback()
         flash(str(exc), "warning")
-        return redirect(redirect_grupo)
+        return redirect(url_for(
+            "gastos_viaticos_grupo_detalle",
+            tipo_agrupacion=gasto.tipo_agrupacion,
+            grupo=_gastos_group_name(gasto),
+            fecha=_gastos_fecha_key(gasto),
+            responsable=gasto.responsable or "",
+        ))
 
     for adjunto in anteriores:
         try:
@@ -14959,7 +14773,13 @@ def gastos_viaticos_reemplazar_comprobante(gasto_id: int):
             logger.warning("No se pudo eliminar el comprobante anterior %s.", adjunto.ruta)
 
     flash(f"Comprobante de {gasto.folio or gasto.id} actualizado.", "success")
-    return redirect(redirect_grupo)
+    return redirect(url_for(
+        "gastos_viaticos_grupo_detalle",
+        tipo_agrupacion=gasto.tipo_agrupacion,
+        grupo=_gastos_group_name(gasto),
+        fecha=_gastos_fecha_key(gasto),
+        responsable=gasto.responsable or "",
+    ))
 
 
 @app.route("/gastos-viaticos/<int:gasto_id>/aprobar", methods=["POST"])
@@ -17214,6 +17034,208 @@ def inventario_export_xlsx():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="inventario_{stamp}.xlsx"'}
     )
+
+
+# ---------------------------------------------------------
+# Recursos Humanos: vacaciones, permisos y justificantes
+# ---------------------------------------------------------
+RH_TYPES = {"VACACIONES": "Vacaciones", "PERMISO": "Permiso", "JUSTIFICANTE": "Justificante"}
+RH_STATUS = {"PENDIENTE", "APROBADA", "RECHAZADA", "REGISTRADO"}
+
+
+def _rrhh_can_manage() -> bool:
+    if not getattr(current_user, "is_authenticated", False):
+        return False
+    email = (getattr(current_user, "correo", "") or "").strip().lower()
+    name = " ".join(filter(None, [getattr(current_user, "nombre", ""), getattr(current_user, "nombre_visible", "")])).lower()
+    return (
+        is_admin()
+        or has_permission("rrhh.gestionar")
+        or email in {"mescalera@poliutech.com", "hjaramillo@poliutech.com"}
+        or "mescalera" in name
+        or "hansel" in name
+    )
+
+
+def _rrhh_require_visible(item: SolicitudRH) -> None:
+    if _rrhh_can_manage() or item.empleado_id == getattr(current_user, "id", None):
+        return
+    abort(403)
+
+
+def _rrhh_email(item: SolicitudRH, *, resultado: bool = False) -> None:
+    detail_url = url_for("rrhh_detalle", solicitud_id=item.id, _external=True)
+    tipo_label = RH_TYPES.get(item.tipo, item.tipo.title())
+    msg = EmailMessage()
+    msg["From"] = f"Recursos Humanos Poliutech <{SMTP_FROM}>"
+    if resultado:
+        recipients = _unique_emails(_parse_email_list(item.empleado_correo), _parse_email_list(RH_AUDIT_EMAIL))
+        msg["Subject"] = f"{item.estatus}: {tipo_label} {item.folio}"
+    else:
+        recipients = _unique_emails(_parse_email_list(RH_APPROVAL_EMAILS), _parse_email_list(RH_AUDIT_EMAIL))
+        msg["Subject"] = f"RR. HH. - {tipo_label} {item.folio} pendiente de revisión"
+    if not recipients:
+        return
+    msg["To"] = ", ".join(recipients)
+    body = (
+        f"Expediente: {item.folio}\nTipo: {tipo_label}\nEmpleado: {item.empleado_nombre}\n"
+        f"Periodo: {item.fecha_inicio.strftime('%d/%m/%Y')} al {item.fecha_fin.strftime('%d/%m/%Y')}\n"
+        f"Días: {item.dias_solicitados}\nEstatus: {item.estatus}\n"
+        f"Motivo / notas: {item.motivo or 'Sin notas'}\n"
+        f"Observaciones de revisión: {item.observaciones_revision or 'Sin observaciones'}\n\n"
+        f"Consultar expediente: {detail_url}"
+    )
+    msg.set_content(body)
+    msg.add_alternative(
+        f"<h2>{escape(tipo_label)} · {escape(item.folio)}</h2>"
+        f"<p><strong>Empleado:</strong> {escape(item.empleado_nombre)}<br>"
+        f"<strong>Periodo:</strong> {item.fecha_inicio.strftime('%d/%m/%Y')} al {item.fecha_fin.strftime('%d/%m/%Y')}<br>"
+        f"<strong>Días:</strong> {item.dias_solicitados}<br><strong>Estatus:</strong> {escape(item.estatus)}</p>"
+        f"<p><strong>Motivo / notas:</strong><br>{escape(item.motivo or 'Sin notas')}</p>"
+        f"<p><strong>Observaciones:</strong><br>{escape(item.observaciones_revision or 'Sin observaciones')}</p>"
+        f'<p><a href="{escape(detail_url)}">Abrir expediente en M.A.R.</a></p>',
+        subtype="html",
+    )
+    with _SMTP_EMAIL_TRANSPORT(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
+        smtp.starttls()
+        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+        smtp.send_message(msg, to_addrs=recipients)
+
+
+def _rrhh_email_safely(item: SolicitudRH, *, resultado: bool = False) -> None:
+    try:
+        _rrhh_email(item, resultado=resultado)
+    except Exception as exc:
+        logger.exception("No se pudo notificar el expediente RH %s: %s", item.folio, exc)
+        flash("El expediente se guardó, pero no se pudo enviar una notificación.", "warning")
+
+
+@app.get("/recursos-humanos")
+@login_required
+def rrhh_index():
+    q = (request.args.get("q") or "").strip()
+    tipo = (request.args.get("tipo") or "").strip().upper()
+    estatus = (request.args.get("estatus") or "").strip().upper()
+    query = SolicitudRH.query
+    if not _rrhh_can_manage():
+        query = query.filter(SolicitudRH.empleado_id == current_user.id)
+    if tipo in RH_TYPES:
+        query = query.filter(SolicitudRH.tipo == tipo)
+    if estatus in RH_STATUS:
+        query = query.filter(SolicitudRH.estatus == estatus)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(or_(SolicitudRH.folio.ilike(like), SolicitudRH.empleado_nombre.ilike(like), SolicitudRH.motivo.ilike(like)))
+    solicitudes = query.order_by(SolicitudRH.creado_en.desc(), SolicitudRH.id.desc()).all()
+    counts = {status: sum(1 for item in solicitudes if item.estatus == status) for status in RH_STATUS}
+    return render_template("recursos_humanos.html", solicitudes=solicitudes, counts=counts, q=q, tipo=tipo,
+                           estatus=estatus, tipos=RH_TYPES, estatus_options=sorted(RH_STATUS), can_manage=_rrhh_can_manage())
+
+
+@app.post("/recursos-humanos/crear")
+@login_required
+def rrhh_crear():
+    tipo = (request.form.get("tipo") or "").strip().upper()
+    if tipo not in RH_TYPES:
+        flash("Selecciona un tipo de expediente válido.", "warning")
+        return redirect(url_for("rrhh_index"))
+    try:
+        fecha_inicio = datetime.strptime((request.form.get("fecha_inicio") or "").strip(), "%Y-%m-%d").date()
+        fecha_fin = datetime.strptime((request.form.get("fecha_fin") or "").strip(), "%Y-%m-%d").date()
+    except ValueError:
+        flash("Captura fechas válidas.", "warning")
+        return redirect(url_for("rrhh_index"))
+    if fecha_fin < fecha_inicio:
+        flash("La fecha final no puede ser anterior a la inicial.", "warning")
+        return redirect(url_for("rrhh_index"))
+    motivo = (request.form.get("motivo") or "").strip()
+    if tipo in {"PERMISO", "JUSTIFICANTE"} and not motivo:
+        flash("El motivo es obligatorio para permisos y justificantes.", "warning")
+        return redirect(url_for("rrhh_index"))
+    upload = request.files.get("archivo")
+    if tipo == "JUSTIFICANTE" and (not upload or not upload.filename):
+        flash("Adjunta el justificante (PDF o imagen).", "warning")
+        return redirect(url_for("rrhh_index"))
+    item = SolicitudRH(
+        folio=f"RH-{now_cdmx_naive().strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(2).upper()}",
+        tipo=tipo,
+        empleado_id=current_user.id,
+        empleado_nombre=(getattr(current_user, "nombre_visible", None) or current_user.nombre).strip(),
+        empleado_correo=(getattr(current_user, "correo", None) or "").strip() or None,
+        empresa=(request.form.get("empresa") or "Poliutech").strip() or "Poliutech",
+        departamento=(request.form.get("departamento") or "").strip() or None,
+        motivo=motivo or None,
+        fecha_inicio=fecha_inicio,
+        fecha_fin=fecha_fin,
+        hora_inicio=(request.form.get("hora_inicio") or "").strip() or None,
+        hora_fin=(request.form.get("hora_fin") or "").strip() or None,
+        dias_solicitados=(fecha_fin - fecha_inicio).days + 1,
+        estatus="REGISTRADO" if tipo == "JUSTIFICANTE" else "PENDIENTE",
+    )
+    if upload and upload.filename:
+        original = secure_filename(upload.filename)
+        suffix = Path(original).suffix.lower()
+        if suffix not in RH_ALLOWED_EXTENSIONS:
+            flash("Archivo no permitido. Usa PDF, imagen o documento de Word.", "warning")
+            return redirect(url_for("rrhh_index"))
+        directory = Path(app.instance_path) / "rrhh_adjuntos"
+        directory.mkdir(parents=True, exist_ok=True)
+        stored = f"{secrets.token_hex(16)}{suffix}"
+        upload.save(directory / stored)
+        item.archivo_nombre = original
+        item.archivo_ruta = stored
+    db.session.add(item)
+    db.session.commit()
+    _rrhh_email_safely(item)
+    flash(f"Expediente {item.folio} registrado y enviado a revisión.", "success")
+    return redirect(url_for("rrhh_detalle", solicitud_id=item.id))
+
+
+@app.get("/recursos-humanos/<int:solicitud_id>")
+@login_required
+def rrhh_detalle(solicitud_id: int):
+    item = db.session.get(SolicitudRH, solicitud_id)
+    if item is None:
+        abort(404)
+    _rrhh_require_visible(item)
+    return render_template("recurso_humano_detalle.html", item=item, tipos=RH_TYPES, can_manage=_rrhh_can_manage())
+
+
+@app.get("/recursos-humanos/<int:solicitud_id>/adjunto")
+@login_required
+def rrhh_adjunto(solicitud_id: int):
+    item = db.session.get(SolicitudRH, solicitud_id)
+    if item is None or not item.archivo_ruta:
+        abort(404)
+    _rrhh_require_visible(item)
+    path = Path(app.instance_path) / "rrhh_adjuntos" / item.archivo_ruta
+    if not path.is_file():
+        abort(404)
+    return send_file(path, as_attachment=True, download_name=item.archivo_nombre or path.name)
+
+
+@app.post("/recursos-humanos/<int:solicitud_id>/revisar")
+@login_required
+def rrhh_revisar(solicitud_id: int):
+    if not _rrhh_can_manage():
+        abort(403)
+    item = db.session.get(SolicitudRH, solicitud_id)
+    if item is None:
+        abort(404)
+    estatus = (request.form.get("estatus") or "").strip().upper()
+    allowed = {"APROBADA", "RECHAZADA"} if item.tipo != "JUSTIFICANTE" else {"REGISTRADO", "RECHAZADA"}
+    if estatus not in allowed:
+        flash("Estatus de revisión no válido.", "warning")
+        return redirect(url_for("rrhh_detalle", solicitud_id=item.id))
+    item.estatus = estatus
+    item.observaciones_revision = (request.form.get("observaciones") or "").strip() or None
+    item.revisado_por_id = current_user.id
+    item.revisado_por_nombre = (getattr(current_user, "nombre_visible", None) or current_user.nombre).strip()
+    item.revisado_en = now_cdmx_naive()
+    db.session.commit()
+    _rrhh_email_safely(item, resultado=True)
+    flash(f"El expediente {item.folio} quedó {estatus.lower()}.", "success")
+    return redirect(url_for("rrhh_detalle", solicitud_id=item.id))
 
 
 # Blueprints (Catálogos) — si existen en tu repo

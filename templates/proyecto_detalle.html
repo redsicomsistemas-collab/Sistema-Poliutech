@@ -18,7 +18,13 @@
     <div class="table-responsive">
       <table class="table table-sm table-bordered align-middle mb-0">
         <thead class="table-light">
-          <tr><th>Fecha</th><th>Responsable anterior</th><th>Nuevo responsable</th><th>Asignado por</th><th>Seguimiento</th><th>Prioridad</th><th>Instrucción</th><th>Cotizaciones</th></tr>
+          <tr>
+            <th>Fecha</th>
+            <th>Responsable anterior</th>
+            <th>Nuevo responsable</th>
+            <th>Asignado por</th>
+            <th class="text-center">Cotizaciones afectadas</th>
+          </tr>
         </thead>
         <tbody>
           {% for item in historial_asignaciones %}
@@ -27,13 +33,12 @@
             <td>{{ item.usuario_anterior.nombre_representante if item.usuario_anterior else 'Sin asignar o mixto' }}</td>
             <td class="fw-semibold">{{ item.usuario_nuevo.nombre_representante if item.usuario_nuevo else '-' }}</td>
             <td>{{ item.asignado_por.nombre_representante if item.asignado_por else 'Sistema' }}</td>
-            <td>{{ item.proximo_seguimiento.strftime('%Y-%m-%d %H:%M') if item.proximo_seguimiento else '-' }}</td>
-            <td>{{ item.prioridad or '-' }}</td>
-            <td>{{ item.instruccion or '-' }}</td>
             <td class="text-center">{{ item.cotizaciones_afectadas }}</td>
           </tr>
           {% else %}
-          <tr><td colspan="8" class="text-center text-muted py-3">Aún no hay asignaciones registradas para este proyecto.</td></tr>
+          <tr>
+            <td colspan="5" class="text-center text-muted py-3">Aún no hay asignaciones registradas para este proyecto.</td>
+          </tr>
           {% endfor %}
         </tbody>
       </table>
