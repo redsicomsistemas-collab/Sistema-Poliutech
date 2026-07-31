@@ -33,15 +33,15 @@
       </div>
       <div class="col-md-2">
         <label class="form-label">RFC</label>
-        <input name="receptor_rfc" class="form-control text-uppercase" value="{{ cotizacion.cliente.rfc if cotizacion and cotizacion.cliente else '' }}" required>
+        <input name="receptor_rfc" class="form-control text-uppercase" maxlength="13" pattern="[A-Za-z&amp;Ññ]{3,4}[0-9]{6}[A-Za-z0-9]{3}" value="{{ cotizacion.cliente.rfc if cotizacion and cotizacion.cliente else '' }}" required>
       </div>
       <div class="col-md-1">
         <label class="form-label">Regimen</label>
-        <input name="receptor_regimen_fiscal" class="form-control" placeholder="601">
+        <input name="receptor_regimen_fiscal" class="form-control" inputmode="numeric" maxlength="3" pattern="[0-9]{3}" placeholder="601" required>
       </div>
       <div class="col-md-1">
         <label class="form-label">C.P.</label>
-        <input name="receptor_codigo_postal" class="form-control">
+        <input name="receptor_codigo_postal" class="form-control" inputmode="numeric" maxlength="5" pattern="[0-9]{5}" required>
       </div>
     </div>
   </div>
@@ -112,7 +112,7 @@
         <div class="row g-2 partida">
           <div class="col-md-2"><input name="cantidad[]" type="number" step="any" min="0" class="form-control" value="1" placeholder="Cant."></div>
           <div class="col-md-2"><input name="unidad[]" class="form-control" value="Servicio" placeholder="Unidad"></div>
-          <div class="col-md-5"><input name="descripcion[]" class="form-control" placeholder="Descripcion"></div>
+          <div class="col-md-5"><input name="descripcion[]" class="form-control" placeholder="Descripcion" required></div>
           <div class="col-md-2"><input name="valor_unitario[]" type="number" step="any" min="0" class="form-control" placeholder="Precio"></div>
           <div class="col-md-1 d-grid"><button type="button" class="btn btn-outline-danger" onclick="this.closest('.partida').remove()">Quitar</button></div>
         </div>

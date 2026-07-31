@@ -3592,6 +3592,8 @@ def ensure_schema():
             ("total", "ALTER TABLE cotizacion ADD COLUMN total FLOAT DEFAULT 0.0"),
             ("moneda", "ALTER TABLE cotizacion ADD COLUMN moneda VARCHAR(10) DEFAULT 'MXN'"),
             ("estatus_aprobacion", "ALTER TABLE cotizacion ADD COLUMN estatus_aprobacion VARCHAR(20) DEFAULT 'EN REVISIÓN'"),
+            ("resultado", "ALTER TABLE cotizacion ADD COLUMN resultado VARCHAR(20)"),
+            ("motivo_perdida", "ALTER TABLE cotizacion ADD COLUMN motivo_perdida TEXT"),
             ("especialidad", "ALTER TABLE cotizacion ADD COLUMN especialidad VARCHAR(160)"),
             ("especialidad_descripcion", "ALTER TABLE cotizacion ADD COLUMN especialidad_descripcion VARCHAR(500)"),
             ("notas", "ALTER TABLE cotizacion ADD COLUMN notas VARCHAR(3000)"),
