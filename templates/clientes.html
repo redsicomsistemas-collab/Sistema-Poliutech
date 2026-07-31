@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Clientes{% endblock %}
+{% block content %}
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 my-4">
+  <div><h2 class="fw-bold text-primary mb-1">👥 Clientes</h2><div class="text-muted">Directorio comercial y datos fiscales para cotizaciones y facturas.</div></div>
+  <form method="get" class="d-flex gap-2"><input name="q" class="form-control" value="{{ q }}" placeholder="Buscar nombre, empresa o RFC"><button class="btn btn-outline-primary">Buscar</button></form>
+</div>
+<div class="row g-4">
+  <div class="col-xl-4"><div class="card border-0 shadow-sm sticky-xl-top" style="top:90px"><div class="card-header bg-primary text-white fw-bold">{{ 'Editar cliente' if editar else 'Registrar cliente' }}</div><div class="card-body">
+    <form method="post" action="{{ url_for('clientes_guardar') }}" class="row g-3">
+      <input type="hidden" name="cliente_id" value="{{ editar.id if editar else '' }}">
+      <div class="col-12"><label class="form-label">Nombre del contacto</label><input name="nombre_cliente" class="form-control" value="{{ editar.nombre_cliente if editar else '' }}" required></div>
+      <div class="col-12"><label class="form-label">Empresa / nombre comercial</label><input name="empresa" class="form-control" value="{{ editar.empresa if editar else '' }}"></div>
+      <div class="col-12"><label class="form-label">Razón social</label><input name="razon_social" class="form-control text-uppercase" value="{{ editar.razon_social if editar else '' }}" required></div>
+      <div class="col-md-7"><label class="form-label">RFC</label><input name="rfc" class="form-control text-uppercase" maxlength="13" pattern="[A-Za-z&amp;Ññ]{3,4}[0-9]{6}[A-Za-z0-9]{3}" value="{{ editar.rfc if editar else '' }}" required></div>
+      <div class="col-md-5"><label class="form-label">Régimen fiscal</label><input name="regimen_fiscal" class="form-control" maxlength="3" pattern="[0-9]{3}" value="{{ editar.regimen_fiscal if editar else '' }}" placeholder="601" required></div>
+      <div class="col-md-6"><label class="form-label">C.P. fiscal</label><input name="codigo_postal_fiscal" class="form-control" maxlength="5" pattern="[0-9]{5}" value="{{ editar.codigo_postal_fiscal if editar else '' }}" required></div>
+      <div class="col-md-6"><label class="form-label">Uso CFDI</label><input name="uso_cfdi" class="form-control text-uppercase" maxlength="5" value="{{ editar.uso_cfdi if editar and editar.uso_cfdi else 'G03' }}"></div>
+      <div class="col-12"><label class="form-label">Correo</label><input name="correo" type="email" class="form-control" value="{{ editar.correo if editar else '' }}"></div>
+      <div class="col-12"><label class="form-label">Teléfono</label><input name="telefono" class="form-control" value="{{ editar.telefono if editar else '' }}"></div>
+      <div class="col-12"><label class="form-label">Domicilio</label><textarea name="direccion" class="form-control" rows="2">{{ editar.direccion if editar else '' }}</textarea></div>
+      <div class="col-12 d-flex justify-content-end gap-2">{% if editar %}<a href="{{ url_for('clientes_index') }}" class="btn btn-outline-secondary">Cancelar</a>{% endif %}<button class="btn btn-success">{{ 'Guardar cambios' if editar else 'Registrar cliente' }}</button></div>
+    </form>
+  </div></div></div>
+  <div class="col-xl-8"><div class="card border-0 shadow-sm"><div class="card-header bg-light fw-bold">Clientes registrados</div><div class="table-responsive"><table class="table table-hover align-middle mb-0">
+    <thead><tr><th>Cliente</th><th>Datos fiscales</th><th>Contacto</th><th></th></tr></thead><tbody>
+    {% for cliente in clientes %}<tr><td><div class="fw-semibold">{{ cliente.nombre_cliente }}</div><div class="small text-muted">{{ cliente.empresa or '' }}</div></td><td><div>{{ cliente.razon_social or 'Sin razón social' }}</div><div class="small text-muted">{{ cliente.rfc or 'Sin RFC' }} · Rég. {{ cliente.regimen_fiscal or '—' }} · CP {{ cliente.codigo_postal_fiscal or '—' }}</div></td><td><div>{{ cliente.correo or '—' }}</div><div class="small text-muted">{{ cliente.telefono or '' }}</div></td><td class="text-end"><a href="{{ url_for('clientes_index', editar=cliente.id, q=q) }}" class="btn btn-sm btn-outline-primary">Editar</a></td></tr>
+    {% else %}<tr><td colspan="4" class="text-center text-muted py-5">Aún no hay clientes registrados.</td></tr>{% endfor %}
+    </tbody></table></div>
+    {% if clientes_pag.pages > 1 %}<div class="card-footer d-flex justify-content-between"><a class="btn btn-sm btn-outline-secondary {{ 'disabled' if not clientes_pag.has_prev }}" href="{{ url_for('clientes_index', page=clientes_pag.prev_num, q=q) }}">Anterior</a><span class="small text-muted align-self-center">Página {{ clientes_pag.page }} de {{ clientes_pag.pages }}</span><a class="btn btn-sm btn-outline-secondary {{ 'disabled' if not clientes_pag.has_next }}" href="{{ url_for('clientes_index', page=clientes_pag.next_num, q=q) }}">Siguiente</a></div>{% endif %}
+  </div></div>
+</div>
+{% endblock %}

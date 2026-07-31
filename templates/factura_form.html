@@ -21,7 +21,7 @@
         <select name="cliente_id" class="form-select">
           <option value="">Sin vincular</option>
           {% for cliente in clientes %}
-          <option value="{{ cliente.id }}" {% if cotizacion and cotizacion.cliente_id == cliente.id %}selected{% endif %}>
+          <option value="{{ cliente.id }}" data-razon-social="{{ cliente.razon_social or cliente.empresa or cliente.nombre_cliente }}" data-rfc="{{ cliente.rfc or '' }}" data-regimen="{{ cliente.regimen_fiscal or '' }}" data-cp="{{ cliente.codigo_postal_fiscal or '' }}" data-uso-cfdi="{{ cliente.uso_cfdi or 'G03' }}" {% if cotizacion and cotizacion.cliente_id == cliente.id %}selected{% endif %}>
             {{ cliente.empresa or cliente.nombre_cliente }}{% if cliente.rfc %} - {{ cliente.rfc }}{% endif %}
           </option>
           {% endfor %}
@@ -139,5 +139,15 @@ function addPartida() {
   });
   root.appendChild(row);
 }
+
+document.querySelector('[name="cliente_id"]').addEventListener('change', function () {
+  const option = this.options[this.selectedIndex];
+  if (!option || !option.value) return;
+  document.querySelector('[name="receptor_nombre"]').value = option.dataset.razonSocial || '';
+  document.querySelector('[name="receptor_rfc"]').value = option.dataset.rfc || '';
+  document.querySelector('[name="receptor_regimen_fiscal"]').value = option.dataset.regimen || '';
+  document.querySelector('[name="receptor_codigo_postal"]').value = option.dataset.cp || '';
+  document.querySelector('[name="uso_cfdi"]').value = option.dataset.usoCfdi || 'G03';
+});
 </script>
 {% endblock %}

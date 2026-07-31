@@ -3663,6 +3663,20 @@ def ensure_schema():
         print("⚠️ ensure_schema(facturacion CSD):", e)
 
     try:
+        cliente_cols = _table_columns("cliente")
+        for col, stmt in [
+            ("razon_social", "ALTER TABLE cliente ADD COLUMN razon_social VARCHAR(180)"),
+            ("regimen_fiscal", "ALTER TABLE cliente ADD COLUMN regimen_fiscal VARCHAR(10)"),
+            ("codigo_postal_fiscal", "ALTER TABLE cliente ADD COLUMN codigo_postal_fiscal VARCHAR(10)"),
+            ("uso_cfdi", "ALTER TABLE cliente ADD COLUMN uso_cfdi VARCHAR(10) DEFAULT 'G03'"),
+        ]:
+            if col not in cliente_cols:
+                db.session.execute(text(stmt))
+        db.session.commit()
+    except Exception as e:
+        print("⚠️ ensure_schema(cliente fiscal):", e)
+
+    try:
         inv_cols = _table_columns("inventario_producto")
         for col, stmt in [
             ("stock_maximo", "ALTER TABLE inventario_producto ADD COLUMN stock_maximo FLOAT DEFAULT 0.0"),
@@ -8399,6 +8413,69 @@ def admin_catalogos():
         q_clientes=q_clientes,
         q_conceptos=q_conceptos,
     )
+
+
+@app.get("/clientes")
+@login_required
+def clientes_index():
+    q = (request.args.get("q") or "").strip()
+    page = max(request.args.get("page", 1, type=int), 1)
+    query = Cliente.query
+    if not is_admin():
+        query = query.filter(Cliente.responsable == responsable_actual())
+    if q:
+        like = f"%{q}%"
+        query = query.filter(or_(Cliente.nombre_cliente.ilike(like), Cliente.empresa.ilike(like), Cliente.razon_social.ilike(like), Cliente.rfc.ilike(like), Cliente.correo.ilike(like), Cliente.telefono.ilike(like)))
+    clientes_pag = query.order_by(Cliente.id.desc()).paginate(page=page, per_page=20, error_out=False)
+    editar = None
+    editar_id = request.args.get("editar", type=int)
+    if editar_id:
+        editar = db.session.get(Cliente, editar_id)
+        if editar is None:
+            abort(404)
+        require_cliente_owner_or_admin(editar)
+    return render_template("clientes.html", clientes=clientes_pag.items, clientes_pag=clientes_pag, editar=editar, q=q, title="Clientes - Sistema MAR")
+
+
+@app.post("/clientes/guardar")
+@login_required
+def clientes_guardar():
+    cliente_id = request.form.get("cliente_id", type=int)
+    cliente = db.session.get(Cliente, cliente_id) if cliente_id else Cliente()
+    if cliente_id:
+        if cliente is None:
+            abort(404)
+        require_cliente_owner_or_admin(cliente)
+    nombre = (request.form.get("nombre_cliente") or "").strip()
+    razon_social = (request.form.get("razon_social") or "").strip().upper()
+    rfc = (request.form.get("rfc") or "").strip().upper()
+    regimen = (request.form.get("regimen_fiscal") or "").strip()
+    codigo_postal = (request.form.get("codigo_postal_fiscal") or "").strip()
+    if not nombre or not razon_social or not rfc or not regimen or not codigo_postal:
+        flash("Nombre, razon social, RFC, regimen fiscal y codigo postal son obligatorios.", "warning")
+        return redirect(url_for("clientes_index", editar=cliente_id or None))
+    if not re.fullmatch(r"[A-Z&Ñ]{3,4}\d{6}[A-Z0-9]{3}", rfc):
+        flash("El RFC no tiene un formato valido.", "warning")
+        return redirect(url_for("clientes_index", editar=cliente_id or None))
+    if not re.fullmatch(r"\d{3}", regimen) or not re.fullmatch(r"\d{5}", codigo_postal):
+        flash("El regimen debe tener 3 digitos y el codigo postal 5 digitos.", "warning")
+        return redirect(url_for("clientes_index", editar=cliente_id or None))
+    cliente.nombre_cliente = nombre
+    cliente.empresa = (request.form.get("empresa") or "").strip() or None
+    cliente.razon_social = razon_social
+    cliente.rfc = rfc
+    cliente.regimen_fiscal = regimen
+    cliente.codigo_postal_fiscal = codigo_postal
+    cliente.uso_cfdi = (request.form.get("uso_cfdi") or "G03").strip().upper()
+    cliente.correo = (request.form.get("correo") or "").strip() or None
+    cliente.telefono = (request.form.get("telefono") or "").strip() or None
+    cliente.direccion = (request.form.get("direccion") or "").strip() or None
+    if not cliente_id:
+        cliente.responsable = responsable_actual()
+        db.session.add(cliente)
+    db.session.commit()
+    flash("Cliente actualizado correctamente." if cliente_id else "Cliente registrado correctamente.", "success")
+    return redirect(url_for("clientes_index"))
 
 # ---------------------------------------------------------
 # Autocompletar (con filtro por responsable en clientes)
