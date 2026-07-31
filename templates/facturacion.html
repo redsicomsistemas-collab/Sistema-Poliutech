@@ -38,10 +38,11 @@
   </div>
 </div>
 
-<div class="card border-0 shadow-sm mb-4">
+<div class="card border-0 shadow-sm mb-4" id="configuracion-fiscal">
   <div class="card-header bg-primary text-white fw-bold">Configuracion fiscal y PAC</div>
   <div class="card-body">
-    <form method="post" action="{{ url_for('facturacion.guardar_config') }}" class="row g-3">
+    <p class="text-muted mb-3">Registra aquí los datos del emisor y carga el certificado CSD proporcionado por el SAT.</p>
+    <form method="post" action="{{ url_for('facturacion.guardar_config') }}" enctype="multipart/form-data" class="row g-3">
       <div class="col-md-2">
         <label class="form-label">RFC emisor</label>
         <input name="rfc" class="form-control text-uppercase" value="{{ config.rfc if config else '' }}" required>
@@ -78,12 +79,14 @@
         <input name="pac_usuario" class="form-control" value="{{ config.pac_usuario if config else '' }}">
       </div>
       <div class="col-md-3">
-        <label class="form-label">Ruta .cer CSD</label>
-        <input name="csd_cer_path" class="form-control" value="{{ config.csd_cer_path if config else '' }}">
+        <label class="form-label">Certificado CSD (.cer)</label>
+        <input name="csd_cer" type="file" class="form-control" accept=".cer,application/pkix-cert">
+        <div class="form-text">{{ 'Certificado cargado' if config and (config.csd_cer_data or config.csd_cer_path) else 'Pendiente de cargar (máx. 2 MB)' }}</div>
       </div>
       <div class="col-md-3">
-        <label class="form-label">Ruta .key CSD</label>
-        <input name="csd_key_path" class="form-control" value="{{ config.csd_key_path if config else '' }}">
+        <label class="form-label">Llave privada CSD (.key)</label>
+        <input name="csd_key" type="file" class="form-control" accept=".key">
+        <div class="form-text">{{ 'Llave cargada' if config and (config.csd_key_data or config.csd_key_path) else 'Pendiente de cargar (máx. 2 MB)' }}</div>
       </div>
       <div class="col-md-1">
         <label class="form-label">No. cert.</label>

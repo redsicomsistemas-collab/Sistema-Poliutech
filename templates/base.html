@@ -138,6 +138,22 @@
       transform: translateY(-1px);
     }
 
+    .topbar-primary-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .invoice-cta {
+      background: #20c997;
+      color: #06281f;
+    }
+
+    .invoice-cta:hover {
+      background: #3dd5a9;
+      color: #041f18;
+    }
+
     .topbar-user {
       max-width: 240px;
       color: #fff;
@@ -270,7 +286,7 @@
         display: inline-flex;
       }
 
-      .quote-cta {
+      .topbar-primary-actions {
         display: none;
       }
 
@@ -319,6 +335,11 @@
         min-width: 0;
         padding: 0.75rem 1rem;
         font-size: 1rem;
+      }
+
+      .mobile-menu-tools .topbar-primary-actions {
+        display: grid;
+        gap: 0.75rem;
       }
 
       .mobile-user-card {
@@ -694,7 +715,10 @@
         <span class="fw-bold">M.A.R — {{ company_branding.nombre_comercial if company_branding else 'Sistema Poliutech' }}</span>
       </a>
 
-      <a class="quote-cta fw-bold" href="{{ url_for('cotizador') }}">💰 COTIZAR</a>
+      <div class="topbar-primary-actions">
+        <a class="quote-cta fw-bold" href="{{ url_for('cotizador') }}">💰 COTIZAR</a>
+        <a class="quote-cta invoice-cta fw-bold" href="{{ url_for('facturacion.nueva') }}">🧾 FACTURAR</a>
+      </div>
 
       {% if current_user.is_authenticated %}
       <button class="theme-toggle" type="button" id="themeToggle" aria-label="Activar tema oscuro" aria-pressed="false" title="Activar tema oscuro">
@@ -723,7 +747,10 @@
     <!-- ====== Menu lateral ====== -->
     <aside class="side-menu" id="sideMenu" aria-label="Menu principal">
       <div class="mobile-menu-tools">
-        <a class="quote-cta fw-bold" href="{{ url_for('cotizador') }}">💰 COTIZAR</a>
+        <div class="topbar-primary-actions">
+          <a class="quote-cta fw-bold" href="{{ url_for('cotizador') }}">💰 COTIZAR</a>
+          <a class="quote-cta invoice-cta fw-bold" href="{{ url_for('facturacion.nueva') }}">🧾 FACTURAR</a>
+        </div>
         <div class="mobile-user-card">
           <button class="mobile-user-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#mobileUserActions" aria-expanded="false" aria-controls="mobileUserActions">
             <span>👤 {{ current_user.nombre }}</span>

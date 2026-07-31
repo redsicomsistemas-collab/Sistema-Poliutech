@@ -21,6 +21,7 @@ from pac_providers import PacNotConfiguredError, get_pac_provider
 facturacion_bp = Blueprint("facturacion", __name__, url_prefix="/facturacion")
 MAR_BLUE = "#0C3C78"
 RFC_PATTERN = re.compile(r"^[A-Z&Ñ]{3,4}\d{6}[A-Z0-9]{3}$")
+MAX_CSD_BYTES = 2 * 1024 * 1024
 
 
 def _money(value) -> float:
@@ -37,6 +38,20 @@ def _text(value: str | None, default: str = "") -> str:
 def _pdf_text(value: object) -> str:
     """Escape user-provided text before ReportLab parses it as mini-HTML."""
     return escape(str(value or ""))
+
+
+def _read_csd_upload(field_name: str, extension: str) -> bytes | None:
+    upload = request.files.get(field_name)
+    if not upload or not upload.filename:
+        return None
+    if not upload.filename.lower().endswith(extension):
+        raise ValueError(f"El archivo debe tener extension {extension}.")
+    data = upload.read(MAX_CSD_BYTES + 1)
+    if not data:
+        raise ValueError(f"El archivo {extension} esta vacio.")
+    if len(data) > MAX_CSD_BYTES:
+        raise ValueError(f"El archivo {extension} supera el limite de 2 MB.")
+    return data
 
 
 def _active_config() -> FacturacionConfig | None:
@@ -169,8 +184,18 @@ def guardar_config():
     config.pac = _text(request.form.get("pac"), "FACTURAMA").upper()
     config.pac_ambiente = _text(request.form.get("pac_ambiente"), "SANDBOX").upper()
     config.pac_usuario = _text(request.form.get("pac_usuario"))
-    config.csd_cer_path = _text(request.form.get("csd_cer_path"))
-    config.csd_key_path = _text(request.form.get("csd_key_path"))
+    try:
+        cer_data = _read_csd_upload("csd_cer", ".cer")
+        key_data = _read_csd_upload("csd_key", ".key")
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for("facturacion.index"))
+    if cer_data is not None:
+        config.csd_cer_data = cer_data
+        config.csd_cer_path = None
+    if key_data is not None:
+        config.csd_key_data = key_data
+        config.csd_key_path = None
     config.csd_no_certificado = _text(request.form.get("csd_no_certificado"))
     config.activo = True
     if not config.rfc or not config.razon_social or not config.regimen_fiscal or not config.codigo_postal:
@@ -185,6 +210,9 @@ def guardar_config():
 @facturacion_bp.get("/nueva")
 @login_required
 def nueva():
+    if not _active_config():
+        flash("Primero registra los datos fiscales del emisor. Despues podras crear facturas.", "warning")
+        return redirect(f"{url_for('facturacion.index')}#configuracion-fiscal")
     cotizacion_id = request.args.get("cotizacion_id", type=int)
     cotizacion = Cotizacion.query.get(cotizacion_id) if cotizacion_id else None
     clientes = Cliente.query.order_by(Cliente.empresa.asc(), Cliente.nombre_cliente.asc()).limit(300).all()
