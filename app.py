@@ -3651,6 +3651,18 @@ def ensure_schema():
         print("⚠️ ensure_schema(cotizacion extras):", e)
 
     try:
+        facturacion_cols = _table_columns("facturacion_config")
+        for col, stmt in [
+            ("csd_cer_data", "ALTER TABLE facturacion_config ADD COLUMN csd_cer_data BLOB"),
+            ("csd_key_data", "ALTER TABLE facturacion_config ADD COLUMN csd_key_data BLOB"),
+        ]:
+            if col not in facturacion_cols:
+                db.session.execute(text(stmt))
+        db.session.commit()
+    except Exception as e:
+        print("⚠️ ensure_schema(facturacion CSD):", e)
+
+    try:
         inv_cols = _table_columns("inventario_producto")
         for col, stmt in [
             ("stock_maximo", "ALTER TABLE inventario_producto ADD COLUMN stock_maximo FLOAT DEFAULT 0.0"),

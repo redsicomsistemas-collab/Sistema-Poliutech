@@ -141,6 +141,8 @@ class FacturacionConfig(db.Model):
     pac_usuario = db.Column(db.String(180))
     csd_cer_path = db.Column(db.String(300))
     csd_key_path = db.Column(db.String(300))
+    csd_cer_data = db.Column(db.LargeBinary)
+    csd_key_data = db.Column(db.LargeBinary)
     csd_no_certificado = db.Column(db.String(40))
     activo = db.Column(db.Boolean, default=True, nullable=False)
     creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
