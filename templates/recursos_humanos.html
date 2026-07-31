@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Recursos Humanos{% endblock %}
+{% block content %}
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 my-4">
+  <div><h2 class="fw-bold text-primary mb-1">Recursos Humanos</h2><div class="text-muted">Vacaciones, permisos y justificantes en un solo expediente.</div></div>
+  {% if can_manage %}<span class="badge bg-primary fs-6">Vista de autorizador</span>{% endif %}
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-body"><div class="small text-muted">Registros visibles</div><div class="display-6 fw-bold">{{ solicitudes|length }}</div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-body"><div class="small text-muted">Pendientes</div><div class="display-6 fw-bold text-warning">{{ counts.get('PENDIENTE', 0) }}</div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-body"><div class="small text-muted">Aprobadas</div><div class="display-6 fw-bold text-success">{{ counts.get('APROBADA', 0) }}</div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-body"><div class="small text-muted">Justificantes</div><div class="display-6 fw-bold text-info">{{ solicitudes|selectattr('tipo', 'equalto', 'JUSTIFICANTE')|list|length }}</div></div></div></div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-primary text-white fw-bold">Nuevo expediente</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('rrhh_crear') }}" enctype="multipart/form-data" id="rrhhForm">
+      <div class="row g-3">
+        <div class="col-md-4"><label class="form-label">Tipo</label><select class="form-select" name="tipo" id="rrhhTipo" required>{% for value, label in tipos.items() %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></div>
+        <div class="col-md-4"><label class="form-label">Empresa</label><input class="form-control" name="empresa" value="Poliutech" required></div>
+        <div class="col-md-4"><label class="form-label">Departamento / área</label><input class="form-control" name="departamento" placeholder="Ej. Operaciones"></div>
+        <div class="col-md-3"><label class="form-label">Fecha inicial</label><input type="date" class="form-control" name="fecha_inicio" required></div>
+        <div class="col-md-3"><label class="form-label">Fecha final</label><input type="date" class="form-control" name="fecha_fin" required></div>
+        <div class="col-md-3 rrhh-hours d-none"><label class="form-label">Hora de salida</label><input type="time" class="form-control" name="hora_inicio"></div>
+        <div class="col-md-3 rrhh-hours d-none"><label class="form-label">Hora de regreso</label><input type="time" class="form-control" name="hora_fin"></div>
+        <div class="col-md-8"><label class="form-label">Motivo / notas</label><textarea class="form-control" name="motivo" rows="2" placeholder="Obligatorio para permisos y justificantes"></textarea></div>
+        <div class="col-md-4"><label class="form-label">Documento de soporte</label><input type="file" class="form-control" name="archivo" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"><div class="form-text" id="archivoHelp">Opcional para vacaciones y permisos.</div></div>
+      </div>
+      <div class="alert alert-light border mt-3 mb-0"><strong>Flujo:</strong> Mescalera y Hansel reciben la solicitud para revisión; Sistemas recibe copia del registro.</div>
+      <div class="text-end mt-3"><button class="btn btn-success px-4">Registrar y enviar</button></div>
+    </form>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-light">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-md-5"><label class="form-label">Buscar</label><input class="form-control" name="q" value="{{ q }}" placeholder="Folio, empleado o motivo"></div>
+      <div class="col-md-3"><label class="form-label">Tipo</label><select class="form-select" name="tipo"><option value="">Todos</option>{% for value, label in tipos.items() %}<option value="{{ value }}" {% if tipo == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+      <div class="col-md-2"><label class="form-label">Estatus</label><select class="form-select" name="estatus"><option value="">Todos</option>{% for value in estatus_options %}<option value="{{ value }}" {% if estatus == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
+      <div class="col-md-2 d-grid"><button class="btn btn-outline-primary">Filtrar</button></div>
+    </form>
+  </div>
+  <div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead><tr><th>Folio</th><th>Tipo</th><th>Empleado</th><th>Periodo</th><th>Días</th><th>Estatus</th><th></th></tr></thead><tbody>
+    {% for item in solicitudes %}<tr><td class="fw-bold">{{ item.folio }}</td><td>{{ tipos.get(item.tipo, item.tipo) }}</td><td>{{ item.empleado_nombre }}</td><td>{{ item.fecha_inicio.strftime('%d/%m/%Y') }} – {{ item.fecha_fin.strftime('%d/%m/%Y') }}</td><td>{{ item.dias_solicitados }}</td><td><span class="badge {% if item.estatus == 'APROBADA' %}bg-success{% elif item.estatus == 'RECHAZADA' %}bg-danger{% elif item.estatus == 'PENDIENTE' %}bg-warning text-dark{% else %}bg-info text-dark{% endif %}">{{ item.estatus }}</span></td><td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('rrhh_detalle', solicitud_id=item.id) }}">Ver</a></td></tr>
+    {% else %}<tr><td colspan="7" class="text-center text-muted py-4">No hay expedientes con estos filtros.</td></tr>{% endfor %}
+  </tbody></table></div>
+</div>
+<script>
+  const tipo = document.getElementById('rrhhTipo');
+  function syncRHForm(){ const permiso = tipo.value === 'PERMISO'; const justificante = tipo.value === 'JUSTIFICANTE'; document.querySelectorAll('.rrhh-hours').forEach(el => el.classList.toggle('d-none', !permiso)); const file = document.querySelector('[name="archivo"]'); file.required = justificante; document.getElementById('archivoHelp').textContent = justificante ? 'Obligatorio para justificantes.' : 'Opcional para vacaciones y permisos.'; }
+  tipo.addEventListener('change', syncRHForm); syncRHForm();
+</script>
+{% endblock %}

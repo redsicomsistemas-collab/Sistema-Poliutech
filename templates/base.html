@@ -132,6 +132,22 @@
       text-decoration: none;
     }
 
+    .topbar-primary-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .invoice-cta {
+      background: #20c997;
+      color: #06281f;
+    }
+
+    .invoice-cta:hover {
+      background: #3dd5a9;
+      color: #041f18;
+    }
+
     .quote-cta:hover {
       background: #ffcd39;
       color: #0f172a;
@@ -205,6 +221,44 @@
       transform: translateX(2px);
     }
 
+    .menu-category {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding-bottom: 0.25rem;
+    }
+
+    .menu-category-toggle {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      text-align: left;
+    }
+
+    .menu-category-toggle[aria-expanded="true"] {
+      background: rgba(255, 255, 255, 0.14);
+    }
+
+    .menu-category-chevron {
+      font-size: 0.8rem;
+      transition: transform 0.2s ease;
+    }
+
+    .menu-category-toggle[aria-expanded="true"] .menu-category-chevron {
+      transform: rotate(180deg);
+    }
+
+    .menu-category-items {
+      padding: 0.2rem 0 0.3rem 0.65rem;
+    }
+
+    .menu-category-items .nav-link {
+      padding: 0.55rem 0.7rem;
+      font-size: 0.93rem;
+      font-weight: 600;
+    }
+
     .side-menu .dropdown-menu {
       min-width: 13rem;
       box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
@@ -270,7 +324,7 @@
         display: inline-flex;
       }
 
-      .quote-cta {
+      .topbar-primary-actions {
         display: none;
       }
 
@@ -319,6 +373,11 @@
         min-width: 0;
         padding: 0.75rem 1rem;
         font-size: 1rem;
+      }
+
+      .mobile-menu-tools .topbar-primary-actions {
+        display: grid;
+        gap: 0.75rem;
       }
 
       .mobile-user-card {
@@ -694,7 +753,10 @@
         <span class="fw-bold">M.A.R — {{ company_branding.nombre_comercial if company_branding else 'Sistema Poliutech' }}</span>
       </a>
 
-      <a class="quote-cta fw-bold" href="{{ url_for('cotizador') }}">💰 COTIZAR</a>
+      <div class="topbar-primary-actions">
+        <a class="quote-cta fw-bold" href="{{ url_for('cotizador') }}">💰 COTIZAR</a>
+        <a class="quote-cta invoice-cta fw-bold" href="{{ url_for('facturacion.nueva') }}">🧾 FACTURAR</a>
+      </div>
 
       {% if current_user.is_authenticated %}
       <button class="theme-toggle" type="button" id="themeToggle" aria-label="Activar tema oscuro" aria-pressed="false" title="Activar tema oscuro">
@@ -723,7 +785,10 @@
     <!-- ====== Menu lateral ====== -->
     <aside class="side-menu" id="sideMenu" aria-label="Menu principal">
       <div class="mobile-menu-tools">
-        <a class="quote-cta fw-bold" href="{{ url_for('cotizador') }}">💰 COTIZAR</a>
+        <div class="topbar-primary-actions">
+          <a class="quote-cta fw-bold" href="{{ url_for('cotizador') }}">💰 COTIZAR</a>
+          <a class="quote-cta invoice-cta fw-bold" href="{{ url_for('facturacion.nueva') }}">🧾 FACTURAR</a>
+        </div>
         <div class="mobile-user-card">
           <button class="mobile-user-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#mobileUserActions" aria-expanded="false" aria-controls="mobileUserActions">
             <span>👤 {{ current_user.nombre }}</span>
@@ -738,49 +803,43 @@
           </div>
         </div>
       </div>
-      <nav class="nav flex-column">
-        <a class="nav-link" href="{{ url_for('index') }}">🏠 Inicio</a>
-        <a class="nav-link" href="{{ url_for('proyectos') }}">📁 Proyectos</a>
-        <a class="nav-link" href="{{ url_for('inventario_index') }}">📦 Inventario</a>
-        <a class="nav-link" href="{{ url_for('solicitudes_recursos_index') }}">💵 Solicitar fondos</a>
-        <a class="nav-link" href="{{ url_for('ordenes_compra_index') }}">🧾 Compras</a>
-        <a class="nav-link" href="{{ url_for('finanzas_index') }}">🏦 Finanzas</a>
-        {% if endpoint_exists('facturacion.index') %}
-        <a class="nav-link" href="{{ url_for('facturacion.index') }}">🧾 Facturacion</a>
-        {% endif %}
-        <a class="nav-link" href="{{ url_for('gastos_viaticos_index') }}">🧾 Gastos</a>
-        <a class="nav-link" href="{{ url_for('comprobar_gastos_fondos') }}">📑 Comprobar gastos de fondos</a>
-        {% if estado_cuenta_recursos_can_view() %}
-        <a class="nav-link" href="{{ url_for('estado_cuenta_recursos_panel') }}">💳 Edo. fondos</a>
-        {% endif %}
-        {% if gastos_admin_can_view() %}
-        <a class="nav-link" href="{{ url_for('gastos_admin_panel') }}">📊 Gastos admin</a>
-        {% endif %}
-        <a class="nav-link" href="{{ url_for('soporte_tickets') }}">🎫 Soporte</a>
-        {% if can_view_eval_departamental %}
-        <a class="nav-link" href="{{ url_for('reportes_diarios_evaluacion') }}">📊 Eval. departamentos</a>
-        {% endif %}
-        <a class="nav-link" href="{{ url_for('prospectos') }}">📋 Leads</a>
-        <a class="nav-link" href="{{ url_for('admin_catalogos') }}">📚 Catálogos</a>
-        <a class="nav-link" href="{{ url_for('pu.obras_index') }}">🧮 P. Unitarios</a>
-        <a class="nav-link" href="{{ url_for('registro_obras') }}">🏗️ Prospectos</a>
+      {% set menu_endpoint = request.endpoint or '' %}
+      {% set menu_general_open = menu_endpoint in ['index', 'proyectos', 'proyecto_detalle'] %}
+      {% set menu_comercial_open = menu_endpoint in ['prospectos', 'clientes_index', 'clientes_guardar', 'registro_obras', 'cotizador'] %}
+      {% set menu_operacion_open = menu_endpoint in ['inventario_index', 'ordenes_compra_index'] or menu_endpoint.startswith('pu.') %}
+      {% set menu_finanzas_open = menu_endpoint in ['solicitudes_recursos_index', 'finanzas_index', 'gastos_viaticos_index', 'comprobar_gastos_fondos', 'estado_cuenta_recursos_panel', 'gastos_admin_panel'] or menu_endpoint.startswith('facturacion.') %}
+      {% set menu_gestion_open = menu_endpoint in ['soporte_tickets', 'reportes_diarios_index', 'reportes_diarios_evaluacion', 'admin_catalogos'] %}
+      {% set menu_rrhh_open = menu_endpoint in ['rrhh_index', 'rrhh_crear', 'rrhh_detalle', 'rrhh_revisar', 'rrhh_adjunto'] %}
+      {% set menu_admin_open = menu_endpoint in ['altas_proveedores', 'papelera_cotizaciones', 'admin_demos', 'admin_personalizacion', 'admin_notificaciones', 'admin_usuarios', 'admin_permisos', 'admin_bitacora'] %}
+      <nav class="nav flex-column" id="sideMenuCategories">
+        <div class="menu-category">
+          <button class="nav-link menu-category-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#menuGeneral" aria-expanded="{{ 'true' if menu_general_open else 'false' }}"><span>🏠 General</span><span class="menu-category-chevron">▼</span></button>
+          <div class="collapse {{ 'show' if menu_general_open }} menu-category-items" id="menuGeneral"><a class="nav-link" href="{{ url_for('index') }}">🏠 Inicio</a><a class="nav-link" href="{{ url_for('proyectos') }}">📁 Proyectos</a></div>
+        </div>
+        <div class="menu-category">
+          <button class="nav-link menu-category-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#menuComercial" aria-expanded="{{ 'true' if menu_comercial_open else 'false' }}"><span>🤝 Comercial</span><span class="menu-category-chevron">▼</span></button>
+          <div class="collapse {{ 'show' if menu_comercial_open }} menu-category-items" id="menuComercial"><a class="nav-link" href="{{ url_for('prospectos') }}">📋 Leads</a><a class="nav-link" href="{{ url_for('clientes_index') }}">👥 Clientes</a><a class="nav-link" href="{{ url_for('registro_obras') }}">🏗️ Prospectos</a></div>
+        </div>
+        <div class="menu-category">
+          <button class="nav-link menu-category-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#menuOperacion" aria-expanded="{{ 'true' if menu_operacion_open else 'false' }}"><span>🛠️ Operación</span><span class="menu-category-chevron">▼</span></button>
+          <div class="collapse {{ 'show' if menu_operacion_open }} menu-category-items" id="menuOperacion"><a class="nav-link" href="{{ url_for('inventario_index') }}">📦 Inventario</a><a class="nav-link" href="{{ url_for('ordenes_compra_index') }}">🧾 Compras</a><a class="nav-link" href="{{ url_for('pu.obras_index') }}">🧮 Precios unitarios</a></div>
+        </div>
+        <div class="menu-category">
+          <button class="nav-link menu-category-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#menuFinanzas" aria-expanded="{{ 'true' if menu_finanzas_open else 'false' }}"><span>💰 Finanzas</span><span class="menu-category-chevron">▼</span></button>
+          <div class="collapse {{ 'show' if menu_finanzas_open }} menu-category-items" id="menuFinanzas"><a class="nav-link" href="{{ url_for('solicitudes_recursos_index') }}">💵 Solicitar fondos</a><a class="nav-link" href="{{ url_for('finanzas_index') }}">🏦 Panel financiero</a><a class="nav-link" href="{{ url_for('facturacion.index') }}">🧾 Facturación</a><a class="nav-link" href="{{ url_for('gastos_viaticos_index') }}">💸 Gastos</a><a class="nav-link" href="{{ url_for('comprobar_gastos_fondos') }}">📑 Comprobar fondos</a>{% if estado_cuenta_recursos_can_view() %}<a class="nav-link" href="{{ url_for('estado_cuenta_recursos_panel') }}">💳 Estado de fondos</a>{% endif %}{% if gastos_admin_can_view() %}<a class="nav-link" href="{{ url_for('gastos_admin_panel') }}">📊 Gastos administrativos</a>{% endif %}</div>
+        </div>
+        <div class="menu-category">
+          <button class="nav-link menu-category-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#menuGestion" aria-expanded="{{ 'true' if menu_gestion_open else 'false' }}"><span>📊 Gestión</span><span class="menu-category-chevron">▼</span></button>
+          <div class="collapse {{ 'show' if menu_gestion_open }} menu-category-items" id="menuGestion"><a class="nav-link" href="{{ url_for('soporte_tickets') }}">🎫 Soporte</a><a class="nav-link" href="{{ url_for('reportes_diarios_index') }}">🗓️ Reportes diarios</a>{% if can_view_eval_departamental %}<a class="nav-link" href="{{ url_for('reportes_diarios_evaluacion') }}">📊 Evaluación departamental</a>{% endif %}<a class="nav-link" href="{{ url_for('admin_catalogos') }}">📚 Catálogos</a></div>
+        </div>
+        <div class="menu-category">
+          <button class="nav-link menu-category-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#menuRRHH" aria-expanded="{{ 'true' if menu_rrhh_open else 'false' }}"><span>👥 Recursos Humanos</span><span class="menu-category-chevron">▼</span></button>
+          <div class="collapse {{ 'show' if menu_rrhh_open }} menu-category-items" id="menuRRHH"><a class="nav-link" href="{{ url_for('rrhh_index') }}">🏖️ Solicitudes y justificantes</a></div>
+        </div>
         {% if current_user.is_authenticated and ((current_user.rol or "")|upper == "ADMIN" or (current_user.nombre or "")|lower == "admin") %}
-        <div class="dropdown">
-          <a class="nav-link dropdown-toggle" href="#" id="adminMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-            ⚙️ Admin
-          </a>
-          <ul class="dropdown-menu" aria-labelledby="adminMenu">
-            <li><a class="dropdown-item" href="{{ url_for('altas_proveedores') }}">🗂️ Altas</a></li>
-            <li><a class="dropdown-item" href="{{ url_for('papelera_cotizaciones') }}">🗑️ Papelera</a></li>
-            {% if (current_user.nombre or "")|lower == "admin" %}
-            <li><a class="dropdown-item" href="{{ url_for('admin_demos') }}">🧪 Demos</a></li>
-            <li><a class="dropdown-item" href="{{ url_for('admin_personalizacion') }}">🎨 Personalización</a></li>
-            <li><a class="dropdown-item" href="{{ url_for('admin_notificaciones') }}">🔔 Notificaciones</a></li>
-            <li><a class="dropdown-item" href="{{ url_for('admin_usuarios') }}">👥 Usuarios</a></li>
-            <li><a class="dropdown-item" href="{{ url_for('admin_permisos') }}">🔐 Permisos</a></li>
-            <li><a class="dropdown-item" href="{{ url_for('admin_bitacora') }}">🧾 Bitácora</a></li>
-            {% endif %}
-          </ul>
+        <div class="menu-category">
+          <button class="nav-link menu-category-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#menuAdmin" aria-expanded="{{ 'true' if menu_admin_open else 'false' }}"><span>⚙️ Administración</span><span class="menu-category-chevron">▼</span></button>
+          <div class="collapse {{ 'show' if menu_admin_open }} menu-category-items" id="menuAdmin"><a class="nav-link" href="{{ url_for('altas_proveedores') }}">🗂️ Altas</a><a class="nav-link" href="{{ url_for('papelera_cotizaciones') }}">🗑️ Papelera</a>{% if (current_user.nombre or "")|lower == "admin" %}<a class="nav-link" href="{{ url_for('admin_demos') }}">🧪 Demos</a><a class="nav-link" href="{{ url_for('admin_personalizacion') }}">🎨 Personalización</a><a class="nav-link" href="{{ url_for('admin_notificaciones') }}">🔔 Notificaciones</a><a class="nav-link" href="{{ url_for('admin_usuarios') }}">👥 Usuarios</a><a class="nav-link" href="{{ url_for('admin_permisos') }}">🔐 Permisos</a><a class="nav-link" href="{{ url_for('admin_bitacora') }}">🧾 Bitácora</a>{% endif %}</div>
         </div>
         {% endif %}
       </nav>

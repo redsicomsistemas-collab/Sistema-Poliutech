@@ -2802,6 +2802,9 @@ GASTOS_REVIEW_BCC_EMAIL = ""
 FINANZAS_AUTH_NOTIFY_EMAILS = "mescalera@poliutech.com,miguele@poliutech.com"
 SUPPORT_TICKET_EMAIL = (os.getenv("SUPPORT_TICKET_EMAIL") or "sistemas@poliutech.com").strip()
 USER_CREATION_EMAIL = "sistemas@poliutech.com"
+RH_APPROVAL_EMAILS = "mescalera@poliutech.com,hjaramillo@poliutech.com"
+RH_AUDIT_EMAIL = "sistemas@poliutech.com"
+RH_ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".doc", ".docx"}
 COTIZACION_TRASH_RETENTION_DAYS = 30
 REGISTRO_MAIL_HOST = os.getenv("REGISTRO_MAIL_HOST", "servidor15.escala.net.mx").strip()
 REGISTRO_MAIL_PORT = int(os.getenv("REGISTRO_MAIL_PORT", "26"))
@@ -2814,6 +2817,8 @@ FIREBASE_CREDENTIALS_JSON = os.getenv("FIREBASE_CREDENTIALS_JSON", "").strip()
 PUSH_NOTIFICATIONS_ENABLED = os.getenv("PUSH_NOTIFICATIONS_ENABLED", "1").strip().lower() not in {"0", "false", "no"}
 
 NOTIFICATION_EVENT_CATALOG = {
+    "rrhh_solicitud": ("Recursos Humanos", "Nueva solicitud o justificante"),
+    "rrhh_resultado": ("Recursos Humanos", "Resultado de solicitud"),
     "cotizacion_nueva": ("Cotizaciones", "Nueva cotización"),
     "cotizacion_revision": ("Cotizaciones", "Solicitud de revisión o aprobación"),
     "cotizacion_actualizada": ("Cotizaciones", "Cotización modificada"),
@@ -2846,6 +2851,7 @@ from models import (
     CotizacionDetalle,
     CotizacionSeguimiento,
     CotizacionAsignacion,
+    ProyectoAsignacion,
     VoiceCommandLog,
     Usuario,
     MobileDevice,
@@ -2861,6 +2867,7 @@ from models import (
     TicketComentario,
     TicketAdjunto,
     ActivityLog,
+    SolicitudRH,
     InventarioProducto,
     InventarioMovimiento,
     OrdenCompra,
@@ -3423,6 +3430,8 @@ def ensure_schema():
             ("total", "ALTER TABLE cotizacion ADD COLUMN total FLOAT DEFAULT 0.0"),
             ("moneda", "ALTER TABLE cotizacion ADD COLUMN moneda VARCHAR(10) DEFAULT 'MXN'"),
             ("estatus_aprobacion", "ALTER TABLE cotizacion ADD COLUMN estatus_aprobacion VARCHAR(20) DEFAULT 'EN REVISIÓN'"),
+            ("resultado", "ALTER TABLE cotizacion ADD COLUMN resultado VARCHAR(20)"),
+            ("motivo_perdida", "ALTER TABLE cotizacion ADD COLUMN motivo_perdida TEXT"),
             ("especialidad", "ALTER TABLE cotizacion ADD COLUMN especialidad VARCHAR(160)"),
             ("especialidad_descripcion", "ALTER TABLE cotizacion ADD COLUMN especialidad_descripcion VARCHAR(500)"),
             ("notas", "ALTER TABLE cotizacion ADD COLUMN notas VARCHAR(3000)"),
@@ -3461,6 +3470,32 @@ def ensure_schema():
             db.session.commit()
     except Exception as e:
         print("⚠️ ensure_schema(cotizacion extras):", e)
+
+    try:
+        facturacion_cols = _table_columns("facturacion_config")
+        for col, stmt in [
+            ("csd_cer_data", "ALTER TABLE facturacion_config ADD COLUMN csd_cer_data BLOB"),
+            ("csd_key_data", "ALTER TABLE facturacion_config ADD COLUMN csd_key_data BLOB"),
+        ]:
+            if col not in facturacion_cols:
+                db.session.execute(text(stmt))
+        db.session.commit()
+    except Exception as e:
+        print("⚠️ ensure_schema(facturacion CSD):", e)
+
+    try:
+        cliente_cols = _table_columns("cliente")
+        for col, stmt in [
+            ("razon_social", "ALTER TABLE cliente ADD COLUMN razon_social VARCHAR(180)"),
+            ("regimen_fiscal", "ALTER TABLE cliente ADD COLUMN regimen_fiscal VARCHAR(10)"),
+            ("codigo_postal_fiscal", "ALTER TABLE cliente ADD COLUMN codigo_postal_fiscal VARCHAR(10)"),
+            ("uso_cfdi", "ALTER TABLE cliente ADD COLUMN uso_cfdi VARCHAR(10) DEFAULT 'G03'"),
+        ]:
+            if col not in cliente_cols:
+                db.session.execute(text(stmt))
+        db.session.commit()
+    except Exception as e:
+        print("⚠️ ensure_schema(cliente fiscal):", e)
 
     try:
         inv_cols = _table_columns("inventario_producto")
@@ -3739,6 +3774,12 @@ def is_admin_account() -> bool:
 
 
 PERMISSION_CATALOG = (
+    {
+        "key": "rrhh.gestionar",
+        "group": "Recursos Humanos",
+        "name": "Gestionar solicitudes de RR. HH.",
+        "description": "Permite consultar todos los expedientes y aprobar o rechazar vacaciones y permisos.",
+    },
     {
         "key": "gastos.ver_todos",
         "group": "Gastos y fondos",
@@ -5657,6 +5698,9 @@ class _WhatsAppNotificationTransport:
         send_whatsapp_multi(phones, _email_message_as_whatsapp(msg))
 
 
+# Conserva el transporte SMTP real para módulos que requieren correo explícito.
+_SMTP_EMAIL_TRANSPORT = smtplib.SMTP
+
 # A partir de aquí cualquier notificación heredada que todavía construya un
 # EmailMessage usa WhatsApp. Esto cubre altas, cotizaciones, menciones, soporte,
 # reportes, recursos, gastos y recuperación de contraseña sin dejar rutas SMTP.
@@ -5932,15 +5976,54 @@ def proyectos():
         .order_by(db.func.max(Cotizacion.fecha).desc())
         .all()
     )
-    total_proyectos = len(rows)
+    proyectos_rows = []
+    for row in rows:
+        responsables = (
+            _cotizaciones_activas_query()
+            .filter(_project_key_expr() == row.key)
+            .with_entities(Cotizacion.responsable_usuario_id, Cotizacion.responsable)
+            .distinct()
+            .all()
+        )
+        responsables_ids = {item.responsable_usuario_id for item in responsables if item.responsable_usuario_id}
+        responsables_nombres = {
+            (item.responsable or "").strip() for item in responsables if (item.responsable or "").strip()
+        }
+        if len(responsables_ids) == 1:
+            responsable_id = next(iter(responsables_ids))
+            responsable_nombre = next(iter(responsables_nombres), "Asignado")
+        elif not responsables_ids and len(responsables_nombres) == 1:
+            responsable_id = None
+            responsable_nombre = next(iter(responsables_nombres))
+        elif responsables_ids or responsables_nombres:
+            responsable_id = None
+            responsable_nombre = "Asignación mixta"
+        else:
+            responsable_id = None
+            responsable_nombre = "Sin asignar"
+        proyectos_rows.append({
+            "key": row.key,
+            "nombre": row.nombre,
+            "cotizaciones": row.cotizaciones,
+            "total": row.total,
+            "ultima_fecha": row.ultima_fecha,
+            "responsable_id": responsable_id,
+            "responsable_nombre": responsable_nombre,
+        })
+
+    total_proyectos = len(proyectos_rows)
     total_cotizaciones = sum(int(r.cotizaciones or 0) for r in rows)
     total_importe = sum(float(r.total or 0) for r in rows)
+    usuarios_asignables = Usuario.query.order_by(
+        db.func.lower(db.func.coalesce(Usuario.nombre_visible, Usuario.nombre))
+    ).all()
     return render_template(
         "proyectos.html",
-        proyectos=rows,
+        proyectos=proyectos_rows,
         total_proyectos=total_proyectos,
         total_cotizaciones=total_cotizaciones,
         total_importe=total_importe,
+        usuarios_asignables=usuarios_asignables,
         title="Proyectos - Sistema MAR",
     )
 
@@ -5982,6 +6065,13 @@ def proyecto_detalle():
         "labels": VALID_ESTATUS,
         "counts": [status_map.get(estado, 0) for estado in VALID_ESTATUS],
     }
+    proyecto_clave = nombre.strip().lower() if nombre != "Sin proyecto" else "sin proyecto"
+    historial_asignaciones = (
+        ProyectoAsignacion.query
+        .filter(ProyectoAsignacion.proyecto_clave == proyecto_clave)
+        .order_by(ProyectoAsignacion.asignado_en.desc())
+        .all()
+    )
 
     return render_template(
         "proyecto_detalle.html",
@@ -5991,9 +6081,80 @@ def proyecto_detalle():
         promedio_importe=promedio_importe,
         monthly_series=monthly_series,
         status_series=status_series,
+        historial_asignaciones=historial_asignaciones,
         valid_estatus=VALID_ESTATUS,
         title=f"Proyecto {nombre} - Sistema MAR",
     )
+
+
+@app.route("/proyectos/asignar", methods=["POST"])
+@login_required
+def asignar_proyecto():
+    if not is_admin():
+        return jsonify({"error": "Solo el administrador puede asignar proyectos."}), 403
+
+    payload = request.get_json(silent=True) or {}
+    proyecto = (payload.get("proyecto") or "").strip()
+    try:
+        usuario_id = int(payload.get("usuario_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Selecciona un usuario registrado."}), 400
+    if not proyecto:
+        return jsonify({"error": "Selecciona un proyecto válido."}), 400
+
+    usuario = Usuario.query.get(usuario_id)
+    if not usuario:
+        return jsonify({"error": "El usuario seleccionado no existe."}), 404
+
+    proyecto_clave = proyecto.lower() if proyecto.lower() != "sin proyecto" else "sin proyecto"
+    q = _cotizaciones_activas_query()
+    if proyecto_clave == "sin proyecto":
+        q = q.filter(or_(Cotizacion.proyecto.is_(None), db.func.trim(Cotizacion.proyecto) == ""))
+    else:
+        q = q.filter(db.func.lower(db.func.trim(Cotizacion.proyecto)) == proyecto_clave)
+    cotizaciones = q.all()
+    if not cotizaciones:
+        return jsonify({"error": "El proyecto ya no contiene cotizaciones activas."}), 404
+
+    anteriores = {cot.responsable_usuario_id for cot in cotizaciones if cot.responsable_usuario_id}
+    usuario_anterior_id = next(iter(anteriores)) if len(anteriores) == 1 else None
+    actualizadas = 0
+    try:
+        for cot in cotizaciones:
+            if cot.responsable_usuario_id == usuario.id:
+                continue
+            db.session.add(CotizacionAsignacion(
+                cotizacion_id=cot.id,
+                usuario_anterior_id=cot.responsable_usuario_id,
+                usuario_nuevo_id=usuario.id,
+                asignado_por_id=getattr(current_user, "id", None),
+                asignado_en=now_cdmx_naive(),
+            ))
+            cot.responsable_usuario_id = usuario.id
+            cot.responsable = usuario.nombre_representante
+            actualizadas += 1
+
+        db.session.add(ProyectoAsignacion(
+            proyecto_clave=proyecto_clave,
+            proyecto_nombre=proyecto,
+            usuario_anterior_id=usuario_anterior_id,
+            usuario_nuevo_id=usuario.id,
+            asignado_por_id=getattr(current_user, "id", None),
+            cotizaciones_afectadas=actualizadas,
+            asignado_en=now_cdmx_naive(),
+        ))
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        logger.exception("No se pudo asignar el proyecto")
+        return jsonify({"error": str(exc)}), 500
+
+    return jsonify({
+        "updated": actualizadas,
+        "proyecto": proyecto,
+        "usuario_id": usuario.id,
+        "responsable": usuario.nombre_representante,
+    })
 
 
 @app.route("/cotizador/voz/transcribir", methods=["POST"])
@@ -7916,6 +8077,85 @@ def admin_catalogos():
         q_clientes=q_clientes,
         q_conceptos=q_conceptos,
     )
+
+
+@app.get("/clientes")
+@login_required
+def clientes_index():
+    q = (request.args.get("q") or "").strip()
+    page = max(request.args.get("page", 1, type=int), 1)
+    query = Cliente.query
+    if not is_admin():
+        query = query.filter(Cliente.responsable == responsable_actual())
+    if q:
+        like = f"%{q}%"
+        query = query.filter(or_(
+            Cliente.nombre_cliente.ilike(like),
+            Cliente.empresa.ilike(like),
+            Cliente.razon_social.ilike(like),
+            Cliente.rfc.ilike(like),
+            Cliente.correo.ilike(like),
+            Cliente.telefono.ilike(like),
+        ))
+    clientes_pag = query.order_by(Cliente.id.desc()).paginate(page=page, per_page=20, error_out=False)
+    editar = None
+    editar_id = request.args.get("editar", type=int)
+    if editar_id:
+        editar = db.session.get(Cliente, editar_id)
+        if editar is None:
+            abort(404)
+        require_cliente_owner_or_admin(editar)
+    return render_template(
+        "clientes.html",
+        clientes=clientes_pag.items,
+        clientes_pag=clientes_pag,
+        editar=editar,
+        q=q,
+        title="Clientes - Sistema MAR",
+    )
+
+
+@app.post("/clientes/guardar")
+@login_required
+def clientes_guardar():
+    cliente_id = request.form.get("cliente_id", type=int)
+    cliente = db.session.get(Cliente, cliente_id) if cliente_id else Cliente()
+    if cliente_id:
+        if cliente is None:
+            abort(404)
+        require_cliente_owner_or_admin(cliente)
+
+    nombre = (request.form.get("nombre_cliente") or "").strip()
+    razon_social = (request.form.get("razon_social") or "").strip().upper()
+    rfc = (request.form.get("rfc") or "").strip().upper()
+    regimen = (request.form.get("regimen_fiscal") or "").strip()
+    codigo_postal = (request.form.get("codigo_postal_fiscal") or "").strip()
+    if not nombre or not razon_social or not rfc or not regimen or not codigo_postal:
+        flash("Nombre, razon social, RFC, regimen fiscal y codigo postal son obligatorios.", "warning")
+        return redirect(url_for("clientes_index", editar=cliente_id or None))
+    if not re.fullmatch(r"[A-Z&Ñ]{3,4}\d{6}[A-Z0-9]{3}", rfc):
+        flash("El RFC no tiene un formato valido.", "warning")
+        return redirect(url_for("clientes_index", editar=cliente_id or None))
+    if not re.fullmatch(r"\d{3}", regimen) or not re.fullmatch(r"\d{5}", codigo_postal):
+        flash("El regimen debe tener 3 digitos y el codigo postal 5 digitos.", "warning")
+        return redirect(url_for("clientes_index", editar=cliente_id or None))
+
+    cliente.nombre_cliente = nombre
+    cliente.empresa = (request.form.get("empresa") or "").strip() or None
+    cliente.razon_social = razon_social
+    cliente.rfc = rfc
+    cliente.regimen_fiscal = regimen
+    cliente.codigo_postal_fiscal = codigo_postal
+    cliente.uso_cfdi = (request.form.get("uso_cfdi") or "G03").strip().upper()
+    cliente.correo = (request.form.get("correo") or "").strip() or None
+    cliente.telefono = (request.form.get("telefono") or "").strip() or None
+    cliente.direccion = (request.form.get("direccion") or "").strip() or None
+    if not cliente_id:
+        cliente.responsable = responsable_actual()
+        db.session.add(cliente)
+    db.session.commit()
+    flash("Cliente actualizado correctamente." if cliente_id else "Cliente registrado correctamente.", "success")
+    return redirect(url_for("clientes_index"))
 
 # ---------------------------------------------------------
 # Autocompletar (con filtro por responsable en clientes)
@@ -16596,6 +16836,208 @@ def inventario_export_xlsx():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="inventario_{stamp}.xlsx"'}
     )
+
+
+# ---------------------------------------------------------
+# Recursos Humanos: vacaciones, permisos y justificantes
+# ---------------------------------------------------------
+RH_TYPES = {"VACACIONES": "Vacaciones", "PERMISO": "Permiso", "JUSTIFICANTE": "Justificante"}
+RH_STATUS = {"PENDIENTE", "APROBADA", "RECHAZADA", "REGISTRADO"}
+
+
+def _rrhh_can_manage() -> bool:
+    if not getattr(current_user, "is_authenticated", False):
+        return False
+    email = (getattr(current_user, "correo", "") or "").strip().lower()
+    name = " ".join(filter(None, [getattr(current_user, "nombre", ""), getattr(current_user, "nombre_visible", "")])).lower()
+    return (
+        is_admin()
+        or has_permission("rrhh.gestionar")
+        or email in {"mescalera@poliutech.com", "hjaramillo@poliutech.com"}
+        or "mescalera" in name
+        or "hansel" in name
+    )
+
+
+def _rrhh_require_visible(item: SolicitudRH) -> None:
+    if _rrhh_can_manage() or item.empleado_id == getattr(current_user, "id", None):
+        return
+    abort(403)
+
+
+def _rrhh_email(item: SolicitudRH, *, resultado: bool = False) -> None:
+    detail_url = url_for("rrhh_detalle", solicitud_id=item.id, _external=True)
+    tipo_label = RH_TYPES.get(item.tipo, item.tipo.title())
+    msg = EmailMessage()
+    msg["From"] = f"Recursos Humanos Poliutech <{SMTP_FROM}>"
+    if resultado:
+        recipients = _unique_emails(_parse_email_list(item.empleado_correo), _parse_email_list(RH_AUDIT_EMAIL))
+        msg["Subject"] = f"{item.estatus}: {tipo_label} {item.folio}"
+    else:
+        recipients = _unique_emails(_parse_email_list(RH_APPROVAL_EMAILS), _parse_email_list(RH_AUDIT_EMAIL))
+        msg["Subject"] = f"RR. HH. - {tipo_label} {item.folio} pendiente de revisión"
+    if not recipients:
+        return
+    msg["To"] = ", ".join(recipients)
+    body = (
+        f"Expediente: {item.folio}\nTipo: {tipo_label}\nEmpleado: {item.empleado_nombre}\n"
+        f"Periodo: {item.fecha_inicio.strftime('%d/%m/%Y')} al {item.fecha_fin.strftime('%d/%m/%Y')}\n"
+        f"Días: {item.dias_solicitados}\nEstatus: {item.estatus}\n"
+        f"Motivo / notas: {item.motivo or 'Sin notas'}\n"
+        f"Observaciones de revisión: {item.observaciones_revision or 'Sin observaciones'}\n\n"
+        f"Consultar expediente: {detail_url}"
+    )
+    msg.set_content(body)
+    msg.add_alternative(
+        f"<h2>{escape(tipo_label)} · {escape(item.folio)}</h2>"
+        f"<p><strong>Empleado:</strong> {escape(item.empleado_nombre)}<br>"
+        f"<strong>Periodo:</strong> {item.fecha_inicio.strftime('%d/%m/%Y')} al {item.fecha_fin.strftime('%d/%m/%Y')}<br>"
+        f"<strong>Días:</strong> {item.dias_solicitados}<br><strong>Estatus:</strong> {escape(item.estatus)}</p>"
+        f"<p><strong>Motivo / notas:</strong><br>{escape(item.motivo or 'Sin notas')}</p>"
+        f"<p><strong>Observaciones:</strong><br>{escape(item.observaciones_revision or 'Sin observaciones')}</p>"
+        f'<p><a href="{escape(detail_url)}">Abrir expediente en M.A.R.</a></p>',
+        subtype="html",
+    )
+    with _SMTP_EMAIL_TRANSPORT(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
+        smtp.starttls()
+        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+        smtp.send_message(msg, to_addrs=recipients)
+
+
+def _rrhh_email_safely(item: SolicitudRH, *, resultado: bool = False) -> None:
+    try:
+        _rrhh_email(item, resultado=resultado)
+    except Exception as exc:
+        logger.exception("No se pudo notificar el expediente RH %s: %s", item.folio, exc)
+        flash("El expediente se guardó, pero no se pudo enviar una notificación.", "warning")
+
+
+@app.get("/recursos-humanos")
+@login_required
+def rrhh_index():
+    q = (request.args.get("q") or "").strip()
+    tipo = (request.args.get("tipo") or "").strip().upper()
+    estatus = (request.args.get("estatus") or "").strip().upper()
+    query = SolicitudRH.query
+    if not _rrhh_can_manage():
+        query = query.filter(SolicitudRH.empleado_id == current_user.id)
+    if tipo in RH_TYPES:
+        query = query.filter(SolicitudRH.tipo == tipo)
+    if estatus in RH_STATUS:
+        query = query.filter(SolicitudRH.estatus == estatus)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(or_(SolicitudRH.folio.ilike(like), SolicitudRH.empleado_nombre.ilike(like), SolicitudRH.motivo.ilike(like)))
+    solicitudes = query.order_by(SolicitudRH.creado_en.desc(), SolicitudRH.id.desc()).all()
+    counts = {status: sum(1 for item in solicitudes if item.estatus == status) for status in RH_STATUS}
+    return render_template("recursos_humanos.html", solicitudes=solicitudes, counts=counts, q=q, tipo=tipo,
+                           estatus=estatus, tipos=RH_TYPES, estatus_options=sorted(RH_STATUS), can_manage=_rrhh_can_manage())
+
+
+@app.post("/recursos-humanos/crear")
+@login_required
+def rrhh_crear():
+    tipo = (request.form.get("tipo") or "").strip().upper()
+    if tipo not in RH_TYPES:
+        flash("Selecciona un tipo de expediente válido.", "warning")
+        return redirect(url_for("rrhh_index"))
+    try:
+        fecha_inicio = datetime.strptime((request.form.get("fecha_inicio") or "").strip(), "%Y-%m-%d").date()
+        fecha_fin = datetime.strptime((request.form.get("fecha_fin") or "").strip(), "%Y-%m-%d").date()
+    except ValueError:
+        flash("Captura fechas válidas.", "warning")
+        return redirect(url_for("rrhh_index"))
+    if fecha_fin < fecha_inicio:
+        flash("La fecha final no puede ser anterior a la inicial.", "warning")
+        return redirect(url_for("rrhh_index"))
+    motivo = (request.form.get("motivo") or "").strip()
+    if tipo in {"PERMISO", "JUSTIFICANTE"} and not motivo:
+        flash("El motivo es obligatorio para permisos y justificantes.", "warning")
+        return redirect(url_for("rrhh_index"))
+    upload = request.files.get("archivo")
+    if tipo == "JUSTIFICANTE" and (not upload or not upload.filename):
+        flash("Adjunta el justificante (PDF o imagen).", "warning")
+        return redirect(url_for("rrhh_index"))
+    item = SolicitudRH(
+        folio=f"RH-{now_cdmx_naive().strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(2).upper()}",
+        tipo=tipo,
+        empleado_id=current_user.id,
+        empleado_nombre=(getattr(current_user, "nombre_visible", None) or current_user.nombre).strip(),
+        empleado_correo=(getattr(current_user, "correo", None) or "").strip() or None,
+        empresa=(request.form.get("empresa") or "Poliutech").strip() or "Poliutech",
+        departamento=(request.form.get("departamento") or "").strip() or None,
+        motivo=motivo or None,
+        fecha_inicio=fecha_inicio,
+        fecha_fin=fecha_fin,
+        hora_inicio=(request.form.get("hora_inicio") or "").strip() or None,
+        hora_fin=(request.form.get("hora_fin") or "").strip() or None,
+        dias_solicitados=(fecha_fin - fecha_inicio).days + 1,
+        estatus="REGISTRADO" if tipo == "JUSTIFICANTE" else "PENDIENTE",
+    )
+    if upload and upload.filename:
+        original = secure_filename(upload.filename)
+        suffix = Path(original).suffix.lower()
+        if suffix not in RH_ALLOWED_EXTENSIONS:
+            flash("Archivo no permitido. Usa PDF, imagen o documento de Word.", "warning")
+            return redirect(url_for("rrhh_index"))
+        directory = Path(app.instance_path) / "rrhh_adjuntos"
+        directory.mkdir(parents=True, exist_ok=True)
+        stored = f"{secrets.token_hex(16)}{suffix}"
+        upload.save(directory / stored)
+        item.archivo_nombre = original
+        item.archivo_ruta = stored
+    db.session.add(item)
+    db.session.commit()
+    _rrhh_email_safely(item)
+    flash(f"Expediente {item.folio} registrado y enviado a revisión.", "success")
+    return redirect(url_for("rrhh_detalle", solicitud_id=item.id))
+
+
+@app.get("/recursos-humanos/<int:solicitud_id>")
+@login_required
+def rrhh_detalle(solicitud_id: int):
+    item = db.session.get(SolicitudRH, solicitud_id)
+    if item is None:
+        abort(404)
+    _rrhh_require_visible(item)
+    return render_template("recurso_humano_detalle.html", item=item, tipos=RH_TYPES, can_manage=_rrhh_can_manage())
+
+
+@app.get("/recursos-humanos/<int:solicitud_id>/adjunto")
+@login_required
+def rrhh_adjunto(solicitud_id: int):
+    item = db.session.get(SolicitudRH, solicitud_id)
+    if item is None or not item.archivo_ruta:
+        abort(404)
+    _rrhh_require_visible(item)
+    path = Path(app.instance_path) / "rrhh_adjuntos" / item.archivo_ruta
+    if not path.is_file():
+        abort(404)
+    return send_file(path, as_attachment=True, download_name=item.archivo_nombre or path.name)
+
+
+@app.post("/recursos-humanos/<int:solicitud_id>/revisar")
+@login_required
+def rrhh_revisar(solicitud_id: int):
+    if not _rrhh_can_manage():
+        abort(403)
+    item = db.session.get(SolicitudRH, solicitud_id)
+    if item is None:
+        abort(404)
+    estatus = (request.form.get("estatus") or "").strip().upper()
+    allowed = {"APROBADA", "RECHAZADA"} if item.tipo != "JUSTIFICANTE" else {"REGISTRADO", "RECHAZADA"}
+    if estatus not in allowed:
+        flash("Estatus de revisión no válido.", "warning")
+        return redirect(url_for("rrhh_detalle", solicitud_id=item.id))
+    item.estatus = estatus
+    item.observaciones_revision = (request.form.get("observaciones") or "").strip() or None
+    item.revisado_por_id = current_user.id
+    item.revisado_por_nombre = (getattr(current_user, "nombre_visible", None) or current_user.nombre).strip()
+    item.revisado_en = now_cdmx_naive()
+    db.session.commit()
+    _rrhh_email_safely(item, resultado=True)
+    flash(f"El expediente {item.folio} quedó {estatus.lower()}.", "success")
+    return redirect(url_for("rrhh_detalle", solicitud_id=item.id))
 
 
 # Blueprints (Catálogos) — si existen en tu repo

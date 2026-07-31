@@ -160,5 +160,105 @@
     "contacto": "",
     "telefono": "",
     "correo": ""
+  },
+  {
+    "id": 19,
+    "numero": "",
+    "empresa": "Sika",
+    "razon_social_poliutech": "RIDACE",
+    "relacion": "PROVEEDOR",
+    "contacto": "Mónica Tenorio",
+    "telefono": "+52 5592000250",
+    "correo": "tenorio.monica@mx.sika.com"
+  },
+  {
+    "id": 20,
+    "numero": "3197090",
+    "empresa": "Sika",
+    "razon_social_poliutech": "CESAR",
+    "relacion": "PROVEEDOR",
+    "contacto": "Mónica Tenorio",
+    "telefono": "+52 5592000250",
+    "correo": "tenorio.monica@mx.sika.com"
+  },
+  {
+    "id": 21,
+    "numero": "C001807",
+    "empresa": "Mapei",
+    "razon_social_poliutech": "RIDACE",
+    "relacion": "PROVEEDOR",
+    "contacto": "Alejandro Pascual",
+    "telefono": "+52 446 133 7058",
+    "correo": "e.pascual@mapei.com"
+  },
+  {
+    "id": 22,
+    "numero": "17903989",
+    "empresa": "Sherwin Williams",
+    "razon_social_poliutech": "RIDACE",
+    "relacion": "PROVEEDOR",
+    "contacto": "Antonio Espino",
+    "telefono": "+52 1 55 4833 1317",
+    "correo": "Antonio.A.Espino@sherwin.com"
+  },
+  {
+    "id": 23,
+    "numero": "",
+    "empresa": "Impact",
+    "razon_social_poliutech": "RIDACE / CESAR",
+    "relacion": "PROVEEDOR",
+    "contacto": "Juan Carlos Barbosa Araujo",
+    "telefono": "",
+    "correo": "Juan.Barbosa@impac.com.mx"
+  },
+  {
+    "id": 24,
+    "numero": "",
+    "empresa": "PSI",
+    "razon_social_poliutech": "PSI",
+    "relacion": "PROVEEDOR",
+    "contacto": "Eduardo Baker",
+    "telefono": "+52 1 81 1044 4160",
+    "correo": "ebaker@comacsa.com"
+  },
+  {
+    "id": 25,
+    "numero": "",
+    "empresa": "PPC",
+    "razon_social_poliutech": "RIDACE",
+    "relacion": "PROVEEDOR",
+    "contacto": "Eduardo Baker",
+    "telefono": "+52 1 81 1044 4160",
+    "correo": "ebaker@comacsa.com"
+  },
+  {
+    "id": 26,
+    "numero": "14405198",
+    "empresa": "Hempel (Neogard)",
+    "razon_social_poliutech": "REPSA",
+    "relacion": "PROVEEDOR",
+    "contacto": "David Cruz Hernández",
+    "telefono": "+52 938 152 6605",
+    "correo": ""
+  },
+  {
+    "id": 27,
+    "numero": "144405088",
+    "empresa": "Hempel (Neogard)",
+    "razon_social_poliutech": "CESAR",
+    "relacion": "PROVEEDOR",
+    "contacto": "David Cruz Hernández",
+    "telefono": "+52 938 152 6605",
+    "correo": ""
+  },
+  {
+    "id": 28,
+    "numero": "144405093",
+    "empresa": "Hempel (Neogard)",
+    "razon_social_poliutech": "RIDACE",
+    "relacion": "PROVEEDOR",
+    "contacto": "David Cruz Hernández",
+    "telefono": "+52 938 152 6605",
+    "correo": ""
   }
 ]

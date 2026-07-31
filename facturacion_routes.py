@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 from flask import Blueprint, Response, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
@@ -18,6 +20,8 @@ from pac_providers import PacNotConfiguredError, get_pac_provider
 
 facturacion_bp = Blueprint("facturacion", __name__, url_prefix="/facturacion")
 MAR_BLUE = "#0C3C78"
+RFC_PATTERN = re.compile(r"^[A-Z&Ñ]{3,4}\d{6}[A-Z0-9]{3}$")
+MAX_CSD_BYTES = 2 * 1024 * 1024
 
 
 def _money(value) -> float:
@@ -29,6 +33,25 @@ def _money(value) -> float:
 
 def _text(value: str | None, default: str = "") -> str:
     return (value or default).strip()
+
+
+def _pdf_text(value: object) -> str:
+    """Escape user-provided text before ReportLab parses it as mini-HTML."""
+    return escape(str(value or ""))
+
+
+def _read_csd_upload(field_name: str, extension: str) -> bytes | None:
+    upload = request.files.get(field_name)
+    if not upload or not upload.filename:
+        return None
+    if not upload.filename.lower().endswith(extension):
+        raise ValueError(f"El archivo debe tener extension {extension}.")
+    data = upload.read(MAX_CSD_BYTES + 1)
+    if not data:
+        raise ValueError(f"El archivo {extension} esta vacio.")
+    if len(data) > MAX_CSD_BYTES:
+        raise ValueError(f"El archivo {extension} supera el limite de 2 MB.")
+    return data
 
 
 def _active_config() -> FacturacionConfig | None:
@@ -86,11 +109,11 @@ def _render_pdf(factura: Factura) -> bytes:
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=14 * mm, leftMargin=14 * mm, topMargin=14 * mm)
     styles = getSampleStyleSheet()
     story = [
-        Paragraph(f"Factura {factura.folio}", styles["Title"]),
-        Paragraph(f"Estado: {factura.estatus}", styles["Normal"]),
+        Paragraph(f"Factura {_pdf_text(factura.folio)}", styles["Title"]),
+        Paragraph(f"Estado: {_pdf_text(factura.estatus)}", styles["Normal"]),
         Spacer(1, 8),
-        Paragraph(f"Receptor: {factura.receptor_nombre} - {factura.receptor_rfc}", styles["Normal"]),
-        Paragraph(f"Uso CFDI: {factura.uso_cfdi} | Metodo: {factura.metodo_pago} | Forma: {factura.forma_pago}", styles["Normal"]),
+        Paragraph(f"Receptor: {_pdf_text(factura.receptor_nombre)} - {_pdf_text(factura.receptor_rfc)}", styles["Normal"]),
+        Paragraph(f"Uso CFDI: {_pdf_text(factura.uso_cfdi)} | Metodo: {_pdf_text(factura.metodo_pago)} | Forma: {_pdf_text(factura.forma_pago)}", styles["Normal"]),
         Spacer(1, 10),
     ]
     rows = [["Cant.", "Unidad", "Descripcion", "P. Unitario", "Importe"]]
@@ -98,7 +121,7 @@ def _render_pdf(factura: Factura) -> bytes:
         rows.append([
             f"{item.cantidad:g}",
             item.unidad or item.clave_unidad,
-            Paragraph(item.descripcion or "", styles["BodyText"]),
+            Paragraph(_pdf_text(item.descripcion), styles["BodyText"]),
             f"${item.valor_unitario:,.2f}",
             f"${item.importe:,.2f}",
         ])
@@ -117,7 +140,7 @@ def _render_pdf(factura: Factura) -> bytes:
     ]))
     story.append(table)
     if factura.notas:
-        story.extend([Spacer(1, 10), Paragraph(f"Notas: {factura.notas}", styles["Normal"])])
+        story.extend([Spacer(1, 10), Paragraph(f"Notas: {_pdf_text(factura.notas)}", styles["Normal"])])
     doc.build(story)
     return buffer.getvalue()
 
@@ -134,7 +157,12 @@ def _save_pdf(factura: Factura) -> None:
 def index():
     facturas = Factura.query.order_by(Factura.fecha.desc(), Factura.id.desc()).limit(200).all()
     config = _active_config()
-    total_mes = sum(f.total or 0 for f in facturas if f.fecha and f.fecha.month == datetime.utcnow().month)
+    now = datetime.utcnow()
+    total_mes = sum(
+        f.total or 0
+        for f in facturas
+        if f.fecha and f.fecha.month == now.month and f.fecha.year == now.year
+    )
     pendientes = sum(1 for f in facturas if f.estatus in {"BORRADOR", "PENDIENTE_TIMBRADO", "ERROR_TIMBRADO"})
     return render_template(
         "facturacion.html",
@@ -156,8 +184,18 @@ def guardar_config():
     config.pac = _text(request.form.get("pac"), "FACTURAMA").upper()
     config.pac_ambiente = _text(request.form.get("pac_ambiente"), "SANDBOX").upper()
     config.pac_usuario = _text(request.form.get("pac_usuario"))
-    config.csd_cer_path = _text(request.form.get("csd_cer_path"))
-    config.csd_key_path = _text(request.form.get("csd_key_path"))
+    try:
+        cer_data = _read_csd_upload("csd_cer", ".cer")
+        key_data = _read_csd_upload("csd_key", ".key")
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for("facturacion.index"))
+    if cer_data is not None:
+        config.csd_cer_data = cer_data
+        config.csd_cer_path = None
+    if key_data is not None:
+        config.csd_key_data = key_data
+        config.csd_key_path = None
     config.csd_no_certificado = _text(request.form.get("csd_no_certificado"))
     config.activo = True
     if not config.rfc or not config.razon_social or not config.regimen_fiscal or not config.codigo_postal:
@@ -172,6 +210,9 @@ def guardar_config():
 @facturacion_bp.get("/nueva")
 @login_required
 def nueva():
+    if not _active_config():
+        flash("Primero registra los datos fiscales del emisor. Despues podras crear facturas.", "warning")
+        return redirect(f"{url_for('facturacion.index')}#configuracion-fiscal")
     cotizacion_id = request.args.get("cotizacion_id", type=int)
     cotizacion = Cotizacion.query.get(cotizacion_id) if cotizacion_id else None
     clientes = Cliente.query.order_by(Cliente.empresa.asc(), Cliente.nombre_cliente.asc()).limit(300).all()
@@ -190,6 +231,15 @@ def crear():
     if not receptor_nombre or not receptor_rfc:
         flash("Captura razon social/nombre y RFC del receptor.", "warning")
         return redirect(url_for("facturacion.nueva", cotizacion_id=cotizacion_id or ""))
+    if not RFC_PATTERN.fullmatch(receptor_rfc):
+        flash("El RFC del receptor no tiene un formato valido.", "warning")
+        return redirect(url_for("facturacion.nueva", cotizacion_id=cotizacion_id or ""))
+
+    receptor_regimen = _text(request.form.get("receptor_regimen_fiscal"))
+    receptor_cp = _text(request.form.get("receptor_codigo_postal"))
+    if not receptor_regimen or not receptor_cp:
+        flash("Captura el regimen fiscal y codigo postal del receptor.", "warning")
+        return redirect(url_for("facturacion.nueva", cotizacion_id=cotizacion_id or ""))
 
     config = _active_config()
     factura = Factura(
@@ -201,8 +251,8 @@ def crear():
         cotizacion_id=cotizacion_id,
         receptor_rfc=receptor_rfc,
         receptor_nombre=receptor_nombre,
-        receptor_regimen_fiscal=_text(request.form.get("receptor_regimen_fiscal")),
-        receptor_codigo_postal=_text(request.form.get("receptor_codigo_postal")),
+        receptor_regimen_fiscal=receptor_regimen,
+        receptor_codigo_postal=receptor_cp,
         uso_cfdi=_text(request.form.get("uso_cfdi"), "G03"),
         metodo_pago=_text(request.form.get("metodo_pago"), "PUE"),
         forma_pago=_text(request.form.get("forma_pago"), "03"),
@@ -243,6 +293,10 @@ def crear():
             ))
 
     db.session.flush()
+    if not factura.partidas:
+        db.session.rollback()
+        flash("Agrega al menos un concepto con descripcion antes de guardar.", "warning")
+        return redirect(url_for("facturacion.nueva", cotizacion_id=cotizacion_id or ""))
     _recalculate(factura)
     _save_pdf(factura)
     db.session.commit()
