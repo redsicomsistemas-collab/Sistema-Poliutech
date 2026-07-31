@@ -24,6 +24,10 @@ class Cliente(db.Model):
     telefono = db.Column(db.String(50))
     direccion = db.Column(db.String(200))
     rfc = db.Column(db.String(50))  # se mantiene en BD por compatibilidad
+    razon_social = db.Column(db.String(180))
+    regimen_fiscal = db.Column(db.String(10))
+    codigo_postal_fiscal = db.Column(db.String(10))
+    uso_cfdi = db.Column(db.String(10), default="G03")
 
     cotizaciones = db.relationship(
         "Cotizacion",
