@@ -51,7 +51,7 @@
             </thead>
             <tbody>
               {% set grp = namespace(actual='') %}
-              {% for d in c.detalles|sort(attribute='capitulo') %}
+              {% for d in detalles_ordenados %}
               {% set capitulo_label = d.capitulo or 'General' %}
               {% if capitulo_label != grp.actual %}
               {% set grp.actual = capitulo_label %}

@@ -9173,7 +9173,19 @@ def view_cotizacion(cot_id: int):
         zona_actual = ""
     condiciones_finales = _condiciones_comerciales_finales(c.notas or "")
     notas_adicionales, _ = _split_notas_y_zona(c.notas or "")
-    return render_template("cotizacion_view.html", c=c, zona_actual=zona_actual, condiciones_finales=condiciones_finales, notas_adicionales=notas_adicionales, title=f"Ver {c.folio}")
+    detalles_ordenados = sorted(
+        c.detalles,
+        key=lambda detalle: (detalle.capitulo or "").strip().casefold(),
+    )
+    return render_template(
+        "cotizacion_view.html",
+        c=c,
+        detalles_ordenados=detalles_ordenados,
+        zona_actual=zona_actual,
+        condiciones_finales=condiciones_finales,
+        notas_adicionales=notas_adicionales,
+        title=f"Ver {c.folio}",
+    )
 
 @app.route("/cotizaciones/<int:cot_id>/seguimiento")
 @login_required
@@ -9307,7 +9319,18 @@ def ver_cotizacion(cot_id: int):
     require_owner_or_admin(cot)
     condiciones_finales = _condiciones_comerciales_finales(cot.notas or "")
     notas_adicionales, _ = _split_notas_y_zona(cot.notas or "")
-    return render_template("cotizacion_view.html", c=cot, condiciones_finales=condiciones_finales, notas_adicionales=notas_adicionales, title=f"Vista de {cot.folio}")
+    detalles_ordenados = sorted(
+        cot.detalles,
+        key=lambda detalle: (detalle.capitulo or "").strip().casefold(),
+    )
+    return render_template(
+        "cotizacion_view.html",
+        c=cot,
+        detalles_ordenados=detalles_ordenados,
+        condiciones_finales=condiciones_finales,
+        notas_adicionales=notas_adicionales,
+        title=f"Vista de {cot.folio}",
+    )
 
 # ---------------------------------------------------------
 # API: actualizar estatus (inline) + WhatsApp
