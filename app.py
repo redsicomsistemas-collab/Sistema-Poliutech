@@ -6282,6 +6282,12 @@ def index():
     usuarios_asignables = Usuario.query.order_by(
         db.func.lower(db.func.coalesce(Usuario.nombre_visible, Usuario.nombre))
     ).all()
+    seguimiento_metricas = {
+        "vencidas": 0,
+        "hoy": 0,
+        "proximas": 0,
+        "sin_asignar": base_query.filter(Cotizacion.responsable_usuario_id.is_(None)).count(),
+    }
 
     return render_template(
         "dashboard.html",
@@ -6301,6 +6307,8 @@ def index():
         usuarios_asignables=usuarios_asignables,
         can_manage_assignments=can_manage_quote_assignments(),
         can_assign_cotizaciones=can_assign_cotizaciones(),
+        seguimiento_metricas=seguimiento_metricas,
+        carga_asesores=[],
         show_splash=True
     )
 
