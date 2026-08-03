@@ -46,6 +46,7 @@
             <th class="text-center">Cotizaciones</th>
             <th class="text-end">Importe total</th>
             <th>Responsable</th>
+            <th>Seguimiento</th>
             <th>Ultima cotizacion</th>
             <th class="text-center">Acciones</th>
           </tr>
@@ -75,14 +76,19 @@
               </div>
               {% endif %}
             </td>
+            <td>
+              <a href="{{ url_for('proyecto_detalle', proyecto=p.nombre) }}#seguimiento-cotizaciones" class="btn btn-outline-dark btn-sm">
+                Seguimiento ({{ p.seguimientos or 0 }})
+              </a>
+            </td>
             <td>{{ p.ultima_fecha.strftime('%Y-%m-%d %H:%M') if p.ultima_fecha else '-' }}</td>
             <td class="text-center">
-              <a href="{{ url_for('proyecto_detalle', proyecto=p.nombre) }}" class="btn btn-outline-primary btn-sm">Ver cotizaciones</a>
+              <a href="{{ url_for('proyecto_detalle', proyecto=p.nombre) }}" class="btn btn-outline-primary btn-sm">Ver detalle</a>
             </td>
           </tr>
           {% else %}
           <tr>
-            <td colspan="6" class="text-center text-muted py-4">Todavia no hay cotizaciones registradas.</td>
+            <td colspan="7" class="text-center text-muted py-4">Todavia no hay cotizaciones registradas.</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -99,20 +105,23 @@ document.addEventListener("click", async (event) => {
   const select = button.closest("td")?.querySelector(".project-assignee");
   const usuarioId = Number.parseInt(select?.value || "", 10);
   if (!Number.isFinite(usuarioId)) {
-    await Swal.fire({ icon: "warning", title: "Selecciona un usuario" });
+    if (window.Swal) await Swal.fire({ icon: "warning", title: "Selecciona un usuario" });
+    else window.alert("Selecciona un usuario.");
     return;
   }
   const proyecto = button.dataset.proyecto || "";
   const usuario = select.options[select.selectedIndex]?.text || "el usuario";
-  const confirmacion = await Swal.fire({
-    icon: "question",
-    title: "Asignar proyecto",
-    html: `Se asignará el proyecto <b>${proyecto}</b> y todas sus cotizaciones a <b>${usuario}</b>.`,
-    showCancelButton: true,
-    confirmButtonText: "Asignar proyecto",
-    cancelButtonText: "Cancelar",
-  });
-  if (!confirmacion.isConfirmed) return;
+  const confirmado = window.Swal
+    ? (await Swal.fire({
+        icon: "question",
+        title: "Asignar proyecto",
+        html: `Se asignará el proyecto <b>${proyecto}</b> y todas sus cotizaciones a <b>${usuario}</b>.`,
+        showCancelButton: true,
+        confirmButtonText: "Asignar proyecto",
+        cancelButtonText: "Cancelar",
+      })).isConfirmed
+    : window.confirm(`Se asignará el proyecto ${proyecto} y todas sus cotizaciones a ${usuario}.`);
+  if (!confirmado) return;
   try {
     button.disabled = true;
     const response = await fetch("{{ url_for('asignar_proyecto') }}", {
@@ -122,15 +131,15 @@ document.addEventListener("click", async (event) => {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data?.error || "No se pudo asignar el proyecto.");
-    await Swal.fire({
-      icon: "success",
-      title: "Proyecto asignado",
-      text: `${data.updated || 0} cotización(es) actualizadas para ${data.responsable}.`,
-    });
+    const successMessage = `${data.updated || 0} cotización(es) actualizadas para ${data.responsable}.`;
+    if (window.Swal) await Swal.fire({ icon: "success", title: "Proyecto asignado", text: successMessage });
+    else window.alert(`Proyecto asignado. ${successMessage}`);
     window.location.reload();
   } catch (error) {
     button.disabled = false;
-    await Swal.fire({ icon: "error", title: "No se pudo asignar", text: error?.message || "Error desconocido" });
+    const errorMessage = error?.message || "Error desconocido";
+    if (window.Swal) await Swal.fire({ icon: "error", title: "No se pudo asignar", text: errorMessage });
+    else window.alert(`No se pudo asignar: ${errorMessage}`);
   }
 });
 </script>

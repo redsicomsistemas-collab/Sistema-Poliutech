@@ -6407,6 +6407,13 @@ def proyectos():
             .distinct()
             .all()
         )
+        seguimientos = (
+            db.session.query(db.func.count(CotizacionSeguimiento.id))
+            .join(Cotizacion, Cotizacion.id == CotizacionSeguimiento.cotizacion_id)
+            .filter(Cotizacion.eliminada_en.is_(None), _project_key_expr() == row.key)
+            .scalar()
+            or 0
+        )
         responsables_ids = {item.responsable_usuario_id for item in responsables if item.responsable_usuario_id}
         responsables_nombres = {
             (item.responsable or "").strip() for item in responsables if (item.responsable or "").strip()
@@ -6429,6 +6436,7 @@ def proyectos():
             "cotizaciones": row.cotizaciones,
             "total": row.total,
             "ultima_fecha": row.ultima_fecha,
+            "seguimientos": int(seguimientos),
             "responsable_id": responsable_id,
             "responsable_nombre": responsable_nombre,
         })
