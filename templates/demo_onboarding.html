@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Configura tu demo · MAR{% endblock %}
+{% block content %}
+<style>
+  .setup-wrap{max-width:900px;margin:2rem auto}.setup-hero{padding:2rem;border-radius:22px;color:#fff;background:linear-gradient(135deg,#082f60,#2563eb 60%,#0891b2)}.setup-step{display:flex;gap:1rem;padding:1.25rem;border:1px solid var(--bs-border-color);border-radius:18px;background:var(--bs-body-bg)}.setup-icon{display:grid;place-items:center;width:54px;height:54px;flex:0 0 54px;border-radius:15px;background:rgba(37,99,235,.14);font-size:1.55rem}
+</style>
+<main class="setup-wrap">
+  <section class="setup-hero shadow mb-4">{% if demo.logo_data and demo.logo_mime %}<img src="data:{{ demo.logo_mime }};base64,{{ demo.logo_data }}" alt="Logo {{ demo.empresa }}" style="max-width:190px;max-height:75px;object-fit:contain;background:#fff;padding:.5rem;border-radius:12px;margin-bottom:1rem">{% endif %}<span class="badge text-bg-warning d-block" style="width:max-content">PRIMER ACCESO</span><h1 class="fw-bold mt-3">Configura la demo de {{ demo.empresa }}</h1><p class="lead mb-0 opacity-75">Indica quién recibirá las notificaciones y descarga la aplicación móvil.</p></section>
+  <form method="post" class="card border-0 shadow-sm"><div class="card-body p-4 p-md-5">
+    <div class="setup-step mb-3"><div class="setup-icon">✉️</div><div class="flex-grow-1"><label class="form-label fw-bold">Correos para notificaciones</label><textarea class="form-control" name="notification_emails" rows="3" placeholder="ventas@empresa.com, director@empresa.com">{% if demo.notification_emails %}{{ demo.notification_emails|replace('[','')|replace(']','')|replace('"','') }}{% endif %}</textarea><div class="form-text">Puedes separar varios correos con comas.</div></div></div>
+    <div class="setup-step mb-3"><div class="setup-icon">💬</div><div class="flex-grow-1"><label class="form-label fw-bold">Números de WhatsApp</label><textarea class="form-control" name="whatsapp_numbers" rows="3" placeholder="+52 55 1234 5678">{% if demo.whatsapp_numbers %}{{ demo.whatsapp_numbers|replace('[','')|replace(']','')|replace('"','') }}{% endif %}</textarea><div class="form-text">Incluye lada y código de país. Puedes registrar varios números.</div></div></div>
+    <div class="setup-step mb-4"><div class="setup-icon">📱</div><div class="flex-grow-1"><h5 class="fw-bold mb-1">Aplicación móvil MAR</h5><p class="text-muted mb-3">Descarga el APK para instalar Registro de Obras en Android.</p><a class="btn btn-outline-primary fw-bold" href="{{ url_for('download_demo_app') }}">Descargar app para Android</a></div></div>
+    <button class="btn btn-primary btn-lg w-100 fw-bold" type="submit">Guardar y entrar a mi demo</button>
+    <p class="small text-muted text-center mt-3 mb-0">Durante la demostración los envíos externos se mantienen simulados para proteger tus datos.</p>
+  </div></form>
+</main>
+{% endblock %}

@@ -3270,6 +3270,8 @@ def _enforce_demo_access():
         logout_user()
         flash("El acceso de demostración terminó. Contacta a MAR para ampliarlo.", "warning")
         return redirect(url_for("login"))
+    if not demo.onboarding_completed and request.endpoint not in {"demo_onboarding", "download_demo_app", "logout", "static"}:
+        return redirect(url_for("demo_onboarding"))
     if not demo.ultimo_acceso or (now - demo.ultimo_acceso) > timedelta(minutes=15):
         demo.ultimo_acceso = now
         db.session.commit()
@@ -3537,6 +3539,12 @@ def ensure_schema():
             db.session.execute(text("ALTER TABLE demo_environment ADD COLUMN logo_data TEXT"))
         if "logo_mime" not in cols_demo:
             db.session.execute(text("ALTER TABLE demo_environment ADD COLUMN logo_mime VARCHAR(60)"))
+        if "notification_emails" not in cols_demo:
+            db.session.execute(text("ALTER TABLE demo_environment ADD COLUMN notification_emails TEXT"))
+        if "whatsapp_numbers" not in cols_demo:
+            db.session.execute(text("ALTER TABLE demo_environment ADD COLUMN whatsapp_numbers TEXT"))
+        if "onboarding_completed" not in cols_demo:
+            db.session.execute(text("ALTER TABLE demo_environment ADD COLUMN onboarding_completed BOOLEAN NOT NULL DEFAULT 0"))
         db.session.commit()
     except Exception as e:
         db.session.rollback()
@@ -4469,6 +4477,10 @@ def responsable_actual() -> str:
 def require_owner_or_admin(cot: Cotizacion) -> None:
     if is_admin():
         return
+    if is_demo_user():
+        if cot.responsable_usuario_id == current_user.id:
+            return
+        abort(403)
     if getattr(current_user, "id", None) and cot.responsable_usuario_id == current_user.id:
         return
     ra = responsable_actual()
@@ -4683,7 +4695,9 @@ def _build_dashboard_cotizaciones_query(
 def _cotizaciones_base_query():
     q = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
     q = q.filter(Cotizacion.eliminada_en.is_(None))
-    if not is_admin() and not can_manage_quote_assignments():
+    if is_demo_user():
+        q = q.filter(Cotizacion.responsable_usuario_id == current_user.id)
+    elif not is_admin() and not can_manage_quote_assignments():
         q = q.filter(Cotizacion.responsable == responsable_actual())
     return q
 
@@ -6245,7 +6259,7 @@ def index():
     pagination = quotes_query.paginate(page=page, per_page=per_page, error_out=False)
     cotizaciones = pagination.items
 
-    total_catalogo = Concepto.query.count()
+    total_catalogo = 0 if is_demo_user() else Concepto.query.count()
     responsables_cotizacion = [
         value
         for (value,) in (
@@ -6292,6 +6306,51 @@ def demo_inicio():
         "demo_inicio.html",
         title=f"{demo.empresa} · Demo MAR",
         modules=_demo_module_items(demo),
+    )
+
+
+@app.route("/demo/configuracion-inicial", methods=["GET", "POST"])
+@login_required
+def demo_onboarding():
+    demo = _demo_for_user()
+    if not demo:
+        return redirect(url_for("index"))
+    if request.method == "POST":
+        emails = _parse_email_list(request.form.get("notification_emails"))
+        raw_phones = re.split(r"[,;\n]+", request.form.get("whatsapp_numbers") or "")
+        phones = []
+        for raw_phone in raw_phones:
+            normalized = normalize_whatsapp(raw_phone).replace("whatsapp:", "")
+            if normalized and normalized not in phones:
+                phones.append(normalized)
+        if not emails and not phones:
+            flash("Agrega por lo menos un correo o número de WhatsApp para notificaciones.", "warning")
+            return render_template("demo_onboarding.html", demo=demo)
+        demo.notification_emails = json.dumps(emails)
+        demo.whatsapp_numbers = json.dumps(phones)
+        demo.onboarding_completed = True
+        # Vincula los datos de ejemplo antiguos exclusivamente con esta cuenta demo.
+        Cotizacion.query.filter(
+            Cotizacion.responsable_usuario_id.is_(None),
+            Cotizacion.responsable == demo.usuario.nombre_representante,
+        ).update({Cotizacion.responsable_usuario_id: demo.usuario_id}, synchronize_session=False)
+        db.session.commit()
+        flash("Configuración inicial guardada. Bienvenido a tu demo.", "success")
+        return redirect(url_for("demo_inicio"))
+    return render_template("demo_onboarding.html", demo=demo)
+
+
+@app.route("/demo/descargar-app")
+@login_required
+def download_demo_app():
+    apk_path = Path(app.root_path) / "android-registro-obras" / "app" / "release" / "app-release.apk"
+    if not apk_path.exists():
+        abort(404)
+    return send_file(
+        apk_path,
+        mimetype="application/vnd.android.package-archive",
+        as_attachment=True,
+        download_name="MAR-Registro-de-Obras.apk",
     )
 
 @app.route("/cotizador")
@@ -8535,6 +8594,8 @@ def api_clientes_suggest():
 @app.route("/api/conceptos/suggest")
 @login_required
 def api_conceptos_suggest():
+    if is_demo_user():
+        return jsonify([])
     q = (request.args.get("q", "")).strip()
     if len(q) < 1:
         return jsonify([])
@@ -8621,6 +8682,7 @@ def crear_cotizacion():
         notas=(f.get("notas") or "").strip() or None,
         last_whatsapp_at=None,
         responsable=responsable_final,
+        responsable_usuario_id=current_user.id,
         proyecto=proyecto,
         ciudad_trabajo=ciudad_trabajo,
         moneda=moneda,
@@ -9185,7 +9247,9 @@ def list_cotizaciones():
     per_page = 25
 
     q = _cotizaciones_activas_query()
-    if not is_admin():
+    if is_demo_user():
+        q = q.filter(Cotizacion.responsable_usuario_id == current_user.id)
+    elif not is_admin():
         q = q.filter(Cotizacion.responsable == responsable_actual())
 
     q = q.order_by(Cotizacion.fecha.desc())
@@ -11661,6 +11725,7 @@ def _seed_demo_environment(demo: DemoEnvironment) -> None:
         total=29000,
         moneda="MXN",
         responsable=responsable,
+        responsable_usuario_id=user.id,
         proyecto="Proyecto demostrativo",
         ciudad_trabajo="Ciudad de México",
         notas="Cotización de ejemplo. Los envíos externos están simulados.",
