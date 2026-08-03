@@ -6549,6 +6549,8 @@ def asignar_proyecto():
     anteriores = {cot.responsable_usuario_id for cot in cotizaciones if cot.responsable_usuario_id}
     usuario_anterior_id = next(iter(anteriores)) if len(anteriores) == 1 else None
     actualizadas = 0
+    cotizaciones_actualizadas = []
+    notification_results = {}
     try:
         for cot in cotizaciones:
             if cot.responsable_usuario_id == usuario.id:
@@ -6563,6 +6565,7 @@ def asignar_proyecto():
             cot.responsable_usuario_id = usuario.id
             cot.responsable = usuario.nombre_representante
             actualizadas += 1
+            cotizaciones_actualizadas.append(cot)
 
         db.session.add(ProyectoAsignacion(
             proyecto_clave=proyecto_clave,
@@ -6579,11 +6582,25 @@ def asignar_proyecto():
         logger.exception("No se pudo asignar el proyecto")
         return jsonify({"error": str(exc)}), 500
 
+    if cotizaciones_actualizadas:
+        try:
+            notification_results = _send_quote_assignment_notifications(
+                cotizaciones=cotizaciones_actualizadas,
+                asignado=usuario,
+                asignado_por=current_user,
+            )
+        except Exception:
+            logger.exception("El proyecto se asignó, pero falló la preparación de notificaciones")
+            notification_results = {
+                "error": "El proyecto se asignó; uno o más avisos no pudieron enviarse."
+            }
+
     return jsonify({
         "updated": actualizadas,
         "proyecto": proyecto,
         "usuario_id": usuario.id,
         "responsable": usuario.nombre_representante,
+        "notifications": notification_results,
     })
 
 
