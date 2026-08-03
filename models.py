@@ -447,6 +447,19 @@ class DemoEnvironment(db.Model):
         return f"<DemoEnvironment {self.empresa} {self.estado}>"
 
 
+class DemoInvitation(db.Model):
+    __tablename__ = "demo_invitation"
+
+    id = db.Column(db.Integer, primary_key=True)
+    token_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)
+    used_at = db.Column(db.DateTime)
+    created_by_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    created_by = db.relationship("Usuario")
+
+
 class RegistroObra(db.Model):
     __tablename__ = "registro_obra"
 

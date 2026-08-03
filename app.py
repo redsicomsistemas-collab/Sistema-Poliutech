@@ -4,7 +4,7 @@
 # =========================================================
 from __future__ import annotations
 
-import os, io, csv, sys, math, re, json, traceback, unicodedata, smtplib, zipfile, logging, base64, secrets
+import os, io, csv, sys, math, re, json, traceback, unicodedata, smtplib, zipfile, logging, base64, secrets, hashlib
 import mimetypes
 import requests
 from datetime import datetime, timedelta
@@ -3006,6 +3006,7 @@ from models import (
     NotificationSubscription,
     CompanyBranding,
     DemoEnvironment,
+    DemoInvitation,
     RegistroObra,
     RegistroObraSeguimiento,
     Prospecto,
@@ -3108,7 +3109,7 @@ def _require_login_everywhere():
         return
 
     # Permitir autenticación y recuperación de acceso
-    if request.endpoint in {"login", "forgot_password", "reset_password"}:
+    if request.endpoint in {"login", "forgot_password", "reset_password", "preventa_demo"}:
         return
     if request.path in ("/health", "/ping"):
         return
@@ -11562,6 +11563,61 @@ def _requested_demo_modules() -> list[str]:
     return modules
 
 
+def _preventa_token_hash(token: str) -> str:
+    return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
+
+
+def _create_demo_from_request() -> tuple[DemoEnvironment, dict]:
+    empresa = (request.form.get("empresa") or "").strip()
+    contacto = (request.form.get("contacto") or "").strip()
+    correo = (request.form.get("correo") or "").strip()
+    telefono = (request.form.get("telefono") or "").strip()
+    days = max(1, min(request.form.get("dias", type=int) or 7, 30))
+    modules = _requested_demo_modules()
+    demo_logo = _read_demo_logo(request.files.get("demo_logo"))
+    if not empresa or not contacto:
+        raise ValueError("Empresa y contacto son obligatorios.")
+    username = _demo_username(empresa)
+    password = secrets.token_urlsafe(8)
+    user = Usuario(nombre=username, nombre_visible=f"{contacto} · Demo", correo=correo or None, telefono=telefono or None, rol="USER")
+    user.set_password(password)
+    db.session.add(user)
+    db.session.flush()
+    demo = DemoEnvironment(
+        empresa=empresa, contacto=contacto, correo=correo or None, telefono=telefono or None,
+        logo_data=demo_logo[0] if demo_logo else None, logo_mime=demo_logo[1] if demo_logo else None,
+        usuario_id=user.id, modulos=json.dumps(modules), estado="ACTIVA",
+        fecha_inicio=now_cdmx_naive(), fecha_vencimiento=now_cdmx_naive() + timedelta(days=days),
+        notas=(request.form.get("notas") or "").strip() or None,
+    )
+    db.session.add(demo)
+    db.session.flush()
+    return demo, {"username": username, "password": password, "empresa": empresa}
+
+
+@app.route("/preventa/<token>", methods=["GET", "POST"])
+def preventa_demo(token):
+    invitation = DemoInvitation.query.filter_by(token_hash=_preventa_token_hash(token)).first()
+    now = now_cdmx_naive()
+    if invitation is None or invitation.used_at or invitation.expires_at < now:
+        return render_template("preventa.html", invitation_valid=False), 410
+    credentials = None
+    if request.method == "POST":
+        try:
+            demo, credentials = _create_demo_from_request()
+            invitation.used_at = now
+            db.session.commit()
+            _seed_demo_environment(demo)
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), "danger")
+        except Exception:
+            db.session.rollback()
+            logger.exception("No se pudo crear la demo desde Preventa.")
+            flash("No se pudo crear la demo. Intenta nuevamente.", "danger")
+    return render_template("preventa.html", invitation_valid=True, module_meta=DEMO_MODULE_META, generated_credentials=credentials)
+
+
 def _seed_demo_environment(demo: DemoEnvironment) -> None:
     user = demo.usuario
     responsable = user.nombre_representante
@@ -11614,10 +11670,22 @@ def admin_demos():
     if not is_admin_account():
         abort(403)
     generated_credentials = None
+    generated_preventa_url = None
     if request.method == "POST":
         action = (request.form.get("action") or "create").strip()
         try:
-            if action == "create":
+            if action == "create_preventa_link":
+                raw_token = secrets.token_urlsafe(32)
+                invitation = DemoInvitation(
+                    token_hash=_preventa_token_hash(raw_token),
+                    expires_at=now_cdmx_naive() + timedelta(hours=48),
+                    created_by_id=current_user.id,
+                )
+                db.session.add(invitation)
+                db.session.commit()
+                generated_preventa_url = url_for("preventa_demo", token=raw_token, _external=True)
+                flash("Enlace privado de Preventa creado. Caduca en 48 horas y sólo puede usarse una vez.", "success")
+            elif action == "create":
                 empresa = (request.form.get("empresa") or "").strip()
                 contacto = (request.form.get("contacto") or "").strip()
                 correo = (request.form.get("correo") or "").strip()
@@ -11708,7 +11776,7 @@ def admin_demos():
             db.session.rollback()
             logger.exception("No se pudo gestionar la demostración.")
             flash("No se pudo guardar la demostración.", "danger")
-        if generated_credentials is None:
+        if generated_credentials is None and generated_preventa_url is None:
             return redirect(url_for("admin_demos"))
 
     demos = DemoEnvironment.query.order_by(DemoEnvironment.creado_en.desc()).all()
@@ -11724,6 +11792,7 @@ def admin_demos():
         module_meta=DEMO_MODULE_META,
         demo_module_orders={demo.id: _demo_module_order(demo) for demo in demos},
         generated_credentials=generated_credentials,
+        generated_preventa_url=generated_preventa_url,
         now=now,
     )
 
