@@ -428,6 +428,8 @@ class DemoEnvironment(db.Model):
     contacto = db.Column(db.String(160), nullable=False)
     correo = db.Column(db.String(160))
     telefono = db.Column(db.String(60))
+    logo_data = db.Column(db.Text)
+    logo_mime = db.Column(db.String(60))
     usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=False, unique=True, index=True)
     modulos = db.Column(db.Text, default="[]", nullable=False)
     estado = db.Column(db.String(20), default="ACTIVA", nullable=False, index=True)

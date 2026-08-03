@@ -3191,6 +3191,27 @@ def _demo_module_items(demo: DemoEnvironment | None) -> list[dict]:
     return [dict(key=key, **DEMO_MODULE_META[key]) for key in _demo_module_order(demo)]
 
 
+def _demo_logo_src(demo: DemoEnvironment | None) -> str | None:
+    if not demo or not demo.logo_data or not demo.logo_mime:
+        return None
+    return f"data:{demo.logo_mime};base64,{demo.logo_data}"
+
+
+def _read_demo_logo(uploaded) -> tuple[str, str] | None:
+    if not uploaded or not (uploaded.filename or "").strip():
+        return None
+    extension = Path(secure_filename(uploaded.filename)).suffix.lower()
+    mime_by_extension = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
+    if extension not in mime_by_extension:
+        raise ValueError("El logo de la demo debe ser PNG, JPG o WEBP.")
+    content = uploaded.read(2 * 1024 * 1024 + 1)
+    if not content:
+        raise ValueError("El archivo del logo está vacío.")
+    if len(content) > 2 * 1024 * 1024:
+        raise ValueError("El logo de la demo no debe pesar más de 2 MB.")
+    return base64.b64encode(content).decode("ascii"), mime_by_extension[extension]
+
+
 def is_demo_user() -> bool:
     try:
         return bool(getattr(current_user, "is_authenticated", False) and _demo_for_user())
@@ -3266,9 +3287,10 @@ def inject_demo_context():
             "is_demo_account": bool(demo),
             "demo_modules": _demo_modules(demo),
             "demo_module_items": _demo_module_items(demo),
+            "demo_logo_src": _demo_logo_src(demo),
         }
     except Exception:
-        return {"active_demo": None, "is_demo_account": False, "demo_modules": set(), "demo_module_items": []}
+        return {"active_demo": None, "is_demo_account": False, "demo_modules": set(), "demo_module_items": [], "demo_logo_src": None}
 
 # ---------------------------------------------------------
 # Bitácora de actividad (Audit Log)
@@ -3506,6 +3528,18 @@ def ensure_schema():
     """Crea tablas si no existen y agrega/normaliza columnas clave."""
     print("🔍 Verificando estructura de la base de datos...")
     db.create_all()
+
+    # --- DEMO_ENVIRONMENT: identidad visual propia por prospecto ---
+    try:
+        cols_demo = _table_columns("demo_environment")
+        if "logo_data" not in cols_demo:
+            db.session.execute(text("ALTER TABLE demo_environment ADD COLUMN logo_data TEXT"))
+        if "logo_mime" not in cols_demo:
+            db.session.execute(text("ALTER TABLE demo_environment ADD COLUMN logo_mime VARCHAR(60)"))
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print("⚠️ ensure_schema(demo_environment.logo):", e)
 
     # --- CLIENTE.responsable ---
     try:
@@ -11590,6 +11624,7 @@ def admin_demos():
                 telefono = (request.form.get("telefono") or "").strip()
                 days = max(1, min(request.form.get("dias", type=int) or 7, 60))
                 modules = _requested_demo_modules()
+                demo_logo = _read_demo_logo(request.files.get("demo_logo"))
                 if not empresa or not contacto:
                     raise ValueError("Empresa y contacto son obligatorios.")
                 username = _demo_username(empresa)
@@ -11599,6 +11634,8 @@ def admin_demos():
                     nombre_visible=f"{contacto} · Demo",
                     correo=correo or None,
                     telefono=telefono or None,
+                    logo_data=demo_logo[0] if demo_logo else None,
+                    logo_mime=demo_logo[1] if demo_logo else None,
                     rol="USER",
                 )
                 user.set_password(password)
@@ -11657,6 +11694,9 @@ def admin_demos():
                     flash("Contraseña temporal restablecida. Cópiala antes de salir.", "success")
                 elif action == "update_config":
                     demo.modulos = json.dumps(_requested_demo_modules())
+                    demo_logo = _read_demo_logo(request.files.get("demo_logo"))
+                    if demo_logo:
+                        demo.logo_data, demo.logo_mime = demo_logo
                     flash(f"Configuración de {demo.empresa} actualizada.", "success")
                 else:
                     raise ValueError("Acción de demo no reconocida.")

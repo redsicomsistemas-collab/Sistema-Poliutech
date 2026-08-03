@@ -729,8 +729,8 @@
       <span class="startup-column" style="--x:44vw; --z:-145px; --h:108px; --delay:.26s"></span>
       <span class="startup-column" style="--x:51vw; --z:-340px; --h:62px; --delay:.04s"></span>
       <div class="startup-flare"></div>
-      <img class="startup-logo" src="{{ url_for('static', filename=(company_branding.logo_path if company_branding and company_branding.logo_path else 'logo.png')) }}" alt="Logotipo">
-      <div class="startup-title">Sistema M.A.R. {{ company_branding.nombre_comercial if company_branding else 'Poliutech' }}</div>
+      <img class="startup-logo" src="{{ demo_logo_src if is_demo_account and demo_logo_src else url_for('static', filename=(company_branding.logo_path if company_branding and company_branding.logo_path else 'logo.png')) }}" alt="Logotipo">
+      <div class="startup-title">Sistema M.A.R. {{ active_demo.empresa if is_demo_account else (company_branding.nombre_comercial if company_branding else 'Poliutech') }}</div>
       <button class="startup-skip" type="button" id="mar-splash-skip">Entrar</button>
       <audio id="mar-splash-audio" preload="auto">
         <source src="{{ url_for('static', filename='sounds/startup.mp3') }}" type="audio/mpeg">
@@ -760,13 +760,15 @@
         ☰
       </button>
       <a class="topbar-brand d-flex align-items-center" href="{{ url_for('demo_inicio') if is_demo_account else url_for('index') }}">
-        {% if company_branding and company_branding.logo_path %}
+        {% if is_demo_account and demo_logo_src %}
+        <img src="{{ demo_logo_src }}" alt="Logotipo {{ active_demo.empresa }}" class="me-2 topbar-logo">
+        {% elif company_branding and company_branding.logo_path %}
         <img src="{{ url_for('static', filename=company_branding.logo_path) }}" alt="Logotipo {{ company_branding.nombre_comercial }}" class="me-2 topbar-logo">
         {% else %}
         <img src="{{ url_for('static', filename='logo-light-mark.png', v='2') }}" alt="Logo Poliutech" class="me-2 topbar-logo topbar-logo-light">
         <img src="{{ url_for('static', filename='logo-dark-mark.png', v='2') }}" alt="Logo Poliutech" class="me-2 topbar-logo topbar-logo-dark">
         {% endif %}
-        <span class="fw-bold">M.A.R — {{ company_branding.nombre_comercial if company_branding else 'Sistema Poliutech' }}</span>
+        <span class="fw-bold">M.A.R — {{ active_demo.empresa if is_demo_account else (company_branding.nombre_comercial if company_branding else 'Sistema Poliutech') }}</span>
       </a>
 
       <div class="topbar-primary-actions">

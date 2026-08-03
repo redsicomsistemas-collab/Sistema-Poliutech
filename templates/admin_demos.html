@@ -11,6 +11,12 @@
   .prospect-fields > div:nth-child(4) { --field-color:#059669; }
   .prospect-fields > div:nth-child(5) { --field-color:#ea580c; }
   .prospect-fields .form-label { color:var(--field-color); }
+  .demo-logo-field { display:flex; align-items:center; gap:1rem; padding:1rem 1.15rem; border:2px dashed #64748b; border-radius:16px; background:color-mix(in srgb,#0891b2 8%,var(--bs-body-bg)); }
+  .demo-logo-thumb { display:grid; place-items:center; width:88px; height:72px; flex:0 0 88px; overflow:hidden; border-radius:13px; color:#64748b; background:var(--bs-body-bg); border:1px solid #94a3b8; font-size:1.7rem; }
+  .demo-logo-thumb img { display:none; width:100%; height:100%; padding:.35rem; object-fit:contain; }
+  .demo-logo-thumb.has-logo img { display:block; }
+  .demo-logo-thumb.has-logo span { display:none; }
+  .preview-brand-logo { display:none; max-width:190px; max-height:70px; margin-top:1rem; padding:.45rem; border-radius:12px; background:rgba(255,255,255,.94); object-fit:contain; object-position:left center; }
   .module-builder { display:grid; grid-template-columns:minmax(340px,.85fr) minmax(440px,1.15fr); align-items:start; gap:1.25rem; }
   .create-demo-form > .module-builder > .preview-section { position:sticky; top:5.5rem; align-self:start; }
   .module-zone { min-height:340px; padding:1rem; border:2px dashed #94a3b8; border-radius:18px; background:color-mix(in srgb, var(--bs-body-bg) 92%, #e2e8f0); }
@@ -64,7 +70,7 @@
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-header bg-white py-3"><h5 class="mb-0 fw-bold">Crear demostración</h5></div>
   <div class="card-body">
-    <form method="post" class="demo-config-form create-demo-form">
+    <form method="post" enctype="multipart/form-data" class="demo-config-form create-demo-form">
       <input type="hidden" name="action" value="create"><input type="hidden" name="modules_order" class="modules-order">
       <div class="row g-3 mb-4 prospect-fields">
         <div class="col-lg-3"><label class="form-label fw-semibold">Empresa</label><input class="form-control" name="empresa" maxlength="180" required></div>
@@ -73,13 +79,17 @@
         <div class="col-lg-2"><label class="form-label fw-semibold">Teléfono</label><input class="form-control" name="telefono" maxlength="60"></div>
         <div class="col-lg-1"><label class="form-label fw-semibold">Días</label><input class="form-control" type="number" name="dias" min="1" max="60" value="7"></div>
       </div>
+      <div class="demo-logo-field mb-4">
+        <div class="demo-logo-thumb"><span>🖼️</span><img class="demo-logo-local-preview" alt="Vista previa del logo"></div>
+        <div class="flex-grow-1"><label class="form-label fw-bold mb-1" for="demoLogo">Logo de esta demo</label><input class="form-control" id="demoLogo" type="file" name="demo_logo" accept=".png,.jpg,.jpeg,.webp"><div class="form-text">Aparecerá en la barra superior y en la experiencia del prospecto. Máximo 2 MB.</div></div>
+      </div>
       <div class="module-builder" data-builder>
         <section><div class="d-flex justify-content-between mb-2"><strong>Módulos disponibles</strong><small class="text-muted">Arrastra para agregar</small></div><div class="module-zone available-zone" data-zone="available">
           {% for key, meta in module_meta.items() %}
           <div class="module-card" draggable="true" data-key="{{ key }}"><span class="module-handle">⠿</span><span class="module-icon">{{ meta.icon }}</span><span class="module-copy"><strong>{{ meta.label }}</strong><small>{{ meta.description }}</small></span><button class="module-remove" type="button" aria-label="Quitar módulo">×</button></div>
           {% endfor %}
         </div></section>
-        <section class="preview-section"><div class="d-flex justify-content-between mb-2"><strong>Vista previa de mi sistema</strong><small class="text-muted">Te acompaña mientras eliges</small></div><div class="module-zone selected-zone" data-zone="selected"><div class="preview-header"><div class="d-flex justify-content-between align-items-center"><span class="preview-dots">● ● ●</span><small>Vista del prospecto</small></div><h4 class="preview-company fw-bold mt-3 mb-1">Tu empresa</h4><small>Estos serán los módulos disponibles en su demo</small></div><div class="empty-message text-center text-muted py-5">Arrastra o toca un módulo para ver aquí cómo quedará</div></div></section>
+        <section class="preview-section"><div class="d-flex justify-content-between mb-2"><strong>Vista previa de mi sistema</strong><small class="text-muted">Te acompaña mientras eliges</small></div><div class="module-zone selected-zone" data-zone="selected"><div class="preview-header"><div class="d-flex justify-content-between align-items-center"><span class="preview-dots">● ● ●</span><small>Vista del prospecto</small></div><img class="preview-brand-logo" alt="Logo de la empresa"><h4 class="preview-company fw-bold mt-3 mb-1">Tu empresa</h4><small>Estos serán los módulos disponibles en su demo</small></div><div class="empty-message text-center text-muted py-5">Arrastra o toca un módulo para ver aquí cómo quedará</div></div></section>
       </div>
       <div class="row g-3 mt-1"><div class="col-lg-10"><label class="form-label fw-semibold">Notas comerciales</label><input class="form-control" name="notas" maxlength="500" placeholder="Necesidades, origen del prospecto, siguiente contacto..."></div><div class="col-lg-2 d-flex align-items-end"><button class="btn btn-primary w-100" type="submit">Crear demo</button></div></div>
     </form>
@@ -89,11 +99,11 @@
 <div class="row g-3">
 {% for demo in demos %}
   <div class="col-xl-6"><div class="card border-0 shadow-sm h-100"><div class="card-body">
-    <div class="d-flex justify-content-between gap-3"><div><h5 class="fw-bold mb-1">{{ demo.empresa }}</h5><div>{{ demo.contacto }}</div><div class="small text-muted">{{ demo.correo or 'Sin correo' }} · {{ demo.telefono or 'Sin teléfono' }}</div></div>{% set badge = 'success' if demo.estado == 'ACTIVA' else ('primary' if demo.estado == 'CONVERTIDA' else 'secondary') %}<span class="badge text-bg-{{ badge }} align-self-start">{{ demo.estado }}</span></div>
+    <div class="d-flex justify-content-between gap-3"><div class="d-flex gap-3">{% if demo.logo_data and demo.logo_mime %}<img src="data:{{ demo.logo_mime }};base64,{{ demo.logo_data }}" alt="Logo {{ demo.empresa }}" style="width:72px;height:58px;object-fit:contain;border-radius:10px;background:#fff;padding:.3rem">{% endif %}<div><h5 class="fw-bold mb-1">{{ demo.empresa }}</h5><div>{{ demo.contacto }}</div><div class="small text-muted">{{ demo.correo or 'Sin correo' }} · {{ demo.telefono or 'Sin teléfono' }}</div></div></div>{% set badge = 'success' if demo.estado == 'ACTIVA' else ('primary' if demo.estado == 'CONVERTIDA' else 'secondary') %}<span class="badge text-bg-{{ badge }} align-self-start">{{ demo.estado }}</span></div>
     <hr><div class="row g-2 small"><div class="col-6"><strong>Usuario:</strong><br>{{ demo.usuario.nombre }}</div><div class="col-6"><strong>Vencimiento:</strong><br>{{ demo.fecha_vencimiento.strftime('%d/%m/%Y %H:%M') }}</div><div class="col-6"><strong>Último acceso:</strong><br>{{ demo.ultimo_acceso.strftime('%d/%m/%Y %H:%M') if demo.ultimo_acceso else 'Todavía no ingresa' }}</div><div class="col-6"><strong>Módulos:</strong><br>{{ demo.modulos|default('[]')|replace('[','')|replace(']','')|replace('"','') }}</div></div>
     {% if demo.notas %}<div class="alert alert-light border mt-3 mb-0 small">{{ demo.notas }}</div>{% endif %}
     {% if demo.estado != 'CONVERTIDA' %}<button class="btn btn-sm btn-outline-primary mt-3" type="button" data-bs-toggle="collapse" data-bs-target="#configDemo{{ demo.id }}">Configurar módulos</button>
-    <div class="collapse mt-3" id="configDemo{{ demo.id }}"><form method="post" class="demo-config-form"><input type="hidden" name="action" value="update_config"><input type="hidden" name="demo_id" value="{{ demo.id }}"><input type="hidden" name="modules_order" class="modules-order">
+    <div class="collapse mt-3" id="configDemo{{ demo.id }}"><form method="post" enctype="multipart/form-data" class="demo-config-form"><input type="hidden" name="action" value="update_config"><input type="hidden" name="demo_id" value="{{ demo.id }}"><input type="hidden" name="modules_order" class="modules-order"><label class="form-label fw-semibold">Cambiar logo de la demo</label><input class="form-control mb-3" type="file" name="demo_logo" accept=".png,.jpg,.jpeg,.webp">
       <div class="module-builder" data-builder><section><strong class="d-block mb-2">Disponibles</strong><div class="module-zone available-zone" data-zone="available">
       {% for key, meta in module_meta.items() %}{% if key not in demo_module_orders[demo.id] %}<div class="module-card" draggable="true" data-key="{{ key }}"><span class="module-handle">⠿</span><span class="module-icon">{{ meta.icon }}</span><span class="module-copy"><strong>{{ meta.label }}</strong><small>{{ meta.description }}</small></span><button class="module-remove" type="button">×</button></div>{% endif %}{% endfor %}
       </div></section><section><strong class="d-block mb-2">Mi sistema</strong><div class="module-zone selected-zone" data-zone="selected"><div class="empty-message text-center text-muted py-4">Suelta módulos aquí</div>{% for key in demo_module_orders[demo.id] %}{% set meta=module_meta[key] %}<div class="module-card" draggable="true" data-key="{{ key }}"><span class="module-handle">⠿</span><span class="module-icon">{{ meta.icon }}</span><span class="module-copy"><strong>{{ meta.label }}</strong><small>{{ meta.description }}</small></span><button class="module-remove" type="button">×</button></div>{% endfor %}</div></section></div>
@@ -160,6 +170,17 @@
     const updateCompany = () => { companyPreview.textContent = companyInput.value.trim() || 'Tu empresa'; };
     companyInput.addEventListener('input', updateCompany);
     updateCompany();
+    const logoInput = createForm.querySelector('input[name="demo_logo"]');
+    const localPreview = createForm.querySelector('.demo-logo-local-preview');
+    const localPreviewBox = createForm.querySelector('.demo-logo-thumb');
+    const systemPreview = createForm.querySelector('.preview-brand-logo');
+    logoInput.addEventListener('change', () => {
+      const file = logoInput.files?.[0];
+      if (!file) { localPreview.removeAttribute('src'); systemPreview.removeAttribute('src'); localPreviewBox.classList.remove('has-logo'); systemPreview.style.display = 'none'; return; }
+      const reader = new FileReader();
+      reader.addEventListener('load', () => { localPreview.src = reader.result; systemPreview.src = reader.result; localPreviewBox.classList.add('has-logo'); systemPreview.style.display = 'block'; });
+      reader.readAsDataURL(file);
+    });
   }
   document.querySelectorAll('.demo-config-form').forEach(form => form.addEventListener('submit', event => { if (!form.querySelector('.modules-order').value) { event.preventDefault(); alert('Arrastra por lo menos un módulo a “Mi sistema demo”.'); } }));
 })();
