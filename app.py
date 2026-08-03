@@ -11610,7 +11610,7 @@ def preventa_demo(token):
     invitation = DemoInvitation.query.filter_by(token_hash=_preventa_token_hash(token)).first()
     now = now_cdmx_naive()
     if invitation is None or invitation.used_at or invitation.expires_at < now:
-        return render_template("preventa.html", invitation_valid=False), 410
+        return render_template("preventa.html", invitation_valid=False, invitation=None), 410
     credentials = None
     if request.method == "POST":
         try:
@@ -11625,7 +11625,13 @@ def preventa_demo(token):
             db.session.rollback()
             logger.exception("No se pudo crear la demo desde Preventa.")
             flash("No se pudo crear la demo. Intenta nuevamente.", "danger")
-    return render_template("preventa.html", invitation_valid=True, module_meta=DEMO_MODULE_META, generated_credentials=credentials)
+    return render_template(
+        "preventa.html",
+        invitation_valid=True,
+        invitation=invitation,
+        module_meta=DEMO_MODULE_META,
+        generated_credentials=credentials,
+    )
 
 
 def _seed_demo_environment(demo: DemoEnvironment) -> None:
