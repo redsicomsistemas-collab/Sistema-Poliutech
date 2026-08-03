@@ -3542,6 +3542,16 @@ def ensure_schema():
         db.session.rollback()
         print("⚠️ ensure_schema(demo_environment.logo):", e)
 
+    # --- DEMO_INVITATION: empresa destinataria de cada enlace de Preventa ---
+    try:
+        cols_invitation = _table_columns("demo_invitation")
+        if "empresa" not in cols_invitation:
+            db.session.execute(text("ALTER TABLE demo_invitation ADD COLUMN empresa VARCHAR(180)"))
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print("⚠️ ensure_schema(demo_invitation.empresa):", e)
+
     # --- CLIENTE.responsable ---
     try:
         cols_cli = _table_columns("cliente")
@@ -11671,19 +11681,25 @@ def admin_demos():
         abort(403)
     generated_credentials = None
     generated_preventa_url = None
+    generated_preventa_empresa = None
     if request.method == "POST":
         action = (request.form.get("action") or "create").strip()
         try:
             if action == "create_preventa_link":
+                preventa_empresa = (request.form.get("preventa_empresa") or "").strip()
+                if not preventa_empresa:
+                    raise ValueError("Escribe la empresa a la que enviarás el enlace de Preventa.")
                 raw_token = secrets.token_urlsafe(32)
                 invitation = DemoInvitation(
                     token_hash=_preventa_token_hash(raw_token),
+                    empresa=preventa_empresa,
                     expires_at=now_cdmx_naive() + timedelta(hours=48),
                     created_by_id=current_user.id,
                 )
                 db.session.add(invitation)
                 db.session.commit()
                 generated_preventa_url = url_for("preventa_demo", token=raw_token, _external=True)
+                generated_preventa_empresa = preventa_empresa
                 flash("Enlace privado de Preventa creado. Caduca en 48 horas y sólo puede usarse una vez.", "success")
             elif action == "create":
                 empresa = (request.form.get("empresa") or "").strip()
@@ -11793,6 +11809,7 @@ def admin_demos():
         demo_module_orders={demo.id: _demo_module_order(demo) for demo in demos},
         generated_credentials=generated_credentials,
         generated_preventa_url=generated_preventa_url,
+        generated_preventa_empresa=generated_preventa_empresa,
         now=now,
     )
 

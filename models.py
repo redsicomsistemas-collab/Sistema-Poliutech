@@ -452,6 +452,7 @@ class DemoInvitation(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     token_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    empresa = db.Column(db.String(180), nullable=False)
     expires_at = db.Column(db.DateTime, nullable=False, index=True)
     used_at = db.Column(db.DateTime)
     created_by_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=False)

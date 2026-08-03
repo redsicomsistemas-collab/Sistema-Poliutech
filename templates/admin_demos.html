@@ -69,8 +69,8 @@
 
 {% if generated_preventa_url %}
 <div class="alert alert-info shadow-sm border-info">
-  <h5 class="fw-bold">🔗 Enlace privado de Preventa</h5>
-  <p class="mb-2">Compártelo con el prospecto. Caduca en 48 horas y deja de funcionar después de crear una demo.</p>
+  <h5 class="fw-bold">🔗 Enlace privado para {{ generated_preventa_empresa }}</h5>
+  <p class="mb-2">Compártelo con esa empresa. Caduca en 48 horas y deja de funcionar después de crear una demo.</p>
   <div class="input-group"><input class="form-control bg-white" id="preventaUrl" value="{{ generated_preventa_url }}" readonly><button class="btn btn-info fw-bold" type="button" onclick="navigator.clipboard.writeText(document.getElementById('preventaUrl').value);this.textContent='Copiado'">Copiar enlace</button></div>
 </div>
 {% endif %}
@@ -78,7 +78,7 @@
 <div class="card border-info shadow-sm mb-4">
   <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-3">
     <div><h5 class="fw-bold mb-1">🤝 Preventa externa</h5><div class="text-muted">Genera un enlace seguro para que un prospecto configure su propia demo sin entrar a Administración.</div></div>
-    <form method="post"><input type="hidden" name="action" value="create_preventa_link"><button class="btn btn-info fw-bold" type="submit">Crear enlace de Preventa</button></form>
+    <form method="post" class="d-flex flex-wrap gap-2"><input type="hidden" name="action" value="create_preventa_link"><input class="form-control" style="min-width:260px" name="preventa_empresa" maxlength="180" placeholder="Empresa destinataria" required><button class="btn btn-info fw-bold" type="submit">Crear enlace de Preventa</button></form>
   </div>
 </div>
 
