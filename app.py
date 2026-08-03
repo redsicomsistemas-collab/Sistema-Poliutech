@@ -2101,8 +2101,9 @@ def _send_quote_assignment_notifications(
     proximo_seguimiento: Optional[datetime] = None,
     prioridad: str = "",
     instruccion: str = "",
+    include_watchers: bool = True,
 ) -> dict[str, dict[str, int]]:
-    recipients = _quote_assignment_notification_users(asignado)
+    recipients = _quote_assignment_notification_users(asignado) if include_watchers else [asignado]
     folios = [str(cot.folio or f"#{cot.id}") for cot in cotizaciones]
     shown_folios = ", ".join(folios[:10])
     if len(folios) > 10:
@@ -2123,7 +2124,7 @@ def _send_quote_assignment_notifications(
     body_lines.extend(["", f"Abrir seguimiento: {detalle_url}"])
     body = "\n".join(body_lines)
     results = {
-        "email": {"sent": 0, "failed": 0},
+        "email": {"sent": 0, "failed": 0, "missing": 0},
         "whatsapp": {"sent": 0, "failed": 0},
         "push": {"sent": 0, "failed": 0},
     }
@@ -2133,6 +2134,8 @@ def _send_quote_assignment_notifications(
         for user in recipients
         if (user.correo or "").strip()
     ))
+    if not emails:
+        results["email"]["missing"] = 1
     if emails:
         try:
             msg = EmailMessage()
@@ -2143,8 +2146,9 @@ def _send_quote_assignment_notifications(
             with _SMTP_EMAIL_TRANSPORT(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
                 smtp.starttls()
                 smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-                smtp.send_message(msg)
-            results["email"]["sent"] = len(emails)
+                refused = smtp.send_message(msg, to_addrs=emails) or {}
+            results["email"]["failed"] = len(refused)
+            results["email"]["sent"] = len(emails) - len(refused)
         except Exception:
             results["email"]["failed"] = len(emails)
             logger.exception("No se pudo enviar correo de asignación de cotización")
@@ -6588,6 +6592,7 @@ def asignar_proyecto():
                 cotizaciones=cotizaciones_actualizadas,
                 asignado=usuario,
                 asignado_por=current_user,
+                include_watchers=False,
             )
         except Exception:
             logger.exception("El proyecto se asignó, pero falló la preparación de notificaciones")

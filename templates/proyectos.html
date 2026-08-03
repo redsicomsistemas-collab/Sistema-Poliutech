@@ -132,11 +132,17 @@ document.addEventListener("click", async (event) => {
     const data = await response.json();
     if (!response.ok) throw new Error(data?.error || "No se pudo asignar el proyecto.");
     const emailsSent = Number(data.notifications?.email?.sent || 0);
+    const emailMissing = Number(data.notifications?.email?.missing || 0);
+    const emailsFailed = Number(data.notifications?.email?.failed || 0);
     const emailStatus = Number(data.updated || 0) === 0
       ? " No se enviaron avisos porque el proyecto ya estaba asignado a ese usuario."
       : emailsSent > 0
-      ? ` Correo enviado a ${emailsSent} destinatario(s), incluido el usuario seleccionado.`
-      : " No se confirmó ningún correo; revisa que el usuario tenga un correo registrado y que SMTP esté configurado.";
+      ? " Correo enviado al usuario seleccionado."
+      : emailMissing > 0
+      ? " El usuario seleccionado no tiene un correo registrado."
+      : emailsFailed > 0
+      ? " El servidor rechazó el correo del usuario seleccionado."
+      : " No se pudo confirmar el envío del correo.";
     const successMessage = `${data.updated || 0} cotización(es) actualizadas para ${data.responsable}.${emailStatus}`;
     if (window.Swal) await Swal.fire({ icon: "success", title: "Proyecto asignado", text: successMessage });
     else window.alert(`Proyecto asignado. ${successMessage}`);
