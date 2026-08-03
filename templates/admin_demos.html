@@ -3,20 +3,47 @@
 
 {% block content %}
 <style>
-  .module-builder { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
-  .module-zone { min-height:260px; padding:.8rem; border:2px dashed #cbd5e1; border-radius:14px; background:#f8fafc; }
+  .demo-config-form { --module-accent:#2563eb; }
+  .prospect-fields .form-control { min-height:54px; border-width:2px; border-radius:13px; font-size:1.05rem; padding:.75rem 1rem; background:color-mix(in srgb, var(--field-color) 7%, var(--bs-body-bg)); border-color:color-mix(in srgb, var(--field-color) 38%, transparent); }
+  .prospect-fields > div:nth-child(1) { --field-color:#2563eb; }
+  .prospect-fields > div:nth-child(2) { --field-color:#7c3aed; }
+  .prospect-fields > div:nth-child(3) { --field-color:#0891b2; }
+  .prospect-fields > div:nth-child(4) { --field-color:#059669; }
+  .prospect-fields > div:nth-child(5) { --field-color:#ea580c; }
+  .prospect-fields .form-label { color:var(--field-color); }
+  .module-builder { display:grid; grid-template-columns:minmax(340px,.85fr) minmax(440px,1.15fr); gap:1.25rem; }
+  .module-zone { min-height:340px; padding:1rem; border:2px dashed #94a3b8; border-radius:18px; background:color-mix(in srgb, var(--bs-body-bg) 92%, #e2e8f0); }
   .module-zone.is-over { border-color:var(--bs-primary); background:#eff6ff; }
-  .module-card { display:flex; align-items:center; gap:.7rem; margin-bottom:.55rem; padding:.72rem .8rem; border:1px solid #dbe3ee; border-radius:11px; background:#fff; box-shadow:0 2px 6px rgba(15,23,42,.05); cursor:grab; user-select:none; }
+  .module-card { --card-color:#2563eb; display:flex; align-items:center; gap:.85rem; min-height:82px; margin-bottom:.75rem; padding:1rem; border:2px solid color-mix(in srgb, var(--card-color) 35%, transparent); border-left:7px solid var(--card-color); border-radius:15px; background:color-mix(in srgb, var(--card-color) 9%, var(--bs-body-bg)); box-shadow:0 5px 14px rgba(15,23,42,.08); cursor:grab; user-select:none; transition:transform .18s ease, box-shadow .18s ease; }
+  .module-card:hover { transform:translateY(-2px); box-shadow:0 8px 20px rgba(15,23,42,.13); }
+  .module-card[data-key="proyectos"], .module-card[data-key="finanzas"] { --card-color:#2563eb; }
+  .module-card[data-key="cotizaciones"], .module-card[data-key="fondos"] { --card-color:#d97706; }
+  .module-card[data-key="crm"], .module-card[data-key="rrhh"] { --card-color:#7c3aed; }
+  .module-card[data-key="compras"], .module-card[data-key="gastos"] { --card-color:#ea580c; }
+  .module-card[data-key="inventario"], .module-card[data-key="reportes"] { --card-color:#059669; }
+  .module-card[data-key="precios_unitarios"], .module-card[data-key="facturacion"] { --card-color:#0891b2; }
+  .module-card[data-key="soporte"] { --card-color:#db2777; }
   .module-card:active { cursor:grabbing; }
   .module-card.dragging { opacity:.45; }
   .module-handle { color:#94a3b8; font-weight:900; letter-spacing:-2px; }
-  .module-icon { font-size:1.25rem; }
+  .module-icon { display:grid; place-items:center; width:46px; height:46px; flex:0 0 46px; border-radius:13px; background:color-mix(in srgb, var(--card-color) 18%, var(--bs-body-bg)); font-size:1.65rem; }
   .module-copy { min-width:0; flex:1; }
-  .module-copy small { display:block; color:#64748b; line-height:1.2; }
+  .module-copy strong { display:block; color:var(--bs-body-color); font-size:1.02rem; }
+  .module-copy small { display:block; color:var(--bs-secondary-color); line-height:1.3; margin-top:.15rem; }
   .module-remove { border:0; background:transparent; color:#94a3b8; font-size:1.2rem; }
   .selected-zone .empty-message { display:none; }
-  .selected-zone:has(.empty-message:only-child) .empty-message { display:block; }
-  @media (max-width: 767.98px) { .module-builder { grid-template-columns:1fr; } }
+  .selected-zone:not(:has(.module-card)) .empty-message { display:block; }
+  .preview-header { margin:-1rem -1rem 1rem; padding:1rem 1.15rem; border-radius:16px 16px 0 0; color:#fff; background:linear-gradient(120deg,#172554,#2563eb 58%,#0891b2); }
+  .preview-header small { color:#bfdbfe; }
+  .preview-dots { letter-spacing:3px; opacity:.8; }
+  .selected-zone { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-content:start; gap:.8rem; }
+  .selected-zone .preview-header, .selected-zone .empty-message { grid-column:1/-1; }
+  .selected-zone .module-card { position:relative; min-height:125px; margin:0; align-items:flex-start; padding:1rem; }
+  .selected-zone .module-card.is-featured::after { content:'DESTACADO'; position:absolute; right:.7rem; bottom:.65rem; padding:.2rem .48rem; border-radius:999px; color:#fff; background:var(--card-color); font-size:.62rem; font-weight:800; letter-spacing:.04em; }
+  .available-zone .module-remove { color:var(--card-color); font-size:1.45rem; font-weight:800; }
+  .selected-zone .module-remove { position:absolute; right:.55rem; top:.4rem; }
+  @media (max-width: 991.98px) { .module-builder { grid-template-columns:1fr; } }
+  @media (max-width: 575.98px) { .selected-zone { grid-template-columns:1fr; } }
 </style>
 
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
@@ -37,7 +64,7 @@
   <div class="card-body">
     <form method="post" class="demo-config-form">
       <input type="hidden" name="action" value="create"><input type="hidden" name="modules_order" class="modules-order">
-      <div class="row g-3 mb-4">
+      <div class="row g-3 mb-4 prospect-fields">
         <div class="col-lg-3"><label class="form-label fw-semibold">Empresa</label><input class="form-control" name="empresa" maxlength="180" required></div>
         <div class="col-lg-3"><label class="form-label fw-semibold">Contacto</label><input class="form-control" name="contacto" maxlength="160" required></div>
         <div class="col-lg-3"><label class="form-label fw-semibold">Correo</label><input class="form-control" type="email" name="correo" maxlength="160"></div>
@@ -50,7 +77,7 @@
           <div class="module-card" draggable="true" data-key="{{ key }}"><span class="module-handle">⠿</span><span class="module-icon">{{ meta.icon }}</span><span class="module-copy"><strong>{{ meta.label }}</strong><small>{{ meta.description }}</small></span><button class="module-remove" type="button" aria-label="Quitar módulo">×</button></div>
           {% endfor %}
         </div></section>
-        <section><div class="d-flex justify-content-between mb-2"><strong>Mi sistema demo</strong><small class="text-muted">El primero será el destacado</small></div><div class="module-zone selected-zone" data-zone="selected"><div class="empty-message text-center text-muted py-5">Suelta aquí los módulos que quieres mostrar</div></div></section>
+        <section><div class="d-flex justify-content-between mb-2"><strong>Vista previa de mi sistema</strong><small class="text-muted">Se actualiza al instante</small></div><div class="module-zone selected-zone" data-zone="selected"><div class="preview-header"><div class="d-flex justify-content-between align-items-center"><span class="preview-dots">● ● ●</span><small>Vista del prospecto</small></div><h4 class="preview-company fw-bold mt-3 mb-1">Tu empresa</h4><small>Estos serán los módulos disponibles en su demo</small></div><div class="empty-message text-center text-muted py-5">Arrastra o toca un módulo para ver aquí cómo quedará</div></div></section>
       </div>
       <div class="row g-3 mt-1"><div class="col-lg-10"><label class="form-label fw-semibold">Notas comerciales</label><input class="form-control" name="notas" maxlength="500" placeholder="Necesidades, origen del prospecto, siguiente contacto..."></div><div class="col-lg-2 d-flex align-items-end"><button class="btn btn-primary w-100" type="submit">Crear demo</button></div></div>
     </form>
@@ -83,11 +110,30 @@
     let dragged = null;
     const available = builder.querySelector('[data-zone="available"]');
     const selected = builder.querySelector('[data-zone="selected"]');
-    const sync = () => { const input = builder.closest('form').querySelector('.modules-order'); input.value = [...selected.querySelectorAll('.module-card')].map(el => el.dataset.key).join(','); };
+    const sync = () => {
+      const selectedCards = [...selected.querySelectorAll('.module-card')];
+      builder.closest('form').querySelector('.modules-order').value = selectedCards.map(el => el.dataset.key).join(',');
+      builder.querySelectorAll('.module-card').forEach(card => {
+        const isSelected = card.closest('[data-zone]') === selected;
+        card.classList.toggle('is-featured', isSelected && card === selectedCards[0]);
+        const button = card.querySelector('.module-remove');
+        button.textContent = isSelected ? '×' : '+';
+        button.setAttribute('aria-label', isSelected ? 'Quitar módulo' : 'Agregar módulo');
+      });
+    };
     builder.querySelectorAll('.module-card').forEach(card => {
       card.addEventListener('dragstart', () => { dragged = card; card.classList.add('dragging'); });
       card.addEventListener('dragend', () => { card.classList.remove('dragging'); dragged = null; sync(); });
-      card.querySelector('.module-remove').addEventListener('click', () => { available.appendChild(card); sync(); });
+      card.querySelector('.module-remove').addEventListener('click', event => {
+        event.stopPropagation();
+        (card.closest('[data-zone]') === selected ? available : selected).appendChild(card);
+        sync();
+      });
+      card.addEventListener('click', event => {
+        if (event.target.closest('button') || card.closest('[data-zone]') !== available) return;
+        selected.appendChild(card);
+        sync();
+      });
     });
     builder.querySelectorAll('[data-zone]').forEach(zone => {
       zone.addEventListener('dragover', event => { event.preventDefault(); zone.classList.add('is-over'); const after = [...zone.querySelectorAll('.module-card:not(.dragging)')].find(el => event.clientY <= el.getBoundingClientRect().top + el.offsetHeight / 2); if (dragged) zone.insertBefore(dragged, after || null); });
@@ -96,6 +142,14 @@
     });
     sync();
   });
+  const createForm = document.querySelector('form.demo-config-form input[name="action"][value="create"]')?.closest('form');
+  if (createForm) {
+    const companyInput = createForm.querySelector('input[name="empresa"]');
+    const companyPreview = createForm.querySelector('.preview-company');
+    const updateCompany = () => { companyPreview.textContent = companyInput.value.trim() || 'Tu empresa'; };
+    companyInput.addEventListener('input', updateCompany);
+    updateCompany();
+  }
   document.querySelectorAll('.demo-config-form').forEach(form => form.addEventListener('submit', event => { if (!form.querySelector('.modules-order').value) { event.preventDefault(); alert('Arrastra por lo menos un módulo a “Mi sistema demo”.'); } }));
 })();
 </script>
