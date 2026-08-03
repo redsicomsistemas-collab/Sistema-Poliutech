@@ -389,6 +389,17 @@
           <span class="small text-secondary me-2" id="bulk-selected-label">Seleccionadas: <b id="bulk-selected-count">0</b></span>
           <span class="small text-secondary me-2" id="bulk-visible-label">Visibles: <b id="bulk-visible-count">0</b></span>
 
+          {% if can_assign_cotizaciones %}
+          <select id="bulk-assignee" class="form-select form-select-sm" style="width:auto;min-width:220px">
+            <option value="">Asignar seguimiento a...</option>
+            {% for usuario in usuarios_asignables %}
+            <option value="{{ usuario.id }}">{{ usuario.nombre_representante }} ({{ usuario.nombre }})</option>
+            {% endfor %}
+          </select>
+          <button id="btn-bulk-assign" class="btn btn-primary btn-sm" disabled>
+            👤 Asignar seleccionadas
+          </button>
+          {% endif %}
           {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
           <button id="btn-bulk-delete" class="btn btn-danger btn-sm" disabled>
             🗑️ Eliminar seleccionadas
@@ -406,7 +417,7 @@
         <table class="table table-bordered align-middle dashboard-quotes-table">
           <thead class="table-light">
             <tr>
-              {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
+              {% if can_manage_assignments %}
               <th style="width:36px" class="text-center">
                 <input type="checkbox" id="chk-select-all" title="Seleccionar todo (visibles)">
               </th>
@@ -511,7 +522,7 @@
                   data-email="{{ c.cliente.correo if c.cliente and c.cliente.correo else '' }}"
                 >📧</button>
                 {% endif %}
-              {% if can_manage_assignments %}
+                {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
                 <a href="{{ url_for('eliminar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-danger btn-sm" title="Eliminar">🗑️</a>
                 {% endif %}
               </td>
@@ -565,6 +576,7 @@
 document.addEventListener("DOMContentLoaded", () => {
   const IS_ADMIN = {{ 'true' if (current_user.is_authenticated and current_user.rol == 'ADMIN') else 'false' }};
   const CAN_MANAGE_ASSIGNMENTS = {{ 'true' if can_manage_assignments else 'false' }};
+  const CAN_ASSIGN_QUOTES = {{ 'true' if can_assign_cotizaciones else 'false' }};
   const desde = document.getElementById("filtro-desde");
   const hasta = document.getElementById("filtro-hasta");
   const estatus = document.getElementById("filtro-estatus");
@@ -593,6 +605,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const chkAll = document.getElementById("chk-select-all");
   const btnBulkDelete = document.getElementById("btn-bulk-delete");
   const btnBulkDeleteVisible = document.getElementById("btn-bulk-delete-visible");
+  const bulkAssignee = document.getElementById("bulk-assignee");
+  const btnBulkAssign = document.getElementById("btn-bulk-assign");
   const selCountEl = document.getElementById("bulk-selected-count");
   const visCountEl = document.getElementById("bulk-visible-count");
 
@@ -884,6 +898,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const checkedCount = allChecks.filter(chk => chk.checked).length;
     if (selCountEl) selCountEl.textContent = String(checkedCount);
     if (btnBulkDelete) btnBulkDelete.disabled = !anyChecked;
+    if (btnBulkAssign) btnBulkAssign.disabled = !anyChecked || !bulkAssignee?.value;
 
     const visible = getVisibleRowCheckboxes();
     if (visCountEl) visCountEl.textContent = String(visible.length);
@@ -1075,6 +1090,53 @@ document.addEventListener("DOMContentLoaded", () => {
     const params = buildFilterParams();
     const query = params.toString();
     window.location.href = `{{ url_for('index') }}${query ? `?${query}` : ""}`;
+  }
+
+  if (bulkAssignee) {
+    bulkAssignee.addEventListener("change", updateBulkDeleteState);
+  }
+
+  if (CAN_ASSIGN_QUOTES && btnBulkAssign) {
+    btnBulkAssign.addEventListener("click", async () => {
+      const ids = Array.from(document.querySelectorAll(".chk-cot:checked"))
+        .map(chk => Number.parseInt(chk.value, 10))
+        .filter(Number.isFinite);
+      const usuarioId = Number.parseInt(bulkAssignee?.value || "", 10);
+      if (!ids.length || !Number.isFinite(usuarioId)) return;
+
+      const nombre = bulkAssignee.options[bulkAssignee.selectedIndex]?.text || "el usuario";
+      const confirmacion = await Swal.fire({
+        icon: "question",
+        title: "Asignar seguimiento",
+        html: `Se asignarán <b>${ids.length}</b> cotización(es) a <b>${nombre}</b>.`,
+        showCancelButton: true,
+        confirmButtonText: "Asignar",
+        cancelButtonText: "Cancelar",
+      });
+      if (!confirmacion.isConfirmed) return;
+
+      try {
+        const response = await fetch("{{ url_for('asignar_cotizaciones') }}", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids, usuario_id: usuarioId }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data?.error || "No se pudo completar la asignación.");
+        await Swal.fire({
+          icon: "success",
+          title: "Seguimiento asignado",
+          text: `${data.updated || 0} cotización(es) asignadas a ${data.responsable}.`,
+        });
+        window.location.reload();
+      } catch (error) {
+        await Swal.fire({
+          icon: "error",
+          title: "No se pudo asignar",
+          text: error?.message || "Error desconocido",
+        });
+      }
+    });
   }
 
   let clienteFilterTimer = null;

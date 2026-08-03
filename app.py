@@ -4053,6 +4053,13 @@ def can_manage_quote_assignments() -> bool:
         or any(value.startswith("hansel ") for value in identities)
     )
 
+
+def can_assign_cotizaciones() -> bool:
+    if not getattr(current_user, "is_authenticated", False):
+        return False
+    nombre = (getattr(current_user, "nombre", "") or "").strip().lower()
+    return nombre in {"admin", "hansel"}
+
 def is_admin_account() -> bool:
     nombre = (getattr(current_user, "nombre", "") or "").strip().lower()
     return bool(getattr(current_user, "is_authenticated", False) and nombre == "admin")
@@ -6292,6 +6299,8 @@ def index():
         responsables_cotizacion=responsables_cotizacion,
         proyectos_cotizacion=_known_project_names(),
         usuarios_asignables=usuarios_asignables,
+        can_manage_assignments=can_manage_quote_assignments(),
+        can_assign_cotizaciones=can_assign_cotizaciones(),
         show_splash=True
     )
 
@@ -9082,8 +9091,8 @@ def bulk_eliminar_cotizaciones():
 @app.route("/cotizaciones/asignar", methods=["POST"])
 @login_required
 def asignar_cotizaciones():
-    if not is_admin():
-        return jsonify({"error": "Solo el administrador puede asignar cotizaciones."}), 403
+    if not can_assign_cotizaciones():
+        return jsonify({"error": "Solo los usuarios Hansel y admin pueden asignar cotizaciones."}), 403
 
     payload = request.get_json(silent=True) or {}
     try:
