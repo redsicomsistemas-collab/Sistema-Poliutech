@@ -11,7 +11,8 @@
   .prospect-fields > div:nth-child(4) { --field-color:#059669; }
   .prospect-fields > div:nth-child(5) { --field-color:#ea580c; }
   .prospect-fields .form-label { color:var(--field-color); }
-  .module-builder { display:grid; grid-template-columns:minmax(340px,.85fr) minmax(440px,1.15fr); gap:1.25rem; }
+  .module-builder { display:grid; grid-template-columns:minmax(340px,.85fr) minmax(440px,1.15fr); align-items:start; gap:1.25rem; }
+  .create-demo-form > .module-builder > .preview-section { position:sticky; top:5.5rem; align-self:start; }
   .module-zone { min-height:340px; padding:1rem; border:2px dashed #94a3b8; border-radius:18px; background:color-mix(in srgb, var(--bs-body-bg) 92%, #e2e8f0); }
   .available-zone, .selected-zone { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-content:start; gap:1rem; }
   .module-zone.is-over { border-color:var(--bs-primary); background:#eff6ff; }
@@ -43,7 +44,7 @@
   .selected-zone .module-card.is-featured::after { content:'DESTACADO'; position:absolute; right:.7rem; bottom:.65rem; padding:.2rem .48rem; border-radius:999px; color:#fff; background:var(--card-color); font-size:.62rem; font-weight:800; letter-spacing:.04em; }
   .available-zone .module-remove { font-weight:800; }
   .collapse .module-builder { grid-template-columns:1fr; }
-  @media (max-width: 991.98px) { .module-builder { grid-template-columns:1fr; } }
+  @media (max-width: 991.98px) { .module-builder { grid-template-columns:1fr; } .create-demo-form > .module-builder > .preview-section { position:static; } }
   @media (max-width: 575.98px) { .available-zone, .selected-zone { grid-template-columns:1fr; } .module-card { aspect-ratio:auto; min-height:230px; } }
 </style>
 
@@ -63,7 +64,7 @@
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-header bg-white py-3"><h5 class="mb-0 fw-bold">Crear demostración</h5></div>
   <div class="card-body">
-    <form method="post" class="demo-config-form">
+    <form method="post" class="demo-config-form create-demo-form">
       <input type="hidden" name="action" value="create"><input type="hidden" name="modules_order" class="modules-order">
       <div class="row g-3 mb-4 prospect-fields">
         <div class="col-lg-3"><label class="form-label fw-semibold">Empresa</label><input class="form-control" name="empresa" maxlength="180" required></div>
@@ -78,7 +79,7 @@
           <div class="module-card" draggable="true" data-key="{{ key }}"><span class="module-handle">⠿</span><span class="module-icon">{{ meta.icon }}</span><span class="module-copy"><strong>{{ meta.label }}</strong><small>{{ meta.description }}</small></span><button class="module-remove" type="button" aria-label="Quitar módulo">×</button></div>
           {% endfor %}
         </div></section>
-        <section><div class="d-flex justify-content-between mb-2"><strong>Vista previa de mi sistema</strong><small class="text-muted">Se actualiza al instante</small></div><div class="module-zone selected-zone" data-zone="selected"><div class="preview-header"><div class="d-flex justify-content-between align-items-center"><span class="preview-dots">● ● ●</span><small>Vista del prospecto</small></div><h4 class="preview-company fw-bold mt-3 mb-1">Tu empresa</h4><small>Estos serán los módulos disponibles en su demo</small></div><div class="empty-message text-center text-muted py-5">Arrastra o toca un módulo para ver aquí cómo quedará</div></div></section>
+        <section class="preview-section"><div class="d-flex justify-content-between mb-2"><strong>Vista previa de mi sistema</strong><small class="text-muted">Te acompaña mientras eliges</small></div><div class="module-zone selected-zone" data-zone="selected"><div class="preview-header"><div class="d-flex justify-content-between align-items-center"><span class="preview-dots">● ● ●</span><small>Vista del prospecto</small></div><h4 class="preview-company fw-bold mt-3 mb-1">Tu empresa</h4><small>Estos serán los módulos disponibles en su demo</small></div><div class="empty-message text-center text-muted py-5">Arrastra o toca un módulo para ver aquí cómo quedará</div></div></section>
       </div>
       <div class="row g-3 mt-1"><div class="col-lg-10"><label class="form-label fw-semibold">Notas comerciales</label><input class="form-control" name="notas" maxlength="500" placeholder="Necesidades, origen del prospecto, siguiente contacto..."></div><div class="col-lg-2 d-flex align-items-end"><button class="btn btn-primary w-100" type="submit">Crear demo</button></div></div>
     </form>
