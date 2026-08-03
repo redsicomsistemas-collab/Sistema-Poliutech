@@ -1115,6 +1115,15 @@ document.addEventListener("DOMContentLoaded", () => {
       });
       if (!confirmacion.isConfirmed) return;
 
+      Swal.fire({
+        title: "Asignando cotizaciones…",
+        html: `Espera un momento mientras se asignan a <b>${nombre}</b> y se envían las notificaciones.`,
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        didOpen: () => Swal.showLoading(),
+      });
+
       try {
         const response = await fetch("{{ url_for('asignar_cotizaciones') }}", {
           method: "POST",
