@@ -393,7 +393,7 @@
           <select id="bulk-assignee" class="form-select form-select-sm" style="width:auto;min-width:220px">
             <option value="">Asignar seguimiento a...</option>
             {% for usuario in usuarios_asignables %}
-            <option value="{{ usuario.id }}">{{ usuario.nombre_representante }} ({{ usuario.nombre }})</option>
+            <option value="{{ usuario.id }}">{{ usuario.nombre_representante }}</option>
             {% endfor %}
           </select>
           <button id="btn-bulk-assign" class="btn btn-primary btn-sm" disabled>
