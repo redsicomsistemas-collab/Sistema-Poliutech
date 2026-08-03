@@ -2140,7 +2140,7 @@ def _send_quote_assignment_notifications(
             msg["From"] = f"SISTEMA MAR <{SMTP_FROM or SMTP_USERNAME}>"
             msg["To"] = ", ".join(emails)
             msg.set_content(body)
-            with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
+            with _SMTP_EMAIL_TRANSPORT(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
                 smtp.starttls()
                 smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
                 smtp.send_message(msg)
