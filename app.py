@@ -2098,9 +2098,9 @@ def _send_quote_assignment_notifications(
     cotizaciones: list[Cotizacion],
     asignado: Usuario,
     asignado_por: Usuario,
-    proximo_seguimiento: datetime,
-    prioridad: str,
-    instruccion: str,
+    proximo_seguimiento: Optional[datetime] = None,
+    prioridad: str = "",
+    instruccion: str = "",
 ) -> dict[str, dict[str, int]]:
     recipients = _quote_assignment_notification_users(asignado)
     folios = [str(cot.folio or f"#{cot.id}") for cot in cotizaciones]
@@ -2109,15 +2109,19 @@ def _send_quote_assignment_notifications(
         shown_folios += f" y {len(folios) - 10} más"
     detalle_url = url_for("index", bandeja="mis", _external=True)
     subject = f"Seguimiento asignado · {len(cotizaciones)} cotización(es)"
-    body = (
-        f"Asesor asignado: {asignado.nombre_representante}\n"
-        f"Asignó: {asignado_por.nombre_representante}\n"
-        f"Cotizaciones: {shown_folios}\n"
-        f"Próximo seguimiento: {proximo_seguimiento.strftime('%d/%m/%Y %H:%M')}\n"
-        f"Prioridad: {prioridad}\n"
-        f"Instrucción: {instruccion or 'Sin instrucción adicional'}\n\n"
-        f"Abrir seguimiento: {detalle_url}"
-    )
+    body_lines = [
+        f"Asesor asignado: {asignado.nombre_representante}",
+        f"Asignó: {asignado_por.nombre_representante}",
+        f"Cotizaciones: {shown_folios}",
+    ]
+    if proximo_seguimiento:
+        body_lines.append(f"Próximo seguimiento: {proximo_seguimiento.strftime('%d/%m/%Y %H:%M')}")
+    if prioridad:
+        body_lines.append(f"Prioridad: {prioridad}")
+    if instruccion:
+        body_lines.append(f"Instrucción: {instruccion}")
+    body_lines.extend(["", f"Abrir seguimiento: {detalle_url}"])
+    body = "\n".join(body_lines)
     results = {
         "email": {"sent": 0, "failed": 0},
         "whatsapp": {"sent": 0, "failed": 0},
@@ -2167,7 +2171,7 @@ def _send_quote_assignment_notifications(
         results["push"] = _send_push_notification(
             tokens,
             title=subject,
-            body=f"{asignado.nombre_representante} · {shown_folios} · {prioridad}",
+            body=" · ".join(filter(None, [asignado.nombre_representante, shown_folios, prioridad])),
             data={
                 "type": "quote_assignment",
                 "usuario_id": str(asignado.id),
@@ -9127,8 +9131,11 @@ def asignar_cotizaciones():
         return jsonify({"error": "No se recibieron cotizaciones válidas."}), 400
 
     actualizadas = []
+    notification_results = {}
     try:
         cotizaciones = _cotizaciones_activas_query().filter(Cotizacion.id.in_(norm_ids)).all()
+        if not cotizaciones:
+            return jsonify({"error": "No se encontraron cotizaciones activas para asignar."}), 404
         for cot in cotizaciones:
             if cot.responsable_usuario_id != usuario.id:
                 db.session.add(CotizacionAsignacion(
@@ -9147,11 +9154,22 @@ def asignar_cotizaciones():
         logger.exception("No se pudieron asignar cotizaciones")
         return jsonify({"error": str(exc)}), 500
 
+    try:
+        notification_results = _send_quote_assignment_notifications(
+            cotizaciones=cotizaciones,
+            asignado=usuario,
+            asignado_por=current_user,
+        )
+    except Exception:
+        logger.exception("La asignación se guardó, pero falló la preparación de notificaciones")
+        notification_results = {"error": "La asignación se guardó; uno o más avisos no pudieron enviarse."}
+
     return jsonify({
         "updated": len(actualizadas),
         "updated_ids": actualizadas,
         "usuario_id": usuario.id,
         "responsable": usuario.nombre_representante,
+        "notifications": notification_results,
     })
 
 
