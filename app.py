@@ -6056,10 +6056,9 @@ class _WhatsAppNotificationTransport:
 # Conserva el transporte SMTP real para módulos que requieren correo explícito.
 _SMTP_EMAIL_TRANSPORT = smtplib.SMTP
 
-# A partir de aquí cualquier notificación heredada que todavía construya un
-# EmailMessage usa WhatsApp. Esto cubre altas, cotizaciones, menciones, soporte,
-# reportes, recursos, gastos y recuperación de contraseña sin dejar rutas SMTP.
-smtplib.SMTP = _WhatsAppNotificationTransport
+# No sustituir ``smtplib.SMTP`` globalmente. Los avisos configurados como correo
+# (reportes, soporte, recursos, gastos y recuperación de contraseña) deben usar
+# el transporte SMTP real; WhatsApp se envía únicamente desde sus rutas explícitas.
 
 # ---------------------------------------------------------
 # 🔐 Login / Logout
