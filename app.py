@@ -4650,7 +4650,7 @@ def _build_dashboard_cotizaciones_query(
     especialidad: str = "",
     especialidad_descripcion: str = "",
     responsable: str = "",
-    vista: str = "activas",
+    vista: str = "todos",
 ):
     q = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
     q = q.filter(Cotizacion.eliminada_en.is_(None))
@@ -4661,7 +4661,10 @@ def _build_dashboard_cotizaciones_query(
         estatus_normalizado.in_(ESTATUS_COTIZACION_GANADA),
         resultado_normalizado.in_(ESTATUS_COTIZACION_GANADA),
     )
-    q = q.filter(es_ganada if vista == "ganadas" else ~es_ganada)
+    if vista == "ganadas":
+        q = q.filter(es_ganada)
+    elif vista == "activas":
+        q = q.filter(~es_ganada)
 
     if not is_admin():
         q = q.filter(Cotizacion.responsable == responsable_actual())
@@ -6249,9 +6252,9 @@ def index():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
-    vista = (request.args.get("vista") or "activas").strip().lower()
-    if vista not in {"activas", "ganadas"}:
-        vista = "activas"
+    vista = (request.args.get("vista") or "todos").strip().lower()
+    if vista not in {"todos", "activas", "ganadas"}:
+        vista = "todos"
     bandeja = (request.args.get("bandeja") or "").strip().lower() if can_manage_quote_assignments() else ""
     dashboard_filters = {
         "desde": desde,
@@ -9243,7 +9246,7 @@ def bulk_eliminar_filtradas():
     especialidad_s = (filters.get("especialidad") or "").strip()
     especialidad_descripcion_s = (filters.get("especialidad_descripcion") or "").strip()
     responsable_s = (filters.get("responsable") or "").strip()
-    vista_s = (filters.get("vista") or "activas").strip().lower()
+    vista_s = (filters.get("vista") or "todos").strip().lower()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -10760,7 +10763,7 @@ def export_dashboard_cotizaciones_xlsx():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
-    vista = (request.args.get("vista") or "activas").strip().lower()
+    vista = (request.args.get("vista") or "todos").strip().lower()
 
     try:
         cotizaciones = (_build_dashboard_cotizaciones_query(
@@ -11028,7 +11031,7 @@ def export_dashboard_followups_pdf():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
-    vista = (request.args.get("vista") or "activas").strip().lower()
+    vista = (request.args.get("vista") or "todos").strip().lower()
 
     try:
         cotizaciones = (
@@ -11213,7 +11216,7 @@ def api_dashboard_filter_summary():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
-    vista = (request.args.get("vista") or "activas").strip().lower()
+    vista = (request.args.get("vista") or "todos").strip().lower()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -11620,7 +11623,7 @@ def api_dashboard_metrics():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
-    vista = (request.args.get("vista") or "activas").strip().lower()
+    vista = (request.args.get("vista") or "todos").strip().lower()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -11671,7 +11674,7 @@ def api_dashboard_status_breakdown():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
-    vista = (request.args.get("vista") or "activas").strip().lower()
+    vista = (request.args.get("vista") or "todos").strip().lower()
 
     try:
         q = _build_dashboard_cotizaciones_query(

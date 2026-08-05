@@ -343,7 +343,11 @@
         <h5 class="card-title mb-0">Cotizaciones</h5>
         <ul class="nav nav-pills quote-tabs" aria-label="Vistas de cotizaciones">
           <li class="nav-item">
-            <a class="nav-link {{ 'active' if dashboard_filters.vista != 'ganadas' else '' }}"
+            <a class="nav-link {{ 'active' if dashboard_filters.vista == 'todos' else '' }}"
+               href="{{ url_for('index', vista='todos') }}">TODOS</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link {{ 'active' if dashboard_filters.vista == 'activas' else '' }}"
                href="{{ url_for('index', vista='activas') }}">EN PROCESO</a>
           </li>
           <li class="nav-item">
@@ -476,7 +480,8 @@
           </thead>
           <tbody id="tablaCotizaciones">
             {% for c in cotizaciones %}
-            <tr class="{% if dashboard_filters.vista == 'ganadas' %}quote-won-row{% endif %}" data-id="{{ c.id }}"
+            {% set es_obra = ((c.estatus or '')|trim|upper) in ['100%', 'GANADA', 'CONTRATADA', 'CON CONTRATO', 'CONTRATO'] or ((c.resultado or '')|trim|upper) in ['100%', 'GANADA', 'CONTRATADA', 'CON CONTRATO', 'CONTRATO'] %}
+            <tr class="{% if es_obra %}quote-won-row{% endif %}" data-id="{{ c.id }}"
                 data-fecha="{{ c.fecha.strftime('%Y-%m-%d') }}"
                 data-estatus="{{ c.estatus }}"
                 data-estatus-aprobacion="{{ c.estatus_aprobacion or 'EN REVISIÓN' }}"
@@ -510,8 +515,8 @@
               </td>
               {% endif %}
               <td>
-                <a href="{{ url_for('seguimiento_obra', cot_id=c.id) if dashboard_filters.vista == 'ganadas' else url_for('cotizacion_seguimiento', cot_id=c.id) }}" class="fw-semibold text-decoration-none">
-                  {{ c.folio }}{% if dashboard_filters.vista == 'ganadas' %} <span class="badge text-bg-success ms-1">OBRA</span>{% endif %}
+                <a href="{{ url_for('seguimiento_obra', cot_id=c.id) if es_obra else url_for('cotizacion_seguimiento', cot_id=c.id) }}" class="fw-semibold text-decoration-none">
+                  {{ c.folio }}{% if es_obra %} <span class="badge text-bg-success ms-1">OBRA</span>{% endif %}
                 </a>
               </td>
               <td>{{ c.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
@@ -548,7 +553,7 @@
               </td>
               <td class="text-center cell-acciones">
                 <a href="{{ url_for('view_cotizacion', cot_id=c.id) }}" class="btn btn-outline-primary btn-sm" title="Ver">👁️</a>
-                <a href="{{ url_for('seguimiento_obra', cot_id=c.id) if dashboard_filters.vista == 'ganadas' else url_for('cotizacion_seguimiento', cot_id=c.id) }}" class="btn btn-outline-dark btn-sm" title="{{ 'Seguimiento de obra' if dashboard_filters.vista == 'ganadas' else 'Seguimiento comercial' }}">{{ '🏗️' if dashboard_filters.vista == 'ganadas' else '💬' }}</a>
+                <a href="{{ url_for('seguimiento_obra', cot_id=c.id) if es_obra else url_for('cotizacion_seguimiento', cot_id=c.id) }}" class="btn btn-outline-dark btn-sm" title="{{ 'Seguimiento de obra' if es_obra else 'Seguimiento comercial' }}">{{ '🏗️' if es_obra else '💬' }}</a>
                 <a href="{{ url_for('export_cotizacion_pdf', cot_id=c.id) }}" target="_blank" class="btn btn-outline-danger btn-sm" title="PDF">📄</a>
                 <a href="{{ url_for('export_cotizacion_xlsx', cot_id=c.id) }}" class="btn btn-outline-success btn-sm" title="Excel">📊</a>
                 <a href="{{ url_for('editar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-warning btn-sm" title="Editar">✏️</a>
