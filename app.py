@@ -49,6 +49,8 @@ VALID_ESTATUS_SEGUIMIENTO = [
     "90%",
     "95%",
     "100%",
+    "GANADA",
+    "CONTRATADA",
 ]
 PORCENTAJES_SEGUIMIENTO = [f"{porcentaje}%" for porcentaje in range(0, 101, 10)]
 VALID_ESTATUS_APROBACION = [
@@ -57,6 +59,7 @@ VALID_ESTATUS_APROBACION = [
     "EN REVISIÓN",
 ]
 VALID_ESTATUS = VALID_ESTATUS_SEGUIMIENTO
+ESTATUS_COTIZACION_GANADA = {"100%", "GANADA", "CONTRATADA", "CON CONTRATO", "CONTRATO"}
 ESPECIALIDADES_COTIZACION = [
     "Waterproofing",
     "Pisos",
@@ -4645,9 +4648,18 @@ def _build_dashboard_cotizaciones_query(
     especialidad: str = "",
     especialidad_descripcion: str = "",
     responsable: str = "",
+    vista: str = "activas",
 ):
     q = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
     q = q.filter(Cotizacion.eliminada_en.is_(None))
+
+    estatus_normalizado = db.func.upper(db.func.trim(db.func.coalesce(Cotizacion.estatus, "")))
+    resultado_normalizado = db.func.upper(db.func.trim(db.func.coalesce(Cotizacion.resultado, "")))
+    es_ganada = or_(
+        estatus_normalizado.in_(ESTATUS_COTIZACION_GANADA),
+        resultado_normalizado.in_(ESTATUS_COTIZACION_GANADA),
+    )
+    q = q.filter(es_ganada if vista == "ganadas" else ~es_ganada)
 
     if not is_admin():
         q = q.filter(Cotizacion.responsable == responsable_actual())
@@ -6235,6 +6247,9 @@ def index():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
+    vista = (request.args.get("vista") or "activas").strip().lower()
+    if vista not in {"activas", "ganadas"}:
+        vista = "activas"
     bandeja = (request.args.get("bandeja") or "").strip().lower() if can_manage_quote_assignments() else ""
     dashboard_filters = {
         "desde": desde,
@@ -6246,6 +6261,7 @@ def index():
         "especialidad_descripcion": especialidad_descripcion,
         "responsable": responsable,
         "bandeja": bandeja,
+        "vista": vista,
     }
 
     try:
@@ -6258,10 +6274,11 @@ def index():
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
+            vista=vista,
         )
     except ValueError:
-        base_query = _build_dashboard_cotizaciones_query()
-        dashboard_filters = {"desde": "", "hasta": "", "estatus": "", "cliente": "", "proyecto": "", "especialidad": "", "especialidad_descripcion": "", "responsable": ""}
+        base_query = _build_dashboard_cotizaciones_query(vista=vista)
+        dashboard_filters = {"desde": "", "hasta": "", "estatus": "", "cliente": "", "proyecto": "", "especialidad": "", "especialidad_descripcion": "", "responsable": "", "bandeja": bandeja, "vista": vista}
 
     total_cotizaciones = base_query.count()
     total_importe = (
@@ -6306,7 +6323,7 @@ def index():
         pagination=pagination,
         dashboard_filters=dashboard_filters,
         valid_estatus=VALID_ESTATUS_SEGUIMIENTO,
-        valid_estatus_filtro=VALID_ESTATUS_SEGUIMIENTO + PORCENTAJES_SEGUIMIENTO,
+        valid_estatus_filtro=list(dict.fromkeys(VALID_ESTATUS_SEGUIMIENTO + PORCENTAJES_SEGUIMIENTO)),
         valid_estatus_aprobacion=VALID_ESTATUS_APROBACION,
         especialidades_cotizacion=ESPECIALIDADES_COTIZACION,
         responsables_cotizacion=responsables_cotizacion,
@@ -9224,6 +9241,7 @@ def bulk_eliminar_filtradas():
     especialidad_s = (filters.get("especialidad") or "").strip()
     especialidad_descripcion_s = (filters.get("especialidad_descripcion") or "").strip()
     responsable_s = (filters.get("responsable") or "").strip()
+    vista_s = (filters.get("vista") or "activas").strip().lower()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -9235,6 +9253,7 @@ def bulk_eliminar_filtradas():
             especialidad=especialidad_s,
             especialidad_descripcion=especialidad_descripcion_s,
             responsable=responsable_s,
+            vista=vista_s,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -9365,6 +9384,18 @@ def view_cotizacion(cot_id: int):
 def cotizacion_seguimiento(cot_id: int):
     c = _cotizacion_activa_or_404(cot_id)
     require_owner_or_admin(c)
+    es_obra_ganada = any(
+        (valor or "").strip().upper() in ESTATUS_COTIZACION_GANADA
+        for valor in (c.estatus, c.resultado)
+    )
+    eventos_cronologia = [
+        {
+            "fecha": seg.fecha_seguimiento.strftime("%Y-%m-%d") if seg.fecha_seguimiento else "—",
+            "titulo": seg.autor or "Seguimiento",
+            "detalle": seg.comentario or "",
+        }
+        for seg in reversed(c.seguimientos or [])
+    ]
     return render_template(
         "cotizacion_seguimiento.html",
         c=c,
@@ -9380,6 +9411,8 @@ def cotizacion_seguimiento(cot_id: int):
         valid_estatus=VALID_ESTATUS,
         mention_users=_usuarios_menciones_payload(),
         can_manage_assignments=can_manage_quote_assignments(),
+        es_obra_ganada=es_obra_ganada,
+        eventos_cronologia=eventos_cronologia,
         title=f"Seguimiento {c.folio}",
     )
 
@@ -9400,6 +9433,8 @@ def crear_cotizacion_seguimiento(cot_id: int):
             return redirect(url_for("cotizacion_seguimiento", cot_id=c.id))
         if (c.estatus or "").strip().upper() != nuevo_estatus:
             c.estatus = nuevo_estatus
+            if nuevo_estatus in ESTATUS_COTIZACION_GANADA:
+                c.resultado = "GANADA"
             hubo_cambio = True
 
     if not comentario and not hubo_cambio:
@@ -9529,6 +9564,8 @@ def api_update_estatus(cot_id):
         return jsonify({"ok": True, "folio": c.folio, "estatus": nuevo, "mensaje": "Sin cambios."})
 
     c.estatus = nuevo
+    if nuevo in ESTATUS_COTIZACION_GANADA:
+        c.resultado = "GANADA"
     db.session.commit()
 
     if nuevo in {"APROBADO", "AUTORIZADO", "RECHAZADO"}:
@@ -10591,6 +10628,7 @@ def export_dashboard_cotizaciones_xlsx():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
+    vista = (request.args.get("vista") or "activas").strip().lower()
 
     try:
         cotizaciones = (_build_dashboard_cotizaciones_query(
@@ -10602,6 +10640,7 @@ def export_dashboard_cotizaciones_xlsx():
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
+            vista=vista,
         ).order_by(Cotizacion.fecha.desc()).all())
     except ValueError as exc:
         abort(400, description=str(exc))
@@ -10857,6 +10896,7 @@ def export_dashboard_followups_pdf():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
+    vista = (request.args.get("vista") or "activas").strip().lower()
 
     try:
         cotizaciones = (
@@ -10869,6 +10909,7 @@ def export_dashboard_followups_pdf():
                 especialidad=especialidad,
                 especialidad_descripcion=especialidad_descripcion,
                 responsable=responsable,
+                vista=vista,
             )
             .order_by(Cotizacion.fecha.desc())
             .all()
@@ -11040,6 +11081,7 @@ def api_dashboard_filter_summary():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
+    vista = (request.args.get("vista") or "activas").strip().lower()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -11051,6 +11093,7 @@ def api_dashboard_filter_summary():
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
+            vista=vista,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -11445,6 +11488,7 @@ def api_dashboard_metrics():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
+    vista = (request.args.get("vista") or "activas").strip().lower()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -11456,6 +11500,7 @@ def api_dashboard_metrics():
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
+            vista=vista,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -11494,6 +11539,7 @@ def api_dashboard_status_breakdown():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
+    vista = (request.args.get("vista") or "activas").strip().lower()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -11505,6 +11551,7 @@ def api_dashboard_status_breakdown():
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
+            vista=vista,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400

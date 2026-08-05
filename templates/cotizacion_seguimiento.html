@@ -67,10 +67,10 @@
     <div class="card-body">
       {% include "_cliente_seguimiento_card.html" %}
 
-      {% if c.resultado == 'GANADA' %}
+      {% if es_obra_ganada %}
       <div class="alert alert-success d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div><strong>Trabajo ganado.</strong> Continúa registrando aquí los avances y acontecimientos de la obra.</div>
-        <span class="badge text-bg-success">GANADA</span>
+        <div><strong>Obra ganada / contratada.</strong> Registra aquí los avances y acontecimientos de la obra.</div>
+        <span class="badge text-bg-success">GANADA / CONTRATADA</span>
       </div>
       <div class="card border-success-subtle mb-4">
         <div class="card-body">
@@ -194,7 +194,7 @@
   </div>
   {% endfor %}
 </div>
-{% if c.resultado == 'GANADA' %}
+{% if es_obra_ganada %}
 <script>
 document.addEventListener("DOMContentLoaded", () => {
   const eventos = {{ eventos_cronologia|tojson }};
