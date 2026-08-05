@@ -239,6 +239,42 @@ class CotizacionSeguimiento(db.Model):
         return f"<CotizacionSeguimiento cotizacion={self.cotizacion_id} autor={self.autor}>"
 
 
+class ObraBitacora(db.Model):
+    __tablename__ = "obra_bitacora"
+
+    id = db.Column(db.Integer, primary_key=True)
+    cotizacion_id = db.Column(db.Integer, db.ForeignKey("cotizacion.id"), nullable=False, index=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
+    fecha = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    tipo = db.Column(db.String(30), nullable=False, default="AVANCE")
+    avance_fisico = db.Column(db.Float, nullable=True)
+    comentario = db.Column(db.Text, nullable=False)
+    autor = db.Column(db.String(120), nullable=False)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    cotizacion = db.relationship("Cotizacion", backref=db.backref("bitacora_obra", cascade="all, delete-orphan", order_by="ObraBitacora.fecha.desc()"))
+    usuario = db.relationship("Usuario", backref=db.backref("bitacoras_obra", lazy=True))
+
+
+class ObraCronogramaActividad(db.Model):
+    __tablename__ = "obra_cronograma_actividad"
+
+    id = db.Column(db.Integer, primary_key=True)
+    cotizacion_id = db.Column(db.Integer, db.ForeignKey("cotizacion.id"), nullable=False, index=True)
+    actividad = db.Column(db.String(240), nullable=False)
+    responsable = db.Column(db.String(160))
+    fecha_inicio = db.Column(db.Date, nullable=False)
+    fecha_fin = db.Column(db.Date, nullable=False)
+    avance = db.Column(db.Float, nullable=False, default=0.0)
+    estatus = db.Column(db.String(30), nullable=False, default="PENDIENTE")
+    notas = db.Column(db.Text)
+    orden = db.Column(db.Integer, nullable=False, default=0)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    cotizacion = db.relationship("Cotizacion", backref=db.backref("cronograma_obra", cascade="all, delete-orphan", order_by="ObraCronogramaActividad.fecha_inicio.asc()"))
+
+
 class CotizacionAsignacion(db.Model):
     __tablename__ = "cotizacion_asignacion"
 

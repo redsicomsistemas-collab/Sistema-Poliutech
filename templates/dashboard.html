@@ -158,6 +158,11 @@
   .dashboard-quotes-table tbody tr.quote-won-row > td {
     background-color: #e8f7ee;
     border-color: #a9d9ba;
+    color: #1f2937 !important;
+  }
+
+  .dashboard-quotes-table tbody tr.quote-won-row > td a:not(.btn) {
+    color: #0d6efd !important;
   }
 
   .dashboard-quotes-table tbody tr.quote-won-row:hover > td {
@@ -505,12 +510,22 @@
               </td>
               {% endif %}
               <td>
-                <a href="{{ url_for('cotizacion_seguimiento', cot_id=c.id) }}" class="fw-semibold text-decoration-none">
+                <a href="{{ url_for('seguimiento_obra', cot_id=c.id) if dashboard_filters.vista == 'ganadas' else url_for('cotizacion_seguimiento', cot_id=c.id) }}" class="fw-semibold text-decoration-none">
                   {{ c.folio }}{% if dashboard_filters.vista == 'ganadas' %} <span class="badge text-bg-success ms-1">OBRA</span>{% endif %}
                 </a>
               </td>
               <td>{{ c.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
               <td>{{ nombre_visible_usuario(c.responsable) or 'Sin asignar' }}</td>
+              {% if can_manage_assignments %}
+                {% set ultima_asignacion = (c.historial_asignaciones|sort(attribute='asignado_en')|last) if c.historial_asignaciones else none %}
+                {% set ultimo_seguimiento = c.seguimientos[0] if c.seguimientos else none %}
+              <td>{{ ultima_asignacion.asignado_en.strftime('%Y-%m-%d %H:%M') if ultima_asignacion and ultima_asignacion.asignado_en else '—' }}</td>
+              <td>—</td>
+              <td>{{ ultimo_seguimiento.fecha_seguimiento.strftime('%Y-%m-%d %H:%M') if ultimo_seguimiento and ultimo_seguimiento.fecha_seguimiento else '—' }}</td>
+              <td>—</td>
+              <td>—</td>
+              <td>{{ ultima_asignacion.asignado_por.nombre_representante if ultima_asignacion and ultima_asignacion.asignado_por else '—' }}</td>
+              {% endif %}
               <td class="cell-cliente">{{ c.cliente.nombre_cliente if c.cliente else '' }}</td>
               <td class="cell-empresa">{{ c.cliente.empresa if c.cliente else '' }}</td>
               <td class="cell-especialidad">{{ c.especialidad or '' }}</td>
@@ -533,7 +548,7 @@
               </td>
               <td class="text-center cell-acciones">
                 <a href="{{ url_for('view_cotizacion', cot_id=c.id) }}" class="btn btn-outline-primary btn-sm" title="Ver">👁️</a>
-                <a href="{{ url_for('cotizacion_seguimiento', cot_id=c.id) }}" class="btn btn-outline-dark btn-sm" title="{{ 'Seguimiento de obra' if dashboard_filters.vista == 'ganadas' else 'Seguimiento' }}">{{ '🏗️' if dashboard_filters.vista == 'ganadas' else '💬' }}</a>
+                <a href="{{ url_for('seguimiento_obra', cot_id=c.id) if dashboard_filters.vista == 'ganadas' else url_for('cotizacion_seguimiento', cot_id=c.id) }}" class="btn btn-outline-dark btn-sm" title="{{ 'Seguimiento de obra' if dashboard_filters.vista == 'ganadas' else 'Seguimiento comercial' }}">{{ '🏗️' if dashboard_filters.vista == 'ganadas' else '💬' }}</a>
                 <a href="{{ url_for('export_cotizacion_pdf', cot_id=c.id) }}" target="_blank" class="btn btn-outline-danger btn-sm" title="PDF">📄</a>
                 <a href="{{ url_for('export_cotizacion_xlsx', cot_id=c.id) }}" class="btn btn-outline-success btn-sm" title="Excel">📊</a>
                 <a href="{{ url_for('editar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-warning btn-sm" title="Editar">✏️</a>

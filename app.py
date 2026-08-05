@@ -3008,6 +3008,8 @@ from models import (
     Cotizacion,
     CotizacionDetalle,
     CotizacionSeguimiento,
+    ObraBitacora,
+    ObraCronogramaActividad,
     CotizacionAsignacion,
     ProyectoAsignacion,
     VoiceCommandLog,
@@ -9388,14 +9390,6 @@ def cotizacion_seguimiento(cot_id: int):
         (valor or "").strip().upper() in ESTATUS_COTIZACION_GANADA
         for valor in (c.estatus, c.resultado)
     )
-    eventos_cronologia = [
-        {
-            "fecha": seg.fecha_seguimiento.strftime("%Y-%m-%d") if seg.fecha_seguimiento else "—",
-            "titulo": seg.autor or "Seguimiento",
-            "detalle": seg.comentario or "",
-        }
-        for seg in reversed(c.seguimientos or [])
-    ]
     return render_template(
         "cotizacion_seguimiento.html",
         c=c,
@@ -9412,9 +9406,147 @@ def cotizacion_seguimiento(cot_id: int):
         mention_users=_usuarios_menciones_payload(),
         can_manage_assignments=can_manage_quote_assignments(),
         es_obra_ganada=es_obra_ganada,
-        eventos_cronologia=eventos_cronologia,
         title=f"Seguimiento {c.folio}",
     )
+
+
+def _cotizacion_es_obra(cotizacion: Cotizacion) -> bool:
+    return any(
+        (valor or "").strip().upper() in ESTATUS_COTIZACION_GANADA
+        for valor in (cotizacion.estatus, cotizacion.resultado)
+    )
+
+
+@app.route("/cotizaciones/<int:cot_id>/obra")
+@login_required
+def seguimiento_obra(cot_id: int):
+    c = _cotizacion_activa_or_404(cot_id)
+    require_owner_or_admin(c)
+    if not _cotizacion_es_obra(c):
+        flash("El seguimiento de obra se habilita cuando la cotización está ganada, contratada o al 100%.", "warning")
+        return redirect(url_for("cotizacion_seguimiento", cot_id=c.id))
+
+    actividades = list(c.cronograma_obra or [])
+    bitacora = list(c.bitacora_obra or [])
+    avance_programado = 0.0
+    if actividades:
+        avance_programado = sum(float(item.avance or 0) for item in actividades) / len(actividades)
+    ultima_bitacora = bitacora[0] if bitacora else None
+    return render_template(
+        "seguimiento_obra.html",
+        c=c,
+        actividades=actividades,
+        bitacora=bitacora,
+        avance_programado=avance_programado,
+        ultima_bitacora=ultima_bitacora,
+        tipos_bitacora=["AVANCE", "INCIDENCIA", "CALIDAD", "SEGURIDAD", "ESTIMACIÓN", "CAMBIO", "ENTREGA"],
+        estatus_cronograma=["PENDIENTE", "EN PROCESO", "DETENIDA", "TERMINADA"],
+        title=f"Seguimiento de obra {c.folio}",
+    )
+
+
+@app.route("/cotizaciones/<int:cot_id>/obra/bitacora", methods=["POST"])
+@login_required
+def crear_bitacora_obra(cot_id: int):
+    c = _cotizacion_activa_or_404(cot_id)
+    require_owner_or_admin(c)
+    if not _cotizacion_es_obra(c):
+        abort(400)
+    tipo = (request.form.get("tipo") or "AVANCE").strip().upper()
+    comentario = (request.form.get("comentario") or "").strip()
+    fecha_raw = (request.form.get("fecha") or "").strip()
+    avance_raw = (request.form.get("avance_fisico") or "").strip()
+    if tipo not in {"AVANCE", "INCIDENCIA", "CALIDAD", "SEGURIDAD", "ESTIMACIÓN", "CAMBIO", "ENTREGA"}:
+        tipo = "AVANCE"
+    if not comentario:
+        flash("Describe el avance o acontecimiento de la obra.", "warning")
+        return redirect(url_for("seguimiento_obra", cot_id=c.id))
+    try:
+        fecha = datetime.strptime(fecha_raw, "%Y-%m-%dT%H:%M") if fecha_raw else now_cdmx_naive()
+        avance = min(100.0, max(0.0, float(avance_raw))) if avance_raw else None
+    except ValueError:
+        flash("Revisa la fecha y el porcentaje de avance.", "danger")
+        return redirect(url_for("seguimiento_obra", cot_id=c.id))
+    db.session.add(ObraBitacora(
+        cotizacion_id=c.id,
+        usuario_id=getattr(current_user, "id", None),
+        fecha=fecha,
+        tipo=tipo,
+        avance_fisico=avance,
+        comentario=comentario,
+        autor=responsable_actual() or "Sistema",
+    ))
+    db.session.commit()
+    flash("Registro agregado a la bitácora de obra.", "success")
+    return redirect(url_for("seguimiento_obra", cot_id=c.id))
+
+
+@app.route("/cotizaciones/<int:cot_id>/obra/cronograma", methods=["POST"])
+@login_required
+def crear_actividad_obra(cot_id: int):
+    c = _cotizacion_activa_or_404(cot_id)
+    require_owner_or_admin(c)
+    if not _cotizacion_es_obra(c):
+        abort(400)
+    actividad = (request.form.get("actividad") or "").strip()
+    responsable = (request.form.get("responsable") or "").strip()
+    notas = (request.form.get("notas") or "").strip()
+    try:
+        fecha_inicio = datetime.strptime(request.form.get("fecha_inicio") or "", "%Y-%m-%d").date()
+        fecha_fin = datetime.strptime(request.form.get("fecha_fin") or "", "%Y-%m-%d").date()
+    except ValueError:
+        flash("Captura fechas válidas para la actividad.", "danger")
+        return redirect(url_for("seguimiento_obra", cot_id=c.id))
+    if not actividad or fecha_fin < fecha_inicio:
+        flash("Captura la actividad y verifica que la fecha final no sea anterior al inicio.", "warning")
+        return redirect(url_for("seguimiento_obra", cot_id=c.id))
+    orden = (
+        db.session.query(db.func.max(ObraCronogramaActividad.orden))
+        .filter(ObraCronogramaActividad.cotizacion_id == c.id)
+        .scalar()
+        or 0
+    ) + 1
+    db.session.add(ObraCronogramaActividad(
+        cotizacion_id=c.id,
+        actividad=actividad,
+        responsable=responsable,
+        fecha_inicio=fecha_inicio,
+        fecha_fin=fecha_fin,
+        notas=notas,
+        orden=orden,
+    ))
+    db.session.commit()
+    flash("Actividad agregada al cronograma.", "success")
+    return redirect(url_for("seguimiento_obra", cot_id=c.id))
+
+
+@app.route("/cotizaciones/<int:cot_id>/obra/cronograma/<int:actividad_id>", methods=["POST"])
+@login_required
+def actualizar_actividad_obra(cot_id: int, actividad_id: int):
+    c = _cotizacion_activa_or_404(cot_id)
+    require_owner_or_admin(c)
+    actividad = ObraCronogramaActividad.query.filter_by(id=actividad_id, cotizacion_id=c.id).first_or_404()
+    accion = (request.form.get("accion") or "actualizar").strip().lower()
+    if accion == "eliminar":
+        db.session.delete(actividad)
+        db.session.commit()
+        flash("Actividad eliminada del cronograma.", "success")
+        return redirect(url_for("seguimiento_obra", cot_id=c.id))
+    estatus = (request.form.get("estatus") or "PENDIENTE").strip().upper()
+    try:
+        avance = min(100.0, max(0.0, float(request.form.get("avance") or 0)))
+    except ValueError:
+        avance = float(actividad.avance or 0)
+    if estatus not in {"PENDIENTE", "EN PROCESO", "DETENIDA", "TERMINADA"}:
+        estatus = actividad.estatus
+    if avance >= 100:
+        estatus = "TERMINADA"
+    actividad.avance = avance
+    actividad.estatus = estatus
+    actividad.notas = (request.form.get("notas") or actividad.notas or "").strip()
+    db.session.commit()
+    flash("Avance del cronograma actualizado.", "success")
+    return redirect(url_for("seguimiento_obra", cot_id=c.id))
 
 @app.route("/cotizaciones/<int:cot_id>/seguimiento", methods=["POST"])
 @login_required
