@@ -60,6 +60,7 @@ VALID_ESTATUS_APROBACION = [
 ]
 VALID_ESTATUS = VALID_ESTATUS_SEGUIMIENTO
 ESTATUS_COTIZACION_GANADA = {"100%", "GANADA", "CONTRATADA", "CON CONTRATO", "CONTRATO"}
+ESTATUS_COTIZACION_PERDIDA = {"0%", "0 %", "PERDIDA", "PÉRDIDA"}
 ESPECIALIDADES_COTIZACION = [
     "Waterproofing",
     "Pisos",
@@ -4665,10 +4666,20 @@ def _build_dashboard_cotizaciones_query(
         estatus_normalizado.in_(ESTATUS_COTIZACION_GANADA),
         resultado_normalizado.in_(ESTATUS_COTIZACION_GANADA),
     )
+    es_perdida = or_(
+        estatus_normalizado.in_(ESTATUS_COTIZACION_PERDIDA),
+        resultado_normalizado.in_(ESTATUS_COTIZACION_PERDIDA),
+    )
     if vista == "ganadas":
         q = q.filter(es_ganada)
+    elif vista == "perdidas":
+        q = q.filter(~es_ganada, es_perdida)
     elif vista == "activas":
-        q = q.filter(~es_ganada)
+        q = q.filter(~es_ganada, ~es_perdida)
+    else:
+        # La vista principal muestra el portafolio vigente, pero no suma las
+        # cotizaciones perdidas ni las que se encuentran en 0%.
+        q = q.filter(~es_perdida)
 
     if not is_admin():
         q = q.filter(Cotizacion.responsable == responsable_actual())
@@ -6257,7 +6268,7 @@ def index():
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
     vista = (request.args.get("vista") or "todos").strip().lower()
-    if vista not in {"todos", "activas", "ganadas"}:
+    if vista not in {"todos", "activas", "ganadas", "perdidas"}:
         vista = "todos"
     bandeja = (request.args.get("bandeja") or "").strip().lower() if can_manage_quote_assignments() else ""
     dashboard_filters = {

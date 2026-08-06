@@ -169,6 +169,16 @@
     background-color: #d8f0e1;
   }
 
+  .dashboard-quotes-table tbody tr.quote-lost-row > td {
+    background-color: #fff1f1;
+    border-color: #efc2c2;
+    color: #1f2937 !important;
+  }
+
+  .dashboard-quotes-table tbody tr.quote-lost-row:hover > td {
+    background-color: #ffe3e3;
+  }
+
   .quote-tabs .nav-link.active {
     font-weight: 700;
   }
@@ -354,6 +364,10 @@
             <a class="nav-link {{ 'active' if dashboard_filters.vista == 'ganadas' else '' }} bg-success-subtle text-success-emphasis"
                href="{{ url_for('index', vista='ganadas') }}">GANADOS / CONTRATADOS</a>
           </li>
+          <li class="nav-item">
+            <a class="nav-link {{ 'active' if dashboard_filters.vista == 'perdidas' else '' }} bg-danger-subtle text-danger-emphasis"
+               href="{{ url_for('index', vista='perdidas') }}">PERDIDAS / 0%</a>
+          </li>
         </ul>
       </div>
 
@@ -481,7 +495,7 @@
           <tbody id="tablaCotizaciones">
             {% for c in cotizaciones %}
             {% set es_obra = ((c.estatus or '')|trim|upper) in ['100%', 'GANADA', 'CONTRATADA', 'CON CONTRATO', 'CONTRATO'] or ((c.resultado or '')|trim|upper) in ['100%', 'GANADA', 'CONTRATADA', 'CON CONTRATO', 'CONTRATO'] %}
-            <tr class="{% if es_obra %}quote-won-row{% endif %}" data-id="{{ c.id }}"
+            <tr class="{% if es_obra %}quote-won-row{% elif dashboard_filters.vista == 'perdidas' %}quote-lost-row{% endif %}" data-id="{{ c.id }}"
                 data-fecha="{{ c.fecha.strftime('%Y-%m-%d') }}"
                 data-estatus="{{ c.estatus }}"
                 data-estatus-aprobacion="{{ c.estatus_aprobacion or 'EN REVISIÓN' }}"
@@ -1354,7 +1368,7 @@ function cambiarEstatus(id, selectElem) {
             if (typeof window.refreshDashboardSummary === "function") {
                 window.refreshDashboardSummary();
             }
-            if (["100%", "GANADA", "CONTRATADA", "CON CONTRATO", "CONTRATO"].includes(nuevo.toUpperCase())) {
+            if (["0%", "0 %", "PERDIDA", "PÉRDIDA", "100%", "GANADA", "CONTRATADA", "CON CONTRATO", "CONTRATO"].includes(nuevo.toUpperCase())) {
                 window.setTimeout(() => window.location.reload(), 700);
             }
         } else {
