@@ -92,6 +92,14 @@
             <div class="fw-semibold">${{ "{:,.2f}".format(c.total or 0) }}</div>
           </div>
         </div>
+        <div class="col-md-6">
+          <div class="border border-primary rounded p-3 h-100">
+            <div class="small text-muted">Seguimiento asignado a</div>
+            <div class="fw-semibold text-primary">
+              {{ c.responsable_usuario.nombre_representante if c.responsable_usuario else (nombre_visible_usuario(c.responsable) or 'Sin asignar') }}
+            </div>
+          </div>
+        </div>
       </div>
 
       <form method="post" action="{{ url_for('crear_cotizacion_seguimiento', cot_id=c.id) }}">
