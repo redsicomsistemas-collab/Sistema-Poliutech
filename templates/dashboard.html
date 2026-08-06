@@ -651,7 +651,25 @@ document.addEventListener("DOMContentLoaded", () => {
   const cotizacionesSummaryEls = document.querySelectorAll('[data-summary="cotizaciones-total"]');
   const conceptosSummaryEls = document.querySelectorAll('[data-summary="conceptos-total"]');
   const statuses = {{ valid_estatus|tojson }};
-  const chartColors = ["#1565c0", "#f9a825", "#00897b", "#6d4c41", "#546e7a", "#2e7d32", "#c62828"];
+  // Paleta categórica: cada seguimiento conserva un color propio y distante
+  // de los estados contiguos para que no se confundan en gráfica o leyenda.
+  const chartStatusColors = {
+    "0%": "#D32F2F",          // rojo
+    "5%": "#FF9800",          // naranja
+    "10%": "#00897B",         // turquesa
+    "20%": "#795548",         // café
+    "30%": "#78909C",         // gris azulado
+    "40%": "#43A047",         // verde
+    "50%": "#E91E63",         // rosa
+    "70%": "#3949AB",         // índigo
+    "80%": "#FDD835",         // amarillo
+    "90%": "#00ACC1",         // cian
+    "95%": "#8E24AA",         // morado
+    "100%": "#1B5E20",        // verde oscuro
+    "GANADA": "#CDDC39",      // lima
+    "CONTRATADA": "#263238"    // carbón
+  };
+  const chartColors = statuses.map((status) => chartStatusColors[status] || "#607D8B");
   const monthNames = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
   const moneyCompact = new Intl.NumberFormat("es-MX", {
     notation: "compact",
@@ -931,13 +949,25 @@ document.addEventListener("DOMContentLoaded", () => {
         labels: statuses,
         datasets: [{
           data: statusData,
-          backgroundColor: chartColors
+          backgroundColor: chartColors,
+          borderColor: darkTheme ? "#F8FAFC" : "#FFFFFF",
+          borderWidth: 2
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { position: "bottom", labels: { color: chartTextColor } } }
+        plugins: {
+          legend: {
+            position: "bottom",
+            labels: {
+              color: chartTextColor,
+              padding: 14,
+              boxWidth: 28,
+              filter: (legendItem, chartData) => Number(chartData.datasets[0].data[legendItem.index] || 0) > 0
+            }
+          }
+        }
       }
     });
   }
