@@ -17,6 +17,10 @@
           <div class="col-md-6"><label class="form-label">Nombre del cliente</label><input type="text" name="cliente" class="form-control" value="{{ c.cliente.nombre_cliente if c.cliente else '' }}" required></div>
           <div class="col-md-6"><label class="form-label">Empresa</label><input type="text" name="empresa" class="form-control" value="{{ c.cliente.empresa if c.cliente else '' }}"></div>
           <div class="col-md-4 mt-3"><label class="form-label">Usuario que realizó la cotización</label><input type="text" class="form-control" value="{{ nombre_visible_usuario(c.responsable) or 'Sin asignar' }}" readonly aria-readonly="true"></div>
+          <div class="col-md-4 mt-3">
+            <label class="form-label">Fecha y hora de la cotización</label>
+            <input type="datetime-local" name="fecha" class="form-control" value="{{ c.fecha.strftime('%Y-%m-%dT%H:%M') if c.fecha else '' }}" required>
+          </div>
           <div class="col-md-4 mt-3"><label class="form-label">Correo</label><input type="email" name="correo" class="form-control" value="{{ c.cliente.correo if c.cliente else '' }}" multiple></div>
           <div class="col-md-4 mt-3"><label class="form-label">Teléfono</label><input type="text" name="telefono" class="form-control" value="{{ c.cliente.telefono if c.cliente else '' }}"></div>
           <div class="col-md-4 mt-3">
@@ -108,11 +112,17 @@
           </div>
           <div class="col-md-4 mt-3">
             <label class="form-label fw-bold">Estatus aprobación</label>
+            {% if (c.estatus_aprobacion or '')|upper in ['APROBADA', 'APROBADO', 'AUTORIZADO'] %}
+            <input type="text" class="form-control border-success text-success fw-bold" value="APROBADA" readonly aria-readonly="true">
+            <input type="hidden" name="estatus_aprobacion" value="APROBADA">
+            <div class="form-text text-success">Esta cotización ya está aprobada y no requiere una nueva autorización al editarse.</div>
+            {% else %}
             <select class="form-select" name="estatus_aprobacion">
               {% for estado in valid_estatus_aprobacion %}
               <option value="{{ estado }}" {% if (c.estatus_aprobacion or 'EN REVISIÓN') == estado %}selected{% endif %}>{{ estado }}</option>
               {% endfor %}
             </select>
+            {% endif %}
           </div>
           <div class="col-md-12 mt-3">
             <label class="form-label fw-bold">Condiciones comerciales</label>

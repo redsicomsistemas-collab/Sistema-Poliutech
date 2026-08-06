@@ -1915,14 +1915,19 @@ def _send_quote_updated_push(cot: Cotizacion) -> dict[str, int]:
     if not tokens:
         logger.warning("Push edición %s: destinatarios configurados sin token móvil activo.", cot.folio or cot.id)
         tokens = _mobile_all_active_push_tokens()
-    approve_url = url_for("cotizacion_revision_decidir", cot_id=cot.id, action="approve", token=_quote_review_token(cot, "approve"), _external=True)
-    reject_url = url_for("cotizacion_revision_decidir", cot_id=cot.id, action="reject", token=_quote_review_token(cot, "reject"), _external=True)
+    ya_aprobada = (cot.estatus_aprobacion or "").strip().upper() == "APROBADA"
+    approve_url = "" if ya_aprobada else url_for("cotizacion_revision_decidir", cot_id=cot.id, action="approve", token=_quote_review_token(cot, "approve"), _external=True)
+    reject_url = "" if ya_aprobada else url_for("cotizacion_revision_decidir", cot_id=cot.id, action="reject", token=_quote_review_token(cot, "reject"), _external=True)
     return _send_push_notification(
         tokens,
-        title="Cotización editada pendiente de aprobación",
-        body=f"{cot.folio or 'Sin folio'} · {money(cot.total)} · Aprobar o rechazar",
+        title="Cotización aprobada actualizada" if ya_aprobada else "Cotización editada pendiente de aprobación",
+        body=(
+            f"{cot.folio or 'Sin folio'} · {money(cot.total)} · Conserva su aprobación"
+            if ya_aprobada
+            else f"{cot.folio or 'Sin folio'} · {money(cot.total)} · Aprobar o rechazar"
+        ),
         data={
-            "type": "quote_pending_approval",
+            "type": "quote_updated" if ya_aprobada else "quote_pending_approval",
             "cotizacion_id": str(cot.id or ""),
             "folio": str(cot.folio or ""),
             "estatus": str(cot.estatus or ""),
@@ -1934,7 +1939,7 @@ def _send_quote_updated_push(cot: Cotizacion) -> dict[str, int]:
             "target_user_name": "Hansel",
             "recipient_user_name": "Hansel",
             "approval_reviewer": "Hansel",
-            "requires_decision": "true",
+            "requires_decision": "false" if ya_aprobada else "true",
             "source": "quote_updated",
             "target_user_id": str(target_ids[0]) if len(target_ids) == 1 else "",
         },
@@ -8956,6 +8961,13 @@ def actualizar_cotizacion(cot_id: int):
         flash("Selecciona una especialidad válida.", "danger")
         return redirect(url_for("editar_cotizacion", cot_id=c.id))
 
+    fecha_form = (f.get("fecha") or "").strip()
+    try:
+        fecha_cotizacion = datetime.fromisoformat(fecha_form)
+    except ValueError:
+        flash("Selecciona una fecha y hora válidas para la cotización.", "danger")
+        return redirect(url_for("editar_cotizacion", cot_id=c.id))
+
     # === CLIENTE ===
     cliente_nombre = (f.get("cliente") or f.get("cliente_nombre") or "").strip()
     empresa = (f.get("empresa") or "").strip()
@@ -9002,7 +9014,9 @@ def actualizar_cotizacion(cot_id: int):
         flash("Selecciona un estatus de seguimiento válido.", "danger")
         return redirect(url_for("editar_cotizacion", cot_id=c.id))
     c.estatus = estatus_form
-    c.estatus_aprobacion = "EN REVISIÓN"
+    c.fecha = fecha_cotizacion
+    aprobacion_anterior = (c.estatus_aprobacion or "EN REVISIÓN").strip().upper()
+    c.estatus_aprobacion = "APROBADA" if aprobacion_anterior in {"APROBADA", "APROBADO", "AUTORIZADO"} else "EN REVISIÓN"
     c.especialidad = especialidad_form
     c.especialidad_descripcion = (f.get("especialidad_descripcion") or "").strip()[:500] or None
     c.notas = (f.get("notas") or "").strip()
@@ -10279,6 +10293,15 @@ def _quote_updated_mail_html(c: Cotizacion, view_url: str, approve_url: str, rej
         "border-radius:8px;text-decoration:none;font-weight:800;font-size:15px;"
         "margin:0 8px 10px 0;"
     )
+    ya_aprobada = (c.estatus_aprobacion or "").strip().upper() == "APROBADA"
+    intro = (
+        "Se guardaron cambios en esta cotizacion. Como ya estaba aprobada, conserva su aprobación y no requiere una nueva autorización."
+        if ya_aprobada
+        else "Se guardaron cambios en esta cotizacion y vuelve a quedar pendiente de aprobacion. Se adjunta el PDF actualizado."
+    )
+    acciones_revision = "" if ya_aprobada else f"""
+                <a href="{approve_url}" style="{button_base}background:#16854f;color:#ffffff;border:1px solid #16854f;">APROBAR</a>
+                <a href="{reject_url}" style="{button_base}background:#c62828;color:#ffffff;border:1px solid #c62828;">RECHAZAR</a>"""
     return f"""
     <html>
       <body style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
@@ -10290,7 +10313,7 @@ def _quote_updated_mail_html(c: Cotizacion, view_url: str, approve_url: str, rej
               <div style="font-size:14px;opacity:.95;margin-top:7px;">{folio}</div>
             </div>
             <div style="padding:28px;">
-              <p style="margin:0 0 22px 0;font-size:15px;color:#475569;">Se guardaron cambios en esta cotizacion y vuelve a quedar pendiente de aprobacion. Se adjunta el PDF actualizado.</p>
+              <p style="margin:0 0 22px 0;font-size:15px;color:#475569;">{intro}</p>
               <table style="border-collapse:collapse;width:100%;background:#ffffff;border:1px solid #dbe4ef;border-radius:10px;overflow:hidden;">
                 <tr><td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:800;">Cliente</td><td style="padding:13px 16px;border-bottom:1px solid #edf2f7;">{cliente}</td></tr>
                 <tr><td style="padding:13px 16px;border-bottom:1px solid #edf2f7;color:#64748b;font-weight:800;">Empresa</td><td style="padding:13px 16px;border-bottom:1px solid #edf2f7;">{empresa}</td></tr>
@@ -10301,8 +10324,7 @@ def _quote_updated_mail_html(c: Cotizacion, view_url: str, approve_url: str, rej
                 <tr><td style="padding:13px 16px;color:#64748b;font-weight:800;">Total</td><td style="padding:13px 16px;color:#0C3C78;font-size:20px;font-weight:900;">{total}</td></tr>
               </table>
               <div style="margin-top:24px;">
-                <a href="{approve_url}" style="{button_base}background:#16854f;color:#ffffff;border:1px solid #16854f;">APROBAR</a>
-                <a href="{reject_url}" style="{button_base}background:#c62828;color:#ffffff;border:1px solid #c62828;">RECHAZAR</a>
+                {acciones_revision}
                 <a href="{view_url}" style="{button_base}background:#0C3C78;color:#ffffff;border:1px solid #0C3C78;">VER COTIZACION</a>
               </div>
             </div>
@@ -10331,6 +10353,12 @@ def _send_quote_updated_email(c: Cotizacion) -> None:
     view_url = url_for("view_cotizacion", cot_id=c.id, _external=True)
     approve_url = url_for("cotizacion_revision_decidir", cot_id=c.id, action="approve", token=_quote_review_token(c, "approve"), _external=True)
     reject_url = url_for("cotizacion_revision_decidir", cot_id=c.id, action="reject", token=_quote_review_token(c, "reject"), _external=True)
+    ya_aprobada = (c.estatus_aprobacion or "").strip().upper() == "APROBADA"
+    instrucciones_revision = (
+        "La cotización conserva su aprobación y no requiere una nueva autorización.\n"
+        if ya_aprobada
+        else f"Aprobar: {approve_url}\nRechazar: {reject_url}\n"
+    )
 
     msg = EmailMessage()
     msg["Subject"] = f"Cotizacion editada {c.folio or c.id}"
@@ -10343,8 +10371,7 @@ def _send_quote_updated_email(c: Cotizacion) -> None:
         f"Estatus seguimiento: {c.estatus or 'Sin estatus'}\n"
         f"Estatus aprobacion: {c.estatus_aprobacion or 'Sin estatus'}\n"
         f"Total: {money(c.total)} {c.moneda or 'MXN'}\n\n"
-        f"Aprobar: {approve_url}\n"
-        f"Rechazar: {reject_url}\n"
+        f"{instrucciones_revision}"
         f"Ver cotizacion: {view_url}\n"
     )
     msg.add_alternative(_quote_updated_mail_html(c, view_url, approve_url, reject_url), subtype="html")
