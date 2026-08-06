@@ -3676,6 +3676,18 @@ def ensure_schema():
             db.session.execute(text("ALTER TABLE cotizacion ADD COLUMN responsable_usuario_id INTEGER"))
             db.session.commit()
             print("✅ Campo 'responsable_usuario_id' agregado en 'cotizacion'.")
+        for col, stmt in [
+            ("asignado_en", "ALTER TABLE cotizacion ADD COLUMN asignado_en TIMESTAMP NULL"),
+            ("asignado_por_id", "ALTER TABLE cotizacion ADD COLUMN asignado_por_id INTEGER"),
+            ("proximo_seguimiento", "ALTER TABLE cotizacion ADD COLUMN proximo_seguimiento TIMESTAMP NULL"),
+            ("ultimo_contacto", "ALTER TABLE cotizacion ADD COLUMN ultimo_contacto TIMESTAMP NULL"),
+            ("prioridad", "ALTER TABLE cotizacion ADD COLUMN prioridad VARCHAR(20) DEFAULT 'MEDIA'"),
+            ("instruccion_asignacion", "ALTER TABLE cotizacion ADD COLUMN instruccion_asignacion TEXT"),
+            ("recordatorio_seguimiento_en", "ALTER TABLE cotizacion ADD COLUMN recordatorio_seguimiento_en TIMESTAMP NULL"),
+        ]:
+            if col not in cols_cot:
+                db.session.execute(text(stmt))
+        db.session.commit()
     except Exception as e:
         print("⚠️ ensure_schema(cotizacion.responsable):", e)
 
@@ -4686,7 +4698,7 @@ def _build_dashboard_cotizaciones_query(
         # cotizaciones perdidas ni las que se encuentran en 0%.
         q = q.filter(~es_perdida)
 
-    if not is_admin():
+    if not is_admin() and not can_manage_quote_assignments():
         q = q.filter(Cotizacion.responsable == responsable_actual())
 
     if desde:
@@ -4743,6 +4755,25 @@ def _build_dashboard_cotizaciones_query(
         )
 
     return q
+
+def _apply_dashboard_bandeja(q, bandeja: str):
+    bandeja = (bandeja or "").strip().lower()
+    if not can_manage_quote_assignments() or bandeja not in {"mis", "sin_asignar", "vencidas", "hoy", "proximas"}:
+        return q
+    inicio_hoy = now_cdmx_naive().replace(hour=0, minute=0, second=0, microsecond=0)
+    fin_hoy = inicio_hoy + timedelta(days=1)
+    if bandeja == "mis":
+        return q.filter(Cotizacion.responsable_usuario_id == current_user.id)
+    if bandeja == "sin_asignar":
+        return q.filter(Cotizacion.responsable_usuario_id.is_(None))
+    if bandeja == "vencidas":
+        return q.filter(Cotizacion.proximo_seguimiento < inicio_hoy)
+    if bandeja == "hoy":
+        return q.filter(
+            Cotizacion.proximo_seguimiento >= inicio_hoy,
+            Cotizacion.proximo_seguimiento < fin_hoy,
+        )
+    return q.filter(Cotizacion.proximo_seguimiento >= fin_hoy)
 
 def _cotizaciones_base_query():
     q = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
@@ -6276,6 +6307,8 @@ def index():
     if vista not in {"todos", "activas", "ganadas", "perdidas"}:
         vista = "todos"
     bandeja = (request.args.get("bandeja") or "").strip().lower() if can_manage_quote_assignments() else ""
+    if bandeja not in {"", "mis", "sin_asignar", "vencidas", "hoy", "proximas"}:
+        bandeja = ""
     dashboard_filters = {
         "desde": desde,
         "hasta": hasta,
@@ -6305,6 +6338,11 @@ def index():
         base_query = _build_dashboard_cotizaciones_query(vista=vista)
         dashboard_filters = {"desde": "", "hasta": "", "estatus": "", "cliente": "", "proyecto": "", "especialidad": "", "especialidad_descripcion": "", "responsable": "", "bandeja": bandeja, "vista": vista}
 
+    ahora = now_cdmx_naive()
+    inicio_hoy = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
+    fin_hoy = inicio_hoy + timedelta(days=1)
+    base_query = _apply_dashboard_bandeja(base_query, bandeja)
+
     total_cotizaciones = base_query.count()
     total_importe = (
         base_query.with_entities(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar()
@@ -6331,12 +6369,34 @@ def index():
     usuarios_asignables = Usuario.query.order_by(
         db.func.lower(db.func.coalesce(Usuario.nombre_visible, Usuario.nombre))
     ).all()
+    seguimiento_base = _build_dashboard_cotizaciones_query(vista="activas")
     seguimiento_metricas = {
-        "vencidas": 0,
-        "hoy": 0,
-        "proximas": 0,
-        "sin_asignar": base_query.filter(Cotizacion.responsable_usuario_id.is_(None)).count(),
+        "vencidas": seguimiento_base.filter(Cotizacion.proximo_seguimiento < inicio_hoy).count(),
+        "hoy": seguimiento_base.filter(
+            Cotizacion.proximo_seguimiento >= inicio_hoy,
+            Cotizacion.proximo_seguimiento < fin_hoy,
+        ).count(),
+        "proximas": seguimiento_base.filter(Cotizacion.proximo_seguimiento >= fin_hoy).count(),
+        "sin_asignar": seguimiento_base.filter(Cotizacion.responsable_usuario_id.is_(None)).count(),
     }
+    carga_asesores = (
+        db.session.query(
+            Usuario.nombre,
+            Usuario.nombre_visible,
+            db.func.count(Cotizacion.id),
+        )
+        .outerjoin(
+            Cotizacion,
+            db.and_(
+                Cotizacion.responsable_usuario_id == Usuario.id,
+                Cotizacion.eliminada_en.is_(None),
+            ),
+        )
+        .group_by(Usuario.id, Usuario.nombre, Usuario.nombre_visible)
+        .having(db.func.count(Cotizacion.id) > 0)
+        .order_by(db.func.count(Cotizacion.id).desc())
+        .all()
+    )
 
     return render_template(
         "dashboard.html",
@@ -6364,7 +6424,7 @@ def index():
         can_manage_assignments=can_manage_quote_assignments(),
         can_assign_cotizaciones=can_assign_cotizaciones(),
         seguimiento_metricas=seguimiento_metricas,
-        carga_asesores=[],
+        carga_asesores=carga_asesores,
         show_splash=True
     )
 
@@ -9224,6 +9284,15 @@ def asignar_cotizaciones():
         return jsonify({"error": "Solo los usuarios Hansel y admin pueden asignar cotizaciones."}), 403
 
     payload = request.get_json(silent=True) or {}
+    proximo_raw = (payload.get("proximo_seguimiento") or "").strip()
+    try:
+        proximo_seguimiento = datetime.fromisoformat(proximo_raw)
+    except ValueError:
+        return jsonify({"error": "Selecciona la fecha y hora del próximo seguimiento."}), 400
+    prioridad = (payload.get("prioridad") or "MEDIA").strip().upper()
+    if prioridad not in {"BAJA", "MEDIA", "ALTA", "URGENTE"}:
+        return jsonify({"error": "Selecciona una prioridad válida."}), 400
+    instruccion = (payload.get("instruccion") or "").strip()
     try:
         usuario_id = int(payload.get("usuario_id"))
     except (TypeError, ValueError):
@@ -9254,6 +9323,7 @@ def asignar_cotizaciones():
         if not cotizaciones:
             return jsonify({"error": "No se encontraron cotizaciones activas para asignar."}), 404
         for cot in cotizaciones:
+            fecha_asignacion = now_cdmx_naive()
             if cot.responsable_usuario_id != usuario.id:
                 db.session.add(CotizacionAsignacion(
                     cotizacion_id=cot.id,
@@ -9264,6 +9334,12 @@ def asignar_cotizaciones():
                 ))
                 cot.responsable_usuario_id = usuario.id
                 cot.responsable = usuario.nombre_representante
+            cot.asignado_en = fecha_asignacion
+            cot.asignado_por_id = getattr(current_user, "id", None)
+            cot.proximo_seguimiento = proximo_seguimiento
+            cot.prioridad = prioridad
+            cot.instruccion_asignacion = instruccion or None
+            cot.recordatorio_seguimiento_en = None
             actualizadas.append(cot.id)
         db.session.commit()
     except Exception as exc:
@@ -9276,6 +9352,9 @@ def asignar_cotizaciones():
             cotizaciones=cotizaciones,
             asignado=usuario,
             asignado_por=current_user,
+            proximo_seguimiento=proximo_seguimiento,
+            prioridad=prioridad,
+            instruccion=instruccion,
         )
     except Exception:
         logger.exception("La asignación se guardó, pero falló la preparación de notificaciones")
@@ -11296,6 +11375,7 @@ def api_dashboard_filter_summary():
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
     vista = (request.args.get("vista") or "todos").strip().lower()
+    bandeja = (request.args.get("bandeja") or "").strip().lower()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -11311,6 +11391,7 @@ def api_dashboard_filter_summary():
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
+    q = _apply_dashboard_bandeja(q, bandeja)
 
     cot_subq = q.with_entities(Cotizacion.id).subquery()
     cot_ids_select = db.select(cot_subq.c.id)
@@ -11703,6 +11784,7 @@ def api_dashboard_metrics():
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
     vista = (request.args.get("vista") or "todos").strip().lower()
+    bandeja = (request.args.get("bandeja") or "").strip().lower()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -11718,6 +11800,7 @@ def api_dashboard_metrics():
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
+    q = _apply_dashboard_bandeja(q, bandeja)
 
     rows = (
         q.with_entities(
@@ -11754,6 +11837,7 @@ def api_dashboard_status_breakdown():
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
     vista = (request.args.get("vista") or "todos").strip().lower()
+    bandeja = (request.args.get("bandeja") or "").strip().lower()
 
     try:
         q = _build_dashboard_cotizaciones_query(
@@ -11769,6 +11853,7 @@ def api_dashboard_status_breakdown():
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
+    q = _apply_dashboard_bandeja(q, bandeja)
 
     rows = (
         q.with_entities(Cotizacion.estatus, db.func.count(Cotizacion.id))
@@ -11797,8 +11882,12 @@ def api_dashboard_outcome_breakdown():
     }
 
     try:
+        bandeja = (request.args.get("bandeja") or "").strip().lower()
         conteos = [
-            _build_dashboard_cotizaciones_query(**filtros, vista=vista).count()
+            _apply_dashboard_bandeja(
+                _build_dashboard_cotizaciones_query(**filtros, vista=vista),
+                bandeja,
+            ).count()
             for vista in ("ganadas", "activas", "perdidas")
         ]
     except ValueError as exc:
