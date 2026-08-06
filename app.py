@@ -11755,6 +11755,34 @@ def api_dashboard_status_breakdown():
     porcentajes = [round((c * 100.0 / total), 2) if total > 0 else 0 for c in conteos]
     return jsonify({"labels": categorias, "counts": conteos, "percentages": porcentajes, "total": total})
 
+@app.route("/api/dashboard/outcome_breakdown")
+@login_required
+def api_dashboard_outcome_breakdown():
+    filtros = {
+        "desde": (request.args.get("desde") or "").strip(),
+        "hasta": (request.args.get("hasta") or "").strip(),
+        "estatus": (request.args.get("estatus") or "").strip(),
+        "cliente": (request.args.get("cliente") or "").strip(),
+        "proyecto": (request.args.get("proyecto") or "").strip(),
+        "especialidad": (request.args.get("especialidad") or "").strip(),
+        "especialidad_descripcion": (request.args.get("especialidad_descripcion") or "").strip(),
+        "responsable": (request.args.get("responsable") or "").strip(),
+    }
+
+    try:
+        conteos = [
+            _build_dashboard_cotizaciones_query(**filtros, vista=vista).count()
+            for vista in ("ganadas", "activas", "perdidas")
+        ]
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    return jsonify({
+        "labels": ["Ganadas", "En proceso", "Perdidas"],
+        "counts": [int(conteo) for conteo in conteos],
+        "total": int(sum(conteos)),
+    })
+
 # ---------------------------------------------------------
 # Salud / Debug / Recordatorios
 # ---------------------------------------------------------

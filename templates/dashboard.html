@@ -197,6 +197,11 @@
     height: calc(100% - 42px);
   }
 
+  .dashboard-outcome-chart {
+    position: relative;
+    height: calc(100% - 42px);
+  }
+
   .dashboard-charts-row {
     max-width: none !important;
     width: 100% !important;
@@ -236,6 +241,10 @@
     }
 
     .dashboard-status-chart {
+      height: 300px;
+    }
+
+    .dashboard-outcome-chart {
       height: 300px;
     }
   }
@@ -322,7 +331,7 @@
 
 <!-- 📊 GRÁFICAS -->
 <div class="row mt-4 dashboard-charts-row">
-  <div class="col-lg-8">
+  <div class="col-xl-6 mb-3 mb-xl-0">
     <div class="card shadow-sm h-100 dashboard-chart-card">
       <div class="card-body">
         <h5 class="card-title text-primary">Resumen Mensual</h5>
@@ -333,12 +342,23 @@
     </div>
   </div>
 
-  <div class="col-lg-4">
+  <div class="col-xl-3 col-md-6 mb-3 mb-xl-0">
     <div class="card shadow-sm h-100 dashboard-chart-card">
       <div class="card-body">
         <h5 class="card-title">Distribución por Seguimiento</h5>
         <div class="dashboard-status-chart">
           <canvas id="chartEstatus"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-3 col-md-6">
+    <div class="card shadow-sm h-100 dashboard-chart-card">
+      <div class="card-body">
+        <h5 class="card-title">Resultado de Cotizaciones</h5>
+        <div class="dashboard-outcome-chart">
+          <canvas id="chartResultados"></canvas>
         </div>
       </div>
     </div>
@@ -677,6 +697,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   let chartMensualInstance = null;
   let chartEstatusInstance = null;
+  let chartResultadosInstance = null;
 
   // ✅ Selección masiva + borrado (solo admin)
   const chkAll = document.getElementById("chk-select-all");
@@ -826,6 +847,31 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  async function getDashboardOutcomeData(visibleRows) {
+    const params = buildFilterParams();
+    params.delete("vista");
+    const query = params.toString();
+
+    try {
+      const response = await fetch(`/api/dashboard/outcome_breakdown${query ? `?${query}` : ""}`);
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "No se pudo cargar el resultado de cotizaciones.");
+      }
+      return (data.counts || [0, 0, 0]).map((value) => Number(value || 0));
+    } catch (err) {
+      console.error("Error cargando resultado de cotizaciones", err);
+      const fallback = [0, 0, 0];
+      visibleRows.forEach((tr) => {
+        const status = (tr.dataset.estatus || "").trim().toUpperCase();
+        if (["100%", "GANADA", "CONTRATADA", "CON CONTRATO", "CONTRATO"].includes(status)) fallback[0] += 1;
+        else if (["0%", "0 %", "PERDIDA", "PÉRDIDA"].includes(status)) fallback[2] += 1;
+        else fallback[1] += 1;
+      });
+      return fallback;
+    }
+  }
+
   function getActiveChartYear(years, monthly) {
     const currentYear = String(new Date().getFullYear());
     const sortedYears = Array.from(years).sort();
@@ -849,9 +895,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const chartTextColor = darkTheme ? "#dce5f2" : "#5f6368";
     const chartGridColor = darkTheme ? "rgba(174, 185, 202, 0.18)" : "rgba(0, 0, 0, 0.1)";
     const visibleRows = getVisibleRows();
-    const [{ monthly, years }, statusData] = await Promise.all([
+    const [{ monthly, years }, statusData, outcomeData] = await Promise.all([
       getDashboardMonthlyData(visibleRows),
       getDashboardStatusData(visibleRows),
+      getDashboardOutcomeData(visibleRows),
     ]);
 
     const activeYear = getActiveChartYear(years, monthly);
@@ -966,6 +1013,30 @@ document.addEventListener("DOMContentLoaded", () => {
               boxWidth: 28,
               filter: (legendItem, chartData) => Number(chartData.datasets[0].data[legendItem.index] || 0) > 0
             }
+          }
+        }
+      }
+    });
+
+    if (chartResultadosInstance) chartResultadosInstance.destroy();
+    chartResultadosInstance = new Chart(document.getElementById("chartResultados"), {
+      type: "pie",
+      data: {
+        labels: ["Ganadas", "En proceso", "Perdidas"],
+        datasets: [{
+          data: outcomeData,
+          backgroundColor: ["#2E7D32", "#F9A825", "#C62828"],
+          borderColor: darkTheme ? "#F8FAFC" : "#FFFFFF",
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: "bottom",
+            labels: { color: chartTextColor, padding: 14, boxWidth: 28 }
           }
         }
       }
