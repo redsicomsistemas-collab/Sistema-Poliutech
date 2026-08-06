@@ -6343,7 +6343,14 @@ def index():
         pagination=pagination,
         dashboard_filters=dashboard_filters,
         valid_estatus=VALID_ESTATUS_SEGUIMIENTO,
-        valid_estatus_filtro=list(dict.fromkeys(VALID_ESTATUS_SEGUIMIENTO + PORCENTAJES_SEGUIMIENTO)),
+        valid_estatus_filtro=sorted(
+            {
+                estado
+                for estado in VALID_ESTATUS_SEGUIMIENTO + PORCENTAJES_SEGUIMIENTO
+                if estado.endswith("%")
+            },
+            key=lambda estado: int(estado.rstrip("%")),
+        ),
         valid_estatus_aprobacion=VALID_ESTATUS_APROBACION,
         especialidades_cotizacion=ESPECIALIDADES_COTIZACION,
         responsables_cotizacion=responsables_cotizacion,
