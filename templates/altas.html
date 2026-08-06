@@ -6,6 +6,7 @@
     background-image: none;
     pointer-events: none;
   }
+  .credito-monto-wrap { min-width: 180px; }
 </style>
 <div class="py-4">
   <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
@@ -58,6 +59,8 @@
                 <th style="min-width: 220px;">CONTACTO</th>
                 <th style="min-width: 180px;">TELEFONO</th>
                 <th style="min-width: 240px;">CORREO</th>
+                <th style="min-width: 110px;">CRÉDITO</th>
+                <th style="min-width: 190px;">MONTO DE CRÉDITO</th>
                 <th style="width: 140px;">Accion</th>
               </tr>
             </thead>
@@ -80,6 +83,11 @@
                 <td><input type="text" name="telefono[]" class="form-control altas-input" value="{{ row.telefono }}" readonly></td>
                 <td><input type="email" name="correo[]" class="form-control altas-input" value="{{ row.correo }}" readonly></td>
                 <td class="text-center">
+                  <input type="hidden" name="credito[]" class="credito-value" value="{{ '1' if row.credito else '0' }}">
+                  <input type="checkbox" class="form-check-input credito-check" {% if row.credito %}checked{% endif %} disabled aria-label="Proveedor con crédito">
+                </td>
+                <td><div class="input-group credito-monto-wrap {% if not row.credito %}d-none{% endif %}"><span class="input-group-text">$</span><input type="number" name="monto_credito[]" class="form-control credito-monto" min="0" step="0.01" value="{{ row.monto_credito }}" {% if not row.credito %}disabled{% endif %} readonly></div><input type="hidden" class="monto-vacio" name="monto_credito[]" value="" {% if row.credito %}disabled{% endif %}></td>
+                <td class="text-center">
                   <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>
                   <button type="button" class="btn btn-outline-danger btn-sm btn-remove-row">Quitar</button>
                 </td>
@@ -94,6 +102,8 @@
                 <td><input type="text" name="contacto[]" class="form-control altas-input"></td>
                 <td><input type="text" name="telefono[]" class="form-control altas-input"></td>
                 <td><input type="email" name="correo[]" class="form-control altas-input"></td>
+                <td class="text-center"><input type="hidden" name="credito[]" class="credito-value" value="0"><input type="checkbox" class="form-check-input credito-check" aria-label="Proveedor con crédito"></td>
+                <td><div class="input-group credito-monto-wrap d-none"><span class="input-group-text">$</span><input type="number" name="monto_credito[]" class="form-control credito-monto" min="0" step="0.01" disabled></div><input type="hidden" class="monto-vacio" name="monto_credito[]" value=""></td>
                 <td class="text-center">
                   <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>
                   <button type="button" class="btn btn-outline-danger btn-sm btn-remove-row">Quitar</button>
@@ -122,6 +132,8 @@
     <td><input type="text" name="contacto[]" class="form-control altas-input"></td>
     <td><input type="text" name="telefono[]" class="form-control altas-input"></td>
     <td><input type="email" name="correo[]" class="form-control altas-input"></td>
+    <td class="text-center"><input type="hidden" name="credito[]" class="credito-value" value="0"><input type="checkbox" class="form-check-input credito-check" aria-label="Proveedor con crédito"></td>
+    <td><div class="input-group credito-monto-wrap d-none"><span class="input-group-text">$</span><input type="number" name="monto_credito[]" class="form-control credito-monto" min="0" step="0.01" disabled></div><input type="hidden" class="monto-vacio" name="monto_credito[]" value=""></td>
     <td class="text-center">
       <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>
       <button type="button" class="btn btn-outline-danger btn-sm btn-remove-row">Quitar</button>
@@ -146,6 +158,21 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!row) return;
     row.dataset.razonSocialPoliutech = (row.querySelector('input[name="razon_social_poliutech[]"]')?.value || "").trim().toLowerCase();
     row.dataset.relacion = (row.querySelector('select[name="relacion[]"]')?.value || "").trim().toUpperCase();
+  }
+
+  function syncCreditFields(row) {
+    const check = row?.querySelector(".credito-check");
+    const value = row?.querySelector(".credito-value");
+    const wrap = row?.querySelector(".credito-monto-wrap");
+    const amount = row?.querySelector(".credito-monto");
+    const emptyAmount = row?.querySelector(".monto-vacio");
+    if (!check || !value || !wrap || !amount || !emptyAmount) return;
+    value.value = check.checked ? "1" : "0";
+    wrap.classList.toggle("d-none", !check.checked);
+    amount.disabled = !check.checked;
+    emptyAmount.disabled = check.checked;
+    if (!check.checked) amount.value = "";
+    amount.required = check.checked;
   }
 
   function applyFilters() {
@@ -180,6 +207,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const row = editButton.closest("tr");
       const inputs = row ? row.querySelectorAll(".altas-input") : [];
       const relacionInput = row?.querySelector(".relacion-input");
+      const creditCheck = row?.querySelector(".credito-check");
+      const creditAmount = row?.querySelector(".credito-monto");
       const willEnable = Array.from(inputs).every((input) => input.hasAttribute("readonly"));
       inputs.forEach((input) => {
         if (willEnable) {
@@ -193,6 +222,8 @@ document.addEventListener("DOMContentLoaded", () => {
         relacionInput.setAttribute("aria-readonly", willEnable ? "false" : "true");
         relacionInput.tabIndex = willEnable ? 0 : -1;
       }
+      if (creditCheck) creditCheck.disabled = !willEnable;
+      if (creditAmount) creditAmount.readOnly = !willEnable;
       editButton.textContent = willEnable ? "Bloquear" : "Editar";
       if (willEnable && inputs.length > 0) {
         inputs[0].focus();
@@ -215,6 +246,10 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   tbody.addEventListener("change", (event) => {
+    if (event.target.closest(".credito-check")) {
+      syncCreditFields(event.target.closest("tr"));
+      return;
+    }
     if (!event.target.closest(".relacion-input")) return;
     syncRowDataset(event.target.closest("tr"));
     applyFilters();
@@ -262,7 +297,10 @@ document.addEventListener("DOMContentLoaded", () => {
     window.open(`{{ url_for('export_altas_proveedores_pdf') }}${query ? `?${query}` : ""}`, "_blank", "noopener");
   });
 
-  Array.from(tbody.querySelectorAll("tr")).forEach(syncRowDataset);
+  Array.from(tbody.querySelectorAll("tr")).forEach((row) => {
+    syncRowDataset(row);
+    syncCreditFields(row);
+  });
   applyFilters();
 });
 </script>

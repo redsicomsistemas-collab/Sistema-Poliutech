@@ -232,6 +232,8 @@ def _load_provider_numbers_from_xlsx() -> list[dict]:
                 "contacto": "",
                 "telefono": "",
                 "correo": "",
+                "credito": False,
+                "monto_credito": "",
             })
         return records
 
@@ -257,6 +259,8 @@ def _normalize_provider_row(row: Optional[dict], idx: int) -> dict:
         "contacto": str(row.get("contacto", "")).strip(),
         "telefono": str(row.get("telefono", "")).strip(),
         "correo": str(row.get("correo", "")).strip(),
+        "credito": bool(row.get("credito", False)),
+        "monto_credito": str(row.get("monto_credito", "")).strip() if row.get("credito", False) else "",
     }
 
 
@@ -6707,8 +6711,10 @@ def altas_proveedores():
         contactos = request.form.getlist("contacto[]")
         telefonos = request.form.getlist("telefono[]")
         correos = request.form.getlist("correo[]")
+        creditos = request.form.getlist("credito[]")
+        montos_credito = request.form.getlist("monto_credito[]")
 
-        total_rows = max(len(numeros), len(empresas), len(razones), len(relaciones), len(contactos), len(telefonos), len(correos), 0)
+        total_rows = max(len(numeros), len(empresas), len(razones), len(relaciones), len(contactos), len(telefonos), len(correos), len(creditos), len(montos_credito), 0)
         rows: list[dict] = []
         for idx in range(total_rows):
             numero = (numeros[idx] if idx < len(numeros) else "").strip()
@@ -6720,6 +6726,18 @@ def altas_proveedores():
             contacto = (contactos[idx] if idx < len(contactos) else "").strip()
             telefono = (telefonos[idx] if idx < len(telefonos) else "").strip()
             correo = (correos[idx] if idx < len(correos) else "").strip()
+            credito = (creditos[idx] if idx < len(creditos) else "0").strip() == "1"
+            monto_credito = (montos_credito[idx] if idx < len(montos_credito) else "").strip() if credito else ""
+
+            if credito:
+                try:
+                    monto_numerico = float(monto_credito)
+                    if not math.isfinite(monto_numerico) or monto_numerico < 0:
+                        raise ValueError
+                    monto_credito = f"{monto_numerico:.2f}"
+                except (TypeError, ValueError):
+                    flash(f"Captura un monto de crédito válido para '{empresa or numero or 'el proveedor'}'.", "danger")
+                    return redirect(url_for("altas_proveedores"))
 
             if not any([numero, empresa, razon_social, contacto, telefono, correo]):
                 continue
@@ -6738,6 +6756,8 @@ def altas_proveedores():
                             "contacto": (contactos[pos] if pos < len(contactos) else "").strip(),
                             "telefono": (telefonos[pos] if pos < len(telefonos) else "").strip(),
                             "correo": (correos[pos] if pos < len(correos) else "").strip(),
+                            "credito": (creditos[pos] if pos < len(creditos) else "0").strip() == "1",
+                            "monto_credito": (montos_credito[pos] if pos < len(montos_credito) else "").strip(),
                         }, pos + 1)
                         for pos in range(total_rows)
                     ],
@@ -6751,6 +6771,8 @@ def altas_proveedores():
                                 "contacto": (contactos[pos] if pos < len(contactos) else "").strip(),
                                 "telefono": (telefonos[pos] if pos < len(telefonos) else "").strip(),
                                 "correo": (correos[pos] if pos < len(correos) else "").strip(),
+                                "credito": (creditos[pos] if pos < len(creditos) else "0").strip() == "1",
+                                "monto_credito": (montos_credito[pos] if pos < len(montos_credito) else "").strip(),
                             }, pos + 1)
                             for pos in range(total_rows)
                         ],
@@ -6768,6 +6790,8 @@ def altas_proveedores():
                 "contacto": contacto,
                 "telefono": telefono,
                 "correo": correo,
+                "credito": credito,
+                "monto_credito": monto_credito,
             })
 
         _save_provider_numbers(rows)
@@ -6801,6 +6825,8 @@ def export_altas_proveedores_xlsx():
         "CONTACTO",
         "TELEFONO",
         "CORREO",
+        "CREDITO",
+        "MONTO DE CREDITO",
     ]
     body_rows = []
     for row in rows:
@@ -6812,13 +6838,15 @@ def export_altas_proveedores_xlsx():
             row.get("contacto", ""),
             row.get("telefono", ""),
             row.get("correo", ""),
+            "SI" if row.get("credito") else "NO",
+            row.get("monto_credito", "") if row.get("credito") else "",
         ])
 
     output_bytes = _build_simple_xlsx(
         "Altas",
         headers,
         body_rows,
-        column_widths=[18, 28, 28, 18, 24, 18, 32],
+        column_widths=[18, 28, 28, 18, 24, 18, 32, 12, 20],
     )
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -6942,6 +6970,8 @@ def export_altas_proveedores_pdf():
         "CONTACTO",
         "TELEFONO",
         "CORREO",
+        "CREDITO",
+        "MONTO",
     ]]
     for row in rows:
         data.append([
@@ -6952,6 +6982,8 @@ def export_altas_proveedores_pdf():
             Paragraph(_truncate_pdf_text(row.get("contacto", ""), 38), styles["AltasCell"]),
             Paragraph(_truncate_pdf_text(row.get("telefono", ""), 24), styles["AltasCenter"]),
             Paragraph(_truncate_pdf_text(row.get("correo", ""), 42), styles["AltasCell"]),
+            Paragraph("SI" if row.get("credito") else "NO", styles["AltasCenter"]),
+            Paragraph(f"$ {row.get('monto_credito', '')}" if row.get("credito") else "-", styles["AltasCenter"]),
         ])
 
     if len(data) == 1:
@@ -6963,11 +6995,13 @@ def export_altas_proveedores_pdf():
             Paragraph("-", styles["AltasCenter"]),
             Paragraph("-", styles["AltasCenter"]),
             Paragraph("-", styles["AltasCenter"]),
+            Paragraph("-", styles["AltasCenter"]),
+            Paragraph("-", styles["AltasCenter"]),
         ])
 
     tbl = Table(
         data,
-        colWidths=[15 * mm, 31 * mm, 40 * mm, 23 * mm, 25 * mm, 21 * mm, 35 * mm],
+        colWidths=[13 * mm, 25 * mm, 31 * mm, 19 * mm, 21 * mm, 18 * mm, 28 * mm, 14 * mm, 21 * mm],
         repeatRows=1,
         hAlign="CENTER",
     )
