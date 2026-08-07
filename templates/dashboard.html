@@ -451,6 +451,15 @@
             {% endfor %}
           </select>
         </div>
+        <div class="col-xl-2 col-lg-3 col-md-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Asignación</label>
+          <select id="filtro-asignado-a" class="form-select form-select-sm">
+            <option value="">Todos</option>
+            {% for usuario in usuarios_asignables %}
+            <option value="{{ usuario.id }}" {% if dashboard_filters.asignado_a|string == usuario.id|string %}selected{% endif %}>{{ usuario.nombre_representante }}</option>
+            {% endfor %}
+          </select>
+        </div>
         <div class="col-xl-2 col-12">
           <div class="filter-actions">
             <button id="btn-exportar-excel" type="button" class="btn btn-success btn-sm">Exportar Excel</button>
@@ -507,6 +516,7 @@
               <th>Folio</th>
               <th>Fecha</th>
               <th>Usuario</th>
+              <th>Asignado a</th>
               {% if can_manage_assignments %}
               <th>Fecha asignación</th>
               <th>Próximo seguimiento</th>
@@ -569,10 +579,11 @@
               </td>
               <td>{{ c.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
               <td>{{ nombre_visible_usuario(c.responsable) or 'Sin asignar' }}</td>
+              {% set ultima_asignacion = (c.historial_asignaciones|sort(attribute='asignado_en')|last) if c.historial_asignaciones else none %}
+              <td>{{ ultima_asignacion.usuario_nuevo.nombre_representante if ultima_asignacion and ultima_asignacion.usuario_nuevo else (c.responsable_usuario.nombre_representante if c.asignado_en and c.responsable_usuario else 'Sin asignar') }}</td>
               {% if can_manage_assignments %}
-                {% set ultima_asignacion = (c.historial_asignaciones|sort(attribute='asignado_en')|last) if c.historial_asignaciones else none %}
                 {% set ultimo_seguimiento = c.seguimientos[0] if c.seguimientos else none %}
-              <td>{{ ultima_asignacion.asignado_en.strftime('%Y-%m-%d %H:%M') if ultima_asignacion and ultima_asignacion.asignado_en else '—' }}</td>
+              <td>{{ ultima_asignacion.asignado_en.strftime('%Y-%m-%d %H:%M') if ultima_asignacion and ultima_asignacion.asignado_en else (c.asignado_en.strftime('%Y-%m-%d %H:%M') if c.asignado_en else '—') }}</td>
               <td>{{ c.proximo_seguimiento.strftime('%Y-%m-%d %H:%M') if c.proximo_seguimiento else '—' }}</td>
               <td>{{ ultimo_seguimiento.fecha_seguimiento.strftime('%Y-%m-%d %H:%M') if ultimo_seguimiento and ultimo_seguimiento.fecha_seguimiento else '—' }}</td>
               <td><span class="badge {% if c.prioridad == 'URGENTE' %}text-bg-danger{% elif c.prioridad == 'ALTA' %}text-bg-warning{% elif c.prioridad == 'BAJA' %}text-bg-secondary{% else %}text-bg-primary{% endif %}">{{ c.prioridad or 'MEDIA' }}</span></td>
@@ -678,6 +689,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const especialidad = document.getElementById("filtro-especialidad");
   const especialidadDescripcion = document.getElementById("filtro-especialidad-descripcion");
   const responsable = document.getElementById("filtro-responsable");
+  const asignadoA = document.getElementById("filtro-asignado-a");
   const limpiar = document.getElementById("btn-limpiar-filtros");
   const exportarExcel = document.getElementById("btn-exportar-excel");
   const exportarSeguimientosPdf = document.getElementById("btn-exportar-seguimientos-pdf");
@@ -749,6 +761,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (especialidad?.value.trim()) params.set("especialidad", especialidad.value.trim());
     if (especialidadDescripcion?.value.trim()) params.set("especialidad_descripcion", especialidadDescripcion.value.trim());
     if (responsable?.value.trim()) params.set("responsable", responsable.value.trim());
+    if (asignadoA?.value) params.set("asignado_a", asignadoA.value);
     return params;
   }
 
@@ -1340,7 +1353,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   let clienteFilterTimer = null;
-  [desde, hasta, estatus, proyecto, especialidad, responsable].forEach((el) => {
+  [desde, hasta, estatus, proyecto, especialidad, responsable, asignadoA].forEach((el) => {
     el?.addEventListener("change", aplicarFiltrosDashboard);
   });
   [cliente, especialidadDescripcion].forEach((el) => el?.addEventListener("input", () => {

@@ -4680,6 +4680,7 @@ def _build_dashboard_cotizaciones_query(
     especialidad: str = "",
     especialidad_descripcion: str = "",
     responsable: str = "",
+    asignado_a: str = "",
     vista: str = "todos",
 ):
     q = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
@@ -4731,6 +4732,14 @@ def _build_dashboard_cotizaciones_query(
         q = q.filter(
             db.func.lower(db.func.coalesce(Cotizacion.responsable, "")) == responsable
         )
+
+    asignado_a = (asignado_a or "").strip()
+    if asignado_a:
+        try:
+            asignado_usuario_id = int(asignado_a)
+        except ValueError:
+            asignado_usuario_id = 0
+        q = q.filter(_cotizacion_asignado_usuario_id_expr() == asignado_usuario_id)
 
     especialidad = (especialidad or "").strip().lower()
     if especialidad:
@@ -4796,11 +4805,29 @@ def _cotizaciones_activas_query():
     return Cotizacion.query.filter(Cotizacion.eliminada_en.is_(None))
 
 
+def _cotizacion_asignado_usuario_id_expr():
+    """Usuario de la última asignación; respalda asignaciones nuevas sin historial."""
+    ultima_asignacion = (
+        db.session.query(CotizacionAsignacion.usuario_nuevo_id)
+        .filter(CotizacionAsignacion.cotizacion_id == Cotizacion.id)
+        .order_by(CotizacionAsignacion.asignado_en.desc(), CotizacionAsignacion.id.desc())
+        .limit(1)
+        .correlate(Cotizacion)
+        .scalar_subquery()
+    )
+    return db.func.coalesce(
+        ultima_asignacion,
+        case(
+            (Cotizacion.asignado_en.isnot(None), Cotizacion.responsable_usuario_id),
+            else_=None,
+        ),
+    )
+
+
 def _cotizaciones_asignadas_a_usuario_query(usuario: Usuario):
     """Seguimientos asignados expresamente desde el dashboard a este usuario."""
     return _cotizaciones_activas_query().filter(
-        Cotizacion.responsable_usuario_id == usuario.id,
-        Cotizacion.asignado_en.isnot(None),
+        _cotizacion_asignado_usuario_id_expr() == usuario.id,
     )
 
 def _cotizacion_activa_or_404(cot_id: int) -> Cotizacion:
@@ -6319,6 +6346,7 @@ def index():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
+    asignado_a = (request.args.get("asignado_a") or "").strip()
     vista = (request.args.get("vista") or "todos").strip().lower()
     if vista not in {"todos", "activas", "ganadas", "perdidas"}:
         vista = "todos"
@@ -6334,6 +6362,7 @@ def index():
         "especialidad": especialidad,
         "especialidad_descripcion": especialidad_descripcion,
         "responsable": responsable,
+        "asignado_a": asignado_a,
         "bandeja": bandeja,
         "vista": vista,
     }
@@ -6348,11 +6377,12 @@ def index():
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
+            asignado_a=asignado_a,
             vista=vista,
         )
     except ValueError:
         base_query = _build_dashboard_cotizaciones_query(vista=vista)
-        dashboard_filters = {"desde": "", "hasta": "", "estatus": "", "cliente": "", "proyecto": "", "especialidad": "", "especialidad_descripcion": "", "responsable": "", "bandeja": bandeja, "vista": vista}
+        dashboard_filters = {"desde": "", "hasta": "", "estatus": "", "cliente": "", "proyecto": "", "especialidad": "", "especialidad_descripcion": "", "responsable": "", "asignado_a": "", "bandeja": bandeja, "vista": vista}
 
     ahora = now_cdmx_naive()
     inicio_hoy = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
