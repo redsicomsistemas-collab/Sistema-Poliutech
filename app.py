@@ -4797,23 +4797,11 @@ def _cotizaciones_activas_query():
 
 
 def _cotizaciones_asignadas_a_usuario_query(usuario: Usuario):
-    """Cotizaciones asignadas al usuario, incluyendo registros históricos sin ID."""
-    nombres = {
-        valor.strip().lower()
-        for valor in (
-            getattr(usuario, "nombre", ""),
-            getattr(usuario, "nombre_visible", ""),
-            _usuario_nombre_representante(usuario),
-        )
-        if valor and valor.strip()
-    }
-    condiciones = [Cotizacion.responsable_usuario_id == usuario.id]
-    if nombres:
-        condiciones.append(and_(
-            Cotizacion.responsable_usuario_id.is_(None),
-            db.func.lower(db.func.trim(db.func.coalesce(Cotizacion.responsable, ""))).in_(nombres),
-        ))
-    return _cotizaciones_activas_query().filter(or_(*condiciones))
+    """Seguimientos asignados expresamente desde el dashboard a este usuario."""
+    return _cotizaciones_activas_query().filter(
+        Cotizacion.responsable_usuario_id == usuario.id,
+        Cotizacion.asignado_en.isnot(None),
+    )
 
 def _cotizacion_activa_or_404(cot_id: int) -> Cotizacion:
     return _cotizaciones_activas_query().filter(Cotizacion.id == cot_id).first_or_404()
