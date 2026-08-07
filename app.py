@@ -4519,15 +4519,23 @@ def responsable_actual() -> str:
 def require_owner_or_admin(cot: Cotizacion) -> None:
     if is_admin():
         return
-    if is_demo_user():
-        if cot.responsable_usuario_id == current_user.id:
-            return
-        abort(403)
     if getattr(current_user, "id", None) and cot.responsable_usuario_id == current_user.id:
         return
-    ra = responsable_actual()
-    if not ra or (cot.responsable or "") != ra:
-        abort(403)
+    # El nombre sólo es respaldo para registros históricos que aún no tienen ID.
+    # Si ya existe un ID asignado, éste siempre tiene prioridad.
+    if cot.responsable_usuario_id is None and not is_demo_user():
+        nombres = {
+            valor.strip().lower()
+            for valor in (
+                getattr(current_user, "nombre", ""),
+                getattr(current_user, "nombre_visible", ""),
+                responsable_actual(),
+            )
+            if valor and valor.strip()
+        }
+        if (cot.responsable or "").strip().lower() in nombres:
+            return
+    abort(403)
 
 def require_followup_author_or_admin(seg: CotizacionSeguimiento) -> None:
     if is_admin():
@@ -4786,6 +4794,26 @@ def _cotizaciones_base_query():
 
 def _cotizaciones_activas_query():
     return Cotizacion.query.filter(Cotizacion.eliminada_en.is_(None))
+
+
+def _cotizaciones_asignadas_a_usuario_query(usuario: Usuario):
+    """Cotizaciones asignadas al usuario, incluyendo registros históricos sin ID."""
+    nombres = {
+        valor.strip().lower()
+        for valor in (
+            getattr(usuario, "nombre", ""),
+            getattr(usuario, "nombre_visible", ""),
+            _usuario_nombre_representante(usuario),
+        )
+        if valor and valor.strip()
+    }
+    condiciones = [Cotizacion.responsable_usuario_id == usuario.id]
+    if nombres:
+        condiciones.append(and_(
+            Cotizacion.responsable_usuario_id.is_(None),
+            db.func.lower(db.func.trim(db.func.coalesce(Cotizacion.responsable, ""))).in_(nombres),
+        ))
+    return _cotizaciones_activas_query().filter(or_(*condiciones))
 
 def _cotizacion_activa_or_404(cot_id: int) -> Cotizacion:
     return _cotizaciones_activas_query().filter(Cotizacion.id == cot_id).first_or_404()
@@ -9496,6 +9524,30 @@ def list_cotizaciones():
         "cotizaciones_list.html",
         items=items, page=page, pages=pages, total=total,
         title="Cotizaciones · Sistema MAR"
+    )
+
+
+@app.route("/mi-cuenta/asignaciones")
+@login_required
+def mis_asignaciones():
+    page = max(1, request.args.get("p", 1, type=int) or 1)
+    per_page = 20
+    q = _cotizaciones_asignadas_a_usuario_query(current_user).order_by(Cotizacion.fecha.desc())
+    total = q.count()
+    pages = max(1, math.ceil(total / per_page))
+    page = min(page, pages)
+    items = q.offset((page - 1) * per_page).limit(per_page).all()
+    con_seguimiento = q.filter(Cotizacion.seguimientos.any()).count()
+
+    return render_template(
+        "mis_asignaciones.html",
+        items=items,
+        page=page,
+        pages=pages,
+        total=total,
+        con_seguimiento=con_seguimiento,
+        sin_seguimiento=max(0, total - con_seguimiento),
+        title="Mis asignaciones · Sistema MAR",
     )
 
 @app.route("/cotizaciones/<int:cot_id>")

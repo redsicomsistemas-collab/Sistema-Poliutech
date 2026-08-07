@@ -788,6 +788,7 @@
           <li><span class="dropdown-item-text fw-semibold">{{ current_user.nombre }}</span></li>
           <li><hr class="dropdown-divider"></li>
           {% if is_demo_account %}<li><a class="dropdown-item" href="{{ url_for('demo_onboarding') }}">⚙️ Configuración de la demo</a></li><li><a class="dropdown-item" href="{{ url_for('download_demo_app') }}">📱 Descargar app Android</a></li><li><hr class="dropdown-divider"></li>{% endif %}
+          <li><a class="dropdown-item" href="{{ url_for('mis_asignaciones') }}">📌 Mis asignaciones</a></li>
           {% if not is_demo_account or 'reportes' in demo_modules %}<li><a class="dropdown-item" href="{{ url_for('reportes_diarios_index') }}">🗓️ Reportes diarios</a></li>{% endif %}
           {% if can_view_eval_departamental %}
           <li><a class="dropdown-item" href="{{ url_for('reportes_diarios_evaluacion') }}">📊 Evaluacion departamental</a></li>
@@ -814,6 +815,7 @@
             <span>▾</span>
           </button>
           <div class="collapse mobile-user-actions" id="mobileUserActions">
+            <a href="{{ url_for('mis_asignaciones') }}">📌 Mis asignaciones</a>
             {% if not is_demo_account or 'reportes' in demo_modules %}<a href="{{ url_for('reportes_diarios_index') }}">🗓️ Reportes diarios</a>{% endif %}
             {% if can_view_eval_departamental %}
             <a href="{{ url_for('reportes_diarios_evaluacion') }}">📊 Evaluacion departamental</a>
