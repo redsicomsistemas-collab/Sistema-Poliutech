@@ -13,13 +13,12 @@ if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("MAR P
 
 var configPath = Path.Combine(AppContext.BaseDirectory, "agent.json");
 if (!File.Exists(configPath)) {
-    Console.Error.WriteLine($"Falta la configuración: {configPath}");
     return 2;
 }
 
 var config = JsonSerializer.Deserialize<AgentConfig>(await File.ReadAllTextAsync(configPath), JsonOptions.Default)
              ?? throw new InvalidOperationException("La configuración no es válida.");
-const string agentVersion = "2.1.0";
+const string agentVersion = "2.1.1";
 var agentData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MAR Productivy Analytics", "Agent");
 Directory.CreateDirectory(agentData);
 var spoolPath = Path.Combine(agentData, "spool.jsonl");
@@ -41,7 +40,6 @@ async Task Heartbeat(string? error = null) {
     } catch (Exception heartbeatError) { await File.AppendAllTextAsync(logPath, $"{DateTimeOffset.Now:u} Error de conexión: {heartbeatError.Message}{Environment.NewLine}"); }
 }
 
-Console.WriteLine("MAR Productivy Analytics Agent iniciado. Presiona Ctrl+C para salir.");
 while (true) {
     var now = DateTimeOffset.UtcNow;
     if (now >= nextHeartbeat) { await Heartbeat(); nextHeartbeat=now.AddMinutes(1); }
@@ -69,7 +67,6 @@ while (true) {
         } catch (Exception error) {
             await File.AppendAllLinesAsync(spoolPath, batch.Select(item => JsonSerializer.Serialize(item, JsonOptions.Default)));
             pending.RemoveRange(0, batch.Length);
-            Console.Error.WriteLine($"Sincronización pendiente: {error.Message}");
             await Heartbeat(error.Message);
         }
         nextSync = now.AddSeconds(Math.Max(30, config.SyncIntervalSeconds));

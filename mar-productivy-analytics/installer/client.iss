@@ -1,5 +1,5 @@
 #define AppName "MAR Productivy Analytics Agent"
-#define AppVersion "2.1.0"
+#define AppVersion "2.1.1"
 #define AgentExe "..\agent\publish\win-x64\MAR.Productivy.Analytics.Agent.exe"
 
 [Setup]

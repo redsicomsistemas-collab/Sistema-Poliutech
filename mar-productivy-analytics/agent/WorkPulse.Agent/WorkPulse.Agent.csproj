@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -9,5 +9,6 @@
     <Product>MAR Productivy Analytics</Product>
     <Description>Agente de analítica de actividad para Windows 10 y 11</Description>
     <ApplicationIcon>mar.ico</ApplicationIcon>
+    <StartupObject></StartupObject>
   </PropertyGroup>
 </Project>
