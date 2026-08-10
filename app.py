@@ -3021,6 +3021,7 @@ from models import (
     ObraBitacora,
     ObraCronogramaActividad,
     CotizacionAsignacion,
+    CotizacionVersion,
     ProyectoAsignacion,
     VoiceCommandLog,
     Usuario,
@@ -4952,6 +4953,70 @@ def parse_float(v, default=0.0) -> float:
         return default
 
 
+def _cotizacion_snapshot(cot):
+    cliente = cot.cliente
+    return {
+        "folio": cot.folio, "fecha": cot.fecha.isoformat() if cot.fecha else None,
+        "cliente": {key: getattr(cliente, key, None) for key in ("nombre_cliente", "empresa", "correo", "telefono", "direccion", "rfc")},
+        "encabezado": {key: getattr(cot, key, None) for key in ("estatus", "estatus_aprobacion", "especialidad", "especialidad_descripcion", "proyecto", "ciudad_trabajo", "moneda", "notas")},
+        "totales": {key: float(getattr(cot, key, 0) or 0) for key in ("subtotal", "descuento_total", "iva_porc", "iva_monto", "total")},
+        "detalles": [{
+            "concepto_id": d.concepto_id, "nombre_concepto": d.nombre_concepto, "unidad": d.unidad,
+            "cantidad": float(d.cantidad or 0), "precio_unitario": float(d.precio_unitario or 0),
+            "capitulo": d.capitulo, "sistema": d.sistema, "descripcion": d.descripcion,
+            "subtotal": float(d.subtotal or 0), "origen": d.origen,
+        } for d in cot.detalles],
+    }
+
+
+def _snapshot_changes(previous, current):
+    changes = []
+    labels = {"cliente.nombre_cliente": "Cliente", "cliente.empresa": "Empresa", "encabezado.proyecto": "Proyecto",
+              "encabezado.especialidad": "Especialidad", "encabezado.ciudad_trabajo": "Ciudad", "encabezado.moneda": "Moneda",
+              "encabezado.notas": "Condiciones", "encabezado.estatus": "Seguimiento", "encabezado.estatus_aprobacion": "Aprobación",
+              "totales.subtotal": "Subtotal", "totales.descuento_total": "Descuento", "totales.iva_monto": "IVA", "totales.total": "Total"}
+    for path, label in labels.items():
+        section, key = path.split(".")
+        old, new = previous.get(section, {}).get(key), current.get(section, {}).get(key)
+        if old != new:
+            changes.append({"tipo": "campo", "campo": label, "anterior": old, "nuevo": new})
+    old_items, new_items = previous.get("detalles", []), current.get("detalles", [])
+    for idx in range(max(len(old_items), len(new_items))):
+        old = old_items[idx] if idx < len(old_items) else None
+        new = new_items[idx] if idx < len(new_items) else None
+        if old is None: changes.append({"tipo": "agregado", "campo": new.get("nombre_concepto"), "anterior": None, "nuevo": new})
+        elif new is None: changes.append({"tipo": "eliminado", "campo": old.get("nombre_concepto"), "anterior": old, "nuevo": None})
+        elif old != new: changes.append({"tipo": "modificado", "campo": new.get("nombre_concepto") or old.get("nombre_concepto"), "anterior": old, "nuevo": new})
+    return changes
+
+
+def _create_cotizacion_version(cot, motivo, snapshot=None, force=False):
+    snapshot = snapshot or _cotizacion_snapshot(cot)
+    latest = CotizacionVersion.query.filter_by(cotizacion_id=cot.id).order_by(CotizacionVersion.numero_version.desc()).first()
+    changes = _snapshot_changes(json.loads(latest.snapshot_json), snapshot) if latest else []
+    if latest and not changes and not force:
+        return None
+    version = CotizacionVersion(
+        cotizacion_id=cot.id, numero_version=(latest.numero_version + 1 if latest else 0),
+        creada_por_usuario_id=getattr(current_user, "id", None), creada_por=responsable_actual() or "Sistema",
+        motivo_cambio=(motivo or "Actualización de cotización").strip()[:500], resumen_cambios=json.dumps(changes, ensure_ascii=False),
+        snapshot_json=json.dumps(snapshot, ensure_ascii=False), subtotal=snapshot["totales"]["subtotal"],
+        descuento_total=snapshot["totales"]["descuento_total"], iva_monto=snapshot["totales"]["iva_monto"],
+        total=snapshot["totales"]["total"], moneda=snapshot["encabezado"].get("moneda") or "MXN")
+    db.session.add(version); db.session.flush()
+    return version
+
+
+def _ensure_initial_cotizacion_version(cot):
+    version = CotizacionVersion.query.filter_by(cotizacion_id=cot.id).order_by(CotizacionVersion.numero_version).first()
+    if version: return version
+    version = _create_cotizacion_version(cot, "Versión inicial", force=True)
+    version.creada_en = cot.fecha or now_cdmx_naive(); version.creada_por = cot.responsable or version.creada_por
+    if cot.last_whatsapp_at:
+        version.es_version_enviada = True; version.enviada_en = cot.last_whatsapp_at
+    return version
+
+
 def parse_int(v, default=0):
     try:
         if v is None or v == "":
@@ -6444,6 +6509,34 @@ def index():
         .all()
     )
 
+    quote_ids = [row[0] for row in base_query.with_entities(Cotizacion.id).all()]
+    existing = {row[0] for row in db.session.query(CotizacionVersion.cotizacion_id).filter(CotizacionVersion.cotizacion_id.in_(quote_ids or [-1])).distinct().all()}
+    for quote in Cotizacion.query.filter(Cotizacion.id.in_([qid for qid in quote_ids if qid not in existing] or [-1])).all():
+        _ensure_initial_cotizacion_version(quote)
+    db.session.commit()
+    period_start = datetime.strptime(desde, "%Y-%m-%d") if desde else ahora.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    period_end = datetime.strptime(hasta, "%Y-%m-%d") + timedelta(days=1) if hasta else ahora + timedelta(days=1)
+    revision_query = CotizacionVersion.query.filter(CotizacionVersion.cotizacion_id.in_(quote_ids or [-1]), CotizacionVersion.creada_en >= period_start, CotizacionVersion.creada_en < period_end)
+    revisiones_periodo = revision_query.filter(CotizacionVersion.numero_version > 0).count()
+    cotizaciones_modificadas = revision_query.filter(CotizacionVersion.numero_version > 0).with_entities(CotizacionVersion.cotizacion_id).distinct().count()
+    latest_sq = db.session.query(CotizacionVersion.cotizacion_id, db.func.max(CotizacionVersion.numero_version).label("max_version")).filter(CotizacionVersion.cotizacion_id.in_(quote_ids or [-1])).group_by(CotizacionVersion.cotizacion_id).subquery()
+    latest_versions = CotizacionVersion.query.join(latest_sq, db.and_(CotizacionVersion.cotizacion_id == latest_sq.c.cotizacion_id, CotizacionVersion.numero_version == latest_sq.c.max_version)).all()
+    pending_versions = [v for v in latest_versions if not v.es_version_enviada]
+    alertas_versiones, variacion_revisiones, total_original_versiones, total_vigente_versiones = [], 0.0, 0.0, 0.0
+    for latest in latest_versions:
+        first = CotizacionVersion.query.filter_by(cotizacion_id=latest.cotizacion_id, numero_version=0).first()
+        if first:
+            total_original_versiones += float(first.total or 0); total_vigente_versiones += float(latest.total or 0)
+            variacion_revisiones += float(latest.total or 0) - float(first.total or 0)
+        sent = CotizacionVersion.query.filter_by(cotizacion_id=latest.cotizacion_id, es_version_enviada=True).order_by(CotizacionVersion.numero_version.desc()).first()
+        if sent and latest.numero_version > sent.numero_version: alertas_versiones.append({"cotizacion": latest.cotizacion, "latest": latest, "sent": sent})
+    actividad_revisiones = revision_query.filter(CotizacionVersion.numero_version > 0).order_by(CotizacionVersion.creada_en.desc()).limit(10).all()
+    razones_versiones = {"Cantidades/precios": 0, "Alcance/conceptos": 0, "Descuento/condiciones": 0, "Solicitud del cliente": 0, "Otros": 0}
+    for version in revision_query.filter(CotizacionVersion.numero_version > 0).all():
+        reason = (version.motivo_cambio or "").lower()
+        key = "Cantidades/precios" if any(x in reason for x in ("cantidad", "precio", "importe")) else "Alcance/conceptos" if any(x in reason for x in ("concepto", "alcance", "partida")) else "Descuento/condiciones" if any(x in reason for x in ("descuento", "condicion", "iva")) else "Solicitud del cliente" if "cliente" in reason else "Otros"
+        razones_versiones[key] += 1
+
     return render_template(
         "dashboard.html",
         title="Sistema MAR",
@@ -6471,6 +6564,11 @@ def index():
         can_assign_cotizaciones=can_assign_cotizaciones(),
         seguimiento_metricas=seguimiento_metricas,
         carga_asesores=carga_asesores,
+        revisiones_periodo=revisiones_periodo, cotizaciones_modificadas=cotizaciones_modificadas,
+        revisiones_pendientes=len(pending_versions), variacion_revisiones=variacion_revisiones,
+        actividad_revisiones=actividad_revisiones, alertas_versiones=alertas_versiones,
+        razones_versiones=razones_versiones, total_original_versiones=total_original_versiones,
+        total_vigente_versiones=total_vigente_versiones,
         show_splash=True
     )
 
@@ -9037,6 +9135,9 @@ def crear_cotizacion():
 def editar_cotizacion(cot_id: int):
     c = _cotizacion_activa_or_404(cot_id)
     require_owner_or_admin(c)
+    if (c.estatus_aprobacion or "").upper() == "APROBADA" or getattr(c, "facturas", []):
+        flash("La cotización está aprobada o facturada y quedó bloqueada para edición.", "warning")
+        return redirect(url_for("view_cotizacion", cot_id=c.id))
     # zona actual (si existe) viene persistida en notas como: "Zona: ... (X% descuento)"
     zona_actual = ""
     try:
@@ -9061,11 +9162,20 @@ def actualizar_cotizacion(cot_id: int):
     c = _cotizacion_activa_or_404(cot_id)
     require_owner_or_admin(c)
 
+    if (c.estatus_aprobacion or "").upper() == "APROBADA" or getattr(c, "facturas", []):
+        flash("La cotización está aprobada o facturada y no admite cambios.", "danger")
+        return redirect(url_for("view_cotizacion", cot_id=c.id))
+
     f = request.form
+    motivo_cambio = (f.get("motivo_cambio") or "").strip()
+    if not motivo_cambio:
+        flash("Indica el motivo del cambio para conservar la trazabilidad.", "danger")
+        return redirect(url_for("editar_cotizacion", cot_id=c.id))
     especialidad_form = (f.get("especialidad") or "").strip()
     if especialidad_form not in ESPECIALIDADES_COTIZACION:
         flash("Selecciona una especialidad válida.", "danger")
         return redirect(url_for("editar_cotizacion", cot_id=c.id))
+    _ensure_initial_cotizacion_version(c)
 
     fecha_form = (f.get("fecha") or "").strip()
     try:
@@ -9218,6 +9328,9 @@ def actualizar_cotizacion(cot_id: int):
     c.iva_monto = fmt(iva_monto)
     c.total = fmt(total)
 
+    db.session.flush()
+    db.session.expire(c, ["detalles"])
+    _create_cotizacion_version(c, motivo_cambio)
     db.session.commit()
 
     # --- WhatsApp en actualización ---
@@ -9254,6 +9367,61 @@ window.location.href = "{detalle}";
 </script>
 <p>Abrir PDF: <a href="{pdf_url}" target="_blank">aquí</a>. Ver detalle: <a href="{detalle}">cotización</a>.</p>
 </body></html>"""
+
+
+def _version_payload(version):
+    return json.loads(version.snapshot_json or "{}")
+
+
+@app.route("/cotizaciones/<int:cot_id>/versiones")
+@login_required
+def cotizacion_versiones(cot_id):
+    cot = _cotizacion_activa_or_404(cot_id); require_owner_or_admin(cot)
+    _ensure_initial_cotizacion_version(cot); db.session.commit()
+    versiones = CotizacionVersion.query.filter_by(cotizacion_id=cot.id).order_by(CotizacionVersion.numero_version.desc()).all()
+    return render_template("cotizacion_versiones.html", c=cot, versiones=versiones, title=f"Historial {cot.folio}")
+
+
+@app.route("/cotizaciones/<int:cot_id>/versiones/<int:version_id>")
+@login_required
+def cotizacion_version_detalle(cot_id, version_id):
+    cot = _cotizacion_activa_or_404(cot_id); require_owner_or_admin(cot)
+    version = CotizacionVersion.query.filter_by(id=version_id, cotizacion_id=cot.id).first_or_404()
+    anterior = CotizacionVersion.query.filter(CotizacionVersion.cotizacion_id == cot.id, CotizacionVersion.numero_version < version.numero_version).order_by(CotizacionVersion.numero_version.desc()).first()
+    snapshot = _version_payload(version); previous = _version_payload(anterior) if anterior else {}
+    return render_template("cotizacion_version_detalle.html", c=cot, version=version, anterior=anterior, snapshot=snapshot,
+                           cambios=_snapshot_changes(previous, snapshot) if anterior else [], title=f"{cot.folio}-{version.etiqueta}")
+
+
+@app.post("/cotizaciones/<int:cot_id>/versiones/<int:version_id>/enviada")
+@login_required
+def marcar_cotizacion_version_enviada(cot_id, version_id):
+    cot = _cotizacion_activa_or_404(cot_id); require_owner_or_admin(cot)
+    version = CotizacionVersion.query.filter_by(id=version_id, cotizacion_id=cot.id).first_or_404()
+    version.es_version_enviada = True; version.enviada_en = now_cdmx_naive(); db.session.commit()
+    flash(f"{cot.folio}-{version.etiqueta} marcada como enviada.", "success")
+    return redirect(url_for("cotizacion_versiones", cot_id=cot.id))
+
+
+@app.post("/cotizaciones/<int:cot_id>/versiones/<int:version_id>/restaurar")
+@login_required
+def restaurar_cotizacion_version(cot_id, version_id):
+    cot = _cotizacion_activa_or_404(cot_id); require_owner_or_admin(cot)
+    if (cot.estatus_aprobacion or "").upper() == "APROBADA" or getattr(cot, "facturas", []):
+        flash("Una cotización aprobada o facturada no puede restaurarse.", "danger"); return redirect(url_for("cotizacion_versiones", cot_id=cot.id))
+    version = CotizacionVersion.query.filter_by(id=version_id, cotizacion_id=cot.id).first_or_404()
+    data = _version_payload(version); header, totals = data.get("encabezado", {}), data.get("totales", {})
+    for field in ("estatus", "estatus_aprobacion", "especialidad", "especialidad_descripcion", "proyecto", "ciudad_trabajo", "moneda", "notas"):
+        if field in header: setattr(cot, field, header.get(field))
+    for field in ("subtotal", "descuento_total", "iva_porc", "iva_monto", "total"): setattr(cot, field, float(totals.get(field) or 0))
+    for detail in list(cot.detalles): db.session.delete(detail)
+    db.session.flush()
+    for item in data.get("detalles", []):
+        db.session.add(CotizacionDetalle(**_safe_detalle_kwargs(cotizacion_id=cot.id, concepto_id=item.get("concepto_id"), nombre_concepto=item.get("nombre_concepto") or "Concepto", unidad=item.get("unidad"), cantidad=item.get("cantidad"), precio_unitario=item.get("precio_unitario"), capitulo=item.get("capitulo"), sistema=item.get("sistema"), descripcion=item.get("descripcion"), subtotal=item.get("subtotal"), origen=item.get("origen"))))
+    db.session.flush(); db.session.expire(cot, ["detalles"])
+    nueva = _create_cotizacion_version(cot, f"Restauración de {version.etiqueta}", force=True); db.session.commit()
+    flash(f"Se restauró {version.etiqueta} como {nueva.etiqueta}.", "success")
+    return redirect(url_for("cotizacion_versiones", cot_id=cot.id))
 
 @app.route("/cotizaciones/<int:cot_id>/eliminar")
 @login_required
@@ -10960,6 +11128,11 @@ def api_send_cotizacion_email(cot_id: int):
         cc = _parse_email_list(cc_raw)
         bcc = _parse_email_list(bcc_raw)
         _send_cotizacion_email(c, recipients, cc=cc, bcc=bcc)
+        _ensure_initial_cotizacion_version(c)
+        latest_version = CotizacionVersion.query.filter_by(cotizacion_id=c.id).order_by(CotizacionVersion.numero_version.desc()).first()
+        latest_version.es_version_enviada = True
+        latest_version.enviada_en = now_cdmx_naive()
+        db.session.commit()
         to_display = ", ".join(recipients)
         return jsonify({
             "ok": True,

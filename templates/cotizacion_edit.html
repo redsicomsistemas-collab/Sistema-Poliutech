@@ -131,6 +131,11 @@
           </div>
         </div>
 
+        <div class="alert alert-info">
+          <label class="form-label fw-bold" for="motivo_cambio">Motivo del cambio</label>
+          <textarea id="motivo_cambio" name="motivo_cambio" class="form-control" rows="2" maxlength="500" required placeholder="Ej. El cliente solicitó ajustar cantidades y descuento"></textarea>
+          <div class="form-text">Se guardará junto con la nueva revisión y aparecerá en el historial.</div>
+        </div>
         <div class="d-flex justify-content-end">
           <button type="submit" class="btn btn-primary me-2">💾 Guardar cambios</button>
           <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">Cancelar</a>

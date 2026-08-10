@@ -132,6 +132,33 @@ class CotizacionDetalle(db.Model):
         return f"<Detalle {self.nombre_concepto}>"
 
 
+class CotizacionVersion(db.Model):
+    __tablename__ = "cotizacion_version"
+    __table_args__ = (db.UniqueConstraint("cotizacion_id", "numero_version", name="uq_cotizacion_version_numero"),)
+    id = db.Column(db.Integer, primary_key=True)
+    cotizacion_id = db.Column(db.Integer, db.ForeignKey("cotizacion.id"), nullable=False, index=True)
+    numero_version = db.Column(db.Integer, nullable=False, default=0)
+    creada_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    creada_por_usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True, index=True)
+    creada_por = db.Column(db.String(120))
+    motivo_cambio = db.Column(db.String(500), nullable=False, default="Versión inicial")
+    resumen_cambios = db.Column(db.Text)
+    snapshot_json = db.Column(db.Text, nullable=False)
+    subtotal = db.Column(db.Float, default=0.0)
+    descuento_total = db.Column(db.Float, default=0.0)
+    iva_monto = db.Column(db.Float, default=0.0)
+    total = db.Column(db.Float, default=0.0)
+    moneda = db.Column(db.String(10), default="MXN")
+    es_version_enviada = db.Column(db.Boolean, default=False, nullable=False, index=True)
+    enviada_en = db.Column(db.DateTime, nullable=True)
+    cotizacion = db.relationship("Cotizacion", backref=db.backref("versiones", lazy=True, cascade="all, delete-orphan", order_by="CotizacionVersion.numero_version.desc()"))
+    usuario = db.relationship("Usuario", foreign_keys=[creada_por_usuario_id])
+
+    @property
+    def etiqueta(self):
+        return f"R{self.numero_version}"
+
+
 class FacturacionConfig(db.Model):
     __tablename__ = "facturacion_config"
 
