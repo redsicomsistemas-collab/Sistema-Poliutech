@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 from pathlib import Path
 from functools import wraps
 from email.message import EmailMessage
-from email.utils import getaddresses
+from email.utils import formataddr, getaddresses, parseaddr
 from html import escape
 import xml.etree.ElementTree as ET
 from utils.pdf_conditions import format_pdf_condition_lines
@@ -433,10 +433,7 @@ def _send_registro_obra_email(row: dict) -> None:
         filename=REGISTRO_MAIL_ATTACHMENT.name,
     )
 
-    with smtplib.SMTP(REGISTRO_MAIL_HOST, REGISTRO_MAIL_PORT, timeout=30) as smtp:
-        smtp.ehlo()
-        smtp.login(REGISTRO_MAIL_USERNAME, REGISTRO_MAIL_PASSWORD)
-        smtp.send_message(msg, to_addrs=recipients)
+    _send_smtp_message(msg, to_addrs=recipients, prefer_registration=True)
 
 
 def _save_registro_obras(rows: list[dict]) -> None:
@@ -2157,10 +2154,9 @@ def _send_quote_assignment_notifications(
             msg["From"] = f"SISTEMA MAR <{SMTP_FROM or SMTP_USERNAME}>"
             msg["To"] = ", ".join(emails)
             msg.set_content(body)
-            with _SMTP_EMAIL_TRANSPORT(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
-                smtp.starttls()
-                smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-                refused = smtp.send_message(msg, to_addrs=emails) or {}
+            refused = _send_smtp_message(
+                msg, to_addrs=emails, starttls=True, transport=_SMTP_EMAIL_TRANSPORT
+            )
             results["email"]["failed"] = len(refused)
             results["email"]["sent"] = len(emails) - len(refused)
         except Exception:
@@ -2571,10 +2567,7 @@ def _send_support_ticket_email(ticket: "TicketSoporte") -> None:
     )
     msg.add_alternative(_support_ticket_email_html(ticket, detail_url), subtype="html")
 
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
-        smtp.ehlo()
-        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-        smtp.send_message(msg, to_addrs=recipients)
+    _send_smtp_message(msg, to_addrs=recipients)
     _send_configured_sms(
         "ticket_soporte",
         f"Nuevo ticket {ticket.folio or ticket.id}: {ticket.asunto or 'Soporte'} ({ticket.prioridad or 'MEDIA'}).",
@@ -2981,6 +2974,67 @@ REGISTRO_MAIL_USERNAME = os.getenv("REGISTRO_MAIL_USERNAME", "info@poliutech.com
 REGISTRO_MAIL_PASSWORD = os.getenv("REGISTRO_MAIL_PASSWORD", "Info@2025?").strip()
 REGISTRO_MAIL_FROM = os.getenv("REGISTRO_MAIL_FROM", REGISTRO_MAIL_USERNAME).strip()
 REGISTRO_MAIL_ATTACHMENT = Path(__file__).resolve().parent / "presentacion2026OK.pdf"
+
+
+def _smtp_quota_rejected(exc: Exception) -> bool:
+    if not isinstance(exc, smtplib.SMTPDataError):
+        return False
+    message = (exc.smtp_error or b"").decode("utf-8", errors="ignore").lower()
+    return exc.smtp_code in {452, 550, 552, 554} and any(
+        marker in message
+        for marker in ("limit", "quota", "too many", "outgoing messages", "rate")
+    )
+
+
+def _send_smtp_message(
+    msg: EmailMessage,
+    *,
+    to_addrs=None,
+    starttls: bool = False,
+    prefer_registration: bool = False,
+    transport=None,
+) -> dict:
+    """Send mail and retry with the alternate Poliutech mailbox on quota rejection."""
+    primary = (SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD)
+    registration = (REGISTRO_MAIL_HOST, REGISTRO_MAIL_PORT, REGISTRO_MAIL_USERNAME, REGISTRO_MAIL_PASSWORD)
+    accounts = [registration, primary] if prefer_registration else [primary, registration]
+    unique_accounts = []
+    seen = set()
+    for account in accounts:
+        key = (account[0].lower(), account[1], account[2].lower())
+        if account[2] and key not in seen:
+            seen.add(key)
+            unique_accounts.append(account)
+
+    original_from = msg.get("From", "")
+    display_name, _ = parseaddr(original_from)
+    smtp_transport = transport or smtplib.SMTP
+    first_error = None
+    for index, (host, port, username, password) in enumerate(unique_accounts):
+        if index:
+            if "From" in msg:
+                msg.replace_header("From", formataddr((display_name or "SISTEMA MAR", username)))
+            else:
+                msg["From"] = formataddr((display_name or "SISTEMA MAR", username))
+            logger.warning("SMTP principal sin cuota; reintentando correo con %s.", username)
+        try:
+            with smtp_transport(host, port, timeout=30) as smtp:
+                smtp.ehlo()
+                if starttls:
+                    smtp.starttls()
+                    smtp.ehlo()
+                smtp.login(username, password)
+                refused = smtp.send_message(msg, to_addrs=to_addrs) or {}
+            return refused
+        except Exception as exc:
+            if index == 0 and len(unique_accounts) > 1 and _smtp_quota_rejected(exc):
+                first_error = exc
+                continue
+            if first_error is not None:
+                raise RuntimeError(
+                    f"La cuenta principal alcanzó su cuota y el respaldo {username} también falló: {exc}"
+                ) from exc
+            raise
 FIREBASE_CREDENTIALS_FILE = os.getenv("FIREBASE_CREDENTIALS_FILE", "").strip()
 FIREBASE_CREDENTIALS_JSON = os.getenv("FIREBASE_CREDENTIALS_JSON", "").strip()
 PUSH_NOTIFICATIONS_ENABLED = os.getenv("PUSH_NOTIFICATIONS_ENABLED", "1").strip().lower() not in {"0", "false", "no"}
@@ -4367,10 +4421,7 @@ def _send_user_created_email(usuario: Usuario, created_by: Usuario | None = None
     msg.set_content(text_body)
     msg.add_alternative(html_body, subtype="html")
 
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
-        smtp.ehlo()
-        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-        smtp.send_message(msg, to_addrs=recipients)
+    _send_smtp_message(msg, to_addrs=recipients)
 
 def _send_user_updated_email(
     usuario: Usuario,
@@ -4476,10 +4527,7 @@ def _send_user_updated_email(
     msg.set_content(text_body)
     msg.add_alternative(html_body, subtype="html")
 
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
-        smtp.ehlo()
-        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-        smtp.send_message(msg, to_addrs=recipients)
+    _send_smtp_message(msg, to_addrs=recipients)
 
 def _usuario_nombre_representante(user: Usuario | None) -> str:
     if not user:
@@ -6345,10 +6393,7 @@ def _send_password_reset_email(usuario: Usuario, reset_url: str) -> None:
         """,
         subtype="html",
     )
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
-        smtp.starttls()
-        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-        smtp.send_message(msg)
+    _send_smtp_message(msg, starttls=True)
 
 
 @app.route("/olvide-contrasena", methods=["GET", "POST"])
@@ -10527,10 +10572,7 @@ def _send_followup_tag_emails(
             ),
             subtype="html",
         )
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
-            smtp.ehlo()
-            smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-            smtp.send_message(msg, to_addrs=recipients)
+        _send_smtp_message(msg, to_addrs=recipients)
         sent += 1
     return sent
 
@@ -10597,10 +10639,7 @@ def _send_cotizacion_email(c: Cotizacion, recipients: list[str], cc: list[str] |
         filename=f"{c.folio}.pdf",
     )
 
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
-        smtp.ehlo()
-        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-        smtp.send_message(msg, to_addrs=[*recipients, *cc, *bcc])
+    _send_smtp_message(msg, to_addrs=[*recipients, *cc, *bcc])
 
 
 def _quote_updated_mail_html(c: Cotizacion, view_url: str, approve_url: str, reject_url: str) -> str:
@@ -10707,10 +10746,7 @@ def _send_quote_updated_email(c: Cotizacion) -> None:
         filename=f"{c.folio or c.id}.pdf",
     )
 
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
-        smtp.ehlo()
-        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-        smtp.send_message(msg, to_addrs=[*recipients, *bcc])
+    _send_smtp_message(msg, to_addrs=[*recipients, *bcc])
 
 
 def _quote_review_serializer() -> URLSafeTimedSerializer:
@@ -10824,10 +10860,7 @@ def _send_quote_review_email(c: Cotizacion) -> None:
         filename=f"{c.folio or c.id}.pdf",
     )
 
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
-        smtp.ehlo()
-        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-        smtp.send_message(msg, to_addrs=[*recipients, *bcc])
+    _send_smtp_message(msg, to_addrs=[*recipients, *bcc])
 
 
 def _quote_review_response_mail_html(c: Cotizacion, selected_status: str, reason: str = "") -> str:
@@ -10939,10 +10972,7 @@ def _send_quote_review_response_email(c: Cotizacion, selected_status: str, reaso
         f"{motivo_line}\n"
     )
     msg.add_alternative(_quote_review_response_mail_html(c, selected_status, reason), subtype="html")
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
-        smtp.ehlo()
-        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-        smtp.send_message(msg, to_addrs=recipients)
+    _send_smtp_message(msg, to_addrs=recipients)
 
 
 def _send_quote_review_email_safely(c: Cotizacion) -> None:
@@ -13178,10 +13208,7 @@ def _send_reporte_diario_email(reporte: ReporteDiario) -> None:
         f"Ver: {detail_url}\n"
     )
     msg.add_alternative(_reporte_diario_mail_html(reporte, detail_url), subtype="html")
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
-        smtp.ehlo()
-        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-        smtp.send_message(msg, to_addrs=[*recipients, *bcc])
+    _send_smtp_message(msg, to_addrs=[*recipients, *bcc])
 
 
 def _send_reporte_diario_push_hansel(reporte: ReporteDiario) -> dict[str, int]:
@@ -13326,10 +13353,7 @@ def _send_solicitud_recurso_email(solicitud: SolicitudRecurso) -> list[str]:
         f"Ver: {detail_url}\n"
     )
     msg.add_alternative(_solicitud_recurso_mail_html(solicitud, detail_url), subtype="html")
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
-        smtp.ehlo()
-        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-        smtp.send_message(msg, to_addrs=recipients)
+    _send_smtp_message(msg, to_addrs=recipients)
     return recipients
 
 
@@ -13436,10 +13460,7 @@ def _send_solicitud_recurso_resultado_email(solicitud: SolicitudRecurso) -> None
         f"Ver: {detail_url}\n"
     )
     msg.add_alternative(_solicitud_recurso_resultado_mail_html(solicitud, detail_url), subtype="html")
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
-        smtp.ehlo()
-        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-        smtp.send_message(msg, to_addrs=recipients)
+    _send_smtp_message(msg, to_addrs=recipients)
 
 
 def _send_solicitud_recurso_resultado_push(solicitud: SolicitudRecurso) -> dict[str, int]:
@@ -13511,10 +13532,7 @@ def _send_solicitud_recurso_autorizada_finanzas_email(solicitud: SolicitudRecurs
         f"Ver: {detail_url}\n"
     )
     msg.add_alternative(_solicitud_recurso_resultado_mail_html(solicitud, detail_url), subtype="html")
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
-        smtp.ehlo()
-        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-        smtp.send_message(msg, to_addrs=recipients)
+    _send_smtp_message(msg, to_addrs=recipients)
 
 
 def _send_solicitud_recurso_autorizada_finanzas_push(solicitud: SolicitudRecurso) -> dict[str, int]:
@@ -14608,10 +14626,7 @@ def _send_gastos_review_email(gasto: "ComprobacionGasto") -> None:
     msg.add_alternative(_gastos_mail_html(gasto, view_url, approve_url), subtype="html")
     _gastos_add_email_attachments(msg, gasto)
 
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
-        smtp.ehlo()
-        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-        smtp.send_message(msg, to_addrs=[*recipients, *bcc])
+    _send_smtp_message(msg, to_addrs=[*recipients, *bcc])
 
 
 def _send_gastos_group_review_email(gastos: list["ComprobacionGasto"]) -> None:
@@ -14649,10 +14664,7 @@ def _send_gastos_group_review_email(gastos: list["ComprobacionGasto"]) -> None:
     for gasto in gastos:
         _gastos_add_email_attachments(msg, gasto)
 
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
-        smtp.ehlo()
-        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-        smtp.send_message(msg, to_addrs=[*recipients, *bcc])
+    _send_smtp_message(msg, to_addrs=[*recipients, *bcc])
 
 
 def _gastos_authorized_mail_html(gastos: list["ComprobacionGasto"], detail_url: str) -> str:
@@ -14733,10 +14745,7 @@ def _send_gastos_authorized_finanzas_email(gastos: list["ComprobacionGasto"]) ->
     msg.set_content("\n".join(lines))
     msg.add_alternative(_gastos_authorized_mail_html(gastos, detail_url), subtype="html")
 
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
-        smtp.ehlo()
-        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-        smtp.send_message(msg, to_addrs=recipients)
+    _send_smtp_message(msg, to_addrs=recipients)
 
 
 def _send_gastos_authorized_finanzas_push(gastos: list["ComprobacionGasto"]) -> dict[str, int]:
@@ -18130,10 +18139,9 @@ def _rrhh_email(item: SolicitudRH, *, resultado: bool = False) -> None:
         f'<p><a href="{escape(detail_url)}">Abrir expediente en M.A.R.</a></p>',
         subtype="html",
     )
-    with _SMTP_EMAIL_TRANSPORT(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
-        smtp.starttls()
-        smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-        smtp.send_message(msg, to_addrs=recipients)
+    _send_smtp_message(
+        msg, to_addrs=recipients, starttls=True, transport=_SMTP_EMAIL_TRANSPORT
+    )
 
 
 def _rrhh_email_safely(item: SolicitudRH, *, resultado: bool = False) -> None:
