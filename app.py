@@ -13290,8 +13290,18 @@ def _solicitud_recurso_mail_html(solicitud: SolicitudRecurso, detail_url: str) -
     """
 
 
-def _send_solicitud_recurso_email(solicitud: SolicitudRecurso) -> None:
-    recipients = notification_targets("solicitud_fondos", "email") or list(SOLICITUD_RECURSO_EMAILS)
+def _solicitud_recurso_email_recipients() -> list[str]:
+    """Return configured recipients while always keeping the systems mailbox copied."""
+    configured = notification_targets("solicitud_fondos", "email")
+    recipients = configured or list(SOLICITUD_RECURSO_EMAILS)
+    required = "sistemas@poliutech.com"
+    if required not in {email.strip().lower() for email in recipients}:
+        recipients.append(required)
+    return recipients
+
+
+def _send_solicitud_recurso_email(solicitud: SolicitudRecurso) -> list[str]:
+    recipients = _solicitud_recurso_email_recipients()
     detail_url = url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id, _external=True)
     msg = EmailMessage()
     msg["Subject"] = f"Solicitud de fondos {solicitud.folio or solicitud.id}"
@@ -13309,6 +13319,7 @@ def _send_solicitud_recurso_email(solicitud: SolicitudRecurso) -> None:
         smtp.ehlo()
         smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
         smtp.send_message(msg, to_addrs=recipients)
+    return recipients
 
 
 def _send_solicitud_recurso_push_hansel(solicitud: SolicitudRecurso) -> dict[str, int]:
@@ -13332,10 +13343,13 @@ def _send_solicitud_recurso_push_hansel(solicitud: SolicitudRecurso) -> dict[str
     )
 
 
-def _notify_solicitud_recurso_created(solicitud: SolicitudRecurso) -> None:
+def _notify_solicitud_recurso_created(solicitud: SolicitudRecurso) -> tuple[list[str], str | None]:
+    recipients: list[str] = []
+    email_error: str | None = None
     try:
-        _send_solicitud_recurso_email(solicitud)
+        recipients = _send_solicitud_recurso_email(solicitud)
     except Exception as exc:
+        email_error = str(exc)
         logger.warning("Correo de solicitud de fondos %s fallo: %s", solicitud.folio or solicitud.id, exc)
 
     try:
@@ -13346,6 +13360,7 @@ def _notify_solicitud_recurso_created(solicitud: SolicitudRecurso) -> None:
         "solicitud_fondos",
         f"Nueva solicitud de fondos {solicitud.folio or solicitud.id} por ${float(solicitud.total or 0):,.2f}.",
     )
+    return recipients, email_error
 
 
 def _solicitud_recurso_solicitante_user(solicitud: SolicitudRecurso) -> Usuario | None:
@@ -17079,8 +17094,17 @@ def solicitud_recurso_crear():
             "warning",
         )
         return redirect(url_for("solicitudes_recursos_index"))
-    _notify_solicitud_recurso_created(solicitud)
-    flash(f"Solicitud {solicitud.folio} registrada.", "success")
+    email_recipients, email_error = _notify_solicitud_recurso_created(solicitud)
+    if email_error:
+        flash(
+            f"Solicitud {solicitud.folio} registrada, pero el correo no pudo enviarse: {email_error}",
+            "warning",
+        )
+    else:
+        flash(
+            f"Solicitud {solicitud.folio} registrada y correo enviado a: {', '.join(email_recipients)}.",
+            "success",
+        )
     return redirect(url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id))
 
 

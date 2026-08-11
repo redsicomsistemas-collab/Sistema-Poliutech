@@ -183,6 +183,14 @@
     font-weight: 700;
   }
 
+  .dashboard-pagination .page-item.active .page-link {
+    background: var(--mar-blue);
+    border-color: var(--mar-blue);
+    color: #fff;
+    box-shadow: 0 0 0 2px rgba(var(--bs-primary-rgb), 0.28);
+    font-weight: 800;
+  }
+
   .commercial-filter-active {
     font-weight: 800 !important;
     box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.28) !important;
@@ -657,7 +665,7 @@
           {% endif %}
         </div>
         <nav aria-label="Paginacion de cotizaciones">
-          <ul class="pagination pagination-sm mb-0">
+          <ul class="pagination pagination-sm mb-0 dashboard-pagination">
             <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
               <a class="page-link" href="{{ url_for('index', page=pagination.prev_num, vista=dashboard_filters.vista, bandeja=dashboard_filters.bandeja, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente, proyecto=dashboard_filters.proyecto, especialidad=dashboard_filters.especialidad, especialidad_descripcion=dashboard_filters.especialidad_descripcion, responsable=dashboard_filters.responsable) if pagination.has_prev else '#' }}">Anterior</a>
             </li>
