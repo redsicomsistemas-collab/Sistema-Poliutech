@@ -9351,6 +9351,7 @@ def actualizar_cotizacion(cot_id: int):
         _send_quote_updated_email(c)
     except Exception as e:
         logger.warning("Correo de edición de cotizacion falló: %s", e)
+        flash(f"La cotización se actualizó, pero no se pudo enviar el correo: {e}", "warning")
 
     try:
         _send_quote_updated_push(c)
@@ -10087,11 +10088,13 @@ def api_update_estatus(cot_id):
         c.resultado = "GANADA"
     db.session.commit()
 
+    email_warning = None
     if nuevo in {"APROBADO", "AUTORIZADO", "RECHAZADO"}:
         try:
             _send_quote_review_response_email(c, nuevo)
         except Exception as e:
             logger.warning("Correo de respuesta de cotizacion fallido: %s", e)
+            email_warning = str(e)
 
     try:
         _send_quote_status_push(c, anterior, nuevo)
@@ -10114,7 +10117,8 @@ def api_update_estatus(cot_id):
         "ok": True,
         "folio": c.folio,
         "estatus": nuevo,
-        "mensaje": f"Estatus de la cotización {c.folio} actualizado a {nuevo}."
+        "mensaje": f"Estatus de la cotización {c.folio} actualizado a {nuevo}.",
+        "email_warning": email_warning,
     })
 
 @app.route("/api/cotizaciones/<int:cot_id>/estatus-aprobacion", methods=["POST"])
@@ -10148,10 +10152,12 @@ def api_update_estatus_aprobacion(cot_id):
     c.estatus_aprobacion = nuevo
     db.session.commit()
 
+    email_warning = None
     try:
         _send_quote_review_response_email(c, nuevo)
     except Exception as e:
         logger.warning("Correo de respuesta de aprobación de cotizacion fallido: %s", e)
+        email_warning = str(e)
 
     try:
         _send_quote_review_result_push(c, nuevo)
@@ -10162,7 +10168,8 @@ def api_update_estatus_aprobacion(cot_id):
         "ok": True,
         "folio": c.folio,
         "estatus_aprobacion": nuevo,
-        "mensaje": f"Estatus de aprobación de {c.folio} actualizado a {nuevo}."
+        "mensaje": f"Estatus de aprobación de {c.folio} actualizado a {nuevo}.",
+        "email_warning": email_warning,
     })
 
 # ---------------------------------------------------------
@@ -10947,6 +10954,7 @@ def _send_quote_review_email_safely(c: Cotizacion) -> None:
         except Exception:
             pass
         print(f"[Cotizaciones] Error enviando revision {c.folio or c.id}: {exc}", file=sys.stderr)
+        flash(f"La cotización se guardó, pero no se pudo enviar el correo de revisión: {exc}", "warning")
 
 
 def _apply_quote_review_decision(
@@ -13194,10 +13202,12 @@ def _send_reporte_diario_push_hansel(reporte: ReporteDiario) -> dict[str, int]:
     )
 
 
-def _notify_reporte_diario_created(reporte: ReporteDiario) -> None:
+def _notify_reporte_diario_created(reporte: ReporteDiario) -> str | None:
+    email_error = None
     try:
         _send_reporte_diario_email(reporte)
     except Exception as exc:
+        email_error = str(exc)
         logger.warning("Correo de reporte diario %s fallo: %s", reporte.folio or reporte.id, exc)
     try:
         _send_reporte_diario_push_hansel(reporte)
@@ -13207,6 +13217,7 @@ def _notify_reporte_diario_created(reporte: ReporteDiario) -> None:
         "reporte_diario",
         f"Nuevo reporte diario {reporte.folio or reporte.id}: {reporte.colaborador} - {reporte.semaforo}",
     )
+    return email_error
 
 
 def _solicitud_recurso_recalcular(solicitud: SolicitudRecurso) -> None:
@@ -13459,10 +13470,12 @@ def _send_solicitud_recurso_resultado_push(solicitud: SolicitudRecurso) -> dict[
     )
 
 
-def _notify_solicitud_recurso_resultado(solicitud: SolicitudRecurso) -> None:
+def _notify_solicitud_recurso_resultado(solicitud: SolicitudRecurso) -> str | None:
+    email_error = None
     try:
         _send_solicitud_recurso_resultado_email(solicitud)
     except Exception as exc:
+        email_error = str(exc)
         logger.warning("Correo resultado solicitud de fondos %s fallo: %s", solicitud.folio or solicitud.id, exc)
 
     try:
@@ -13473,6 +13486,7 @@ def _notify_solicitud_recurso_resultado(solicitud: SolicitudRecurso) -> None:
         "solicitud_fondos_resultado",
         f"Solicitud {solicitud.folio or solicitud.id}: {solicitud.estatus or 'actualizada'}.",
     )
+    return email_error
 
 
 def _send_solicitud_recurso_autorizada_finanzas_email(solicitud: SolicitudRecurso) -> None:
@@ -13526,16 +13540,19 @@ def _send_solicitud_recurso_autorizada_finanzas_push(solicitud: SolicitudRecurso
     )
 
 
-def _notify_solicitud_recurso_autorizada_finanzas(solicitud: SolicitudRecurso) -> None:
+def _notify_solicitud_recurso_autorizada_finanzas(solicitud: SolicitudRecurso) -> str | None:
+    email_error = None
     try:
         _send_solicitud_recurso_autorizada_finanzas_email(solicitud)
     except Exception as exc:
+        email_error = str(exc)
         logger.warning("Correo finanzas solicitud de fondos %s fallo: %s", solicitud.folio or solicitud.id, exc)
 
     try:
         _send_solicitud_recurso_autorizada_finanzas_push(solicitud)
     except Exception as exc:
         logger.warning("Push finanzas solicitud de fondos %s fallo: %s", solicitud.folio or solicitud.id, exc)
+    return email_error
 
 
 FINANZAS_CATEGORIA_CREDITO = "CREDITO_RECIBIDO"
@@ -14762,6 +14779,7 @@ def _notify_gastos_authorized_finanzas(gastos: list["ComprobacionGasto"]) -> Non
         _send_gastos_authorized_finanzas_email(gastos)
     except Exception as exc:
         logger.warning("Correo finanzas gastos autorizados fallo: %s", exc)
+        flash(f"El gasto quedó autorizado, pero no se pudo enviar el correo a Finanzas: {exc}", "warning")
 
     try:
         _send_gastos_authorized_finanzas_push(gastos)
@@ -16959,8 +16977,11 @@ def reporte_diario_crear():
     reporte.hora_envio = now_cdmx_naive()
     db.session.add(reporte)
     db.session.commit()
-    _notify_reporte_diario_created(reporte)
-    flash(f"Reporte {reporte.folio} enviado correctamente.", "success")
+    email_error = _notify_reporte_diario_created(reporte)
+    if email_error:
+        flash(f"Reporte {reporte.folio} guardado, pero no se pudo enviar el correo: {email_error}", "warning")
+    else:
+        flash(f"Reporte {reporte.folio} enviado correctamente.", "success")
     return redirect(url_for("reporte_diario_detalle", reporte_id=reporte.id))
 
 
@@ -17173,11 +17194,18 @@ def solicitud_recurso_estatus(solicitud_id: int):
     solicitud.actualizado_en = now_cdmx_naive()
     gasto = _solicitud_recurso_registrar_gasto(solicitud) if nuevo == "AUTORIZADA" else None
     db.session.commit()
+    email_errors = []
     if nuevo in {"AUTORIZADA", "RECHAZADA"} and anterior != nuevo:
-        _notify_solicitud_recurso_resultado(solicitud)
+        error = _notify_solicitud_recurso_resultado(solicitud)
+        if error:
+            email_errors.append(f"aviso al solicitante: {error}")
     if nuevo == "AUTORIZADA" and anterior != nuevo:
-        _notify_solicitud_recurso_autorizada_finanzas(solicitud)
-    if gasto:
+        error = _notify_solicitud_recurso_autorizada_finanzas(solicitud)
+        if error:
+            email_errors.append(f"aviso a Finanzas: {error}")
+    if email_errors:
+        flash(f"Estatus actualizado, pero falló el correo ({'; '.join(email_errors)}).", "warning")
+    elif gasto:
         flash(f"Estatus actualizado. Se registro en gastos como {gasto.folio}.", "success")
     else:
         flash("Estatus actualizado.", "success")
