@@ -263,8 +263,16 @@
               </table>
             </div>
           </div>
-          <div class="col-md-3 ms-auto d-grid">
-            <button class="btn btn-success">Guardar gasto</button>
+          <div class="col-md-5 ms-auto">
+            <div class="d-flex flex-column flex-sm-row justify-content-end gap-2">
+              <button type="submit" name="accion" value="guardar" class="btn btn-outline-secondary">
+                Guardar como borrador
+              </button>
+              <button type="submit" name="accion" value="enviar" class="btn btn-success">
+                Guardar y enviar notificación
+              </button>
+            </div>
+            <div class="form-text text-end">La notificación se envía al terminar y el gasto pasa a revisión.</div>
           </div>
         </form>
       </div>
