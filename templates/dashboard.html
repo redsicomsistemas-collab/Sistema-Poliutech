@@ -266,7 +266,7 @@
 
 <!-- 🔢 MÉTRICAS -->
 <div class="row g-3 mb-4 text-center dashboard-metrics-row">
-  <div class="col-md-4">
+  <div class="col-md-6 col-xl-3">
     <div class="card border-success shadow-sm dashboard-metric-card h-100">
       <div class="card-body">
         <h6 class="text-success">Importe Total</h6>
@@ -274,7 +274,7 @@
       </div>
     </div>
   </div>
-  <div class="col-md-4">
+  <div class="col-md-6 col-xl-3">
     <div class="card border-primary shadow-sm dashboard-metric-card h-100">
       <div class="card-body">
         <h6 class="text-primary">Cotizaciones Totales</h6>
@@ -282,11 +282,20 @@
       </div>
     </div>
   </div>
-  <div class="col-md-4">
+  <div class="col-md-6 col-xl-3">
     <div class="card border-info shadow-sm dashboard-metric-card h-100">
       <div class="card-body">
         <h6 class="text-info">Conceptos Registrados</h6>
         <h3 class="fw-bold text-dark" data-summary="conceptos-total">{{ total_catalogo }}</h3>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <div class="card border-warning shadow-sm dashboard-metric-card h-100">
+      <div class="card-body">
+        <h6 class="text-warning-emphasis">Importe histórico</h6>
+        <h3 class="fw-bold text-dark">${{ "{:,.2f}".format(total_importe_historico) }}</h3>
+        <div class="small text-muted">{{ total_cotizaciones_historico }} cotizaciones, incluidas rechazadas y perdidas</div>
       </div>
     </div>
   </div>

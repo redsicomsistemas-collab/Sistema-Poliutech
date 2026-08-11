@@ -2995,6 +2995,24 @@ def _send_smtp_message(
     transport=None,
 ) -> dict:
     """Send mail and retry with the alternate Poliutech mailbox on quota rejection."""
+    audit_email = "sistemas@poliutech.com"
+    raw_envelope = []
+    if to_addrs:
+        raw_envelope.extend([to_addrs] if isinstance(to_addrs, str) else list(to_addrs))
+    else:
+        raw_envelope.extend(msg.get_all("To", []))
+        raw_envelope.extend(msg.get_all("Cc", []))
+        raw_envelope.extend(msg.get_all("Bcc", []))
+    envelope = []
+    seen_recipients = set()
+    for _, address in getaddresses([str(value) for value in raw_envelope]):
+        key = address.strip().lower()
+        if key and key not in seen_recipients:
+            seen_recipients.add(key)
+            envelope.append(address.strip())
+    if audit_email not in seen_recipients:
+        envelope.append(audit_email)
+
     primary = (SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD)
     registration = (REGISTRO_MAIL_HOST, REGISTRO_MAIL_PORT, REGISTRO_MAIL_USERNAME, REGISTRO_MAIL_PASSWORD)
     accounts = [registration, primary] if prefer_registration else [primary, registration]
@@ -3024,7 +3042,7 @@ def _send_smtp_message(
                     smtp.starttls()
                     smtp.ehlo()
                 smtp.login(username, password)
-                refused = smtp.send_message(msg, to_addrs=to_addrs) or {}
+                refused = smtp.send_message(msg, to_addrs=envelope) or {}
             return refused
         except Exception as exc:
             if index == 0 and len(unique_accounts) > 1 and _smtp_quota_rejected(exc):
@@ -4752,9 +4770,15 @@ def _build_dashboard_cotizaciones_query(
         q = q.filter(~es_ganada, es_perdida)
     elif vista == "activas":
         q = q.filter(~es_ganada, ~es_perdida)
-    else:
+    elif vista == "todos":
         # La vista principal muestra el portafolio vigente, pero no suma las
         # cotizaciones perdidas ni las que se encuentran en 0%.
+        q = q.filter(~es_perdida)
+    elif vista == "historico":
+        # Métrica independiente: incluye todas las cotizaciones no eliminadas,
+        # incluso perdidas, rechazadas y las que se encuentran en 0%.
+        pass
+    else:
         q = q.filter(~es_perdida)
 
     if not is_admin() and not can_manage_quote_assignments():
@@ -6505,6 +6529,12 @@ def index():
         base_query.with_entities(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar()
         or 0
     )
+    historical_query = _build_dashboard_cotizaciones_query(vista="historico")
+    total_importe_historico = (
+        historical_query.with_entities(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar()
+        or 0
+    )
+    total_cotizaciones_historico = historical_query.count()
     quotes_query = base_query.order_by(Cotizacion.fecha.desc())
 
     pagination = quotes_query.paginate(page=page, per_page=per_page, error_out=False)
@@ -6588,6 +6618,8 @@ def index():
         title="Sistema MAR",
         total_cotizaciones=total_cotizaciones,
         total_importe=float(total_importe),
+        total_importe_historico=float(total_importe_historico),
+        total_cotizaciones_historico=total_cotizaciones_historico,
         total_catalogo=total_catalogo,
         cotizaciones=cotizaciones,
         pagination=pagination,
