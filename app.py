@@ -15586,6 +15586,44 @@ def gastos_viaticos_crear():
     return _gastos_redirect()
 
 
+@app.route("/gastos-viaticos/<int:gasto_id>/enviar", methods=["POST"])
+@login_required
+def gastos_viaticos_enviar(gasto_id: int):
+    gasto = ComprobacionGasto.query.get_or_404(gasto_id)
+    require_gasto_owner_or_admin(gasto)
+    if _gastos_es_recurso(gasto):
+        flash("Los fondos autorizados no se envían como comprobantes de gasto.", "warning")
+        return _gastos_redirect()
+    if (gasto.estatus or "").upper() != "PENDIENTE":
+        flash(f"El gasto {gasto.folio or gasto.id} ya no está pendiente de envío.", "info")
+        return _gastos_redirect()
+
+    gasto.estatus = "EN REVISION"
+    gasto.actualizado_en = now_cdmx_naive()
+    db.session.commit()
+
+    errores_envio: list[str] = []
+    try:
+        _send_gastos_group_review_email([gasto])
+    except Exception as exc:
+        errores_envio.append(f"correo: {exc}")
+        logger.exception("No se pudo enviar el gasto pendiente %s por correo", gasto.folio or gasto.id)
+    try:
+        _send_gastos_group_review_push_hansel([gasto])
+    except Exception as exc:
+        errores_envio.append(f"notificación: {exc}")
+        logger.warning("No se pudo enviar el push del gasto pendiente %s: %s", gasto.folio or gasto.id, exc)
+
+    if errores_envio:
+        flash(
+            f"El gasto {gasto.folio or gasto.id} quedó en revisión, pero falló el envío de {'; '.join(errores_envio)}.",
+            "warning",
+        )
+    else:
+        flash(f"Gasto {gasto.folio or gasto.id} enviado a revisión y notificado correctamente.", "success")
+    return _gastos_redirect()
+
+
 @app.route("/gastos-viaticos/enviar-grupo", methods=["POST"])
 @login_required
 def gastos_viaticos_enviar_grupo():

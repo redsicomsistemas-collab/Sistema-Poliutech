@@ -426,6 +426,11 @@
             <td>
               <div class="d-flex flex-wrap gap-1">
                 <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('gastos_viaticos_detalle', gasto_id=gasto.id) }}">Detalle</a>
+                {% if gasto.estatus == "PENDIENTE" and not gastos_es_recurso(gasto) %}
+                <form method="post" action="{{ url_for('gastos_viaticos_enviar', gasto_id=gasto.id) }}" onsubmit="return confirm('¿Enviar {{ gasto.folio }} a revisión y notificar ahora?');">
+                  <button class="btn btn-sm btn-success">Enviar notificación</button>
+                </form>
+                {% endif %}
                 {% if gastos_can_view_all %}
                 <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editar-gasto-{{ gasto.id }}">Editar</button>
                 <form method="post" action="{{ url_for('gastos_viaticos_eliminar', gasto_id=gasto.id) }}" onsubmit="return confirm('Eliminar la comprobacion {{ gasto.folio }}?');">
