@@ -12292,8 +12292,28 @@ def health():
 def debug_send_test():
     if not is_admin():
         abort(403)
+    if WHATSAPP_PROVIDER != "green_api":
+        return jsonify({
+            "sent": False,
+            "error": "La prueba interna requiere WHATSAPP_PROVIDER=green_api en Render.",
+            "provider_detected": WHATSAPP_PROVIDER or "empty",
+            "green_api_id_configured": bool(GREEN_API_ID_INSTANCE),
+            "green_api_token_configured": bool(GREEN_API_TOKEN_INSTANCE),
+        }), 503
+    if not can_send_whatsapp():
+        return jsonify({
+            "sent": False,
+            "error": "GREEN-API está incompleta en Render.",
+            "provider_detected": WHATSAPP_PROVIDER,
+            "green_api_id_configured": bool(GREEN_API_ID_INSTANCE),
+            "green_api_token_configured": bool(GREEN_API_TOKEN_INSTANCE),
+        }), 503
     msg = "✅ Mensaje de prueba - Sistema Poliutech (debug_send_test)."
-    send_whatsapp_multi(ADMIN_LIST, msg)
+    try:
+        send_whatsapp_multi(ADMIN_LIST, msg)
+    except Exception as exc:
+        logger.exception("Falló la prueba GREEN-API: %s", exc)
+        return jsonify({"sent": False, "provider": "green_api", "error": str(exc)}), 502
     return jsonify({"sent": True, "to": ADMIN_LIST})
 
 @app.route("/debug/mobile_push_hansel")
@@ -18562,6 +18582,7 @@ if __name__ == "__main__":
         os.makedirs(app.static_folder or "static", exist_ok=True)
     except Exception:
         pass
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True)
+    flask_debug = os.getenv("FLASK_DEBUG", "0").strip().lower() in {"1", "true", "yes"}
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=flask_debug)
 
 
