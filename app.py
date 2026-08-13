@@ -2934,6 +2934,7 @@ META_GRAPH_API_VERSION = os.getenv("META_GRAPH_API_VERSION", "v23.0").strip()
 WHATSAPP_PROVIDER = os.getenv("WHATSAPP_PROVIDER", "meta").strip().lower()
 GREEN_API_ID_INSTANCE = os.getenv("GREEN_API_ID_INSTANCE", "").strip()
 GREEN_API_TOKEN_INSTANCE = os.getenv("GREEN_API_TOKEN_INSTANCE", "").strip()
+GREEN_API_API_URL = os.getenv("GREEN_API_API_URL", "https://api.greenapi.com").strip().rstrip("/")
 WHATSAPP_DAILY_LIMIT = max(1, int(os.getenv("WHATSAPP_DAILY_LIMIT", "20")))
 _WHATSAPP_SEND_TIMESTAMPS: list[datetime] = []
 _WHATSAPP_SEND_LOCK = threading.Lock()
@@ -6145,8 +6146,8 @@ def _reserve_whatsapp_send_slot() -> None:
 
 def _send_whatsapp_green_api(recipient: str, body: str) -> None:
     endpoint = (
-        "https://api.green-api.com/"
-        f"waInstance{GREEN_API_ID_INSTANCE}/sendMessage/{GREEN_API_TOKEN_INSTANCE}"
+        f"{GREEN_API_API_URL}/waInstance{GREEN_API_ID_INSTANCE}"
+        f"/sendMessage/{GREEN_API_TOKEN_INSTANCE}"
     )
     response = requests.post(
         endpoint,
@@ -12297,6 +12298,7 @@ def debug_send_test():
             "sent": False,
             "error": "La prueba interna requiere WHATSAPP_PROVIDER=green_api en Render.",
             "provider_detected": WHATSAPP_PROVIDER or "empty",
+            "green_api_url": GREEN_API_API_URL,
             "green_api_id_configured": bool(GREEN_API_ID_INSTANCE),
             "green_api_token_configured": bool(GREEN_API_TOKEN_INSTANCE),
         }), 503
@@ -12305,6 +12307,7 @@ def debug_send_test():
             "sent": False,
             "error": "GREEN-API está incompleta en Render.",
             "provider_detected": WHATSAPP_PROVIDER,
+            "green_api_url": GREEN_API_API_URL,
             "green_api_id_configured": bool(GREEN_API_ID_INSTANCE),
             "green_api_token_configured": bool(GREEN_API_TOKEN_INSTANCE),
         }), 503

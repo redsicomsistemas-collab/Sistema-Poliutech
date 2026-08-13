@@ -7,12 +7,14 @@ una sesión vinculada de WhatsApp Business para avisos internos de bajo volumen.
 
 ```text
 WHATSAPP_PROVIDER=green_api
+GREEN_API_API_URL=<apiUrl mostrado por la instancia>
 GREEN_API_ID_INSTANCE=<idInstance>
 GREEN_API_TOKEN_INSTANCE=<apiTokenInstance>
 WHATSAPP_DAILY_LIMIT=20
 ```
 
-El número dedicado debe aparecer como `authorized` en
+`GREEN_API_API_URL`, `idInstance` y `apiTokenInstance` deben copiarse de la
+misma instancia. El número dedicado debe aparecer como `authorized` en
 https://console.green-api.com/. Los secretos se guardan únicamente en Render.
 
 El plan Developer admite hasta tres chats. No debe utilizarse para campañas,
