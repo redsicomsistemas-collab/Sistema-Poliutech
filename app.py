@@ -4,7 +4,7 @@
 # =========================================================
 from __future__ import annotations
 
-import os, io, csv, sys, math, re, json, traceback, unicodedata, smtplib, zipfile, logging, base64, secrets, hashlib
+import os, io, csv, sys, math, re, json, traceback, unicodedata, smtplib, zipfile, logging, base64, secrets, hashlib, threading
 import mimetypes
 import requests
 from datetime import datetime, timedelta
@@ -2931,6 +2931,12 @@ META_WHATSAPP_PHONE_NUMBER_ID = os.getenv("META_WHATSAPP_PHONE_NUMBER_ID", "").s
 META_WHATSAPP_TEMPLATE_NAME = os.getenv("META_WHATSAPP_TEMPLATE_NAME", "mar_notificacion").strip()
 META_WHATSAPP_TEMPLATE_LANGUAGE = os.getenv("META_WHATSAPP_TEMPLATE_LANGUAGE", "es_MX").strip()
 META_GRAPH_API_VERSION = os.getenv("META_GRAPH_API_VERSION", "v23.0").strip()
+WHATSAPP_PROVIDER = os.getenv("WHATSAPP_PROVIDER", "meta").strip().lower()
+GREEN_API_ID_INSTANCE = os.getenv("GREEN_API_ID_INSTANCE", "").strip()
+GREEN_API_TOKEN_INSTANCE = os.getenv("GREEN_API_TOKEN_INSTANCE", "").strip()
+WHATSAPP_DAILY_LIMIT = max(1, int(os.getenv("WHATSAPP_DAILY_LIMIT", "20")))
+_WHATSAPP_SEND_TIMESTAMPS: list[datetime] = []
+_WHATSAPP_SEND_LOCK = threading.Lock()
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
 TWILIO_SMS_FROM = os.getenv("TWILIO_SMS_FROM", "").strip()
@@ -6116,11 +6122,45 @@ def normalize_whatsapp(number: str) -> str:
     return f"whatsapp:+52{digits}" if len(digits) == 10 else ""
 
 def can_send_whatsapp() -> bool:
+    if WHATSAPP_PROVIDER == "green_api":
+        return bool(GREEN_API_ID_INSTANCE and GREEN_API_TOKEN_INSTANCE)
     return bool(
         META_WHATSAPP_ACCESS_TOKEN
         and META_WHATSAPP_PHONE_NUMBER_ID
         and META_WHATSAPP_TEMPLATE_NAME
     )
+
+def _reserve_whatsapp_send_slot() -> None:
+    """Limita avisos para que un proceso repetitivo no produzca envíos masivos."""
+    cutoff = datetime.utcnow() - timedelta(hours=24)
+    with _WHATSAPP_SEND_LOCK:
+        _WHATSAPP_SEND_TIMESTAMPS[:] = [
+            sent_at for sent_at in _WHATSAPP_SEND_TIMESTAMPS if sent_at >= cutoff
+        ]
+        if len(_WHATSAPP_SEND_TIMESTAMPS) >= WHATSAPP_DAILY_LIMIT:
+            raise RuntimeError(
+                f"Límite interno de WhatsApp alcanzado ({WHATSAPP_DAILY_LIMIT} envíos/24 h)."
+            )
+        _WHATSAPP_SEND_TIMESTAMPS.append(datetime.utcnow())
+
+def _send_whatsapp_green_api(recipient: str, body: str) -> None:
+    endpoint = (
+        "https://api.green-api.com/"
+        f"waInstance{GREEN_API_ID_INSTANCE}/sendMessage/{GREEN_API_TOKEN_INSTANCE}"
+    )
+    response = requests.post(
+        endpoint,
+        json={"chatId": f"{recipient}@c.us", "message": (body or "").strip()[:20000]},
+        timeout=30,
+    )
+    if not response.ok:
+        try:
+            error_detail = response.json()
+        except ValueError:
+            error_detail = response.text[:1000]
+        raise RuntimeError(f"GREEN-API HTTP {response.status_code}: {error_detail}")
+    message_id = response.json().get("idMessage", "")
+    logger.info("[GREEN-API] WhatsApp enviado a %s; id=%s", recipient, message_id)
 
 def can_send_sms() -> bool:
     return bool(
@@ -6181,6 +6221,10 @@ def send_whatsapp_multi(to_list: Iterable[str], body: str) -> None:
         if not to_norm:
             continue
         recipient = "".join(ch for ch in to_norm if ch.isdigit())
+        _reserve_whatsapp_send_slot()
+        if WHATSAPP_PROVIDER == "green_api":
+            _send_whatsapp_green_api(recipient, body)
+            continue
         whatsapp_error: Exception | None = None
         if can_send_whatsapp():
             payload = {
