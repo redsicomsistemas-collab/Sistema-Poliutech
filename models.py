@@ -209,6 +209,7 @@ class Factura(db.Model):
     iva = db.Column(db.Float, default=0.0, nullable=False)
     total = db.Column(db.Float, default=0.0, nullable=False)
     notas = db.Column(db.Text)
+    motivo_rechazo = db.Column(db.Text)
 
     pac = db.Column(db.String(40))
     pac_ambiente = db.Column(db.String(20))
@@ -1035,6 +1036,7 @@ class ComprobacionGasto(db.Model):
     moneda = db.Column(db.String(10), default="MXN", nullable=False)
     metodo_pago = db.Column(db.String(80))
     notas = db.Column(db.Text)
+    motivo_rechazo = db.Column(db.Text)
     ai_confianza = db.Column(db.Float, default=0.0, nullable=False)
     ai_resultado = db.Column(db.Text)
     responsable = db.Column(db.String(120))

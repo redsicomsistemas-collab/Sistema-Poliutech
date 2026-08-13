@@ -475,6 +475,7 @@
             <div class="col-md-4"><label class="form-label">Metodo pago</label><input name="metodo_pago" class="form-control" value="{{ gasto.metodo_pago or '' }}"></div>
             <div class="col-md-4"><label class="form-label">Referencia</label><input name="referencia" class="form-control" value="{{ gasto.referencia or '' }}"></div>
             <div class="col-md-8"><label class="form-label">Notas</label><input name="notas" class="form-control" value="{{ gasto.notas or '' }}"></div>
+            <div class="col-md-12"><label class="form-label">Razón del rechazo</label><textarea name="motivo_rechazo" class="form-control" rows="2" placeholder="Obligatoria si el estatus es RECHAZADO">{{ gasto.motivo_rechazo or '' }}</textarea></div>
             <div class="col-md-12"><label class="form-label">Reemplazar comprobante (opcional)</label><input type="file" name="comprobante" class="form-control" accept="application/pdf,image/png,image/jpeg,image/webp"></div>
           </div>
         </div>

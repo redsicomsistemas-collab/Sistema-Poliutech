@@ -3073,6 +3073,7 @@ NOTIFICATION_EVENT_CATALOG = {
     "finanzas_autorizacion": ("Finanzas", "Partida autorizada para finanzas"),
     "gastos_revision": ("Gastos", "Comprobación enviada a revisión"),
     "gastos_autorizados": ("Gastos", "Gastos autorizados"),
+    "gastos_resultado": ("Gastos", "Aprobación o rechazo de gastos"),
     "prospecto_etiqueta": ("Prospectos", "Usuario etiquetado en prospecto"),
     "cotizacion_etiqueta": ("Cotizaciones", "Usuario etiquetado en seguimiento"),
 }
@@ -3911,6 +3912,7 @@ def ensure_schema():
             ("nombre", "ALTER TABLE solicitud_recurso ADD COLUMN nombre VARCHAR(180)"),
             ("gasto_generado_id", "ALTER TABLE solicitud_recurso ADD COLUMN gasto_generado_id INTEGER"),
             ("gasto_generado_en", "ALTER TABLE solicitud_recurso ADD COLUMN gasto_generado_en TIMESTAMP"),
+            ("motivo_rechazo", "ALTER TABLE solicitud_recurso ADD COLUMN motivo_rechazo TEXT"),
         ]:
             if col not in sr_cols:
                 db.session.execute(text(stmt))
@@ -3943,6 +3945,8 @@ def ensure_schema():
 
     try:
         comprobacion_cols = _table_columns("comprobacion_gasto")
+        if "motivo_rechazo" not in comprobacion_cols:
+            db.session.execute(text("ALTER TABLE comprobacion_gasto ADD COLUMN motivo_rechazo TEXT"))
         if "solicitud_recurso_id" not in comprobacion_cols:
             db.session.execute(text("ALTER TABLE comprobacion_gasto ADD COLUMN solicitud_recurso_id INTEGER"))
             db.session.execute(text("""
@@ -3956,8 +3960,8 @@ def ensure_schema():
                 WHERE solicitud_recurso_id IS NULL
                   AND referencia LIKE 'SR:%'
             """))
-            db.session.commit()
             print("✅ Campo 'solicitud_recurso_id' agregado en 'comprobacion_gasto'.")
+        db.session.commit()
     except Exception as e:
         print("⚠️ ensure_schema(comprobacion_gasto.solicitud_recurso_id):", e)
 
@@ -4242,6 +4246,22 @@ def has_permission(permission: str) -> bool:
     if not getattr(current_user, "is_authenticated", False):
         return False
     return is_admin() or permission in _usuario_permisos(current_user)
+
+
+def is_hansel_or_admin() -> bool:
+    if not getattr(current_user, "is_authenticated", False):
+        return False
+    if is_admin():
+        return True
+    nombre = (getattr(current_user, "nombre", "") or "").strip().lower()
+    visible = (getattr(current_user, "nombre_visible", "") or "").strip().lower()
+    correo = (getattr(current_user, "correo", "") or "").strip().lower()
+    return (
+        getattr(current_user, "id", None) == 18
+        or correo == "hjaramillo@poliutech.com"
+        or nombre == "hansel" or nombre.startswith("hansel ")
+        or visible == "hansel" or visible.startswith("hansel ")
+    )
 
 
 def _gastos_can_view_all() -> bool:
@@ -13487,6 +13507,12 @@ def _solicitud_recurso_resultado_mail_html(solicitud: SolicitudRecurso, detail_u
         else "Tu solicitud fue rechazada. Revisa el detalle para dar seguimiento."
     )
     gasto_html = ""
+    motivo = (solicitud.motivo_rechazo or "").strip()
+    motivo_html = (
+        f"<tr><td style='padding:8px;color:#64748b;font-weight:700;'>Motivo del rechazo</td>"
+        f"<td style='padding:8px;color:#991b1b;font-weight:700;'>{escape(motivo)}</td></tr>"
+        if not aprobada and motivo else ""
+    )
     if aprobada and getattr(solicitud, "gasto_generado", None):
         gasto_html = (
             f"<tr><td style='padding:8px;color:#64748b;font-weight:700;'>Gasto generado</td>"
@@ -13501,6 +13527,7 @@ def _solicitud_recurso_resultado_mail_html(solicitud: SolicitudRecurso, detail_u
         <tr><td style="padding:8px;color:#64748b;font-weight:700;">Estatus</td><td style="padding:8px;font-weight:700;color:{color};">{escape(estatus)}</td></tr>
         <tr><td style="padding:8px;color:#64748b;font-weight:700;">Proyecto / obra</td><td style="padding:8px;">{escape(solicitud.proyecto or '-')}</td></tr>
         <tr><td style="padding:8px;color:#64748b;font-weight:700;">Total</td><td style="padding:8px;font-weight:700;">${float(solicitud.total or 0):,.2f}</td></tr>
+        {motivo_html}
         {gasto_html}
       </table>
       <p style="margin:18px 0;"> <a href="{detail_url}" style="background:#0C3C78;color:#fff;text-decoration:none;padding:10px 14px;border-radius:6px;display:inline-block;">Ver solicitud</a></p>
@@ -13516,6 +13543,8 @@ def _send_solicitud_recurso_resultado_email(solicitud: SolicitudRecurso) -> None
 
     estatus = (solicitud.estatus or "").strip().upper()
     accion = "autorizada" if estatus == "AUTORIZADA" else "rechazada"
+    motivo = (solicitud.motivo_rechazo or "").strip()
+    motivo_line = f"Motivo del rechazo: {motivo}\n" if estatus == "RECHAZADA" else ""
     detail_url = url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id, _external=True)
     msg = EmailMessage()
     msg["Subject"] = f"Solicitud de fondos {accion} {solicitud.folio or solicitud.id}"
@@ -13525,6 +13554,7 @@ def _send_solicitud_recurso_resultado_email(solicitud: SolicitudRecurso) -> None
         f"Tu solicitud de fondos {solicitud.folio or solicitud.id} fue {accion}.\n"
         f"Proyecto / obra: {solicitud.proyecto or '-'}\n"
         f"Total: ${float(solicitud.total or 0):,.2f}\n"
+        f"{motivo_line}"
         f"Ver: {detail_url}\n"
     )
     msg.add_alternative(_solicitud_recurso_resultado_mail_html(solicitud, detail_url), subtype="html")
@@ -13543,7 +13573,9 @@ def _send_solicitud_recurso_resultado_push(solicitud: SolicitudRecurso) -> dict[
         )
     estatus = (solicitud.estatus or "").strip().upper()
     title = "Solicitud de fondos autorizada" if estatus == "AUTORIZADA" else "Solicitud de fondos rechazada"
-    body = f"{solicitud.folio or solicitud.id} - ${float(solicitud.total or 0):,.2f}"
+    motivo = (solicitud.motivo_rechazo or "").strip()
+    body = (f"{solicitud.folio or solicitud.id}: {motivo}" if estatus == "RECHAZADA" and motivo
+            else f"{solicitud.folio or solicitud.id} - ${float(solicitud.total or 0):,.2f}")
     return _send_push_notification(
         tokens,
         title=title,
@@ -13553,6 +13585,7 @@ def _send_solicitud_recurso_resultado_push(solicitud: SolicitudRecurso) -> dict[
             "solicitud_id": str(solicitud.id),
             "folio": solicitud.folio or "",
             "estatus": estatus,
+            "motivo_rechazo": motivo,
             "url": url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id, _external=True),
             "target_user_id": str(user_ids[0]) if len(user_ids) == 1 else "",
         },
@@ -14864,6 +14897,41 @@ def _notify_gastos_authorized_finanzas(gastos: list["ComprobacionGasto"]) -> Non
         logger.warning("Push finanzas gastos autorizados fallo: %s", exc)
 
 
+def _notify_gasto_resultado_solicitante(gasto: "ComprobacionGasto") -> None:
+    usuario = getattr(gasto, "usuario", None) or (Usuario.query.get(gasto.usuario_id) if gasto.usuario_id else None)
+    estatus = (gasto.estatus or "").strip().upper()
+    rechazado = estatus == "RECHAZADO"
+    motivo = (gasto.motivo_rechazo or "").strip()
+    accion = "rechazado" if rechazado else "aprobado"
+    detail_url = url_for("gastos_viaticos_detalle", gasto_id=gasto.id, _external=True)
+    recipients = _parse_email_list(getattr(usuario, "correo", None))
+    if recipients:
+        try:
+            msg = EmailMessage()
+            msg["Subject"] = f"Gasto {accion} {gasto.folio or gasto.id}"
+            msg["From"] = f"SISTEMA MAR <{SMTP_FROM or SMTP_USERNAME}>"
+            msg["To"] = ", ".join(recipients)
+            motivo_line = f"\nMotivo del rechazo: {motivo}" if rechazado else ""
+            msg.set_content(f"Tu comprobante {gasto.folio or gasto.id} fue {accion}.\nTotal: ${float(gasto.total or 0):,.2f} {gasto.moneda or 'MXN'}{motivo_line}\nVer detalle: {detail_url}\n")
+            reason_html = f"<p style='color:#991b1b'><b>Motivo del rechazo:</b> {escape(motivo)}</p>" if rechazado else ""
+            msg.add_alternative(f"<div style='font-family:Arial,sans-serif'><h2>Tu gasto fue {accion}</h2><p><b>{escape(gasto.folio or str(gasto.id))}</b></p>{reason_html}<p><a href='{detail_url}'>Ver detalle</a></p></div>", subtype="html")
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
+                smtp.ehlo(); smtp.login(SMTP_USERNAME, SMTP_PASSWORD); smtp.send_message(msg, to_addrs=recipients)
+        except Exception as exc:
+            logger.warning("Correo resultado gasto %s fallo: %s", gasto.folio or gasto.id, exc)
+    user_ids = [usuario.id] if usuario and usuario.id else []
+    try:
+        _send_push_notification(
+            _mobile_push_tokens_for_users(user_ids), title=f"Gasto {accion}",
+            body=(f"{gasto.folio or gasto.id}: {motivo}" if rechazado else f"{gasto.folio or gasto.id} - ${float(gasto.total or 0):,.2f}"),
+            data={"type": "gasto_resultado", "gasto_id": str(gasto.id), "estatus": estatus,
+                  "motivo_rechazo": motivo, "url": detail_url,
+                  "target_user_id": str(user_ids[0]) if user_ids else ""},
+        )
+    except Exception as exc:
+        logger.warning("Push resultado gasto %s fallo: %s", gasto.folio or gasto.id, exc)
+
+
 def _gastos_query_from_request():
     q = (request.args.get("q") or "").strip()
     agrupacion = (request.args.get("agrupacion") or "").strip().upper()
@@ -15810,8 +15878,9 @@ def gastos_viaticos_detalle(gasto_id: int):
         title=f"Comprobante {gasto.folio or gasto.id}",
         gasto=gasto,
         public_view=False,
-        can_approve=_gasto_can_manage(gasto),
+        can_approve=is_hansel_or_admin(),
         approve_url=url_for("gastos_viaticos_marcar_aprobado", gasto_id=gasto.id),
+        reject_url=url_for("gastos_viaticos_marcar_rechazado", gasto_id=gasto.id),
         gastos_badge_class=_gastos_badge_class,
     )
 
@@ -15916,14 +15985,36 @@ def gastos_viaticos_reemplazar_comprobante(gasto_id: int):
 @login_required
 def gastos_viaticos_marcar_aprobado(gasto_id: int):
     gasto = ComprobacionGasto.query.get_or_404(gasto_id)
-    require_gasto_owner_or_admin(gasto)
+    if not is_hansel_or_admin():
+        abort(403)
     anterior = (gasto.estatus or "").strip().upper()
     gasto.estatus = "APROBADO"
+    gasto.motivo_rechazo = None
     gasto.actualizado_en = now_cdmx_naive()
     db.session.commit()
     if anterior != "APROBADO":
         _notify_gastos_authorized_finanzas([gasto])
+        _notify_gasto_resultado_solicitante(gasto)
     flash(f"Comprobacion {gasto.folio} aprobada.", "success")
+    return redirect(url_for("gastos_viaticos_detalle", gasto_id=gasto.id))
+
+
+@app.route("/gastos-viaticos/<int:gasto_id>/rechazar", methods=["POST"])
+@login_required
+def gastos_viaticos_marcar_rechazado(gasto_id: int):
+    if not is_hansel_or_admin():
+        abort(403)
+    gasto = ComprobacionGasto.query.get_or_404(gasto_id)
+    motivo = (request.form.get("motivo_rechazo") or "").strip()
+    if not motivo:
+        flash("Captura la razón del rechazo.", "warning")
+        return redirect(url_for("gastos_viaticos_detalle", gasto_id=gasto.id))
+    anterior = (gasto.estatus or "").strip().upper()
+    gasto.estatus, gasto.motivo_rechazo, gasto.actualizado_en = "RECHAZADO", motivo, now_cdmx_naive()
+    db.session.commit()
+    if anterior != "RECHAZADO":
+        _notify_gasto_resultado_solicitante(gasto)
+    flash(f"Comprobación {gasto.folio} rechazada y solicitante notificado.", "success")
     return redirect(url_for("gastos_viaticos_detalle", gasto_id=gasto.id))
 
 
@@ -16026,9 +16117,14 @@ def gastos_viaticos_actualizar(gasto_id: int):
     if estatus not in GASTOS_ESTATUS:
         flash("Selecciona un estatus valido.", "warning")
         return _gastos_redirect()
+    motivo_rechazo = (f.get("motivo_rechazo") or "").strip()
+    if estatus == "RECHAZADO" and not motivo_rechazo:
+        flash("Captura la razón del rechazo.", "warning")
+        return _gastos_redirect()
 
     anterior = (gasto.estatus or "").strip().upper()
     gasto.estatus = estatus
+    gasto.motivo_rechazo = motivo_rechazo if estatus == "RECHAZADO" else None
     gasto.proveedor = (f.get("proveedor") or "").strip() or None
     gasto.concepto = (f.get("concepto") or "").strip() or gasto.concepto
     gasto.proyecto = (f.get("proyecto") or "").strip() or None
@@ -16072,6 +16168,9 @@ def gastos_viaticos_actualizar(gasto_id: int):
                 logger.warning("No se pudo eliminar el comprobante anterior %s.", adjunto.ruta)
     if estatus == "APROBADO" and anterior != "APROBADO":
         _notify_gastos_authorized_finanzas([gasto])
+        _notify_gasto_resultado_solicitante(gasto)
+    elif estatus == "RECHAZADO" and anterior != "RECHAZADO":
+        _notify_gasto_resultado_solicitante(gasto)
     flash(f"Comprobacion {gasto.folio} actualizada.", "success")
     return _gastos_redirect()
 
@@ -17159,7 +17258,7 @@ def solicitudes_recursos_index():
         q=q,
         estatus=estatus,
         project_options=_known_project_names(),
-        can_manage_fondos=has_permission("fondos.gestionar_solicitudes"),
+        can_manage_fondos=is_hansel_or_admin(),
     )
 
 
@@ -17259,7 +17358,7 @@ def solicitud_recurso_detalle(solicitud_id: int):
             extras=[{"label": "Proyecto / obra", "value": solicitud.proyecto}],
         ),
         estatus_options=SOLICITUD_RECURSO_ESTATUS,
-        can_manage_fondos=has_permission("fondos.gestionar_solicitudes"),
+        can_manage_fondos=is_hansel_or_admin(),
     )
 
 
@@ -17294,7 +17393,7 @@ def solicitud_recurso_eliminar(solicitud_id: int):
 @app.route("/solicitudes-recursos/<int:solicitud_id>/estatus", methods=["POST"])
 @login_required
 def solicitud_recurso_estatus(solicitud_id: int):
-    if not has_permission("fondos.gestionar_solicitudes"):
+    if not is_hansel_or_admin():
         abort(403)
     solicitud = SolicitudRecurso.query.get_or_404(solicitud_id)
     nuevo = (request.form.get("estatus") or "").strip().upper()
@@ -17304,8 +17403,13 @@ def solicitud_recurso_estatus(solicitud_id: int):
     if nuevo == "AUTORIZADA" and not (solicitud.proyecto or "").strip():
         flash("La solicitud necesita proyecto para registrarse automaticamente en gastos.", "warning")
         return redirect(url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id))
+    motivo = (request.form.get("motivo_rechazo") or "").strip()
+    if nuevo == "RECHAZADA" and not motivo:
+        flash("Captura la razón del rechazo.", "warning")
+        return redirect(url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id))
     anterior = (solicitud.estatus or "").strip().upper()
     solicitud.estatus = nuevo
+    solicitud.motivo_rechazo = motivo if nuevo == "RECHAZADA" else None
     solicitud.actualizado_en = now_cdmx_naive()
     gasto = _solicitud_recurso_registrar_gasto(solicitud) if nuevo == "AUTORIZADA" else None
     db.session.commit()

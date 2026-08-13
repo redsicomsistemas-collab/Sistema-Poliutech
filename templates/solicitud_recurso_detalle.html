@@ -11,6 +11,10 @@
   <a href="{{ url_for('solicitudes_recursos_index') }}" class="btn btn-outline-secondary">Volver</a>
 </div>
 
+{% if solicitud.estatus == "RECHAZADA" and solicitud.motivo_rechazo %}
+<div class="alert alert-danger"><strong>Motivo del rechazo:</strong> {{ solicitud.motivo_rechazo }}</div>
+{% endif %}
+
 <div class="row g-3 mb-4">
   <div class="col-md-3">
     <div class="card border-0 shadow-sm h-100">
@@ -107,6 +111,11 @@
           {% endfor %}
         </select>
       </div>
+      <div class="col-md-5">
+        <label class="form-label">Razón del rechazo</label>
+        <textarea name="motivo_rechazo" class="form-control" rows="2" placeholder="Explica al solicitante por qué se rechaza">{{ solicitud.motivo_rechazo or '' }}</textarea>
+        <div class="form-text">Obligatoria al seleccionar RECHAZADA; se enviará por correo y notificación móvil.</div>
+      </div>
       <div class="col-md-3 d-grid">
         <button class="btn btn-primary">Actualizar estatus</button>
       </div>
@@ -114,5 +123,14 @@
     </form>
   </div>
 </div>
+<script>
+  (() => {
+    const form = document.querySelector('form[action*="/estatus"]');
+    const status = form?.querySelector('[name="estatus"]');
+    const reason = form?.querySelector('[name="motivo_rechazo"]');
+    const sync = () => { if (reason) reason.required = status?.value === 'RECHAZADA'; };
+    status?.addEventListener('change', sync); sync();
+  })();
+</script>
 {% endif %}
 {% endblock %}

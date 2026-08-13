@@ -44,11 +44,18 @@
         </form>
         {% endif %}
       {% endif %}
+      {% if not public_view and can_approve|default(false) and gasto.estatus != "RECHAZADO" %}
+      <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#rechazar-gasto-modal">Rechazar</button>
+      {% endif %}
       {% if not public_view %}
       <a href="{{ url_for('gastos_viaticos_index') }}" class="btn btn-outline-secondary">Volver</a>
       {% endif %}
     </div>
   </div>
+
+  {% if gasto.estatus == "RECHAZADO" and gasto.motivo_rechazo %}
+  <div class="alert alert-danger"><strong>Motivo del rechazo:</strong> {{ gasto.motivo_rechazo }}</div>
+  {% endif %}
 
   <div class="row g-3 mb-4">
     <div class="col-md-4">
@@ -124,4 +131,19 @@
     </div>
   </div>
 </div>
+{% if not public_view and can_approve|default(false) %}
+<div class="modal fade" id="rechazar-gasto-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog"><div class="modal-content">
+    <form method="post" action="{{ reject_url }}">
+      <div class="modal-header"><h5 class="modal-title">Rechazar {{ gasto.folio or ('#' ~ gasto.id) }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <label class="form-label fw-bold">Razón del rechazo</label>
+        <textarea name="motivo_rechazo" class="form-control" rows="4" required placeholder="Indica qué debe corregirse o por qué no procede"></textarea>
+        <div class="form-text">La razón se enviará al solicitante por correo y notificación móvil.</div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-danger">Confirmar rechazo</button></div>
+    </form>
+  </div></div>
+</div>
+{% endif %}
 {% endblock %}
