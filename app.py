@@ -3568,7 +3568,7 @@ def _audit_after_request(response):
             pass
 
         # acción
-        accion = _describe_action()
+        accion = getattr(g, "_audit_action", None) or _describe_action()
 
         log = ActivityLog(
             fecha=now_cdmx_naive(),
@@ -9174,6 +9174,9 @@ def crear_cotizacion():
     cot.total = fmt(total)
     db.session.commit()
 
+    # Guarda folio e ID para localizar la creación y su autor en la bitácora.
+    g._audit_action = f"COTIZACION CREADA folio={cot.folio} id={cot.id}"
+
     _send_quote_created_notification(cot)
     _send_quote_review_email_safely(cot)
 
@@ -12312,15 +12315,46 @@ def admin_bitacora():
     status_f = (request.args.get("status") or "").strip()
 
     query = ActivityLog.query
+    cotizaciones_encontradas = []
+    cotizacion_autores_originales = {}
 
     if q:
         like = f"%{q}%"
-        query = query.filter(or_(
+        filtros_busqueda = [
             ActivityLog.usuario.ilike(like),
             ActivityLog.ruta.ilike(like),
             ActivityLog.accion.ilike(like),
             ActivityLog.endpoint.ilike(like),
-        ))
+            ActivityLog.query_string.ilike(like),
+        ]
+
+        filtro_cotizacion = Cotizacion.folio.ilike(like)
+        if q.isdigit():
+            filtro_cotizacion = or_(filtro_cotizacion, Cotizacion.id == int(q))
+        cotizaciones_encontradas = (
+            Cotizacion.query.filter(filtro_cotizacion)
+            .order_by(Cotizacion.fecha.desc()).limit(25).all()
+        )
+        for cotizacion in cotizaciones_encontradas:
+            primera_asignacion = (
+                CotizacionAsignacion.query.filter_by(cotizacion_id=cotizacion.id)
+                .order_by(CotizacionAsignacion.asignado_en.asc(), CotizacionAsignacion.id.asc()).first()
+            )
+            version_original = CotizacionVersion.query.filter_by(
+                cotizacion_id=cotizacion.id, numero_version=0
+            ).first()
+            cotizacion_autores_originales[cotizacion.id] = (
+                (primera_asignacion.usuario_anterior.nombre_representante
+                 if primera_asignacion and primera_asignacion.usuario_anterior else None)
+                or (version_original.creada_por if version_original else None)
+                or cotizacion.responsable or "No disponible"
+            )
+            filtros_busqueda.extend([
+                ActivityLog.ruta.ilike(f"%/cotizaciones/{cotizacion.id}%"),
+                ActivityLog.ruta.ilike(f"%/api/cotizaciones/{cotizacion.id}%"),
+                ActivityLog.accion.ilike(f"%id={cotizacion.id}%"),
+            ])
+        query = query.filter(or_(*filtros_busqueda))
     if usuario_f:
         query = query.filter(ActivityLog.usuario == usuario_f)
     if metodo_f:
@@ -12348,6 +12382,8 @@ def admin_bitacora():
         metodo_f=metodo_f,
         status_f=status_f,
         usuarios=usuarios,
+        cotizaciones_encontradas=cotizaciones_encontradas,
+        cotizacion_autores_originales=cotizacion_autores_originales,
     )
 
 # ---------------------------------------------------------

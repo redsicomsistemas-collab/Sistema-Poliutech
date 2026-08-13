@@ -17,7 +17,7 @@
     <form method="get" class="row g-2 align-items-end">
       <div class="col-12 col-md-4">
         <label class="form-label fw-semibold">Buscar</label>
-        <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="usuario, ruta, acción, endpoint...">
+        <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="folio de cotización, usuario, ruta, acción...">
       </div>
       <div class="col-12 col-md-3">
         <label class="form-label fw-semibold">Usuario</label>
@@ -48,6 +48,29 @@
     </form>
   </div>
 </div>
+
+{% if q and cotizaciones_encontradas %}
+<div class="card border-primary shadow-sm mb-3">
+  <div class="card-header bg-primary text-white fw-semibold">Cotizaciones encontradas</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>Folio</th><th>Fecha de creación</th><th>Subida originalmente por</th><th>Proyecto</th></tr></thead>
+        <tbody>
+          {% for cot in cotizaciones_encontradas %}
+          <tr>
+            <td><a class="fw-bold" href="{{ url_for('view_cotizacion', cot_id=cot.id) }}">{{ cot.folio or cot.id }}</a></td>
+            <td>{{ cot.fecha.strftime("%Y-%m-%d %H:%M:%S") if cot.fecha else "" }}</td>
+            <td class="fw-semibold">{{ cotizacion_autores_originales.get(cot.id, "No disponible") }}</td>
+            <td>{{ cot.proyecto or "-" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <div class="card shadow-sm">
   <div class="card-body p-0">
