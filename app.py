@@ -6153,16 +6153,34 @@ def _send_whatsapp_green_api(recipient: str, body: str) -> None:
     if not parsed_api_url.netloc:
         raise RuntimeError("GREEN_API_API_URL no contiene un host válido.")
     payload = {"chatId": f"{recipient}@c.us", "message": (body or "").strip()[:20000]}
+    candidate_hosts = list(dict.fromkeys([
+        api_base_url,
+        "https://api.greenapi.com",
+        "https://api.green-api.com",
+    ]))
+    candidate_paths = ("sendMessage", "SendMessage", "v3/sendMessage")
     response = None
-    attempted_methods: list[str] = []
-    for method in ("sendMessage", "SendMessage"):
-        attempted_methods.append(method)
-        endpoint = (
-            f"{api_base_url}/waInstance{GREEN_API_ID_INSTANCE}"
-            f"/{method}/{GREEN_API_TOKEN_INSTANCE}"
-        )
-        response = requests.post(endpoint, json=payload, timeout=30)
-        if response.status_code != 404:
+    successful_host = api_base_url
+    attempts: list[str] = []
+    for candidate_host in candidate_hosts:
+        for method_path in candidate_paths:
+            endpoint = (
+                f"{candidate_host}/waInstance{GREEN_API_ID_INSTANCE}"
+                f"/{method_path}/{GREEN_API_TOKEN_INSTANCE}"
+            )
+            if method_path.startswith("v3/"):
+                endpoint = (
+                    f"{candidate_host}/v3/waInstance{GREEN_API_ID_INSTANCE}"
+                    f"/{method_path.split('/', 1)[1]}/{GREEN_API_TOKEN_INSTANCE}"
+                )
+            response = requests.post(endpoint, json=payload, timeout=30)
+            attempts.append(f"{candidate_host} {method_path}={response.status_code}")
+            successful_host = candidate_host
+            if response.ok:
+                break
+            if response.status_code not in {403, 404}:
+                break
+        if response is not None and (response.ok or response.status_code not in {403, 404}):
             break
     if response is None:
         raise RuntimeError("GREEN-API no produjo respuesta.")
@@ -6172,11 +6190,16 @@ def _send_whatsapp_green_api(recipient: str, body: str) -> None:
         except ValueError:
             error_detail = response.text[:1000]
         raise RuntimeError(
-            f"GREEN-API HTTP {response.status_code} en {api_base_url} "
-            f"(métodos {', '.join(attempted_methods)}): {error_detail}"
+            f"GREEN-API no reconoció la instancia. Intentos: {'; '.join(attempts)}. "
+            f"Última respuesta: HTTP {response.status_code}: {error_detail}"
         )
     message_id = response.json().get("idMessage", "")
-    logger.info("[GREEN-API] WhatsApp enviado a %s; id=%s", recipient, message_id)
+    logger.info(
+        "[GREEN-API] WhatsApp enviado a %s mediante %s; id=%s",
+        recipient,
+        successful_host,
+        message_id,
+    )
 
 def can_send_sms() -> bool:
     return bool(
