@@ -12331,7 +12331,11 @@ def api_dashboard_outcome_breakdown():
 # ---------------------------------------------------------
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok", "now_cdmx": now_cdmx_naive().isoformat()}), 200
+    return jsonify({
+        "status": "ok",
+        "now_cdmx": now_cdmx_naive().isoformat(),
+        "release": (os.getenv("RENDER_GIT_COMMIT") or "local")[:12],
+    }), 200
 
 @app.route("/debug/send_test")
 @login_required
