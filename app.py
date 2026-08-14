@@ -6145,8 +6145,15 @@ def _reserve_whatsapp_send_slot() -> None:
         _WHATSAPP_SEND_TIMESTAMPS.append(datetime.utcnow())
 
 def _send_whatsapp_green_api(recipient: str, body: str) -> None:
+    raw_api_url = GREEN_API_API_URL.strip()
+    if not raw_api_url.startswith(("http://", "https://")):
+        raw_api_url = f"https://{raw_api_url}"
+    parsed_api_url = urlparse(raw_api_url)
+    api_base_url = f"{parsed_api_url.scheme}://{parsed_api_url.netloc}".rstrip("/")
+    if not parsed_api_url.netloc:
+        raise RuntimeError("GREEN_API_API_URL no contiene un host válido.")
     endpoint = (
-        f"{GREEN_API_API_URL}/waInstance{GREEN_API_ID_INSTANCE}"
+        f"{api_base_url}/waInstance{GREEN_API_ID_INSTANCE}"
         f"/sendMessage/{GREEN_API_TOKEN_INSTANCE}"
     )
     response = requests.post(
@@ -6159,7 +6166,9 @@ def _send_whatsapp_green_api(recipient: str, body: str) -> None:
             error_detail = response.json()
         except ValueError:
             error_detail = response.text[:1000]
-        raise RuntimeError(f"GREEN-API HTTP {response.status_code}: {error_detail}")
+        raise RuntimeError(
+            f"GREEN-API HTTP {response.status_code} en {api_base_url}: {error_detail}"
+        )
     message_id = response.json().get("idMessage", "")
     logger.info("[GREEN-API] WhatsApp enviado a %s; id=%s", recipient, message_id)
 
@@ -12316,7 +12325,12 @@ def debug_send_test():
         send_whatsapp_multi(ADMIN_LIST, msg)
     except Exception as exc:
         logger.exception("Falló la prueba GREEN-API: %s", exc)
-        return jsonify({"sent": False, "provider": "green_api", "error": str(exc)}), 502
+        return jsonify({
+            "sent": False,
+            "provider": "green_api",
+            "green_api_url_configured": GREEN_API_API_URL,
+            "error": str(exc),
+        }), 502
     return jsonify({"sent": True, "to": ADMIN_LIST})
 
 @app.route("/debug/mobile_push_hansel")
