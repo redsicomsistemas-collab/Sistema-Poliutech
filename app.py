@@ -6152,22 +6152,28 @@ def _send_whatsapp_green_api(recipient: str, body: str) -> None:
     api_base_url = f"{parsed_api_url.scheme}://{parsed_api_url.netloc}".rstrip("/")
     if not parsed_api_url.netloc:
         raise RuntimeError("GREEN_API_API_URL no contiene un host válido.")
-    endpoint = (
-        f"{api_base_url}/waInstance{GREEN_API_ID_INSTANCE}"
-        f"/sendMessage/{GREEN_API_TOKEN_INSTANCE}"
-    )
-    response = requests.post(
-        endpoint,
-        json={"chatId": f"{recipient}@c.us", "message": (body or "").strip()[:20000]},
-        timeout=30,
-    )
+    payload = {"chatId": f"{recipient}@c.us", "message": (body or "").strip()[:20000]}
+    response = None
+    attempted_methods: list[str] = []
+    for method in ("sendMessage", "SendMessage"):
+        attempted_methods.append(method)
+        endpoint = (
+            f"{api_base_url}/waInstance{GREEN_API_ID_INSTANCE}"
+            f"/{method}/{GREEN_API_TOKEN_INSTANCE}"
+        )
+        response = requests.post(endpoint, json=payload, timeout=30)
+        if response.status_code != 404:
+            break
+    if response is None:
+        raise RuntimeError("GREEN-API no produjo respuesta.")
     if not response.ok:
         try:
             error_detail = response.json()
         except ValueError:
             error_detail = response.text[:1000]
         raise RuntimeError(
-            f"GREEN-API HTTP {response.status_code} en {api_base_url}: {error_detail}"
+            f"GREEN-API HTTP {response.status_code} en {api_base_url} "
+            f"(métodos {', '.join(attempted_methods)}): {error_detail}"
         )
     message_id = response.json().get("idMessage", "")
     logger.info("[GREEN-API] WhatsApp enviado a %s; id=%s", recipient, message_id)
