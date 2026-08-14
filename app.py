@@ -4783,6 +4783,7 @@ def _build_dashboard_cotizaciones_query(
 
     estatus_normalizado = db.func.upper(db.func.trim(db.func.coalesce(Cotizacion.estatus, "")))
     resultado_normalizado = db.func.upper(db.func.trim(db.func.coalesce(Cotizacion.resultado, "")))
+    aprobacion_normalizada = db.func.upper(db.func.trim(db.func.coalesce(Cotizacion.estatus_aprobacion, "")))
     es_ganada = or_(
         estatus_normalizado.in_(ESTATUS_COTIZACION_GANADA),
         resultado_normalizado.in_(ESTATUS_COTIZACION_GANADA),
@@ -4791,6 +4792,11 @@ def _build_dashboard_cotizaciones_query(
         estatus_normalizado.in_(ESTATUS_COTIZACION_PERDIDA),
         resultado_normalizado.in_(ESTATUS_COTIZACION_PERDIDA),
     )
+    es_perdida_o_rechazada_explicita = or_(
+        estatus_normalizado.in_({"PERDIDA", "PÉRDIDA", "RECHAZADA", "RECHAZADO"}),
+        resultado_normalizado.in_({"PERDIDA", "PÉRDIDA", "RECHAZADA", "RECHAZADO"}),
+        aprobacion_normalizada.in_({"RECHAZADA", "RECHAZADO"}),
+    )
     if vista == "ganadas":
         q = q.filter(es_ganada)
     elif vista == "perdidas":
@@ -4798,15 +4804,16 @@ def _build_dashboard_cotizaciones_query(
     elif vista == "activas":
         q = q.filter(~es_ganada, ~es_perdida)
     elif vista == "todos":
-        # La vista principal muestra el portafolio vigente, pero no suma las
-        # cotizaciones perdidas ni las que se encuentran en 0%.
-        q = q.filter(~es_perdida)
+        # Sin filtros se muestran todas las cotizaciones no eliminadas,
+        # incluyendo las de proyectos y las que siguen en 0%. Sólo se ocultan
+        # las marcadas expresamente como perdidas o rechazadas.
+        q = q.filter(~es_perdida_o_rechazada_explicita)
     elif vista == "historico":
         # Métrica independiente: incluye todas las cotizaciones no eliminadas,
         # incluso perdidas, rechazadas y las que se encuentran en 0%.
         pass
     else:
-        q = q.filter(~es_perdida)
+        q = q.filter(~es_perdida_o_rechazada_explicita)
 
     if not is_admin() and not can_manage_quote_assignments():
         q = q.filter(Cotizacion.responsable == responsable_actual())
