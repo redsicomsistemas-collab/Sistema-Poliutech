@@ -5012,13 +5012,17 @@ def _known_project_names(limit: int = 100) -> list[str]:
 
     for model in (ComprobacionGasto, SolicitudRecurso, MovimientoFinanciero):
         try:
-            rows = (
-                db.session.query(model.proyecto)
-                .filter(model.proyecto.isnot(None), db.func.trim(model.proyecto) != "")
-                .distinct()
-                .limit(limit)
-                .all()
-            )
+            # Estas fuentes son opcionales y pueden estar pendientes de migración
+            # durante un despliegue. El SAVEPOINT evita que una tabla/columna
+            # ausente deje abortada la transacción completa de la petición.
+            with db.session.begin_nested():
+                rows = (
+                    db.session.query(model.proyecto)
+                    .filter(model.proyecto.isnot(None), db.func.trim(model.proyecto) != "")
+                    .distinct()
+                    .limit(limit)
+                    .all()
+                )
             for row in rows:
                 add(row[0])
         except Exception:
