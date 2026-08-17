@@ -7160,7 +7160,9 @@ def altas_proveedores():
     if not _altas_can_view():
         abort(403)
 
-    can_manage_altas = is_admin()
+    # Los usuarios autorizados para Altas (Admin y Marco) pueden consultar y
+    # administrar el catálogo completo.
+    can_manage_altas = _altas_can_view()
     if request.method == "POST" and not can_manage_altas:
         abort(403)
 
