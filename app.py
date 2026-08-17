@@ -2873,7 +2873,7 @@ from sqlalchemy import text, or_, and_, case
 from sqlalchemy.exc import IntegrityError
 
 # ReportLab (PDF)
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import Table, TableStyle, Paragraph, SimpleDocTemplate, Spacer, KeepTogether
 from reportlab.lib import colors
 from reportlab.lib.units import mm
@@ -6605,9 +6605,10 @@ def export_altas_proveedores_pdf():
     rows = _filter_provider_rows(_load_provider_numbers(), filters)
 
     buf = io.BytesIO()
+    page_size = landscape(A4)
     doc = SimpleDocTemplate(
         buf,
-        pagesize=A4,
+        pagesize=page_size,
         leftMargin=10 * mm,
         rightMargin=10 * mm,
         topMargin=24 * mm,
@@ -6615,15 +6616,15 @@ def export_altas_proveedores_pdf():
     )
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="EncabezadoAltas", fontName="Helvetica", fontSize=9, leading=12, spaceAfter=4, splitLongWords=False))
-    styles.add(ParagraphStyle(name="AltasCell", fontName="Helvetica", fontSize=7.5, leading=9, splitLongWords=False))
-    styles.add(ParagraphStyle(name="AltasCenter", fontName="Helvetica", fontSize=7.5, leading=9, alignment=1, splitLongWords=False))
+    styles.add(ParagraphStyle(name="AltasCell", fontName="Helvetica", fontSize=7.5, leading=9, splitLongWords=True))
+    styles.add(ParagraphStyle(name="AltasCenter", fontName="Helvetica", fontSize=7.5, leading=9, alignment=1, splitLongWords=True))
 
     elems = []
 
     def encabezado(canv, doc_):
         canv.saveState()
         canv.setFillColor(colors.HexColor(MAR_BLUE))
-        canv.rect(0, A4[1] - 40, A4[0], 40, stroke=0, fill=1)
+        canv.rect(0, page_size[1] - 40, page_size[0], 40, stroke=0, fill=1)
 
         logo_path = os.path.join(app.static_folder or "static", "logo.png")
         if os.path.exists(logo_path):
@@ -6635,16 +6636,16 @@ def export_altas_proveedores_pdf():
                 w = max_w
                 h = ih * scale
                 x_logo = 12
-                y_logo = A4[1] - h - 8
+                y_logo = page_size[1] - h - 8
                 canv.drawImage(img, x_logo, y_logo, width=w, height=h, mask="auto")
             except Exception:
                 pass
 
         canv.setFont("Helvetica-Bold", 14)
         canv.setFillColor(colors.white)
-        canv.drawRightString(A4[0] - 12, A4[1] - 18, "ALTAS DE PROVEEDORES")
+        canv.drawRightString(page_size[0] - 12, page_size[1] - 18, "ALTAS DE PROVEEDORES")
         canv.setFont("Helvetica", 10)
-        canv.drawRightString(A4[0] - 12, A4[1] - 31, "Recubrimientos Especializados")
+        canv.drawRightString(page_size[0] - 12, page_size[1] - 31, "Recubrimientos Especializados")
         canv.restoreState()
 
     def footer(canv, doc_):
@@ -6652,18 +6653,18 @@ def export_altas_proveedores_pdf():
         division_path = os.path.join(app.static_folder or "static", "division.png")
         if os.path.exists(division_path):
             try:
-                canv.drawImage(division_path, (A4[0] - 155 * mm) / 2, 45, width=155 * mm, height=3 * mm, mask="auto")
+                canv.drawImage(division_path, (page_size[0] - 155 * mm) / 2, 45, width=155 * mm, height=3 * mm, mask="auto")
             except Exception:
                 pass
 
         canv.setFont("Helvetica-Bold", 9)
         canv.setFillColor(colors.HexColor(MAR_BLUE))
-        canv.drawCentredString(A4[0] / 2, 35, "POLIUTECH - Recubrimientos Especializados")
+        canv.drawCentredString(page_size[0] / 2, 35, "POLIUTECH - Recubrimientos Especializados")
 
         canv.setFont("Helvetica", 8)
         canv.setFillColor(colors.HexColor("#333333"))
-        canv.drawCentredString(A4[0] / 2, 25, "Campos Eliseos 223 Oficina 602 - Col. Polanco V Seccion - Miguel Hidalgo, CDMX 11560")
-        canv.drawCentredString(A4[0] / 2, 15, "Tel: 55 5938 6530 / 55 5938 0536 - info@poliutech.com - www.poliutech.com")
+        canv.drawCentredString(page_size[0] / 2, 25, "Campos Eliseos 223 Oficina 602 - Col. Polanco V Seccion - Miguel Hidalgo, CDMX 11560")
+        canv.drawCentredString(page_size[0] / 2, 15, "Tel: 55 5938 6530 / 55 5938 0536 - info@poliutech.com - www.poliutech.com")
 
         try:
             canv.setTitle("Altas de proveedores")
@@ -6689,7 +6690,7 @@ def export_altas_proveedores_pdf():
             Paragraph(filtro_relacion or "Todas", styles["EncabezadoAltas"]),
         ],
     ]
-    meta_tbl = Table(meta_data, colWidths=[95 * mm, 95 * mm], hAlign="LEFT")
+    meta_tbl = Table(meta_data, colWidths=[138.5 * mm, 138.5 * mm], hAlign="LEFT")
     meta_tbl.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
@@ -6733,7 +6734,7 @@ def export_altas_proveedores_pdf():
 
     tbl = Table(
         data,
-        colWidths=[15 * mm, 31 * mm, 40 * mm, 23 * mm, 25 * mm, 21 * mm, 35 * mm],
+        colWidths=[20 * mm, 47 * mm, 58 * mm, 30 * mm, 38 * mm, 31 * mm, 53 * mm],
         repeatRows=1,
         hAlign="CENTER",
     )
