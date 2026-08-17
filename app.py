@@ -3103,6 +3103,7 @@ from models import (
     ObraCronogramaActividad,
     CotizacionAsignacion,
     CotizacionVersion,
+    Factura,
     ProyectoAsignacion,
     VoiceCommandLog,
     Usuario,
@@ -6076,6 +6077,25 @@ def import_external_quote_payload(payload: dict, source_label: Optional[str] = N
     _send_quote_created_notification(cot)
     _send_quote_review_email_safely(cot)
     return cot
+
+
+def _cotizacion_tiene_facturas(cot_id: int) -> bool:
+    """Comprueba el bloqueo sin cargar el modelo completo de facturación.
+
+    Algunos despliegues pueden tener columnas nuevas de ``factura`` pendientes
+    de migración. Consultar la relación ``cot.facturas`` selecciona todas esas
+    columnas y hacía fallar incluso la pantalla de edición de cotizaciones.
+    """
+    try:
+        with db.session.begin_nested():
+            return (
+                db.session.query(Factura.id)
+                .filter(Factura.cotizacion_id == cot_id)
+                .first()
+                is not None
+            )
+    except Exception:
+        return False
 
 def money(n: float) -> str:
     try:
@@ -9337,7 +9357,7 @@ def crear_cotizacion():
 def editar_cotizacion(cot_id: int):
     c = _cotizacion_activa_or_404(cot_id)
     require_owner_or_admin(c)
-    if (c.estatus_aprobacion or "").upper() == "APROBADA" or getattr(c, "facturas", []):
+    if (c.estatus_aprobacion or "").upper() == "APROBADA" or _cotizacion_tiene_facturas(c.id):
         flash("La cotización está aprobada o facturada y quedó bloqueada para edición.", "warning")
         return redirect(url_for("view_cotizacion", cot_id=c.id))
     # zona actual (si existe) viene persistida en notas como: "Zona: ... (X% descuento)"
@@ -9364,7 +9384,7 @@ def actualizar_cotizacion(cot_id: int):
     c = _cotizacion_activa_or_404(cot_id)
     require_owner_or_admin(c)
 
-    if (c.estatus_aprobacion or "").upper() == "APROBADA" or getattr(c, "facturas", []):
+    if (c.estatus_aprobacion or "").upper() == "APROBADA" or _cotizacion_tiene_facturas(c.id):
         flash("La cotización está aprobada o facturada y no admite cambios.", "danger")
         return redirect(url_for("view_cotizacion", cot_id=c.id))
 
@@ -9610,7 +9630,7 @@ def marcar_cotizacion_version_enviada(cot_id, version_id):
 @login_required
 def restaurar_cotizacion_version(cot_id, version_id):
     cot = _cotizacion_activa_or_404(cot_id); require_owner_or_admin(cot)
-    if (cot.estatus_aprobacion or "").upper() == "APROBADA" or getattr(cot, "facturas", []):
+    if (cot.estatus_aprobacion or "").upper() == "APROBADA" or _cotizacion_tiene_facturas(cot.id):
         flash("Una cotización aprobada o facturada no puede restaurarse.", "danger"); return redirect(url_for("cotizacion_versiones", cot_id=cot.id))
     version = CotizacionVersion.query.filter_by(id=version_id, cotizacion_id=cot.id).first_or_404()
     data = _version_payload(version); header, totals = data.get("encabezado", {}), data.get("totales", {})
