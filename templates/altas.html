@@ -61,7 +61,7 @@
                 <th style="min-width: 240px;">CORREO</th>
                 <th style="min-width: 110px;">CRÉDITO</th>
                 <th style="min-width: 190px;">MONTO DE CRÉDITO</th>
-                <th style="width: 140px;">Accion</th>
+                {% if can_manage_altas %}<th style="width: 140px;">Accion</th>{% endif %}
               </tr>
             </thead>
             <tbody>
@@ -87,14 +87,14 @@
                   <input type="checkbox" class="form-check-input credito-check" {% if row.credito %}checked{% endif %} disabled aria-label="Proveedor con crédito">
                 </td>
                 <td><div class="input-group credito-monto-wrap {% if not row.credito %}d-none{% endif %}"><span class="input-group-text">$</span><input type="number" name="monto_credito[]" class="form-control credito-monto" min="0" step="0.01" value="{{ row.monto_credito }}" {% if not row.credito %}disabled{% endif %} readonly></div><input type="hidden" class="monto-vacio" name="monto_credito[]" value="" {% if row.credito %}disabled{% endif %}></td>
-                <td class="text-center">
+                {% if can_manage_altas %}<td class="text-center">
                   <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>
                   <button type="button" class="btn btn-outline-danger btn-sm btn-remove-row">Quitar</button>
-                </td>
+                </td>{% endif %}
               </tr>
               {% endfor %}
               {% if not rows %}
-              <tr data-razon-social-poliutech="" data-relacion="PROVEEDOR">
+              {% if can_manage_altas %}<tr data-razon-social-poliutech="" data-relacion="PROVEEDOR">
                 <td><input type="text" name="numero[]" class="form-control altas-input"></td>
                 <td><input type="text" name="empresa[]" class="form-control altas-input"></td>
                 <td><input type="text" name="razon_social_poliutech[]" class="form-control altas-input"></td>
@@ -108,22 +108,22 @@
                   <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>
                   <button type="button" class="btn btn-outline-danger btn-sm btn-remove-row">Quitar</button>
                 </td>
-              </tr>
+              </tr>{% else %}<tr><td colspan="9" class="text-center text-muted py-4">No hay registros disponibles.</td></tr>{% endif %}
               {% endif %}
             </tbody>
           </table>
         </div>
 
-        <div class="d-flex flex-column flex-md-row justify-content-between gap-2 mt-3">
+        {% if can_manage_altas %}<div class="d-flex flex-column flex-md-row justify-content-between gap-2 mt-3">
           <button type="button" class="btn btn-outline-primary" id="btn-add-row">Agregar linea</button>
           <button type="submit" class="btn btn-primary">Guardar cambios</button>
-        </div>
+        </div>{% endif %}
       </form>
     </div>
   </div>
 </div>
 
-<template id="altas-row-template">
+{% if can_manage_altas %}<template id="altas-row-template">
   <tr data-razon-social-poliutech="" data-relacion="PROVEEDOR">
     <td><input type="text" name="numero[]" class="form-control altas-input"></td>
     <td><input type="text" name="empresa[]" class="form-control altas-input"></td>
@@ -139,7 +139,7 @@
       <button type="button" class="btn btn-outline-danger btn-sm btn-remove-row">Quitar</button>
     </td>
   </tr>
-</template>
+</template>{% endif %}
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
@@ -195,7 +195,7 @@ document.addEventListener("DOMContentLoaded", () => {
     tbody.appendChild(newRow);
   }
 
-  addButton.addEventListener("click", () => {
+  addButton?.addEventListener("click", () => {
     const newRow = rowTemplate.content.firstElementChild.cloneNode(true);
     tbody.appendChild(newRow);
     applyFilters();

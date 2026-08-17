@@ -3186,6 +3186,7 @@ def inject_endpoint_helpers():
         "gastos_admin_can_view": lambda: _gastos_admin_can_view(),
         "estado_cuenta_recursos_can_view": lambda: _estado_cuenta_recursos_can_view(),
         "evaluacion_departamental_can_view": lambda: _evaluacion_departamental_can_view(),
+        "altas_can_view": lambda: _altas_can_view(),
     }
 
 
@@ -4254,6 +4255,18 @@ def has_permission(permission: str) -> bool:
     if not getattr(current_user, "is_authenticated", False):
         return False
     return is_admin() or permission in _usuario_permisos(current_user)
+
+
+def _altas_can_view() -> bool:
+    if not getattr(current_user, "is_authenticated", False):
+        return False
+    if is_admin():
+        return True
+    identities = {
+        (getattr(current_user, "nombre", "") or "").strip().lower(),
+        (getattr(current_user, "nombre_visible", "") or "").strip().lower(),
+    }
+    return "marco" in identities or any(value.startswith("marco ") for value in identities)
 
 
 def is_hansel_or_admin() -> bool:
@@ -7144,7 +7157,11 @@ def cotizador_voice_preview():
 @app.route("/altas", methods=["GET", "POST"])
 @login_required
 def altas_proveedores():
-    if not is_admin():
+    if not _altas_can_view():
+        abort(403)
+
+    can_manage_altas = is_admin()
+    if request.method == "POST" and not can_manage_altas:
         abort(403)
 
     rows = _load_provider_numbers()
@@ -7225,6 +7242,7 @@ def altas_proveedores():
                         _provider_filters_from_request(),
                     ),
                     filters=_provider_filters_from_request(),
+                    can_manage_altas=True,
                 )
 
             rows.append({
@@ -7251,13 +7269,14 @@ def altas_proveedores():
         rows=rows,
         filtered_rows=_filter_provider_rows(rows, filters),
         filters=filters,
+        can_manage_altas=can_manage_altas,
     )
 
 
 @app.route("/altas/export.xlsx")
 @login_required
 def export_altas_proveedores_xlsx():
-    if not is_admin():
+    if not _altas_can_view():
         abort(403)
 
     filters = _provider_filters_from_request()
@@ -7306,7 +7325,7 @@ def export_altas_proveedores_xlsx():
 @app.route("/altas/export.pdf")
 @login_required
 def export_altas_proveedores_pdf():
-    if not is_admin():
+    if not _altas_can_view():
         abort(403)
 
     filters = _provider_filters_from_request()
