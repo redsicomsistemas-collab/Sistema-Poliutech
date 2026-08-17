@@ -4998,17 +4998,24 @@ def _known_project_names(limit: int = 100) -> list[str]:
             return
         names.setdefault(value.lower(), value)
 
-    key_expr = _project_key_expr()
-    name_expr = _project_display_expr()
-    for row in (
-        _cotizaciones_base_query()
-        .with_entities(key_expr.label("key"), name_expr.label("proyecto"))
-        .group_by(key_expr)
-        .order_by(name_expr.asc())
-        .limit(limit)
-        .all()
-    ):
-        add(row.proyecto)
+    try:
+        # `proyecto` was added after the original quotations schema. Keep the
+        # editor available while an older deployment is still being migrated.
+        with db.session.begin_nested():
+            key_expr = _project_key_expr()
+            name_expr = _project_display_expr()
+            rows = (
+                _cotizaciones_base_query()
+                .with_entities(key_expr.label("key"), name_expr.label("proyecto"))
+                .group_by(key_expr)
+                .order_by(name_expr.asc())
+                .limit(limit)
+                .all()
+            )
+        for row in rows:
+            add(row.proyecto)
+    except Exception:
+        pass
 
     for model in (ComprobacionGasto, SolicitudRecurso, MovimientoFinanciero):
         try:
