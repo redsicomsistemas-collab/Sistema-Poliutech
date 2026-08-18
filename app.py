@@ -6679,8 +6679,26 @@ def index():
     base_query = _apply_dashboard_bandeja(base_query, bandeja)
 
     total_cotizaciones = base_query.count()
+    # Esta tarjeta representa únicamente cotizaciones vivas: las que siguen
+    # en proceso. El resto de las tarjetas y el importe histórico mantienen
+    # sus respectivos alcances.
+    importe_vivas_query = _apply_dashboard_bandeja(
+        _build_dashboard_cotizaciones_query(
+            desde=desde,
+            hasta=hasta,
+            estatus=estatus,
+            cliente=cliente,
+            proyecto=proyecto,
+            especialidad=especialidad,
+            especialidad_descripcion=especialidad_descripcion,
+            responsable=responsable,
+            asignado_a=asignado_a,
+            vista="activas",
+        ),
+        bandeja,
+    )
     total_importe = (
-        base_query.with_entities(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar()
+        importe_vivas_query.with_entities(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar()
         or 0
     )
     historical_query = _build_dashboard_cotizaciones_query(vista="historico")
@@ -11872,13 +11890,27 @@ def api_dashboard_filter_summary():
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     q = _apply_dashboard_bandeja(q, bandeja)
+    importe_vivas_query = _apply_dashboard_bandeja(
+        _build_dashboard_cotizaciones_query(
+            desde=desde,
+            hasta=hasta,
+            estatus=estatus,
+            cliente=cliente,
+            proyecto=proyecto,
+            especialidad=especialidad,
+            especialidad_descripcion=especialidad_descripcion,
+            responsable=responsable,
+            vista="activas",
+        ),
+        bandeja,
+    )
 
     cot_subq = q.with_entities(Cotizacion.id).subquery()
     cot_ids_select = db.select(cot_subq.c.id)
 
     total_importe = (
         db.session.query(db.func.coalesce(db.func.sum(Cotizacion.total), 0))
-        .filter(Cotizacion.id.in_(cot_ids_select))
+        .filter(Cotizacion.id.in_(db.select(importe_vivas_query.with_entities(Cotizacion.id).subquery().c.id)))
         .scalar()
         or 0
     )
