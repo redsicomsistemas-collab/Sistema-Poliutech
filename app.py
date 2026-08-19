@@ -6770,12 +6770,11 @@ def index():
     latest_sq = db.session.query(CotizacionVersion.cotizacion_id, db.func.max(CotizacionVersion.numero_version).label("max_version")).filter(CotizacionVersion.cotizacion_id.in_(quote_ids or [-1])).group_by(CotizacionVersion.cotizacion_id).subquery()
     latest_versions = CotizacionVersion.query.join(latest_sq, db.and_(CotizacionVersion.cotizacion_id == latest_sq.c.cotizacion_id, CotizacionVersion.numero_version == latest_sq.c.max_version)).all()
     pending_versions = [v for v in latest_versions if not v.es_version_enviada]
-    alertas_versiones, variacion_revisiones, total_original_versiones, total_vigente_versiones = [], 0.0, 0.0, 0.0
+    alertas_versiones, total_original_versiones, total_vigente_versiones = [], 0.0, 0.0
     for latest in latest_versions:
         first = CotizacionVersion.query.filter_by(cotizacion_id=latest.cotizacion_id, numero_version=0).first()
         if first:
             total_original_versiones += float(first.total or 0); total_vigente_versiones += float(latest.total or 0)
-            variacion_revisiones += float(latest.total or 0) - float(first.total or 0)
         sent = CotizacionVersion.query.filter_by(cotizacion_id=latest.cotizacion_id, es_version_enviada=True).order_by(CotizacionVersion.numero_version.desc()).first()
         if sent and latest.numero_version > sent.numero_version: alertas_versiones.append({"cotizacion": latest.cotizacion, "latest": latest, "sent": sent})
     actividad_revisiones = revision_query.filter(CotizacionVersion.numero_version > 0).order_by(CotizacionVersion.creada_en.desc()).limit(10).all()
@@ -6815,7 +6814,7 @@ def index():
         seguimiento_metricas=seguimiento_metricas,
         carga_asesores=carga_asesores,
         revisiones_periodo=revisiones_periodo, cotizaciones_modificadas=cotizaciones_modificadas,
-        revisiones_pendientes=len(pending_versions), variacion_revisiones=variacion_revisiones,
+        revisiones_pendientes=len(pending_versions),
         actividad_revisiones=actividad_revisiones, alertas_versiones=alertas_versiones,
         razones_versiones=razones_versiones, total_original_versiones=total_original_versiones,
         total_vigente_versiones=total_vigente_versiones,
