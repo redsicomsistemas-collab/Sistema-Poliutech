@@ -52,6 +52,8 @@ VALID_ESTATUS_SEGUIMIENTO = [
     "100%",
     "GANADA",
     "CONTRATADA",
+    "DECLINADA",
+    "TERMINADA",
 ]
 PORCENTAJES_SEGUIMIENTO = [f"{porcentaje}%" for porcentaje in range(0, 101, 10)]
 VALID_ESTATUS_APROBACION = [
