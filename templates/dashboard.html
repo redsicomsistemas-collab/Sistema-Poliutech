@@ -146,17 +146,36 @@
     --quote-flag-color: #adb5bd;
   }
 
-  .dashboard-quotes-table .cell-acciones {
-    min-width: 10rem;
-    white-space: normal !important;
+  .dashboard-quotes-table tbody tr.quote-data-row {
+    --quote-row-bg: #ffffff;
+    --quote-row-hover-bg: #edf3fa;
   }
 
-  .dashboard-quotes-table .cell-acciones .btn {
-    margin: 0.125rem;
+  .dashboard-quotes-table tbody tr.quote-data-row.quote-row-alt {
+    --quote-row-bg: #f2f5f8;
+    --quote-row-hover-bg: #e7edf4;
+  }
+
+  .dashboard-quotes-table tbody tr.quote-data-row > td {
+    background-color: var(--quote-row-bg);
+    transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .dashboard-quotes-table tbody tr.quote-data-row:hover > td {
+    background-color: var(--quote-row-hover-bg);
+  }
+
+  .dashboard-quotes-table tbody tr.quote-won-row {
+    --quote-row-bg: #e8f7ee;
+    --quote-row-hover-bg: #d8f0e1;
+  }
+
+  .dashboard-quotes-table tbody tr.quote-won-row.quote-row-alt {
+    --quote-row-bg: #def1e6;
+    --quote-row-hover-bg: #d1eadb;
   }
 
   .dashboard-quotes-table tbody tr.quote-won-row > td {
-    background-color: #e8f7ee;
     border-color: #a9d9ba;
     color: #1f2937 !important;
   }
@@ -165,18 +184,115 @@
     color: #0d6efd !important;
   }
 
-  .dashboard-quotes-table tbody tr.quote-won-row:hover > td {
-    background-color: #d8f0e1;
+  .dashboard-quotes-table tbody tr.quote-lost-row {
+    --quote-row-bg: #fff1f1;
+    --quote-row-hover-bg: #ffe3e3;
+  }
+
+  .dashboard-quotes-table tbody tr.quote-lost-row.quote-row-alt {
+    --quote-row-bg: #f9e7e7;
+    --quote-row-hover-bg: #f4dada;
   }
 
   .dashboard-quotes-table tbody tr.quote-lost-row > td {
-    background-color: #fff1f1;
     border-color: #efc2c2;
     color: #1f2937 !important;
   }
 
-  .dashboard-quotes-table tbody tr.quote-lost-row:hover > td {
-    background-color: #ffe3e3;
+  .dashboard-quotes-table tbody tr.quote-data-row.quote-row-selected {
+    --quote-row-bg: #dbeafe;
+    --quote-row-hover-bg: #d3e6fd;
+  }
+
+  .dashboard-quotes-table tbody tr.quote-data-row.quote-row-selected > td {
+    border-top-color: #72a9ed;
+    border-bottom-color: #72a9ed;
+  }
+
+  .dashboard-quotes-table tbody tr.quote-data-row.quote-row-selected > td:first-child {
+    box-shadow: inset 4px 0 0 #0d6efd;
+  }
+
+  .quote-actions-row > td {
+    background: #eef5ff !important;
+    border-top: 0;
+    padding: 0.65rem 0.85rem 1rem;
+  }
+
+  .quote-actions-window {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.8rem 1rem;
+    background: var(--bs-body-bg);
+    border: 1px solid #8bb8ee;
+    border-left: 4px solid #0d6efd;
+    border-radius: 0.65rem;
+    box-shadow: 0 0.45rem 1rem rgba(13, 110, 253, 0.14);
+  }
+
+  .quote-actions-window .quote-actions-title {
+    margin-right: 0.5rem;
+  }
+
+  .quote-actions-window .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  html[data-bs-theme="dark"] .dashboard-quotes-table tbody tr.quote-data-row {
+    --quote-row-bg: #1f2835;
+    --quote-row-hover-bg: #2a3544;
+  }
+
+  html[data-bs-theme="dark"] .dashboard-quotes-table tbody tr.quote-data-row.quote-row-alt {
+    --quote-row-bg: #273240;
+    --quote-row-hover-bg: #303d4d;
+  }
+
+  html[data-bs-theme="dark"] .dashboard-quotes-table tbody tr.quote-data-row.quote-won-row {
+    --quote-row-bg: #dff3e7;
+    --quote-row-hover-bg: #d1eadb;
+  }
+
+  html[data-bs-theme="dark"] .dashboard-quotes-table tbody tr.quote-data-row.quote-won-row.quote-row-alt {
+    --quote-row-bg: #d5ecde;
+    --quote-row-hover-bg: #c9e5d4;
+  }
+
+  html[data-bs-theme="dark"] .dashboard-quotes-table tbody tr.quote-data-row.quote-lost-row {
+    --quote-row-bg: #faeaea;
+    --quote-row-hover-bg: #f4dada;
+  }
+
+  html[data-bs-theme="dark"] .dashboard-quotes-table tbody tr.quote-data-row.quote-lost-row.quote-row-alt {
+    --quote-row-bg: #f3e1e1;
+    --quote-row-hover-bg: #eddddd;
+  }
+
+  html[data-bs-theme="dark"] .dashboard-quotes-table tbody tr.quote-data-row.quote-row-selected {
+    --quote-row-bg: #173b66;
+    --quote-row-hover-bg: #1b4779;
+  }
+
+  html[data-bs-theme="dark"] .dashboard-quotes-table tbody tr.quote-data-row.quote-row-selected > td {
+    color: #f8fafc !important;
+  }
+
+  html[data-bs-theme="dark"] .dashboard-quotes-table tbody tr.quote-data-row.quote-row-selected > td a:not(.btn) {
+    color: #9ec5fe !important;
+  }
+
+  html[data-bs-theme="dark"] .quote-actions-row > td {
+    background: #152b45 !important;
+  }
+
+  html[data-bs-theme="dark"] .quote-actions-window {
+    border-color: #3d73ad;
+    border-left-color: #5da5f5;
+    box-shadow: 0 0.45rem 1rem rgba(0, 0, 0, 0.28);
   }
 
   .quote-tabs .nav-link.active {
@@ -530,15 +646,14 @@
       </div>
 
       <!-- 📋 TABLA -->
+      <div class="small text-muted mb-2">Marca el check de una cotización para resaltarla y mostrar sus acciones debajo.</div>
       <div class="table-responsive dashboard-table-scroll">
         <table class="table table-bordered align-middle dashboard-quotes-table">
           <thead class="table-light">
             <tr>
-              {% if can_manage_assignments %}
               <th style="width:36px" class="text-center">
-                <input type="checkbox" id="chk-select-all" title="Seleccionar todo (visibles)">
+                <input type="checkbox" id="chk-select-all" title="Seleccionar todas las cotizaciones visibles" aria-label="Seleccionar todas las cotizaciones visibles">
               </th>
-              {% endif %}
               <th>Folio</th>
               <th>Fecha</th>
               <th>Usuario</th>
@@ -559,13 +674,12 @@
               <th>Total</th>
               <th>Aprobación</th>
               <th>Seguimiento</th>
-              <th>Acciones</th>
             </tr>
           </thead>
           <tbody id="tablaCotizaciones">
             {% for c in cotizaciones %}
             {% set es_obra = ((c.estatus or '')|trim|upper) in ['100%', 'GANADA', 'CONTRATADA', 'CON CONTRATO', 'CONTRATO'] or ((c.resultado or '')|trim|upper) in ['100%', 'GANADA', 'CONTRATADA', 'CON CONTRATO', 'CONTRATO'] %}
-            <tr class="{% if es_obra %}quote-won-row{% elif dashboard_filters.vista == 'perdidas' %}quote-lost-row{% endif %}" data-id="{{ c.id }}"
+            <tr class="quote-data-row{% if loop.index is even %} quote-row-alt{% endif %}{% if es_obra %} quote-won-row{% elif dashboard_filters.vista == 'perdidas' %} quote-lost-row{% endif %}" data-id="{{ c.id }}"
                 data-fecha="{{ c.fecha.strftime('%Y-%m-%d') }}"
                 data-estatus="{{ c.estatus }}"
                 data-estatus-aprobacion="{{ c.estatus_aprobacion or 'EN REVISIÓN' }}"
@@ -573,8 +687,8 @@
                 data-responsable="{{ (c.responsable or '')|lower }}"
                 data-cliente="{{ (c.cliente.nombre_cliente if c.cliente else '')|lower }}"
                 data-empresa="{{ (c.cliente.empresa if c.cliente else '')|lower }}"
-                data-proyecto="{{ (c.proyecto or '')|lower }}">
-              {% if can_manage_assignments %}
+                data-proyecto="{{ (c.proyecto or '')|lower }}"
+                aria-selected="false">
               <td class="text-center quote-select-cell">
                 {% set estatus_flag = (c.estatus_aprobacion or 'EN REVISIÓN')|upper %}
                 {% if estatus_flag in ['APROBADA'] %}
@@ -586,18 +700,9 @@
                 {% else %}
                   {% set flag_class = 'quote-flag-muted' %}
                 {% endif %}
-                <span class="quote-status-flag {{ flag_class }}" title="{{ c.estatus_aprobacion or 'EN REVISIÓN' }}"></span>
-                <input type="checkbox" class="chk-cot" value="{{ c.id }}" aria-label="Seleccionar {{ c.folio }}">
-                <button
-                  type="button"
-                  class="btn btn-outline-secondary btn-sm btn-send-email ms-1"
-                  title="Enviar por correo"
-                  data-id="{{ c.id }}"
-                  data-folio="{{ c.folio }}"
-                  data-email="{{ c.cliente.correo if c.cliente and c.cliente.correo else '' }}"
-                >📧</button>
+                <input type="checkbox" class="chk-cot" value="{{ c.id }}" aria-label="Seleccionar {{ c.folio }}" aria-controls="quote-actions-{{ c.id }}" aria-expanded="false">
+                <span class="quote-status-flag {{ flag_class }} ms-2" title="{{ c.estatus_aprobacion or 'EN REVISIÓN' }}"></span>
               </td>
-              {% endif %}
               <td>
                 <a href="{{ url_for('seguimiento_obra', cot_id=c.id) if es_obra else url_for('cotizacion_seguimiento', cot_id=c.id) }}" class="fw-semibold text-decoration-none">
                   {{ c.folio }}{% if es_obra %} <span class="badge text-bg-success ms-1">OBRA</span>{% endif %}
@@ -636,25 +741,28 @@
                   {% endfor %}
                 </select>
               </td>
-              <td class="text-center cell-acciones">
-                <a href="{{ url_for('view_cotizacion', cot_id=c.id) }}" class="btn btn-outline-primary btn-sm" title="Ver">👁️</a>
-                <a href="{{ url_for('seguimiento_obra', cot_id=c.id) if es_obra else url_for('cotizacion_seguimiento', cot_id=c.id) }}" class="btn btn-outline-dark btn-sm" title="{{ 'Seguimiento de obra' if es_obra else 'Seguimiento comercial' }}">{{ '🏗️' if es_obra else '💬' }}</a>
-                <a href="{{ url_for('export_cotizacion_pdf', cot_id=c.id) }}" target="_blank" class="btn btn-outline-danger btn-sm" title="PDF">📄</a>
-                <a href="{{ url_for('export_cotizacion_xlsx', cot_id=c.id) }}" class="btn btn-outline-success btn-sm" title="Excel">📊</a>
-                <a href="{{ url_for('editar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-warning btn-sm" title="Editar">✏️</a>
-                {% if not (current_user.is_authenticated and current_user.rol == 'ADMIN') %}
-                <button
-                  type="button"
-                  class="btn btn-outline-secondary btn-sm btn-send-email"
-                  title="Enviar por correo"
-                  data-id="{{ c.id }}"
-                  data-folio="{{ c.folio }}"
-                  data-email="{{ c.cliente.correo if c.cliente and c.cliente.correo else '' }}"
-                >📧</button>
-                {% endif %}
-                {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
-                <a href="{{ url_for('eliminar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-danger btn-sm" title="Eliminar">🗑️</a>
-                {% endif %}
+            </tr>
+            <tr id="quote-actions-{{ c.id }}" class="quote-actions-row" data-actions-for="{{ c.id }}" aria-hidden="true" hidden>
+              <td colspan="{{ 19 if can_manage_assignments else 13 }}" class="quote-actions-cell">
+                <div class="quote-actions-window" role="region" aria-label="Acciones para la cotización {{ c.folio }}">
+                  <span class="quote-actions-title fw-bold text-primary">Acciones para {{ c.folio }}</span>
+                  <a href="{{ url_for('view_cotizacion', cot_id=c.id) }}" class="btn btn-outline-primary btn-sm" title="Ver cotización">👁️ Ver</a>
+                  <a href="{{ url_for('seguimiento_obra', cot_id=c.id) if es_obra else url_for('cotizacion_seguimiento', cot_id=c.id) }}" class="btn btn-outline-secondary btn-sm" title="{{ 'Seguimiento de obra' if es_obra else 'Seguimiento comercial' }}">{{ '🏗️ Obra' if es_obra else '💬 Seguimiento' }}</a>
+                  <a href="{{ url_for('export_cotizacion_pdf', cot_id=c.id) }}" target="_blank" class="btn btn-outline-danger btn-sm" title="Descargar PDF">📄 PDF</a>
+                  <a href="{{ url_for('export_cotizacion_xlsx', cot_id=c.id) }}" class="btn btn-outline-success btn-sm" title="Descargar Excel">📊 Excel</a>
+                  <a href="{{ url_for('editar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-warning btn-sm" title="Editar cotización">✏️ Editar</a>
+                  <button
+                    type="button"
+                    class="btn btn-outline-secondary btn-sm btn-send-email"
+                    title="Enviar por correo"
+                    data-id="{{ c.id }}"
+                    data-folio="{{ c.folio }}"
+                    data-email="{{ c.cliente.correo if c.cliente and c.cliente.correo else '' }}"
+                  >📧 Correo</button>
+                  {% if current_user.is_authenticated and current_user.rol == 'ADMIN' %}
+                  <a href="{{ url_for('eliminar_cotizacion', cot_id=c.id) }}" class="btn btn-outline-danger btn-sm" title="Eliminar cotización">🗑️ Eliminar</a>
+                  {% endif %}
+                </div>
               </td>
             </tr>
             {% endfor %}
@@ -705,7 +813,6 @@
 <script>
 document.addEventListener("DOMContentLoaded", () => {
   const IS_ADMIN = {{ 'true' if (current_user.is_authenticated and current_user.rol == 'ADMIN') else 'false' }};
-  const CAN_MANAGE_ASSIGNMENTS = {{ 'true' if can_manage_assignments else 'false' }};
   const CAN_ASSIGN_QUOTES = {{ 'true' if can_assign_cotizaciones else 'false' }};
   const desde = document.getElementById("filtro-desde");
   const hasta = document.getElementById("filtro-hasta");
@@ -764,8 +871,37 @@ document.addEventListener("DOMContentLoaded", () => {
   const visCountEl = document.getElementById("bulk-visible-count");
 
   function getVisibleRows() {
-    return Array.from(document.querySelectorAll("#tablaCotizaciones tr"))
+    return Array.from(document.querySelectorAll("#tablaCotizaciones tr.quote-data-row"))
       .filter(tr => tr.style.display !== "none");
+  }
+
+  function syncQuoteSelection(checkbox) {
+    const row = checkbox?.closest("tr.quote-data-row");
+    if (!row) return;
+
+    const isSelected = Boolean(checkbox.checked);
+    const actionsRow = document.querySelector(`.quote-actions-row[data-actions-for="${row.dataset.id}"]`);
+    row.classList.toggle("quote-row-selected", isSelected);
+    row.setAttribute("aria-selected", String(isSelected));
+    checkbox.setAttribute("aria-expanded", String(isSelected));
+
+    if (actionsRow) {
+      actionsRow.hidden = !isSelected;
+      actionsRow.setAttribute("aria-hidden", String(!isSelected));
+    }
+  }
+
+  function refreshRowStriping() {
+    getVisibleRows().forEach((row, index) => {
+      row.classList.toggle("quote-row-alt", index % 2 === 1);
+    });
+  }
+
+  function removeQuoteRows(id) {
+    const row = document.querySelector(`#tablaCotizaciones tr.quote-data-row[data-id="${id}"]`);
+    const actionsRow = document.querySelector(`#tablaCotizaciones tr.quote-actions-row[data-actions-for="${id}"]`);
+    if (actionsRow) actionsRow.remove();
+    if (row) row.remove();
   }
 
   function setSummaryText(elements, value) {
@@ -1111,7 +1247,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function updateBulkDeleteState() {
-    if (!CAN_MANAGE_ASSIGNMENTS) return;
     const allChecks = Array.from(document.querySelectorAll(".chk-cot"));
     const anyChecked = allChecks.some(chk => chk.checked);
     const checkedCount = allChecks.filter(chk => chk.checked).length;
@@ -1136,26 +1271,28 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  if (CAN_MANAGE_ASSIGNMENTS && chkAll) {
+  if (chkAll) {
     chkAll.addEventListener("change", () => {
       const visible = getVisibleRowCheckboxes();
-      visible.forEach(chk => (chk.checked = chkAll.checked));
+      visible.forEach(chk => {
+        chk.checked = chkAll.checked;
+        syncQuoteSelection(chk);
+      });
       updateBulkDeleteState();
     });
   }
 
-  if (CAN_MANAGE_ASSIGNMENTS) {
-    document.addEventListener("change", (e) => {
-      if (e.target && e.target.classList.contains("chk-cot")) {
-        updateBulkDeleteState();
-      }
-    });
-  }
+  document.addEventListener("change", (e) => {
+    if (e.target && e.target.classList.contains("chk-cot")) {
+      syncQuoteSelection(e.target);
+      updateBulkDeleteState();
+    }
+  });
 
   async function confirmIfGanadas(ids) {
     // advertir cuando se eliminan cotizaciones con seguimiento completo
     const ganadas = ids.filter(id => {
-      const tr = document.querySelector(`#tablaCotizaciones tr[data-id="${id}"]`);
+      const tr = document.querySelector(`#tablaCotizaciones tr.quote-data-row[data-id="${id}"]`);
       return tr && (tr.dataset.estatus || "").toUpperCase() === "100%";
     });
     if (ganadas.length === 0) return true;
@@ -1213,13 +1350,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Quitar filas eliminadas
       (data.deleted_ids || ids).forEach((id) => {
-        const tr = document.querySelector(`#tablaCotizaciones tr[data-id="${id}"]`);
-        if (tr) tr.remove();
+        removeQuoteRows(id);
       });
 
       // Reset UI
       chkAll.checked = false;
       chkAll.indeterminate = false;
+      refreshRowStriping();
       updateBulkDeleteState();
       renderFilteredCharts();
       refreshSummaryCards();
@@ -1240,7 +1377,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Eliminar visibles por filtros
   if (IS_ADMIN && btnBulkDeleteVisible) btnBulkDeleteVisible.addEventListener("click", async () => {
-    const visibleIds = Array.from(document.querySelectorAll("#tablaCotizaciones tr"))
+    const visibleIds = Array.from(document.querySelectorAll("#tablaCotizaciones tr.quote-data-row"))
       .filter(tr => tr.style.display !== "none")
       .map(tr => parseInt(tr.dataset.id, 10))
       .filter(n => Number.isFinite(n));
@@ -1281,14 +1418,14 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!r.ok) throw new Error(data?.error || "Error al eliminar");
 
       (data.deleted_ids || visibleIds).forEach((id) => {
-        const tr = document.querySelector(`#tablaCotizaciones tr[data-id="${id}"]`);
-        if (tr) tr.remove();
+        removeQuoteRows(id);
       });
 
       if (chkAll) {
         chkAll.checked = false;
         chkAll.indeterminate = false;
       }
+      refreshRowStriping();
       updateBulkDeleteState();
       renderFilteredCharts();
       refreshSummaryCards();
@@ -1471,6 +1608,8 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // estado inicial
+  document.querySelectorAll(".chk-cot").forEach(syncQuoteSelection);
+  refreshRowStriping();
   updateBulkDeleteState();
   renderFilteredCharts();
   refreshSummaryCards();
