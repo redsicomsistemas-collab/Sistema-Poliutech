@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}{{ record.folio }} · Contabilidad{% endblock %}
+
+{% block content %}
+<style>
+  .accounting-summary { border-radius: 1rem; overflow: hidden; }
+  .accounting-summary .summary-main { background: linear-gradient(135deg, #0c3c78, #1767a5); color: #fff; }
+  .summary-value { font-size: clamp(1.45rem, 3vw, 2.15rem); font-weight: 800; }
+  .document-row:last-child, .payment-row:last-child { border-bottom: 0 !important; }
+  .section-anchor { scroll-margin-top: 95px; }
+</style>
+
+<div class="py-4">
+  <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+    <div>
+      <div class="small text-muted mb-1"><a class="text-decoration-none" href="{{ url_for('contabilidad.index') }}">Contabilidad</a> / <a class="text-decoration-none" href="{{ url_for('contabilidad.registros', slug=category.slug) }}">{{ category.label }}</a> / {{ record.folio }}</div>
+      <h1 class="h2 fw-bold mb-1">{{ category.icon }} {{ record.nombre }}</h1>
+      <div class="text-muted">{{ record.folio }}{% if record.proyecto %} · {{ record.proyecto }}{% endif %}</div>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-outline-secondary" href="{{ url_for('contabilidad.registros', slug=category.slug) }}">← Volver</a>
+      <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#editRecord">Editar datos</button>
+      <a class="btn btn-success" href="{{ url_for('contabilidad.exportar', slug=category.slug, q=record.folio) }}">📊 Exportar registro</a>
+    </div>
+  </div>
+
+  {% if category.financial %}
+  <section class="card accounting-summary border-0 shadow-sm mb-4">
+    <div class="row g-0">
+      <div class="col-lg-4 summary-main p-4">
+        <div class="small text-uppercase fw-semibold opacity-75">Saldo pendiente</div>
+        <div class="summary-value">${{ '{:,.2f}'.format(record.saldo_pendiente) }}</div>
+        <span class="badge {{ 'text-bg-success' if record.esta_liquidado else 'text-bg-warning' }} mt-2">{{ record.estatus }}</span>
+      </div>
+      <div class="col-6 col-lg-4 p-4 border-end">
+        <div class="small text-muted text-uppercase fw-semibold">Monto de crédito / obra</div>
+        <div class="h4 fw-bold mb-0">${{ '{:,.2f}'.format(record.monto_total or 0) }}</div>
+        <div class="small text-muted">{{ record.moneda }}</div>
+      </div>
+      <div class="col-6 col-lg-4 p-4">
+        <div class="small text-muted text-uppercase fw-semibold">Total abonado</div>
+        <div class="h4 fw-bold text-success mb-0">${{ '{:,.2f}'.format(record.total_abonado) }}</div>
+        <div class="small text-muted">{{ record.abonos|length }} movimiento{{ '' if record.abonos|length == 1 else 's' }}</div>
+      </div>
+    </div>
+  </section>
+  {% else %}
+  <section class="card accounting-summary border-0 shadow-sm mb-4"><div class="row g-0">
+    <div class="col-md-4 summary-main p-4"><div class="small text-uppercase fw-semibold opacity-75">Estatus</div><div class="summary-value">{{ record.estatus }}</div></div>
+    <div class="col-md-4 p-4 border-end"><div class="small text-muted text-uppercase fw-semibold">Inicio / alta</div><div class="h4 fw-bold mb-0">{{ record.fecha_inicio.strftime('%d/%m/%Y') }}</div></div>
+    <div class="col-md-4 p-4"><div class="small text-muted text-uppercase fw-semibold">Documentos PDF</div><div class="h4 fw-bold mb-0">{{ record.documentos|length }}</div></div>
+  </div></section>
+  {% endif %}
+
+  <div class="collapse mb-4 section-anchor" id="editRecord">
+    <div class="card border-0 shadow-sm" id="datos">
+      <div class="card-header bg-primary text-white py-3"><strong>Editar datos del expediente</strong></div>
+      <div class="card-body p-4">
+        <form method="post" action="{{ url_for('contabilidad.editar', slug=category.slug, record_id=record.id) }}" class="row g-3">
+          <div class="col-md-6"><label class="form-label fw-semibold">Nombre *</label><input class="form-control" name="nombre" value="{{ record.nombre }}" required></div>
+          {% if category.tipo in ['CLIENTE', 'PROVEEDOR'] %}
+          <div class="col-md-6"><label class="form-label fw-semibold">Razón social</label><input class="form-control" name="razon_social" value="{{ record.razon_social or '' }}"></div>
+          <div class="col-md-4"><label class="form-label fw-semibold">RFC</label><input class="form-control text-uppercase" name="rfc" value="{{ record.rfc or '' }}"></div>
+          <div class="col-md-4"><label class="form-label fw-semibold">Contacto</label><input class="form-control" name="contacto" value="{{ record.contacto or '' }}"></div>
+          <div class="col-md-4"><label class="form-label fw-semibold">Teléfono</label><input class="form-control" name="telefono" value="{{ record.telefono or '' }}"></div>
+          <div class="col-md-6"><label class="form-label fw-semibold">Correo</label><input class="form-control" type="email" name="correo" value="{{ record.correo or '' }}"></div>
+          <div class="col-md-6"><label class="form-label fw-semibold">Domicilio</label><input class="form-control" name="direccion" value="{{ record.direccion or '' }}"></div>
+          {% elif category.tipo == 'TRABAJADOR' %}
+          <div class="col-md-6"><label class="form-label fw-semibold">Puesto / especialidad</label><input class="form-control" name="descripcion" value="{{ record.descripcion or '' }}"></div>
+          <div class="col-md-4"><label class="form-label fw-semibold">Número de empleado</label><input class="form-control" name="identificador" value="{{ record.identificador or '' }}"></div>
+          <div class="col-md-4"><label class="form-label fw-semibold">Teléfono</label><input class="form-control" name="telefono" value="{{ record.telefono or '' }}"></div>
+          <div class="col-md-4"><label class="form-label fw-semibold">Correo</label><input class="form-control" type="email" name="correo" value="{{ record.correo or '' }}"></div>
+          {% else %}
+          <div class="col-md-3"><label class="form-label fw-semibold">{{ 'Placas / número económico' if category.tipo == 'TRANSPORTE' else 'Serie / número económico' }}</label><input class="form-control" name="identificador" value="{{ record.identificador or '' }}"></div>
+          <div class="col-md-3"><label class="form-label fw-semibold">Marca</label><input class="form-control" name="marca" value="{{ record.marca or '' }}"></div>
+          <div class="col-md-3"><label class="form-label fw-semibold">Modelo</label><input class="form-control" name="modelo" value="{{ record.modelo or '' }}"></div>
+          <div class="col-md-3"><label class="form-label fw-semibold">Año</label><input class="form-control" type="number" min="1900" max="2200" name="anio" value="{{ record.anio or '' }}"></div>
+          <div class="col-12"><label class="form-label fw-semibold">Descripción</label><textarea class="form-control" name="descripcion" rows="2">{{ record.descripcion or '' }}</textarea></div>
+          {% endif %}
+          <div class="col-md-5"><label class="form-label fw-semibold">Proyecto / obra</label><input class="form-control" name="proyecto" value="{{ record.proyecto or '' }}"></div>
+          <div class="col-md-3"><label class="form-label fw-semibold">Fecha de inicio *</label><input class="form-control" type="date" name="fecha_inicio" value="{{ record.fecha_inicio.isoformat() }}" required></div>
+          <div class="col-md-4"><label class="form-label fw-semibold">{{ 'Monto de crédito u obra *' if category.financial else 'Valor / costo de referencia' }}</label><div class="input-group"><span class="input-group-text">$</span><input class="form-control" type="number" min="0" step="0.01" name="monto_total" value="{{ '%.2f'|format(record.monto_total or 0) }}" {% if category.financial %}required{% endif %}><select class="form-select" name="moneda" style="max-width: 95px"><option {{ 'selected' if record.moneda == 'MXN' }}>MXN</option><option {{ 'selected' if record.moneda == 'USD' }}>USD</option></select></div></div>
+          <div class="col-12"><label class="form-label fw-semibold">Notas</label><textarea class="form-control" name="notas" rows="2">{{ record.notas or '' }}</textarea></div>
+          <div class="col-12 d-flex justify-content-end gap-2"><button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#editRecord">Cancelar</button><button class="btn btn-primary">Guardar cambios</button></div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <div class="{{ 'col-xl-7' if category.financial else 'col-12' }}">
+      <section class="card border-0 shadow-sm section-anchor" id="documentos">
+        <div class="card-header bg-white py-3"><h2 class="h5 fw-bold mb-0">📎 Expediente de documentos</h2></div>
+        <div class="card-body border-bottom">
+          <form method="post" enctype="multipart/form-data" action="{{ url_for('contabilidad.agregar_documentos', slug=category.slug, record_id=record.id) }}" class="row g-3 align-items-end">
+            <div class="col-md-4"><label class="form-label small fw-semibold">Tipo</label><select class="form-select" name="tipo">{% for key, label in document_types.items() %}<option value="{{ key }}" {% if (category.tipo in ['CLIENTE', 'PROVEEDOR'] and key == 'FACTURA') or (category.tipo not in ['CLIENTE', 'PROVEEDOR'] and key == 'DOCUMENTACION') %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+            <div class="col-md-5"><label class="form-label small fw-semibold">Archivos PDF</label><input class="form-control" type="file" name="archivos" accept="application/pdf,.pdf" multiple required></div>
+            <div class="col-md-3 d-grid"><button class="btn btn-primary">Cargar PDF</button></div>
+            <div class="col-12"><input class="form-control" name="descripcion" placeholder="Descripción opcional del documento"></div>
+          </form>
+        </div>
+        <div class="list-group list-group-flush">
+          {% for document in record.documentos %}
+          <div class="list-group-item document-row py-3">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+              <div class="min-w-0">
+                <div class="d-flex align-items-center gap-2"><span class="badge text-bg-danger">PDF</span><strong class="text-break">{{ document.nombre_original }}</strong></div>
+                <div class="small text-muted mt-1">{{ document_types.get(document.tipo, document.tipo) }} · {{ '{:.1f}'.format(document.tamano / 1024 / 1024) }} MB · {{ document.creado_en.strftime('%d/%m/%Y %H:%M') }}{% if document.descripcion %} · {{ document.descripcion }}{% endif %}</div>
+              </div>
+              <div class="d-flex gap-2 flex-shrink-0">
+                <a class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener" href="{{ url_for('contabilidad.ver_documento', document_id=document.id) }}">Ver PDF</a>
+                <form method="post" action="{{ url_for('contabilidad.eliminar_documento', document_id=document.id) }}" onsubmit="return confirm('¿Eliminar este documento del expediente?');"><button class="btn btn-sm btn-outline-danger">Eliminar</button></form>
+              </div>
+            </div>
+          </div>
+          {% else %}
+          <div class="text-center text-muted py-5"><div class="fs-2 mb-2">📄</div>Este expediente todavía no tiene documentos PDF.</div>
+          {% endfor %}
+        </div>
+      </section>
+    </div>
+
+    {% if category.financial %}
+    <div class="col-xl-5">
+      <section class="card border-0 shadow-sm section-anchor" id="abonos">
+        <div class="card-header bg-white py-3"><h2 class="h5 fw-bold mb-0">💳 Abonos</h2></div>
+        {% if not record.esta_liquidado %}
+        <div class="card-body border-bottom">
+          <form method="post" action="{{ url_for('contabilidad.agregar_abono', slug=category.slug, record_id=record.id) }}" class="row g-3">
+            <div class="col-sm-7"><label class="form-label small fw-semibold">Monto del abono *</label><div class="input-group"><span class="input-group-text">$</span><input id="paymentAmount" class="form-control" name="monto" type="number" min="0.01" max="{{ '%.2f'|format(record.saldo_pendiente) }}" step="0.01" required></div></div>
+            <div class="col-sm-5 d-flex align-items-end"><button type="button" class="btn btn-outline-success w-100" id="payFullBalance" data-balance="{{ '%.2f'|format(record.saldo_pendiente) }}">Liquidar saldo</button></div>
+            <div class="col-sm-6"><label class="form-label small fw-semibold">Fecha *</label><input class="form-control" name="fecha" type="date" value="{{ today }}" required></div>
+            <div class="col-sm-6"><label class="form-label small fw-semibold">Método de pago</label><select class="form-select" name="metodo_pago"><option value="">Seleccionar</option><option>Transferencia</option><option>Depósito</option><option>Efectivo</option><option>Cheque</option><option>Tarjeta</option><option>Otro</option></select></div>
+            <div class="col-12"><label class="form-label small fw-semibold">Referencia</label><input class="form-control" name="referencia" maxlength="120"></div>
+            <div class="col-12"><label class="form-label small fw-semibold">Notas</label><textarea class="form-control" name="notas" rows="2"></textarea></div>
+            <div class="col-12 d-grid"><button class="btn btn-success">Registrar abono</button></div>
+          </form>
+        </div>
+        {% else %}
+        <div class="alert alert-success rounded-0 border-0 mb-0">✓ Cuenta liquidada. No hay saldo pendiente.</div>
+        {% endif %}
+        <div class="list-group list-group-flush">
+          {% for payment in record.abonos %}
+          <div class="list-group-item payment-row py-3">
+            <div class="d-flex justify-content-between gap-3"><div><strong>{{ payment.fecha.strftime('%d/%m/%Y') }}</strong><div class="small text-muted">{{ payment.metodo_pago or 'Método no indicado' }}{% if payment.referencia %} · {{ payment.referencia }}{% endif %}</div>{% if payment.notas %}<div class="small mt-1">{{ payment.notas }}</div>{% endif %}</div><strong class="text-success text-nowrap">+ ${{ '{:,.2f}'.format(payment.monto) }}</strong></div>
+          </div>
+          {% else %}
+          <div class="text-center text-muted py-5">Aún no se han registrado abonos.</div>
+          {% endfor %}
+        </div>
+      </section>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="card border-0 shadow-sm mt-4"><div class="card-body">
+    <h2 class="h6 fw-bold mb-3">Información del expediente</h2>
+    <div class="row g-3 small">
+      <div class="col-md-3"><span class="text-muted d-block">Fecha de inicio</span><strong>{{ record.fecha_inicio.strftime('%d/%m/%Y') }}</strong></div>
+      <div class="col-md-3"><span class="text-muted d-block">Proyecto / obra</span><strong>{{ record.proyecto or 'Sin asignar' }}</strong></div>
+      <div class="col-md-3"><span class="text-muted d-block">Identificador</span><strong>{{ record.identificador or '—' }}</strong></div>
+      <div class="col-md-3"><span class="text-muted d-block">Registró</span><strong>{{ record.creado_por_nombre or '—' }}</strong></div>
+      {% if record.razon_social %}<div class="col-md-3"><span class="text-muted d-block">Razón social</span><strong>{{ record.razon_social }}</strong></div>{% endif %}
+      {% if record.rfc %}<div class="col-md-3"><span class="text-muted d-block">RFC</span><strong>{{ record.rfc }}</strong></div>{% endif %}
+      {% if record.contacto %}<div class="col-md-3"><span class="text-muted d-block">Contacto</span><strong>{{ record.contacto }}</strong></div>{% endif %}
+      {% if record.telefono %}<div class="col-md-3"><span class="text-muted d-block">Teléfono</span><strong>{{ record.telefono }}</strong></div>{% endif %}
+      {% if record.correo %}<div class="col-md-3"><span class="text-muted d-block">Correo</span><strong>{{ record.correo }}</strong></div>{% endif %}
+      {% if record.marca or record.modelo %}<div class="col-md-3"><span class="text-muted d-block">Marca / modelo</span><strong>{{ record.marca or '—' }} · {{ record.modelo or '—' }}</strong></div>{% endif %}
+      {% if record.descripcion %}<div class="col-12"><span class="text-muted d-block">Descripción / puesto</span><strong>{{ record.descripcion }}</strong></div>{% endif %}
+      {% if record.notas %}<div class="col-12"><span class="text-muted d-block">Notas</span><div>{{ record.notas }}</div></div>{% endif %}
+    </div>
+  </div></div>
+</div>
+
+{% if category.financial and not record.esta_liquidado %}
+<script>
+document.getElementById("payFullBalance")?.addEventListener("click", (event) => {
+  const amount = document.getElementById("paymentAmount");
+  if (amount) {
+    amount.value = event.currentTarget.dataset.balance || "";
+    amount.focus();
+  }
+});
+</script>
+{% endif %}
+{% endblock %}

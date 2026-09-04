@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Contabilidad · {{ category.label }}{% endblock %}
+
+{% block content %}
+<style>
+  .accounting-tabs { scrollbar-width: thin; }
+  .accounting-tabs .nav-link { white-space: nowrap; border-radius: .65rem; font-weight: 600; }
+  .balance-cell { min-width: 145px; }
+  .register-card { border-radius: .9rem; }
+</style>
+
+<div class="py-4">
+  <div class="d-flex flex-column flex-xl-row justify-content-between align-items-xl-center gap-3 mb-3">
+    <div>
+      <div class="small text-muted mb-1"><a href="{{ url_for('contabilidad.index') }}" class="text-decoration-none">Contabilidad</a> / {{ category.label }}</div>
+      <h1 class="h2 fw-bold mb-1">{{ category.icon }} {{ category.label }}</h1>
+      <p class="text-muted mb-0">{{ category.description }}</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-outline-secondary" href="{{ url_for('contabilidad.index') }}">Resumen</a>
+      <a class="btn btn-success" href="{{ url_for('contabilidad.exportar', slug=category.slug, q=q, estatus=status) }}">📊 Exportar Excel</a>
+      <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#newRecord" aria-expanded="{{ 'true' if not records else 'false' }}">＋ Nueva alta</button>
+    </div>
+  </div>
+
+  <div class="nav nav-pills accounting-tabs flex-nowrap overflow-auto gap-2 mb-4 pb-1">
+    {% for nav_slug, nav in [('clientes', 'Clientes'), ('proveedores', 'Proveedores'), ('trabajadores', 'Trabajadores'), ('maquinaria', 'Maquinaria'), ('transporte', 'Transporte')] %}
+    <a class="nav-link {{ 'active' if nav_slug == category.slug }}" href="{{ url_for('contabilidad.registros', slug=nav_slug) }}">{{ nav }}</a>
+    {% endfor %}
+  </div>
+
+  <div class="collapse {{ 'show' if not records else '' }} mb-4" id="newRecord">
+    <div class="card register-card border-0 shadow-sm">
+      <div class="card-header bg-primary text-white py-3"><strong>Nueva alta de {{ category.singular }}</strong></div>
+      <div class="card-body p-4">
+        <form method="post" enctype="multipart/form-data" class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">{% if category.tipo in ['CLIENTE', 'PROVEEDOR'] %}Nombre comercial{% elif category.tipo == 'TRABAJADOR' %}Nombre completo{% else %}Nombre del equipo{% endif %} *</label>
+            <input class="form-control" name="nombre" maxlength="180" required>
+          </div>
+          {% if category.tipo in ['CLIENTE', 'PROVEEDOR'] %}
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Razón social</label>
+            <input class="form-control" name="razon_social" maxlength="200">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">RFC</label>
+            <input class="form-control text-uppercase" name="rfc" maxlength="20">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Contacto</label>
+            <input class="form-control" name="contacto" maxlength="160">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Teléfono</label>
+            <input class="form-control" name="telefono" maxlength="60">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Correo</label>
+            <input class="form-control" name="correo" type="email" maxlength="160">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Domicilio</label>
+            <input class="form-control" name="direccion" maxlength="300">
+          </div>
+          {% elif category.tipo == 'TRABAJADOR' %}
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Puesto / especialidad</label>
+            <input class="form-control" name="descripcion">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Número de empleado</label>
+            <input class="form-control" name="identificador" maxlength="100">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Teléfono</label>
+            <input class="form-control" name="telefono" maxlength="60">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Correo</label>
+            <input class="form-control" name="correo" type="email" maxlength="160">
+          </div>
+          {% else %}
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">{{ 'Placas / número económico' if category.tipo == 'TRANSPORTE' else 'Serie / número económico' }}</label>
+            <input class="form-control" name="identificador" maxlength="100">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">Marca</label>
+            <input class="form-control" name="marca" maxlength="100">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">Modelo</label>
+            <input class="form-control" name="modelo" maxlength="100">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">Año</label>
+            <input class="form-control" name="anio" type="number" min="1900" max="2200">
+          </div>
+          {% endif %}
+
+          <div class="col-md-5">
+            <label class="form-label fw-semibold">Proyecto / obra</label>
+            <input class="form-control" name="proyecto" maxlength="200">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">Fecha de inicio *</label>
+            <input class="form-control" name="fecha_inicio" type="date" value="{{ today }}" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">{% if category.financial %}Monto de crédito u obra *{% elif category.tipo == 'TRABAJADOR' %}Costo / sueldo de referencia{% else %}Valor del activo{% endif %}</label>
+            <div class="input-group"><span class="input-group-text">$</span><input class="form-control" name="monto_total" type="number" min="0" step="0.01" {% if category.financial %}required{% endif %}><select class="form-select" name="moneda" style="max-width: 95px"><option>MXN</option><option>USD</option></select></div>
+          </div>
+
+          {% if category.tipo in ['CLIENTE', 'PROVEEDOR'] %}
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">PDF de registro / alta</label>
+            <input class="form-control" name="registro_pdf" type="file" accept="application/pdf,.pdf">
+            <div class="form-text">Un archivo PDF, máximo 15 MB.</div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Facturas PDF</label>
+            <input class="form-control" name="facturas" type="file" accept="application/pdf,.pdf" multiple>
+            <div class="form-text">Puedes seleccionar varias facturas.</div>
+          </div>
+          {% else %}
+          <div class="col-12">
+            <label class="form-label fw-semibold">Documentación requerida en PDF</label>
+            <input class="form-control" name="documentos" type="file" accept="application/pdf,.pdf" multiple>
+            <div class="form-text">Puedes adjuntar identificación, contrato, póliza, factura o documentación del equipo.</div>
+          </div>
+          {% endif %}
+
+          <div class="col-12">
+            <label class="form-label fw-semibold">Notas</label>
+            <textarea class="form-control" name="notas" rows="2"></textarea>
+          </div>
+          <div class="col-12 d-flex justify-content-end gap-2">
+            <button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#newRecord">Cancelar</button>
+            <button class="btn btn-primary" type="submit">Guardar alta</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-body border-bottom">
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-7">
+          <label class="form-label small fw-semibold">Buscar</label>
+          <input class="form-control" name="q" value="{{ q }}" placeholder="Nombre, folio, RFC, proyecto o identificador">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">Estatus</label>
+          <select class="form-select" name="estatus">
+            <option value="">Todos</option>
+            {% if category.financial %}<option value="PENDIENTE" {{ 'selected' if status == 'PENDIENTE' }}>Pendiente</option><option value="LIQUIDADO" {{ 'selected' if status == 'LIQUIDADO' }}>Liquidado</option>{% else %}<option value="ACTIVO" {{ 'selected' if status == 'ACTIVO' }}>Activo</option>{% endif %}
+          </select>
+        </div>
+        <div class="col-md-2 d-grid"><button class="btn btn-outline-primary">Aplicar filtros</button></div>
+      </form>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead><tr><th>Registro</th><th>Proyecto / identificación</th><th>Inicio</th><th>Monto</th>{% if category.financial %}<th>Abonado</th><th class="balance-cell">Saldo pendiente</th>{% endif %}<th>PDF</th><th>Estatus</th><th></th></tr></thead>
+        <tbody>
+          {% for item in records %}
+          <tr>
+            <td><div class="fw-semibold">{{ item.nombre }}</div><div class="small text-muted">{{ item.folio }}{% if item.rfc %} · {{ item.rfc }}{% endif %}</div></td>
+            <td><div>{{ item.proyecto or 'Sin proyecto' }}</div><div class="small text-muted">{{ item.identificador or item.razon_social or '' }}</div></td>
+            <td>{{ item.fecha_inicio.strftime('%d/%m/%Y') }}</td>
+            <td>${{ '{:,.2f}'.format(item.monto_total or 0) }} <span class="small text-muted">{{ item.moneda }}</span></td>
+            {% if category.financial %}
+            <td class="text-success">${{ '{:,.2f}'.format(item.total_abonado) }}</td>
+            <td class="balance-cell"><strong class="{{ 'text-success' if item.esta_liquidado else 'text-danger' }}">${{ '{:,.2f}'.format(item.saldo_pendiente) }}</strong></td>
+            {% endif %}
+            <td><span class="badge text-bg-light border">{{ item.documentos|length }}</span></td>
+            <td><span class="badge {{ 'text-bg-success' if item.estatus in ['LIQUIDADO', 'ACTIVO'] else 'text-bg-warning' }}">{{ item.estatus }}</span></td>
+            <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ url_for('contabilidad.detalle', slug=category.slug, record_id=item.id) }}">Abrir</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="{{ 9 if category.financial else 7 }}" class="text-center py-5"><div class="fs-2 mb-2">{{ category.icon }}</div><div class="fw-semibold">No hay registros</div><div class="text-muted small">Crea la primera alta o cambia los filtros.</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

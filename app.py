@@ -3254,6 +3254,7 @@ DEMO_MODULE_META = {
     "fondos": {"label": "Solicitudes de fondos", "icon": "💵", "endpoint": "solicitudes_recursos_index", "group": "Finanzas", "description": "Solicita, autoriza y comprueba recursos."},
     "finanzas": {"label": "Panel financiero", "icon": "🏦", "endpoint": "finanzas_index", "group": "Finanzas", "description": "Visualiza movimientos y estado financiero."},
     "facturacion": {"label": "Facturación", "icon": "🧾", "endpoint": "facturacion.index", "group": "Finanzas", "description": "Administra facturas y configuración fiscal."},
+    "contabilidad": {"label": "Contabilidad", "icon": "📒", "endpoint": "contabilidad.index", "group": "Finanzas", "description": "Controla saldos, abonos, expedientes, personal y activos."},
     "gastos": {"label": "Gastos y viáticos", "icon": "💸", "endpoint": "gastos_viaticos_index", "group": "Finanzas", "description": "Registra comprobantes, viáticos y revisiones."},
     "reportes": {"label": "Reportes diarios", "icon": "🗓️", "endpoint": "reportes_diarios_index", "group": "Gestión", "description": "Documenta actividades y avance diario."},
     "rrhh": {"label": "Recursos Humanos", "icon": "👥", "endpoint": "rrhh_index", "group": "Gestión", "description": "Gestiona solicitudes y justificantes del personal."},
@@ -3352,6 +3353,7 @@ def _demo_module_for_path(path: str) -> str | None:
         ("/estado-cuenta-recursos", "fondos"),
         ("/finanzas", "finanzas"),
         ("/facturacion", "facturacion"),
+        ("/contabilidad", "contabilidad"),
         ("/reportes-diarios", "reportes"),
         ("/recursos-humanos", "rrhh"),
         ("/soporte", "soporte"),
@@ -18716,6 +18718,12 @@ try:
     app.register_blueprint(facturacion_bp)
 except Exception as e:
     print(f"[WARN] No se pudo cargar blueprint facturacion_routes: {e}", file=sys.stderr)
+
+try:
+    from contabilidad_routes import contabilidad_bp
+    app.register_blueprint(contabilidad_bp)
+except Exception as e:
+    print(f"[WARN] No se pudo cargar blueprint contabilidad_routes: {e}", file=sys.stderr)
 
 # ---------------------------------------------------------
 # Main

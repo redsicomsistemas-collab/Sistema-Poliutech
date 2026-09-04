@@ -1073,6 +1073,110 @@ class ComprobacionAdjunto(db.Model):
         return f"<ComprobacionAdjunto {self.nombre_original}>"
 
 
+# ---------------------------------------------------------
+# CONTABILIDAD: expedientes, abonos y documentos
+# ---------------------------------------------------------
+class ContabilidadRegistro(db.Model):
+    __tablename__ = "contabilidad_registro"
+
+    id = db.Column(db.Integer, primary_key=True)
+    folio = db.Column(db.String(40), nullable=False, unique=True, index=True)
+    tipo = db.Column(db.String(30), nullable=False, index=True)
+    nombre = db.Column(db.String(180), nullable=False, index=True)
+    razon_social = db.Column(db.String(200))
+    rfc = db.Column(db.String(20), index=True)
+    contacto = db.Column(db.String(160))
+    correo = db.Column(db.String(160))
+    telefono = db.Column(db.String(60))
+    direccion = db.Column(db.String(300))
+    proyecto = db.Column(db.String(200), index=True)
+    identificador = db.Column(db.String(100), index=True)
+    marca = db.Column(db.String(100))
+    modelo = db.Column(db.String(100))
+    anio = db.Column(db.Integer)
+    descripcion = db.Column(db.Text)
+    monto_total = db.Column(db.Float, default=0.0, nullable=False)
+    moneda = db.Column(db.String(10), default="MXN", nullable=False)
+    fecha_inicio = db.Column(db.Date, nullable=False, index=True)
+    estatus = db.Column(db.String(20), default="PENDIENTE", nullable=False, index=True)
+    notas = db.Column(db.Text)
+    creado_por_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True, index=True)
+    creado_por_nombre = db.Column(db.String(120))
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    creado_por = db.relationship("Usuario", foreign_keys=[creado_por_id])
+    abonos = db.relationship(
+        "ContabilidadAbono",
+        backref="registro",
+        cascade="all, delete-orphan",
+        order_by="ContabilidadAbono.fecha.desc(), ContabilidadAbono.id.desc()",
+    )
+    documentos = db.relationship(
+        "ContabilidadDocumento",
+        backref="registro",
+        cascade="all, delete-orphan",
+        order_by="ContabilidadDocumento.creado_en.desc()",
+    )
+
+    @property
+    def total_abonado(self):
+        return round(sum(max(float(item.monto or 0), 0.0) for item in (self.abonos or [])), 2)
+
+    @property
+    def saldo_pendiente(self):
+        return round(max(float(self.monto_total or 0) - self.total_abonado, 0.0), 2)
+
+    @property
+    def esta_liquidado(self):
+        return self.saldo_pendiente <= 0.005
+
+    def __repr__(self):
+        return f"<ContabilidadRegistro {self.folio} {self.tipo}>"
+
+
+class ContabilidadAbono(db.Model):
+    __tablename__ = "contabilidad_abono"
+
+    id = db.Column(db.Integer, primary_key=True)
+    registro_id = db.Column(db.Integer, db.ForeignKey("contabilidad_registro.id"), nullable=False, index=True)
+    fecha = db.Column(db.Date, nullable=False, index=True)
+    monto = db.Column(db.Float, nullable=False, default=0.0)
+    referencia = db.Column(db.String(120))
+    metodo_pago = db.Column(db.String(80))
+    notas = db.Column(db.Text)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True, index=True)
+    usuario_nombre = db.Column(db.String(120))
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    usuario = db.relationship("Usuario", foreign_keys=[usuario_id])
+
+    def __repr__(self):
+        return f"<ContabilidadAbono registro={self.registro_id} monto={self.monto}>"
+
+
+class ContabilidadDocumento(db.Model):
+    __tablename__ = "contabilidad_documento"
+
+    id = db.Column(db.Integer, primary_key=True)
+    registro_id = db.Column(db.Integer, db.ForeignKey("contabilidad_registro.id"), nullable=False, index=True)
+    tipo = db.Column(db.String(30), nullable=False, default="DOCUMENTACION", index=True)
+    nombre_original = db.Column(db.String(260), nullable=False)
+    nombre_archivo = db.Column(db.String(260), nullable=False)
+    ruta = db.Column(db.String(420), nullable=False)
+    mime_type = db.Column(db.String(120), default="application/pdf")
+    tamano = db.Column(db.Integer, default=0, nullable=False)
+    descripcion = db.Column(db.String(260))
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True, index=True)
+    usuario_nombre = db.Column(db.String(120))
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    usuario = db.relationship("Usuario", foreign_keys=[usuario_id])
+
+    def __repr__(self):
+        return f"<ContabilidadDocumento registro={self.registro_id} {self.nombre_original}>"
+
+
 class APUSheet(db.Model):
     __tablename__ = "apu_sheet"
 

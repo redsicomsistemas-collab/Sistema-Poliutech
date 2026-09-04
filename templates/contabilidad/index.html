@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Contabilidad{% endblock %}
+
+{% block content %}
+<style>
+  .accounting-hero { background: linear-gradient(135deg, #0c3c78 0%, #155899 60%, #2783c5 100%); color: #fff; border-radius: 1rem; }
+  .accounting-stat { border: 0; border-radius: .9rem; box-shadow: 0 .35rem 1.25rem rgba(15, 23, 42, .08); }
+  .accounting-module { border: 0; border-radius: 1rem; transition: transform .18s ease, box-shadow .18s ease; height: 100%; }
+  .accounting-module:hover { transform: translateY(-3px); box-shadow: 0 .75rem 1.75rem rgba(15, 23, 42, .12) !important; }
+  .accounting-icon { width: 3rem; height: 3rem; display: inline-flex; align-items: center; justify-content: center; border-radius: .85rem; background: rgba(12, 60, 120, .1); font-size: 1.5rem; }
+</style>
+
+<div class="py-4">
+  <section class="accounting-hero p-4 p-lg-5 mb-4 shadow-sm">
+    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
+      <div>
+        <div class="text-uppercase small fw-bold opacity-75 mb-2">Administración financiera</div>
+        <h1 class="h2 fw-bold mb-2">Módulo de Contabilidad</h1>
+        <p class="mb-0 opacity-75">Controla cuentas, expedientes, abonos, personal y activos desde un solo lugar.</p>
+      </div>
+      <a class="btn btn-light fw-semibold" href="{{ url_for('contabilidad.exportar_todo') }}">📊 Exportar reporte general</a>
+    </div>
+  </section>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-4">
+      <div class="card accounting-stat h-100"><div class="card-body">
+        <div class="small text-muted text-uppercase fw-semibold">Monto registrado</div>
+        <div class="h3 fw-bold text-primary mb-0">${{ '{:,.2f}'.format(total_monto) }}</div>
+      </div></div>
+    </div>
+    <div class="col-md-4">
+      <div class="card accounting-stat h-100"><div class="card-body">
+        <div class="small text-muted text-uppercase fw-semibold">Total abonado</div>
+        <div class="h3 fw-bold text-success mb-0">${{ '{:,.2f}'.format(total_abonado) }}</div>
+      </div></div>
+    </div>
+    <div class="col-md-4">
+      <div class="card accounting-stat h-100"><div class="card-body">
+        <div class="small text-muted text-uppercase fw-semibold">Saldo pendiente</div>
+        <div class="h3 fw-bold text-danger mb-0">${{ '{:,.2f}'.format(total_saldo) }}</div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="row g-4 mb-4">
+    {% for card in cards %}
+    <div class="col-md-6 col-xl-4">
+      <a class="text-decoration-none text-body" href="{{ url_for('contabilidad.registros', slug=card.slug) }}">
+        <div class="card accounting-module shadow-sm">
+          <div class="card-body p-4">
+            <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+              <span class="accounting-icon">{{ card.icon }}</span>
+              <span class="badge rounded-pill text-bg-primary">{{ card.count }} registro{{ '' if card.count == 1 else 's' }}</span>
+            </div>
+            <h2 class="h5 fw-bold">{{ card.label }}</h2>
+            <p class="text-muted mb-3">{{ card.description }}</p>
+            {% if card.financial %}
+            <div class="d-flex justify-content-between border-top pt-3 small">
+              <span>Saldo pendiente</span><strong class="text-danger">${{ '{:,.2f}'.format(card.saldo) }}</strong>
+            </div>
+            {% else %}
+            <div class="border-top pt-3 small fw-semibold text-primary">Abrir padrón →</div>
+            {% endif %}
+          </div>
+        </div>
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+      <h2 class="h6 fw-bold mb-0">Actividad reciente</h2>
+      <span class="text-muted small">Últimos expedientes actualizados</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead><tr><th>Folio</th><th>Submódulo</th><th>Registro</th><th>Inicio</th><th>Saldo</th><th>Estatus</th><th></th></tr></thead>
+        <tbody>
+          {% for item in recent %}
+          {% set meta = category_by_type.get(item.tipo) %}
+          <tr>
+            <td class="small fw-semibold">{{ item.folio }}</td>
+            <td>{{ meta.icon if meta else '📁' }} {{ meta.label if meta else item.tipo }}</td>
+            <td><div class="fw-semibold">{{ item.nombre }}</div><div class="small text-muted">{{ item.proyecto or item.razon_social or '' }}</div></td>
+            <td>{{ item.fecha_inicio.strftime('%d/%m/%Y') }}</td>
+            <td>{% if meta and meta.financial %}<strong class="{{ 'text-success' if item.esta_liquidado else 'text-danger' }}">${{ '{:,.2f}'.format(item.saldo_pendiente) }}</strong>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+            <td><span class="badge {{ 'text-bg-success' if item.estatus in ['LIQUIDADO', 'ACTIVO'] else 'text-bg-warning' }}">{{ item.estatus }}</span></td>
+            <td class="text-end">{% if meta %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('contabilidad.detalle', slug=meta.slug, record_id=item.id) }}">Ver</a>{% endif %}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center text-muted py-5">Todavía no hay expedientes contables.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
