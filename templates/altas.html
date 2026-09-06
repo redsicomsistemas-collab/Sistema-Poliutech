@@ -11,7 +11,8 @@
 <div class="py-4">
   <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
     <div>
-      <h2 class="mb-1">Altas de proveedores</h2>
+      <h2 class="mb-1">Altas de clientes y proveedores</h2>
+      <a class="small text-decoration-none" href="{{ url_for('contabilidad.index') }}">← Volver a Contabilidad</a>
     </div>
     <div class="text-muted small">
       Total de registros: <strong>{{ rows|length }}</strong>

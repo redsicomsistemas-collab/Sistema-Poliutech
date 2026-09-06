@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
@@ -157,6 +158,60 @@ def _optional_year(raw: str | None) -> int | None:
     return year
 
 
+def _credit_days(raw: str | None) -> int | None:
+    value = (raw or "").strip()
+    if not value:
+        return None
+    try:
+        days = int(value)
+    except ValueError as exc:
+        raise ValueError("El tiempo de crédito debe indicarse en días.") from exc
+    if days < 0 or days > 3650:
+        raise ValueError("El tiempo de crédito debe estar entre 0 y 3650 días.")
+    return days
+
+
+def _can_delete_records() -> bool:
+    return bool(
+        getattr(current_user, "is_authenticated", False)
+        and (getattr(current_user, "rol", "") or "").upper() == "ADMIN"
+    )
+
+
+def _load_altas(category: dict) -> list[dict]:
+    """Lee el catálogo histórico de Altas y lo integra como fuente de captura."""
+    path = Path(current_app.root_path) / "provider_numbers.json"
+    try:
+        raw_rows = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return []
+    if not isinstance(raw_rows, list):
+        return []
+
+    expected_relation = category["tipo"]
+    rows: list[dict] = []
+    for position, raw in enumerate(raw_rows, start=1):
+        if not isinstance(raw, dict):
+            continue
+        relation = str(raw.get("relacion") or "PROVEEDOR").strip().upper()
+        if relation != expected_relation:
+            continue
+        rows.append(
+            {
+                "id": position,
+                "numero": str(raw.get("numero") or "").strip(),
+                "empresa": str(raw.get("empresa") or "").strip(),
+                "razon_social": str(raw.get("razon_social_poliutech") or "").strip(),
+                "contacto": str(raw.get("contacto") or "").strip(),
+                "telefono": str(raw.get("telefono") or "").strip(),
+                "correo": str(raw.get("correo") or "").strip(),
+                "credito": bool(raw.get("credito", False)),
+                "monto_credito": str(raw.get("monto_credito") or "").strip(),
+            }
+        )
+    return rows
+
+
 def _next_folio(category: dict) -> str:
     prefixes = {
         "CLIENTE": "CC",
@@ -245,6 +300,7 @@ def _apply_form(record: ContabilidadRegistro, category: dict) -> None:
     if record.id and amount + 0.005 < record.total_abonado:
         raise ValueError("El monto total no puede ser menor que los abonos ya registrados.")
 
+    start_date = _date(request.form.get("fecha_inicio"))
     record.nombre = name[:180]
     record.razon_social = (request.form.get("razon_social") or "").strip()[:200] or None
     record.rfc = (request.form.get("rfc") or "").strip().upper()[:20] or None
@@ -258,13 +314,26 @@ def _apply_form(record: ContabilidadRegistro, category: dict) -> None:
     record.modelo = (request.form.get("modelo") or "").strip()[:100] or None
     record.anio = _optional_year(request.form.get("anio"))
     record.descripcion = (request.form.get("descripcion") or "").strip() or None
+    record.folio_factura = (request.form.get("folio_factura") or "").strip()[:120] or None
     record.monto_total = amount
     record.moneda = (request.form.get("moneda") or "MXN").strip().upper()[:10] or "MXN"
-    record.fecha_inicio = _date(request.form.get("fecha_inicio"))
+    record.fecha_inicio = start_date
     record.notas = (request.form.get("notas") or "").strip() or None
     if category["financial"]:
+        credit_days = _credit_days(request.form.get("tiempo_credito_dias"))
+        due_date = _date(request.form.get("fecha_vencimiento"), required=False)
+        if due_date is None and credit_days is None:
+            raise ValueError("Captura el tiempo de crédito o la fecha de vencimiento.")
+        if due_date is None:
+            due_date = start_date + timedelta(days=credit_days or 0)
+        if due_date < start_date:
+            raise ValueError("La fecha de vencimiento no puede ser anterior a la fecha de inicio.")
+        record.fecha_vencimiento = due_date
+        record.tiempo_credito_dias = (due_date - start_date).days
         record.estatus = "LIQUIDADO" if record.esta_liquidado and amount > 0 else "PENDIENTE"
     else:
+        record.fecha_vencimiento = None
+        record.tiempo_credito_dias = None
         record.estatus = "ACTIVO"
 
 
@@ -284,6 +353,7 @@ def _filtered_query(category: dict | None = None):
                 ContabilidadRegistro.rfc.ilike(like),
                 ContabilidadRegistro.proyecto.ilike(like),
                 ContabilidadRegistro.identificador.ilike(like),
+                ContabilidadRegistro.folio_factura.ilike(like),
             )
         )
     if status in {"PENDIENTE", "LIQUIDADO", "ACTIVO", "INACTIVO"}:
@@ -355,10 +425,20 @@ def registros(slug: str):
 
     query, q, status = _filtered_query(category)
     records = query.order_by(ContabilidadRegistro.fecha_inicio.desc(), ContabilidadRegistro.id.desc()).all()
+    altas = _load_altas(category) if category["financial"] else []
+    selected_alta = None
+    try:
+        selected_alta_id = int(request.args.get("alta") or 0)
+    except (TypeError, ValueError):
+        selected_alta_id = 0
+    if selected_alta_id:
+        selected_alta = next((item for item in altas if item["id"] == selected_alta_id), None)
     return render_template(
         "contabilidad/registros.html",
         category=category,
         records=records,
+        altas=altas,
+        selected_alta=selected_alta,
         q=q,
         status=status,
         today=datetime.now().date().isoformat(),
@@ -396,6 +476,25 @@ def editar(slug: str, record_id: int):
         return redirect(url_for("contabilidad.detalle", slug=slug, record_id=record.id) + "#datos")
     flash("Los datos del expediente se actualizaron.", "success")
     return redirect(url_for("contabilidad.detalle", slug=slug, record_id=record.id))
+
+
+@contabilidad_bp.post("/<slug>/<int:record_id>/eliminar")
+@login_required
+def eliminar_registro(slug: str, record_id: int):
+    category, record = _record_or_404(slug, record_id)
+    if not _can_delete_records():
+        abort(403)
+    document_paths = [_document_path(document) for document in (record.documentos or [])]
+    record_name = record.nombre
+    db.session.delete(record)
+    db.session.commit()
+    for path in document_paths:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            current_app.logger.warning("No se pudo retirar el PDF contable %s", path)
+    flash(f"El registro de {record_name} fue eliminado.", "success")
+    return redirect(url_for("contabilidad.registros", slug=category["slug"]))
 
 
 @contabilidad_bp.post("/<slug>/<int:record_id>/abonos")
@@ -608,6 +707,82 @@ def _excel_response(records: list[ContabilidadRegistro], filename_prefix: str) -
     )
 
 
+def _financial_excel_response(records: list[ContabilidadRegistro], filename_prefix: str, sheet_name: str) -> Response:
+    """Genera el formato solicitado para los reportes de clientes y proveedores."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = sheet_name[:31]
+    headers = [
+        "Nombre / razón social",
+        "RFC",
+        "Proyecto",
+        "FOLIO FACTURA",
+        "Fecha de inicio",
+        "fecha de vencimiento",
+        "Monto total",
+        "Total abonado",
+        "Saldo pendiente",
+        "Estatus",
+        "Notas",
+    ]
+    ws.append(headers)
+    for record in records:
+        ws.append(
+            [
+                record.razon_social or record.nombre,
+                record.rfc or "",
+                record.proyecto or "",
+                record.folio_factura or "",
+                record.fecha_inicio,
+                record.fecha_vencimiento,
+                float(record.monto_total or 0),
+                float(record.total_abonado or 0),
+                float(record.saldo_pendiente or 0),
+                record.estatus,
+                record.notas or "",
+            ]
+        )
+
+    header_fill = PatternFill("solid", fgColor="0C3C78")
+    separator = Side(style="thin", color="FFFFFF")
+    for cell in ws[1]:
+        cell.font = Font(name="Arial", size=10, bold=True, color="FFFFFF")
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = Border(left=separator, right=separator)
+    for row in ws.iter_rows(min_row=2):
+        for cell in row:
+            cell.font = Font(name="Arial", size=10)
+            cell.alignment = Alignment(vertical="top", wrap_text=cell.column in {1, 3, 11})
+        for index in (5, 6):
+            row[index - 1].number_format = "dd/mm/yyyy"
+            row[index - 1].alignment = Alignment(horizontal="center", vertical="top")
+        for index in (7, 8, 9):
+            row[index - 1].number_format = '"$"#,##0.00'
+            row[index - 1].alignment = Alignment(horizontal="right", vertical="top")
+
+    widths = [34, 18, 28, 20, 18, 21, 18, 18, 18, 16, 42]
+    for index, width in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(index)].width = width
+    ws.row_dimensions[1].height = 28
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:K{max(ws.max_row, 1)}"
+    ws.sheet_view.showGridLines = False
+    ws.print_title_rows = "1:1"
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.fitToWidth = 1
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+    output = io.BytesIO()
+    wb.save(output)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return Response(
+        output.getvalue(),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename_prefix}_{stamp}.xlsx"'},
+    )
+
+
 @contabilidad_bp.get("/exportar.xlsx")
 @login_required
 def exportar_todo():
@@ -622,4 +797,6 @@ def exportar(slug: str):
     category = _category_or_404(slug)
     query, _, _ = _filtered_query(category)
     records = query.order_by(ContabilidadRegistro.fecha_inicio.desc(), ContabilidadRegistro.id.desc()).all()
+    if category["financial"]:
+        return _financial_excel_response(records, f"reporte_{slug}", category["label"])
     return _excel_response(records, f"contabilidad_{slug}")

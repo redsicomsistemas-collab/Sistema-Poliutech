@@ -3888,6 +3888,21 @@ def ensure_schema():
     except Exception as e:
         print("⚠️ ensure_schema(cliente fiscal):", e)
 
+    # --- CONTABILIDAD: plazo, vencimiento y folio de factura ---
+    try:
+        contabilidad_cols = _table_columns("contabilidad_registro")
+        for col, stmt in [
+            ("folio_factura", "ALTER TABLE contabilidad_registro ADD COLUMN folio_factura VARCHAR(120)"),
+            ("tiempo_credito_dias", "ALTER TABLE contabilidad_registro ADD COLUMN tiempo_credito_dias INTEGER"),
+            ("fecha_vencimiento", "ALTER TABLE contabilidad_registro ADD COLUMN fecha_vencimiento DATE"),
+        ]:
+            if col not in contabilidad_cols:
+                db.session.execute(text(stmt))
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print("⚠️ ensure_schema(contabilidad_registro):", e)
+
     try:
         inv_cols = _table_columns("inventario_producto")
         for col, stmt in [
@@ -7232,7 +7247,7 @@ def altas_proveedores():
                 flash(f"El correo '{correo}' no es valido.", "danger")
                 return render_template(
                     "altas.html",
-                    title="Altas de proveedores",
+                    title="Altas de clientes y proveedores",
                     rows=[
                         _normalize_provider_row({
                             "numero": (numeros[pos] if pos < len(numeros) else "").strip(),
@@ -7288,7 +7303,7 @@ def altas_proveedores():
     filters = _provider_filters_from_request()
     return render_template(
         "altas.html",
-        title="Altas de proveedores",
+        title="Altas de clientes y proveedores",
         rows=rows,
         filtered_rows=_filter_provider_rows(rows, filters),
         filters=filters,

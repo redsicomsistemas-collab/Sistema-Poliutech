@@ -21,6 +21,7 @@
       <a class="btn btn-outline-secondary" href="{{ url_for('contabilidad.registros', slug=category.slug) }}">← Volver</a>
       <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#editRecord">Editar datos</button>
       <a class="btn btn-success" href="{{ url_for('contabilidad.exportar', slug=category.slug, q=record.folio) }}">📊 Exportar registro</a>
+      {% if (current_user.rol or '')|upper == 'ADMIN' %}<form method="post" action="{{ url_for('contabilidad.eliminar_registro', slug=category.slug, record_id=record.id) }}" onsubmit="return confirm('¿Eliminar definitivamente este registro y todos sus abonos y documentos?');"><button class="btn btn-outline-danger" title="Eliminar registro">🗑️ Eliminar</button></form>{% endif %}
     </div>
   </div>
 
@@ -65,6 +66,7 @@
           <div class="col-md-4"><label class="form-label fw-semibold">Teléfono</label><input class="form-control" name="telefono" value="{{ record.telefono or '' }}"></div>
           <div class="col-md-6"><label class="form-label fw-semibold">Correo</label><input class="form-control" type="email" name="correo" value="{{ record.correo or '' }}"></div>
           <div class="col-md-6"><label class="form-label fw-semibold">Domicilio</label><input class="form-control" name="direccion" value="{{ record.direccion or '' }}"></div>
+          <div class="col-md-6"><label class="form-label fw-semibold">Folio de factura</label><input class="form-control" name="folio_factura" value="{{ record.folio_factura or '' }}"></div>
           {% elif category.tipo == 'TRABAJADOR' %}
           <div class="col-md-6"><label class="form-label fw-semibold">Puesto / especialidad</label><input class="form-control" name="descripcion" value="{{ record.descripcion or '' }}"></div>
           <div class="col-md-4"><label class="form-label fw-semibold">Número de empleado</label><input class="form-control" name="identificador" value="{{ record.identificador or '' }}"></div>
@@ -78,8 +80,12 @@
           <div class="col-12"><label class="form-label fw-semibold">Descripción</label><textarea class="form-control" name="descripcion" rows="2">{{ record.descripcion or '' }}</textarea></div>
           {% endif %}
           <div class="col-md-5"><label class="form-label fw-semibold">Proyecto / obra</label><input class="form-control" name="proyecto" value="{{ record.proyecto or '' }}"></div>
-          <div class="col-md-3"><label class="form-label fw-semibold">Fecha de inicio *</label><input class="form-control" type="date" name="fecha_inicio" value="{{ record.fecha_inicio.isoformat() }}" required></div>
+          <div class="col-md-3"><label class="form-label fw-semibold">Fecha de inicio *</label><input class="form-control credit-start" type="date" name="fecha_inicio" value="{{ record.fecha_inicio.isoformat() }}" required></div>
           <div class="col-md-4"><label class="form-label fw-semibold">{{ 'Monto de crédito u obra *' if category.financial else 'Valor / costo de referencia' }}</label><div class="input-group"><span class="input-group-text">$</span><input class="form-control" type="number" min="0" step="0.01" name="monto_total" value="{{ '%.2f'|format(record.monto_total or 0) }}" {% if category.financial %}required{% endif %}><select class="form-select" name="moneda" style="max-width: 95px"><option {{ 'selected' if record.moneda == 'MXN' }}>MXN</option><option {{ 'selected' if record.moneda == 'USD' }}>USD</option></select></div></div>
+          {% if category.financial %}
+          <div class="col-md-6"><label class="form-label fw-semibold">Tiempo de crédito (días) *</label><input class="form-control credit-days" type="number" min="0" max="3650" name="tiempo_credito_dias" value="{{ record.tiempo_credito_dias if record.tiempo_credito_dias is not none else '' }}" required></div>
+          <div class="col-md-6"><label class="form-label fw-semibold">Fecha de vencimiento *</label><input class="form-control credit-due" type="date" name="fecha_vencimiento" value="{{ record.fecha_vencimiento.isoformat() if record.fecha_vencimiento else '' }}" required></div>
+          {% endif %}
           <div class="col-12"><label class="form-label fw-semibold">Notas</label><textarea class="form-control" name="notas" rows="2">{{ record.notas or '' }}</textarea></div>
           <div class="col-12 d-flex justify-content-end gap-2"><button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#editRecord">Cancelar</button><button class="btn btn-primary">Guardar cambios</button></div>
         </form>
@@ -157,6 +163,7 @@
     <h2 class="h6 fw-bold mb-3">Información del expediente</h2>
     <div class="row g-3 small">
       <div class="col-md-3"><span class="text-muted d-block">Fecha de inicio</span><strong>{{ record.fecha_inicio.strftime('%d/%m/%Y') }}</strong></div>
+      {% if category.financial %}<div class="col-md-3"><span class="text-muted d-block">Tiempo de crédito</span><strong>{{ record.tiempo_credito_dias ~ ' días' if record.tiempo_credito_dias is not none else '—' }}</strong></div><div class="col-md-3"><span class="text-muted d-block">Fecha de vencimiento</span><strong>{{ record.fecha_vencimiento.strftime('%d/%m/%Y') if record.fecha_vencimiento else '—' }}</strong></div><div class="col-md-3"><span class="text-muted d-block">Folio de factura</span><strong>{{ record.folio_factura or '—' }}</strong></div>{% endif %}
       <div class="col-md-3"><span class="text-muted d-block">Proyecto / obra</span><strong>{{ record.proyecto or 'Sin asignar' }}</strong></div>
       <div class="col-md-3"><span class="text-muted d-block">Identificador</span><strong>{{ record.identificador or '—' }}</strong></div>
       <div class="col-md-3"><span class="text-muted d-block">Registró</span><strong>{{ record.creado_por_nombre or '—' }}</strong></div>
@@ -180,6 +187,38 @@ document.getElementById("payFullBalance")?.addEventListener("click", (event) => 
     amount.value = event.currentTarget.dataset.balance || "";
     amount.focus();
   }
+});
+</script>
+{% endif %}
+{% if category.financial %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const start = document.querySelector("#editRecord .credit-start");
+  const days = document.querySelector("#editRecord .credit-days");
+  const due = document.querySelector("#editRecord .credit-due");
+  if (!start || !days || !due) return;
+  const formatDate = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+  const updateDue = () => {
+    if (!start.value || days.value === "") return;
+    const date = new Date(`${start.value}T12:00:00`);
+    date.setDate(date.getDate() + Number.parseInt(days.value, 10));
+    due.value = formatDate(date);
+  };
+  const updateDays = () => {
+    if (!start.value || !due.value) return;
+    const startDate = new Date(`${start.value}T12:00:00`);
+    const dueDate = new Date(`${due.value}T12:00:00`);
+    const difference = Math.round((dueDate - startDate) / 86400000);
+    if (difference >= 0) days.value = String(difference);
+  };
+  start.addEventListener("change", updateDue);
+  days.addEventListener("input", updateDue);
+  due.addEventListener("change", updateDays);
 });
 </script>
 {% endif %}

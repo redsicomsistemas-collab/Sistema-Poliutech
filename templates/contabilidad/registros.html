@@ -19,7 +19,8 @@
     <div class="d-flex flex-wrap gap-2">
       <a class="btn btn-outline-secondary" href="{{ url_for('contabilidad.index') }}">Resumen</a>
       <a class="btn btn-success" href="{{ url_for('contabilidad.exportar', slug=category.slug, q=q, estatus=status) }}">📊 Exportar Excel</a>
-      <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#newRecord" aria-expanded="{{ 'true' if not records else 'false' }}">＋ Nueva alta</button>
+      {% if category.financial %}<button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#altasCatalog">🗂️ Altas</button>{% endif %}
+      <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#newRecord" aria-expanded="{{ 'true' if not records or selected_alta else 'false' }}">＋ Nuevo registro</button>
     </div>
   </div>
 
@@ -29,19 +30,49 @@
     {% endfor %}
   </div>
 
-  <div class="collapse {{ 'show' if not records else '' }} mb-4" id="newRecord">
+  {% if category.financial %}
+  <div class="collapse {{ 'show' if selected_alta else '' }} mb-4" id="altasCatalog">
+    <div class="card register-card border-0 shadow-sm">
+      <div class="card-header bg-white py-3 d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div><strong>Altas de {{ category.label|lower }}</strong><div class="small text-muted">Selecciona un alta existente para completar el nuevo expediente contable.</div></div>
+        {% if (current_user.rol or '')|upper == 'ADMIN' %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('altas_proveedores', relacion=category.tipo) }}">Administrar catálogo de Altas</a>{% endif %}
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead><tr><th>Número</th><th>Empresa</th><th>Razón social</th><th>Contacto</th><th>Crédito registrado</th><th></th></tr></thead>
+          <tbody>
+            {% for alta in altas %}
+            <tr>
+              <td>{{ alta.numero or '—' }}</td>
+              <td class="fw-semibold">{{ alta.empresa or '—' }}</td>
+              <td>{{ alta.razon_social or '—' }}</td>
+              <td><div>{{ alta.contacto or '—' }}</div><div class="small text-muted">{{ alta.correo or alta.telefono or '' }}</div></td>
+              <td>{% if alta.credito %}${{ alta.monto_credito or '0.00' }}{% else %}<span class="text-muted">Sin crédito</span>{% endif %}</td>
+              <td class="text-end"><a class="btn btn-sm btn-primary" href="{{ url_for('contabilidad.registros', slug=category.slug, alta=alta.id) }}#newRecord">Usar alta</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="text-center text-muted py-4">No hay registros clasificados como {{ category.singular }} en Altas.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="collapse {{ 'show' if not records or selected_alta else '' }} mb-4" id="newRecord">
     <div class="card register-card border-0 shadow-sm">
       <div class="card-header bg-primary text-white py-3"><strong>Nueva alta de {{ category.singular }}</strong></div>
       <div class="card-body p-4">
         <form method="post" enctype="multipart/form-data" class="row g-3">
           <div class="col-md-6">
             <label class="form-label fw-semibold">{% if category.tipo in ['CLIENTE', 'PROVEEDOR'] %}Nombre comercial{% elif category.tipo == 'TRABAJADOR' %}Nombre completo{% else %}Nombre del equipo{% endif %} *</label>
-            <input class="form-control" name="nombre" maxlength="180" required>
+            <input class="form-control" name="nombre" maxlength="180" value="{{ (selected_alta.empresa or selected_alta.razon_social) if selected_alta else '' }}" required>
           </div>
           {% if category.tipo in ['CLIENTE', 'PROVEEDOR'] %}
           <div class="col-md-6">
             <label class="form-label fw-semibold">Razón social</label>
-            <input class="form-control" name="razon_social" maxlength="200">
+            <input class="form-control" name="razon_social" maxlength="200" value="{{ selected_alta.razon_social if selected_alta else '' }}">
           </div>
           <div class="col-md-4">
             <label class="form-label fw-semibold">RFC</label>
@@ -49,15 +80,15 @@
           </div>
           <div class="col-md-4">
             <label class="form-label fw-semibold">Contacto</label>
-            <input class="form-control" name="contacto" maxlength="160">
+            <input class="form-control" name="contacto" maxlength="160" value="{{ selected_alta.contacto if selected_alta else '' }}">
           </div>
           <div class="col-md-4">
             <label class="form-label fw-semibold">Teléfono</label>
-            <input class="form-control" name="telefono" maxlength="60">
+            <input class="form-control" name="telefono" maxlength="60" value="{{ selected_alta.telefono if selected_alta else '' }}">
           </div>
           <div class="col-md-6">
             <label class="form-label fw-semibold">Correo</label>
-            <input class="form-control" name="correo" type="email" maxlength="160">
+            <input class="form-control" name="correo" type="email" maxlength="160" value="{{ selected_alta.correo if selected_alta else '' }}">
           </div>
           <div class="col-md-6">
             <label class="form-label fw-semibold">Domicilio</label>
@@ -99,17 +130,34 @@
           </div>
           {% endif %}
 
-          <div class="col-md-5">
+          {% if selected_alta %}<input type="hidden" name="identificador" value="{{ selected_alta.numero }}">{% endif %}
+          <div class="{{ 'col-md-4' if category.financial else 'col-md-5' }}">
             <label class="form-label fw-semibold">Proyecto / obra</label>
             <input class="form-control" name="proyecto" maxlength="200">
           </div>
-          <div class="col-md-3">
+          {% if category.financial %}
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Folio de factura</label>
+            <input class="form-control" name="folio_factura" maxlength="120">
+          </div>
+          {% endif %}
+          <div class="{{ 'col-md-4' if category.financial else 'col-md-3' }}">
             <label class="form-label fw-semibold">Fecha de inicio *</label>
-            <input class="form-control" name="fecha_inicio" type="date" value="{{ today }}" required>
+            <input class="form-control credit-start" name="fecha_inicio" type="date" value="{{ today }}" required>
+          </div>
+          {% if category.financial %}
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Tiempo de crédito (días) *</label>
+            <input class="form-control credit-days" name="tiempo_credito_dias" type="number" min="0" max="3650" value="30" required>
           </div>
           <div class="col-md-4">
+            <label class="form-label fw-semibold">Fecha de vencimiento *</label>
+            <input class="form-control credit-due" name="fecha_vencimiento" type="date" required>
+          </div>
+          {% endif %}
+          <div class="col-md-4">
             <label class="form-label fw-semibold">{% if category.financial %}Monto de crédito u obra *{% elif category.tipo == 'TRABAJADOR' %}Costo / sueldo de referencia{% else %}Valor del activo{% endif %}</label>
-            <div class="input-group"><span class="input-group-text">$</span><input class="form-control" name="monto_total" type="number" min="0" step="0.01" {% if category.financial %}required{% endif %}><select class="form-select" name="moneda" style="max-width: 95px"><option>MXN</option><option>USD</option></select></div>
+            <div class="input-group"><span class="input-group-text">$</span><input class="form-control" name="monto_total" type="number" min="0" step="0.01" value="{{ selected_alta.monto_credito if selected_alta and selected_alta.credito else '' }}" {% if category.financial %}required{% endif %}><select class="form-select" name="moneda" style="max-width: 95px"><option>MXN</option><option>USD</option></select></div>
           </div>
 
           {% if category.tipo in ['CLIENTE', 'PROVEEDOR'] %}
@@ -149,7 +197,7 @@
       <form method="get" class="row g-2 align-items-end">
         <div class="col-md-7">
           <label class="form-label small fw-semibold">Buscar</label>
-          <input class="form-control" name="q" value="{{ q }}" placeholder="Nombre, folio, RFC, proyecto o identificador">
+          <input class="form-control" name="q" value="{{ q }}" placeholder="Nombre, folio, RFC, factura, proyecto o identificador">
         </div>
         <div class="col-md-3">
           <label class="form-label small fw-semibold">Estatus</label>
@@ -163,13 +211,14 @@
     </div>
     <div class="table-responsive">
       <table class="table table-hover align-middle mb-0">
-        <thead><tr><th>Registro</th><th>Proyecto / identificación</th><th>Inicio</th><th>Monto</th>{% if category.financial %}<th>Abonado</th><th class="balance-cell">Saldo pendiente</th>{% endif %}<th>PDF</th><th>Estatus</th><th></th></tr></thead>
+        <thead><tr><th>Registro</th><th>Proyecto / identificación</th><th>Inicio</th>{% if category.financial %}<th>Vencimiento</th>{% endif %}<th>Monto</th>{% if category.financial %}<th>Abonado</th><th class="balance-cell">Saldo pendiente</th>{% endif %}<th>PDF</th><th>Estatus</th><th></th></tr></thead>
         <tbody>
           {% for item in records %}
           <tr>
             <td><div class="fw-semibold">{{ item.nombre }}</div><div class="small text-muted">{{ item.folio }}{% if item.rfc %} · {{ item.rfc }}{% endif %}</div></td>
-            <td><div>{{ item.proyecto or 'Sin proyecto' }}</div><div class="small text-muted">{{ item.identificador or item.razon_social or '' }}</div></td>
+            <td><div>{{ item.proyecto or 'Sin proyecto' }}</div><div class="small text-muted">{% if item.folio_factura %}Factura {{ item.folio_factura }}{% endif %}{% if item.folio_factura and item.identificador %} · {% endif %}{% if item.identificador %}Alta {{ item.identificador }}{% elif not item.folio_factura %}{{ item.razon_social or '' }}{% endif %}</div></td>
             <td>{{ item.fecha_inicio.strftime('%d/%m/%Y') }}</td>
+            {% if category.financial %}<td><div>{{ item.fecha_vencimiento.strftime('%d/%m/%Y') if item.fecha_vencimiento else '—' }}</div><div class="small text-muted">{{ item.tiempo_credito_dias ~ ' días' if item.tiempo_credito_dias is not none else '' }}</div></td>{% endif %}
             <td>${{ '{:,.2f}'.format(item.monto_total or 0) }} <span class="small text-muted">{{ item.moneda }}</span></td>
             {% if category.financial %}
             <td class="text-success">${{ '{:,.2f}'.format(item.total_abonado) }}</td>
@@ -177,14 +226,47 @@
             {% endif %}
             <td><span class="badge text-bg-light border">{{ item.documentos|length }}</span></td>
             <td><span class="badge {{ 'text-bg-success' if item.estatus in ['LIQUIDADO', 'ACTIVO'] else 'text-bg-warning' }}">{{ item.estatus }}</span></td>
-            <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ url_for('contabilidad.detalle', slug=category.slug, record_id=item.id) }}">Abrir</a></td>
+            <td class="text-end"><div class="d-inline-flex gap-1"><a class="btn btn-sm btn-outline-primary" href="{{ url_for('contabilidad.detalle', slug=category.slug, record_id=item.id) }}">Abrir</a>{% if (current_user.rol or '')|upper == 'ADMIN' %}<form method="post" action="{{ url_for('contabilidad.eliminar_registro', slug=category.slug, record_id=item.id) }}" onsubmit="return confirm('¿Eliminar definitivamente este registro y todos sus abonos y documentos?');"><button class="btn btn-sm btn-outline-danger" title="Eliminar registro" aria-label="Eliminar registro">🗑️</button></form>{% endif %}</div></td>
           </tr>
           {% else %}
-          <tr><td colspan="{{ 9 if category.financial else 7 }}" class="text-center py-5"><div class="fs-2 mb-2">{{ category.icon }}</div><div class="fw-semibold">No hay registros</div><div class="text-muted small">Crea la primera alta o cambia los filtros.</div></td></tr>
+          <tr><td colspan="{{ 10 if category.financial else 7 }}" class="text-center py-5"><div class="fs-2 mb-2">{{ category.icon }}</div><div class="fw-semibold">No hay registros</div><div class="text-muted small">Crea el primer registro o cambia los filtros.</div></td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
   </div>
 </div>
+{% if category.financial %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const start = document.querySelector("#newRecord .credit-start");
+  const days = document.querySelector("#newRecord .credit-days");
+  const due = document.querySelector("#newRecord .credit-due");
+  if (!start || !days || !due) return;
+  const formatDate = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+  const updateDue = () => {
+    if (!start.value || days.value === "") return;
+    const date = new Date(`${start.value}T12:00:00`);
+    date.setDate(date.getDate() + Number.parseInt(days.value, 10));
+    due.value = formatDate(date);
+  };
+  const updateDays = () => {
+    if (!start.value || !due.value) return;
+    const startDate = new Date(`${start.value}T12:00:00`);
+    const dueDate = new Date(`${due.value}T12:00:00`);
+    const difference = Math.round((dueDate - startDate) / 86400000);
+    if (difference >= 0) days.value = String(difference);
+  };
+  start.addEventListener("change", updateDue);
+  days.addEventListener("input", updateDue);
+  due.addEventListener("change", updateDays);
+  if (!due.value) updateDue();
+});
+</script>
+{% endif %}
 {% endblock %}
