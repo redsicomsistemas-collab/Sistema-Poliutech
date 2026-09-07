@@ -1,136 +1,171 @@
 {% extends "base.html" %}
-{% block title %}{{ solicitud.folio }}{% endblock %}
+{% block title %}{{ solicitud.nombre or solicitud.folio }}{% endblock %}
+
+{% set estado = (solicitud.estatus or '')|upper %}
+{% set paso_actual = 2 if estado == 'SOLICITADA' else 3 if estado == 'AUTORIZADA' else 4 if estado == 'ENTREGADA' else 2 %}
 
 {% block content %}
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 my-4">
-  <div>
-    <h2 class="fw-bold text-primary mb-1">{{ solicitud.nombre or ("Solicitud de fondos " ~ solicitud.folio) }}</h2>
-    <div class="text-muted">{{ solicitud.folio }}</div>
-    <div class="text-muted">{{ solicitud.fecha.strftime("%d/%m/%Y %H:%M") if solicitud.fecha else "" }}</div>
-  </div>
-  <a href="{{ url_for('solicitudes_recursos_index') }}" class="btn btn-outline-secondary">Volver</a>
-</div>
+<style>
+  .fund-detail {
+    --fd-blue: var(--mar-blue, #0c3c78);
+    --fd-ink: var(--bs-emphasis-color, #172033);
+    --fd-muted: var(--bs-secondary-color, #657085);
+    --fd-line: var(--bs-border-color, #dce2ea);
+    --fd-surface: var(--bs-body-bg, #fff);
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 1.4rem 0 3rem;
+  }
+  .fund-detail-back { display: inline-flex; align-items: center; gap: .4rem; margin-bottom: 1rem; color: var(--fd-muted); font-weight: 700; text-decoration: none; }
+  .fund-detail-back:hover { color: var(--fd-blue); }
+  .fund-detail-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 1.5rem;
+    align-items: flex-start;
+    padding: clamp(1.25rem, 3vw, 2rem);
+    border: 1px solid rgba(var(--bs-primary-rgb), .18);
+    border-radius: 22px;
+    background: radial-gradient(circle at 92% 10%, rgba(32, 201, 151, .19), transparent 28%), linear-gradient(135deg, rgba(var(--bs-primary-rgb), .12), var(--fd-surface) 65%);
+  }
+  .fund-detail-folio { color: var(--fd-muted); font-size: .86rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+  .fund-detail-title { max-width: 720px; margin: .4rem 0 0; color: var(--fd-ink); font-size: clamp(1.7rem, 4vw, 2.55rem); font-weight: 850; letter-spacing: -.04em; line-height: 1.08; }
+  .fund-detail-project { margin-top: .65rem; color: var(--fd-muted); font-size: 1rem; }
+  .fund-detail-amount { color: var(--fd-ink); font-size: clamp(1.7rem, 4vw, 2.5rem); font-weight: 850; letter-spacing: -.04em; text-align: right; white-space: nowrap; }
+  .fund-detail-amount small { display: block; margin-bottom: .2rem; color: var(--fd-muted); font-size: .78rem; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
+  .fd-status { display: inline-flex; align-items: center; gap: .45rem; margin-top: .65rem; border-radius: 999px; padding: .48rem .72rem; font-size: .86rem; font-weight: 800; }
+  .fd-status::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
+  .fd-status--waiting { background: rgba(245,158,11,.14); color: #a16207; }
+  .fd-status--ready { background: rgba(16,185,129,.14); color: #047857; }
+  .fd-status--attention { background: rgba(239,68,68,.12); color: #b91c1c; }
+  .fd-status--delivered { background: rgba(59,130,246,.13); color: #1d4ed8; }
+  .fd-status--muted { background: rgba(100,116,139,.13); color: var(--fd-muted); }
+  .fund-timeline {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 1rem 0;
+    padding: 1rem;
+    border: 1px solid var(--fd-line);
+    border-radius: 18px;
+    background: var(--fd-surface);
+  }
+  .fund-timeline-step { position: relative; display: flex; align-items: center; gap: .65rem; min-width: 0; color: var(--fd-muted); }
+  .fund-timeline-step:not(:last-child)::after { content: ""; position: absolute; top: 18px; left: calc(36px + .6rem); right: .6rem; height: 2px; background: var(--fd-line); }
+  .fund-timeline-dot { display: grid; flex: 0 0 36px; width: 36px; height: 36px; place-items: center; border: 2px solid var(--fd-line); border-radius: 50%; background: var(--fd-surface); font-weight: 850; z-index: 1; }
+  .fund-timeline-step.is-done .fund-timeline-dot { border-color: #10b981; background: #10b981; color: white; }
+  .fund-timeline-step.is-active .fund-timeline-dot { border-color: var(--fd-blue); background: var(--fd-blue); color: white; box-shadow: 0 0 0 5px rgba(var(--bs-primary-rgb), .12); }
+  .fund-timeline-step.is-active { color: var(--fd-ink); font-weight: 800; }
+  .fund-timeline-label { position: relative; z-index: 1; padding-right: .55rem; background: var(--fd-surface); font-size: .9rem; }
+  .fund-next {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1.2rem;
+    margin-bottom: 1rem;
+    padding: 1.15rem 1.25rem;
+    border: 1px solid rgba(var(--bs-primary-rgb), .22);
+    border-radius: 18px;
+    background: rgba(var(--bs-primary-rgb), .065);
+  }
+  .fund-next--success { border-color: rgba(16,185,129,.3); background: rgba(16,185,129,.085); }
+  .fund-next--danger { border-color: rgba(239,68,68,.32); background: rgba(239,68,68,.075); }
+  .fund-next h2 { margin: 0; color: var(--fd-ink); font-size: 1.15rem; font-weight: 850; }
+  .fund-next p { margin: .3rem 0 0; color: var(--fd-muted); }
+  .fund-next .btn { min-height: 46px; border-radius: 11px; font-weight: 800; white-space: nowrap; }
+  .fund-decision-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .6rem; }
+  .fund-reject-box { margin: -.35rem 0 1rem; padding: 1rem; border: 1px solid rgba(239,68,68,.25); border-radius: 16px; background: var(--fd-surface); }
+  .fund-reject-box textarea { min-height: 92px; border-radius: 11px; }
+  .fund-detail-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, .7fr); gap: 1rem; align-items: start; }
+  .fd-card { overflow: hidden; border: 1px solid var(--fd-line); border-radius: 18px; background: var(--fd-surface); box-shadow: 0 10px 26px rgba(15,23,42,.045); }
+  .fd-card-head { padding: 1rem 1.15rem; border-bottom: 1px solid var(--fd-line); }
+  .fd-card-head h2 { margin: 0; color: var(--fd-ink); font-size: 1.12rem; font-weight: 850; }
+  .fd-line-item { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; gap: .8rem; align-items: center; padding: 1rem 1.15rem; border-bottom: 1px solid var(--fd-line); }
+  .fd-line-item:last-child { border-bottom: 0; }
+  .fd-line-number { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 11px; background: rgba(var(--bs-primary-rgb), .08); color: var(--fd-blue); font-weight: 850; }
+  .fd-line-description { color: var(--fd-ink); font-weight: 750; }
+  .fd-line-calculation { margin-top: .22rem; color: var(--fd-muted); font-size: .86rem; }
+  .fd-line-total { color: var(--fd-ink); font-weight: 850; white-space: nowrap; }
+  .fd-grand-total { display: flex; justify-content: space-between; gap: 1rem; padding: 1rem 1.15rem; background: rgba(var(--bs-primary-rgb), .06); color: var(--fd-ink); font-weight: 850; }
+  .fd-facts { display: grid; margin: 0; }
+  .fd-fact { padding: .95rem 1.1rem; border-bottom: 1px solid var(--fd-line); }
+  .fd-fact:last-child { border-bottom: 0; }
+  .fd-fact dt { margin-bottom: .22rem; color: var(--fd-muted); font-size: .78rem; font-weight: 800; letter-spacing: .045em; text-transform: uppercase; }
+  .fd-fact dd { margin: 0; color: var(--fd-ink); font-weight: 700; overflow-wrap: anywhere; }
+  .fd-advanced { margin-top: 1rem; border: 1px solid var(--fd-line); border-radius: 16px; background: var(--fd-surface); }
+  .fd-advanced summary { cursor: pointer; padding: 1rem 1.1rem; color: var(--fd-ink); font-weight: 800; }
+  .fd-advanced-body { padding: 0 1rem 1rem; }
+  .fd-advanced .card { margin-bottom: 0 !important; box-shadow: none !important; }
+  .fd-admin-form { display: grid; grid-template-columns: minmax(180px, .7fr) minmax(260px, 1.3fr) auto; gap: .75rem; align-items: end; }
+  @media (max-width: 767.98px) {
+    .fund-detail-head, .fund-next { align-items: stretch; flex-direction: column; }
+    .fund-detail-amount { text-align: left; }
+    .fund-timeline { grid-template-columns: 1fr; gap: .8rem; }
+    .fund-timeline-step:not(:last-child)::after { top: 36px; bottom: -.8rem; left: 17px; right: auto; width: 2px; height: auto; }
+    .fund-timeline-label { padding: 0; }
+    .fund-detail-grid { grid-template-columns: 1fr; }
+    .fund-decision-actions { justify-content: stretch; }
+    .fund-decision-actions .btn, .fund-decision-actions form { flex: 1; }
+    .fund-decision-actions form .btn { width: 100%; }
+    .fd-admin-form { grid-template-columns: 1fr; }
+  }
+</style>
 
-{% if solicitud.estatus == "RECHAZADA" and solicitud.motivo_rechazo %}
-<div class="alert alert-danger"><strong>Motivo del rechazo:</strong> {{ solicitud.motivo_rechazo }}</div>
-{% endif %}
-
-<div class="row g-3 mb-4">
-  <div class="col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small">Estatus</div>
-        <div class="fs-5 fw-bold">{{ solicitud.estatus }}</div>
-      </div>
+<main class="fund-detail">
+  <a href="{{ url_for('solicitudes_recursos_index') }}" class="fund-detail-back">← Volver a Fondos</a>
+  <header class="fund-detail-head">
+    <div>
+      <div class="fund-detail-folio">{{ solicitud.folio }} · {{ solicitud.fecha.strftime("%d/%m/%Y") if solicitud.fecha else "Sin fecha" }}</div>
+      <h1 class="fund-detail-title">{{ solicitud.nombre or ("Solicitud de fondos " ~ solicitud.folio) }}</h1>
+      <div class="fund-detail-project">{{ solicitud.proyecto or "Sin proyecto asignado" }}</div>
+      {% if estado == 'SOLICITADA' %}<span class="fd-status fd-status--waiting">Esperando autorización</span>
+      {% elif estado == 'AUTORIZADA' %}<span class="fd-status fd-status--ready">Autorizada · lista para comprobar</span>
+      {% elif estado == 'RECHAZADA' %}<span class="fd-status fd-status--attention">Rechazada · requiere atención</span>
+      {% elif estado == 'ENTREGADA' %}<span class="fd-status fd-status--delivered">Dinero entregado</span>
+      {% else %}<span class="fd-status fd-status--muted">{{ estado|title }}</span>{% endif %}
     </div>
-  </div>
-  <div class="col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small">Total</div>
-        <div class="fs-5 fw-bold">${{ "{:,.2f}".format(solicitud.total or 0) }}</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small">Solicitante</div>
-        <div class="fs-6 fw-semibold">{{ solicitud.solicitante or "-" }}</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small">Proyecto / obra</div>
-        <div class="fs-6 fw-semibold">{{ solicitud.proyecto or "-" }}</div>
-      </div>
-    </div>
-  </div>
-</div>
+    <div class="fund-detail-amount"><small>Total solicitado</small>${{ "{:,.2f}".format(solicitud.total or 0) }}</div>
+  </header>
 
-{% if solicitud.gasto_generado %}
-<div class="alert alert-success d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
-  <div>
-    <div class="fw-bold">Fondo autorizado</div>
-    <div>{{ solicitud.gasto_generado.folio }} · ${{ "{:,.2f}".format(solicitud.gasto_generado.total or 0) }} {{ solicitud.gasto_generado.moneda or "MXN" }}</div>
-  </div>
-  <a class="btn btn-success" href="{{ url_for('solicitud_recurso_comprobar', solicitud_id=solicitud.id) }}">Abrir expediente y comprobar</a>
-</div>
-{% endif %}
+  <section class="fund-timeline" aria-label="Avance de la solicitud">
+    {% for numero, etiqueta in [(1, 'Solicitud enviada'), (2, 'Autorización'), (3, 'Dinero disponible'), (4, 'Comprobación')] %}
+    <div class="fund-timeline-step {{ 'is-done' if numero < paso_actual and estado not in ['RECHAZADA', 'CANCELADA'] else 'is-active' if numero == paso_actual else '' }}"><span class="fund-timeline-dot">{{ '✓' if numero < paso_actual and estado not in ['RECHAZADA', 'CANCELADA'] else numero }}</span><span class="fund-timeline-label">{{ etiqueta }}</span></div>
+    {% endfor %}
+  </section>
 
-{% include "_cliente_seguimiento_card.html" %}
-
-<div class="card shadow-sm border-0 mb-4">
-  <div class="card-header bg-light fw-bold">Partidas solicitadas</div>
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-hover align-middle mb-0">
-        <thead>
-          <tr>
-            <th>Partida</th>
-            <th>Cantidad</th>
-            <th>Descripcion</th>
-            <th>Importe</th>
-            <th>Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for partida in solicitud.partidas %}
-          <tr>
-            <td class="fw-bold">{{ loop.index }}</td>
-            <td>{{ "{:,.2f}".format(partida.cantidad or 0) }}</td>
-            <td>{{ partida.concepto }}</td>
-            <td>${{ "{:,.2f}".format(partida.importe or 0) }}</td>
-            <td class="fw-bold">${{ "{:,.2f}".format(partida.total or ((partida.cantidad or 0) * (partida.importe or 0))) }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-        <tfoot>
-          <tr>
-            <th colspan="4" class="text-end">Importe total</th>
-            <th>${{ "{:,.2f}".format(solicitud.total or 0) }}</th>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
+  {% if estado == 'SOLICITADA' and can_manage_fondos %}
+  <section class="fund-next">
+    <div><h2>Esta solicitud necesita una decisión</h2><p>Revisa el desglose y elige autorizar o rechazar. El solicitante recibirá el resultado.</p></div>
+    <div class="fund-decision-actions"><form method="post" action="{{ url_for('solicitud_recurso_estatus', solicitud_id=solicitud.id) }}"><input type="hidden" name="estatus" value="AUTORIZADA"><button class="btn btn-success">✓ Autorizar ${{ "{:,.2f}".format(solicitud.total or 0) }}</button></form><button class="btn btn-outline-danger" type="button" data-bs-toggle="collapse" data-bs-target="#rechazarSolicitud" aria-expanded="false">Rechazar</button></div>
+  </section>
+  <div class="collapse" id="rechazarSolicitud">
+    <form method="post" action="{{ url_for('solicitud_recurso_estatus', solicitud_id=solicitud.id) }}" class="fund-reject-box"><input type="hidden" name="estatus" value="RECHAZADA"><label class="form-label fw-bold" for="motivoRechazo">¿Qué debe corregir el solicitante?</label><textarea id="motivoRechazo" name="motivo_rechazo" class="form-control" placeholder="Explica el motivo con palabras claras" required>{{ solicitud.motivo_rechazo or '' }}</textarea><div class="d-flex justify-content-end gap-2 mt-3"><button class="btn btn-light" type="button" data-bs-toggle="collapse" data-bs-target="#rechazarSolicitud">Cancelar</button><button class="btn btn-danger">Confirmar rechazo</button></div></form>
   </div>
-</div>
+  {% elif estado == 'SOLICITADA' %}
+  <section class="fund-next"><div><h2>Ahora solo falta la autorización</h2><p>No necesitas hacer nada por el momento. Aquí verás el resultado cuando sea revisada.</p></div><span aria-hidden="true" style="font-size:2rem">⏳</span></section>
+  {% elif estado == 'AUTORIZADA' %}
+  <section class="fund-next fund-next--success"><div><h2>Ya puedes registrar lo que gastaste</h2><p>Agrega cada ticket o factura al fondo para que el saldo quede actualizado.</p>{% if solicitud.gasto_generado %}<div class="small text-muted mt-1">Movimiento de fondo: {{ solicitud.gasto_generado.folio }}</div>{% endif %}</div>{% if can_manage_fondos or solicitud.usuario_id == current_user.id %}<a class="btn btn-success" href="{{ url_for('solicitud_recurso_comprobar', solicitud_id=solicitud.id) }}">Comprobar gastos →</a>{% endif %}</section>
+  {% elif estado == 'RECHAZADA' %}
+  <section class="fund-next fund-next--danger"><div><h2>No fue autorizada</h2><p>{{ solicitud.motivo_rechazo or 'Consulta con la persona que revisó la solicitud para conocer el motivo.' }}</p></div><a class="btn btn-outline-primary" href="{{ url_for('solicitudes_recursos_index', nueva=1) }}">Crear una solicitud corregida</a></section>
+  {% elif estado == 'ENTREGADA' %}
+  <section class="fund-next fund-next--success"><div><h2>El dinero ya fue entregado</h2><p>Conserva los tickets y facturas relacionados con este fondo.</p></div><a class="btn btn-outline-primary" href="{{ url_for('comprobar_gastos_fondos') }}">Ir a comprobaciones</a></section>
+  {% else %}
+  <section class="fund-next"><div><h2>Esta solicitud está {{ estado|lower }}</h2><p>Consulta los datos y el desglose que quedaron registrados.</p></div></section>
+  {% endif %}
 
-{% if can_manage_fondos %}
-<div class="card shadow-sm border-0">
-  <div class="card-header bg-light fw-bold">Seguimiento</div>
-  <div class="card-body">
-    <form method="post" action="{{ url_for('solicitud_recurso_estatus', solicitud_id=solicitud.id) }}" class="row g-3 align-items-end">
-      <div class="col-md-4">
-        <label class="form-label">Estatus</label>
-        <select name="estatus" class="form-select">
-          {% for item in estatus_options %}
-          <option value="{{ item }}" {% if solicitud.estatus == item %}selected{% endif %}>{{ item }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-5">
-        <label class="form-label">Razón del rechazo</label>
-        <textarea name="motivo_rechazo" class="form-control" rows="2" placeholder="Explica al solicitante por qué se rechaza">{{ solicitud.motivo_rechazo or '' }}</textarea>
-        <div class="form-text">Obligatoria al seleccionar RECHAZADA; se enviará por correo y notificación móvil.</div>
-      </div>
-      <div class="col-md-3 d-grid">
-        <button class="btn btn-primary">Actualizar estatus</button>
-      </div>
-      <div class="col-md-5 text-muted">{{ solicitud.notas or "" }}</div>
-    </form>
+  <div class="fund-detail-grid">
+    <section class="fd-card" aria-labelledby="desglose-title">
+      <div class="fd-card-head"><h2 id="desglose-title">¿En qué se pidió el dinero?</h2></div>
+      {% for partida in solicitud.partidas %}<div class="fd-line-item"><div class="fd-line-number">{{ loop.index }}</div><div><div class="fd-line-description">{{ partida.concepto }}</div><div class="fd-line-calculation">{{ "{:,.2f}".format(partida.cantidad or 0) }} × ${{ "{:,.2f}".format(partida.importe or 0) }}</div></div><div class="fd-line-total">${{ "{:,.2f}".format(partida.total or ((partida.cantidad or 0) * (partida.importe or 0))) }}</div></div>{% else %}<div class="p-4 text-muted text-center">No hay compras desglosadas.</div>{% endfor %}
+      <div class="fd-grand-total"><span>Total</span><span>${{ "{:,.2f}".format(solicitud.total or 0) }}</span></div>
+    </section>
+    <aside class="fd-card" aria-labelledby="datos-title"><div class="fd-card-head"><h2 id="datos-title">Datos de la solicitud</h2></div><dl class="fd-facts"><div class="fd-fact"><dt>Solicitante</dt><dd>{{ solicitud.solicitante or "Sin dato" }}</dd></div><div class="fd-fact"><dt>Proyecto u obra</dt><dd>{{ solicitud.proyecto or "Sin dato" }}</dd></div><div class="fd-fact"><dt>Fecha</dt><dd>{{ solicitud.fecha.strftime("%d/%m/%Y a las %H:%M") if solicitud.fecha else "Sin dato" }}</dd></div><div class="fd-fact"><dt>Notas</dt><dd>{{ solicitud.notas or "Sin notas adicionales" }}</dd></div></dl></aside>
   </div>
-</div>
-<script>
-  (() => {
-    const form = document.querySelector('form[action*="/estatus"]');
-    const status = form?.querySelector('[name="estatus"]');
-    const reason = form?.querySelector('[name="motivo_rechazo"]');
-    const sync = () => { if (reason) reason.required = status?.value === 'RECHAZADA'; };
-    status?.addEventListener('change', sync); sync();
-  })();
-</script>
-{% endif %}
+
+  <details class="fd-advanced"><summary>Más información del solicitante</summary><div class="fd-advanced-body">{% include "_cliente_seguimiento_card.html" %}</div></details>
+
+  {% if can_manage_fondos and estado != 'SOLICITADA' %}
+  <details class="fd-advanced"><summary>Administrar estado manualmente</summary><div class="fd-advanced-body"><form method="post" action="{{ url_for('solicitud_recurso_estatus', solicitud_id=solicitud.id) }}" class="fd-admin-form"><div><label class="form-label fw-bold">Estado</label><select name="estatus" class="form-select" id="estadoManual">{% for item in estatus_options %}<option value="{{ item }}" {% if estado == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></div><div><label class="form-label fw-bold">Motivo si se rechaza</label><textarea name="motivo_rechazo" class="form-control" rows="2" id="motivoManual">{{ solicitud.motivo_rechazo or '' }}</textarea></div><button class="btn btn-primary">Guardar cambio</button></form></div></details>
+  <script>(() => { const status = document.getElementById('estadoManual'); const reason = document.getElementById('motivoManual'); const sync = () => { if (reason) reason.required = status?.value === 'RECHAZADA'; }; status?.addEventListener('change', sync); sync(); })();</script>
+  {% endif %}
+</main>
 {% endblock %}

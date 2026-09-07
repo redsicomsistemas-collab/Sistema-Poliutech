@@ -3253,7 +3253,7 @@ DEMO_MODULE_META = {
     "compras": {"label": "Compras y proveedores", "icon": "🧾", "endpoint": "ordenes_compra_index", "group": "Operación", "description": "Controla órdenes de compra y proveedores."},
     "inventario": {"label": "Inventario", "icon": "📦", "endpoint": "inventario_index", "group": "Operación", "description": "Consulta existencias, movimientos y kardex."},
     "precios_unitarios": {"label": "Precios unitarios", "icon": "🧮", "endpoint": "pu.obras_index", "group": "Operación", "description": "Integra análisis de precios y presupuestos de obra."},
-    "fondos": {"label": "Solicitudes de fondos", "icon": "💵", "endpoint": "solicitudes_recursos_index", "group": "Finanzas", "description": "Solicita, autoriza y comprueba recursos."},
+    "fondos": {"label": "Fondos", "icon": "💵", "endpoint": "solicitudes_recursos_index", "group": "Finanzas", "description": "Pide dinero, sigue la autorización y comprueba gastos."},
     "finanzas": {"label": "Panel financiero", "icon": "🏦", "endpoint": "finanzas_index", "group": "Finanzas", "description": "Visualiza movimientos y estado financiero."},
     "facturacion": {"label": "Facturación", "icon": "🧾", "endpoint": "facturacion.index", "group": "Finanzas", "description": "Administra facturas y configuración fiscal."},
     "contabilidad": {"label": "Contabilidad", "icon": "📒", "endpoint": "contabilidad.index", "group": "Finanzas", "description": "Controla saldos, abonos, expedientes, personal y activos."},
@@ -17500,7 +17500,7 @@ def solicitudes_recursos_index():
 
     return render_template(
         "solicitudes_recursos.html",
-        title="Solicitudes de fondos",
+        title="Fondos",
         solicitudes=solicitudes,
         estatus_options=SOLICITUD_RECURSO_ESTATUS,
         status_counts=status_counts,

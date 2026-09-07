@@ -1,265 +1,333 @@
 {% extends "base.html" %}
-{% block title %}Solicitudes de fondos{% endblock %}
+{% block title %}Fondos{% endblock %}
+
+{% macro estado_texto(estatus) -%}
+  {%- if estatus == "SOLICITADA" -%}Esperando autorización
+  {%- elif estatus == "AUTORIZADA" -%}Lista para comprobar
+  {%- elif estatus == "RECHAZADA" -%}Requiere atención
+  {%- elif estatus == "ENTREGADA" -%}Dinero entregado
+  {%- elif estatus == "CANCELADA" -%}Cancelada
+  {%- else -%}{{ estatus|title }}
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro estado_clase(estatus) -%}
+  {%- if estatus == "SOLICITADA" -%}fund-status--waiting
+  {%- elif estatus == "AUTORIZADA" -%}fund-status--ready
+  {%- elif estatus == "RECHAZADA" -%}fund-status--attention
+  {%- elif estatus == "ENTREGADA" -%}fund-status--delivered
+  {%- else -%}fund-status--muted
+  {%- endif -%}
+{%- endmacro %}
 
 {% block content %}
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 my-4">
-  <div>
-    <h2 class="fw-bold text-primary mb-1">Solicitudes de fondos</h2>
-    <div class="text-muted">Registro de partidas, cantidades, descripciones e importes solicitados.</div>
-  </div>
-</div>
+<style>
+  .funds-page {
+    --fund-blue: var(--mar-blue, #0c3c78);
+    --fund-ink: var(--bs-emphasis-color, #172033);
+    --fund-muted: var(--bs-secondary-color, #657085);
+    --fund-line: var(--bs-border-color, #dce2ea);
+    --fund-surface: var(--bs-body-bg, #fff);
+    --fund-soft: rgba(var(--bs-primary-rgb), .07);
+    max-width: 1260px;
+    margin: 0 auto;
+    padding-bottom: 3rem;
+  }
+  .funds-hero {
+    position: relative;
+    overflow: hidden;
+    margin: 1.5rem 0 1rem;
+    padding: clamp(1.35rem, 3vw, 2.25rem);
+    border: 1px solid rgba(var(--bs-primary-rgb), .18);
+    border-radius: 22px;
+    background: radial-gradient(circle at 92% 12%, rgba(38, 198, 218, .22), transparent 26%), linear-gradient(135deg, rgba(var(--bs-primary-rgb), .14), rgba(var(--bs-primary-rgb), .035) 55%, var(--fund-surface));
+  }
+  .funds-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    margin-bottom: .65rem;
+    color: var(--fund-blue);
+    font-size: .82rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  .funds-title {
+    margin: 0;
+    color: var(--fund-ink);
+    font-size: clamp(2rem, 4vw, 3.2rem);
+    font-weight: 850;
+    letter-spacing: -.045em;
+    line-height: 1;
+  }
+  .funds-subtitle {
+    max-width: 680px;
+    margin: .85rem 0 0;
+    color: var(--fund-muted);
+    font-size: 1.05rem;
+  }
+  .funds-primary-actions { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 1.35rem; }
+  .funds-primary-actions .btn { min-height: 48px; border-radius: 12px; padding: .7rem 1.1rem; font-weight: 750; }
+  .funds-flow {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0;
+    margin: 1rem 0 1.5rem;
+    border: 1px solid var(--fund-line);
+    border-radius: 18px;
+    background: var(--fund-surface);
+    box-shadow: 0 10px 28px rgba(15, 23, 42, .055);
+  }
+  .funds-flow-step { position: relative; display: flex; align-items: center; gap: .8rem; min-width: 0; padding: 1rem; }
+  .funds-flow-step:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: -.35rem;
+    width: .7rem;
+    height: .7rem;
+    border-top: 2px solid var(--fund-line);
+    border-right: 2px solid var(--fund-line);
+    transform: translateY(-50%) rotate(45deg);
+    background: var(--fund-surface);
+    z-index: 1;
+  }
+  .funds-flow-number { display: grid; flex: 0 0 38px; width: 38px; height: 38px; place-items: center; border-radius: 50%; background: var(--fund-soft); color: var(--fund-blue); font-weight: 850; }
+  .funds-flow-copy { min-width: 0; }
+  .funds-flow-copy strong { display: block; color: var(--fund-ink); }
+  .funds-flow-copy span { color: var(--fund-muted); font-size: .84rem; }
+  .funds-action-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+  .funds-action-card { display: flex; flex-direction: column; min-height: 174px; padding: 1.15rem; border: 1px solid var(--fund-line); border-radius: 18px; background: var(--fund-surface); }
+  .funds-action-card--attention { border-color: rgba(245, 158, 11, .45); background: linear-gradient(145deg, rgba(245, 158, 11, .11), var(--fund-surface) 68%); }
+  .funds-action-icon { display: grid; width: 42px; height: 42px; margin-bottom: .75rem; place-items: center; border-radius: 13px; background: var(--fund-soft); font-size: 1.25rem; }
+  .funds-action-value { color: var(--fund-ink); font-size: 1.8rem; font-weight: 850; letter-spacing: -.03em; line-height: 1; }
+  .funds-action-label { margin-top: .28rem; color: var(--fund-muted); }
+  .funds-action-card .btn-link { align-self: flex-start; margin-top: auto; padding: .5rem 0 0; font-weight: 750; text-decoration: none; }
+  .funds-panel { overflow: hidden; margin-bottom: 1.5rem; border: 1px solid var(--fund-line); border-radius: 20px; background: var(--fund-surface); box-shadow: 0 14px 34px rgba(15, 23, 42, .07); }
+  .funds-panel-header { display: flex; justify-content: space-between; gap: 1rem; padding: 1.2rem 1.3rem; border-bottom: 1px solid var(--fund-line); background: var(--fund-soft); }
+  .funds-panel-header h3 { margin: 0; color: var(--fund-ink); font-size: 1.25rem; font-weight: 800; }
+  .funds-panel-header p { margin: .25rem 0 0; color: var(--fund-muted); }
+  .fund-form { padding: clamp(1rem, 3vw, 1.6rem); }
+  .fund-form-step { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 1rem; padding: 0 0 1.6rem; }
+  .fund-form-step + .fund-form-step { padding-top: 1.4rem; border-top: 1px solid var(--fund-line); }
+  .fund-form-step:last-child { padding-bottom: 0; }
+  .fund-form-number { display: grid; width: 44px; height: 44px; place-items: center; border-radius: 14px; background: var(--fund-blue); color: white; font-weight: 850; }
+  .fund-form-title { margin: 0 0 .25rem; color: var(--fund-ink); font-size: 1.12rem; font-weight: 800; }
+  .fund-form-help { margin: 0 0 1rem; color: var(--fund-muted); }
+  .fund-form .form-label { color: var(--fund-ink); font-weight: 700; }
+  .fund-form .form-control, .fund-form .form-select { min-height: 46px; border-radius: 11px; }
+  .fund-items-head, .fund-item-row { display: grid; grid-template-columns: 90px minmax(210px, 1.7fr) minmax(140px, .8fr) minmax(130px, .7fr) 42px; gap: .7rem; align-items: center; }
+  .fund-items-head { padding: 0 .4rem .55rem; color: var(--fund-muted); font-size: .78rem; font-weight: 800; letter-spacing: .035em; text-transform: uppercase; }
+  .fund-item-row { margin-bottom: .65rem; padding: .72rem; border: 1px solid var(--fund-line); border-radius: 14px; background: rgba(var(--bs-primary-rgb), .025); }
+  .fund-item-subtotal { color: var(--fund-ink); font-weight: 800; font-variant-numeric: tabular-nums; }
+  .fund-item-remove { width: 38px; height: 38px; border-radius: 10px; font-size: 1.15rem; line-height: 1; }
+  .fund-total-box { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1rem; padding: 1rem 1.15rem; border-radius: 15px; background: #102f5b; color: #fff; }
+  .fund-total-box span { color: rgba(255,255,255,.76); }
+  .fund-total-box strong { font-size: clamp(1.45rem, 3vw, 2rem); font-variant-numeric: tabular-nums; }
+  .fund-submit-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+  .fund-submit-row .btn { min-height: 50px; border-radius: 12px; padding-inline: 1.35rem; font-weight: 800; }
+  .fund-history { border: 1px solid var(--fund-line); border-radius: 20px; background: var(--fund-surface); box-shadow: 0 12px 30px rgba(15, 23, 42, .055); }
+  .fund-history-top { padding: 1.25rem; border-bottom: 1px solid var(--fund-line); }
+  .fund-history-top h3 { margin: 0; color: var(--fund-ink); font-size: 1.25rem; font-weight: 800; }
+  .fund-filter-chips { display: flex; gap: .45rem; overflow-x: auto; padding: .15rem 0 .25rem; }
+  .fund-filter-chip { flex: 0 0 auto; border: 1px solid var(--fund-line); border-radius: 999px; padding: .48rem .8rem; color: var(--fund-ink); font-size: .88rem; font-weight: 700; text-decoration: none; }
+  .fund-filter-chip.active { border-color: var(--fund-blue); background: var(--fund-blue); color: #fff; }
+  .fund-request-list { display: grid; gap: .8rem; padding: 1rem; }
+  .fund-request { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto auto; gap: 1rem; align-items: center; padding: 1rem; border: 1px solid var(--fund-line); border-radius: 16px; background: var(--fund-surface); }
+  .fund-request-mark { align-self: stretch; min-height: 54px; border-radius: 999px; background: #94a3b8; }
+  .fund-request-mark--waiting { background: #f59e0b; }
+  .fund-request-mark--ready { background: #10b981; }
+  .fund-request-mark--attention { background: #ef4444; }
+  .fund-request-mark--delivered { background: #3b82f6; }
+  .fund-request-name { margin: 0; color: var(--fund-ink); font-size: 1.05rem; font-weight: 800; }
+  .fund-request-meta { display: flex; flex-wrap: wrap; gap: .25rem .7rem; margin-top: .3rem; color: var(--fund-muted); font-size: .88rem; }
+  .fund-request-amount { color: var(--fund-ink); font-size: 1.12rem; font-weight: 850; text-align: right; white-space: nowrap; }
+  .fund-status { display: inline-flex; align-items: center; gap: .4rem; border-radius: 999px; padding: .42rem .68rem; font-size: .82rem; font-weight: 800; white-space: nowrap; }
+  .fund-status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .fund-status--waiting { background: rgba(245,158,11,.14); color: #a16207; }
+  .fund-status--ready { background: rgba(16,185,129,.14); color: #047857; }
+  .fund-status--attention { background: rgba(239,68,68,.12); color: #b91c1c; }
+  .fund-status--delivered { background: rgba(59,130,246,.13); color: #1d4ed8; }
+  .fund-status--muted { background: rgba(100,116,139,.13); color: var(--fund-muted); }
+  .fund-request-actions { display: flex; gap: .45rem; align-items: center; }
+  .fund-request-actions .btn { border-radius: 10px; font-weight: 750; white-space: nowrap; }
+  .fund-empty { padding: 3rem 1rem; text-align: center; }
+  .fund-empty-icon { font-size: 2.2rem; }
+  .fund-empty h4 { margin: .7rem 0 .3rem; color: var(--fund-ink); font-weight: 800; }
+  .fund-empty p { margin: 0; color: var(--fund-muted); }
+  @media (max-width: 991.98px) {
+    .funds-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .funds-flow-step:nth-child(2)::after { display: none; }
+    .funds-action-grid { grid-template-columns: 1fr; }
+    .funds-action-card { min-height: 145px; }
+    .fund-request { grid-template-columns: 9px minmax(0, 1fr) auto; }
+    .fund-request > .fund-status { grid-column: 2; justify-self: start; }
+    .fund-request-actions { grid-column: 3; grid-row: 1 / span 2; flex-direction: column; align-items: stretch; }
+  }
+  @media (max-width: 767.98px) {
+    .funds-hero { border-radius: 17px; }
+    .funds-flow { grid-template-columns: 1fr; }
+    .funds-flow-step:not(:last-child)::after { display: none; }
+    .funds-flow-step:not(:last-child) { border-bottom: 1px solid var(--fund-line); }
+    .fund-form-step { grid-template-columns: 1fr; }
+    .fund-form-number { width: 40px; height: 40px; }
+    .fund-items-head { display: none; }
+    .fund-item-row { grid-template-columns: 1fr 1fr 40px; align-items: end; }
+    .fund-item-row .js-descripcion { grid-column: 1 / -1; grid-row: 1; }
+    .fund-item-row .js-cantidad { grid-column: 1; grid-row: 2; }
+    .fund-item-row .js-importe { grid-column: 2; grid-row: 2; }
+    .fund-item-subtotal { grid-column: 1 / 3; grid-row: 3; padding: .25rem .2rem; }
+    .fund-item-subtotal::before { content: "Subtotal: "; color: var(--fund-muted); font-weight: 600; }
+    .fund-item-remove { grid-column: 3; grid-row: 2; }
+    .fund-submit-row { align-items: stretch; flex-direction: column; }
+    .fund-request { grid-template-columns: 8px minmax(0, 1fr); gap: .75rem; }
+    .fund-request-amount { grid-column: 2; text-align: left; }
+    .fund-request > .fund-status { grid-column: 2; }
+    .fund-request-actions { grid-column: 2; grid-row: auto; flex-direction: row; flex-wrap: wrap; }
+  }
+</style>
 
-<div class="row g-3 mb-4">
-  <div class="col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small">Solicitudes visibles</div>
-        <div class="display-6 fw-bold text-primary">{{ solicitudes|length }}</div>
-      </div>
+<main class="funds-page">
+  <section class="funds-hero" aria-labelledby="fondos-title">
+    <div class="funds-eyebrow"><span aria-hidden="true">●</span> Dinero para proyectos y compras</div>
+    <h1 class="funds-title" id="fondos-title">Fondos</h1>
+    <p class="funds-subtitle">Pide el dinero que necesitas, revisa si ya fue autorizado y comprueba lo que gastaste. Todo empieza aquí.</p>
+    <div class="funds-primary-actions">
+      <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#nuevaSolicitudPanel" aria-expanded="{{ 'true' if request.args.get('nueva') == '1' or not solicitudes else 'false' }}" aria-controls="nuevaSolicitudPanel"><span aria-hidden="true">＋</span> Pedir dinero</button>
+      <a class="btn btn-outline-primary" href="{{ url_for('comprobar_gastos_fondos') }}"><span aria-hidden="true">✓</span> Comprobar un fondo</a>
+      {% if estado_cuenta_recursos_can_view() %}<a class="btn btn-outline-secondary" href="{{ url_for('estado_cuenta_recursos_panel') }}">Ver saldos del equipo</a>{% endif %}
     </div>
-  </div>
-  <div class="col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small">Solicitadas</div>
-        <div class="display-6 fw-bold text-info">{{ status_counts.get("SOLICITADA", 0) }}</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small">Autorizadas</div>
-        <div class="display-6 fw-bold text-success">{{ status_counts.get("AUTORIZADA", 0) }}</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small">Total visible</div>
-        <div class="display-6 fw-bold text-dark">${{ "{:,.2f}".format(total_visible or 0) }}</div>
-      </div>
-    </div>
-  </div>
-</div>
+  </section>
 
-<div class="card shadow-sm border-0 mb-4">
-  <div class="card-header bg-primary text-white fw-bold">Nueva solicitud</div>
-  <div class="card-body">
-    <form method="post" action="{{ url_for('solicitud_recurso_crear') }}" id="solicitud-recursos-form">
-      <div class="row g-3">
-        <div class="col-md-4">
-          <label class="form-label">Nombre único de la solicitud</label>
-          <input name="nombre" class="form-control" placeholder="Ej. Fondo visita Pfizer julio 2026" required>
-          <div class="form-text text-danger fw-semibold">No repitas nombres: el sistema bloqueará cualquier nombre que ya exista.</div>
-        </div>
-        <div class="col-md-4">
-          <label class="form-label">Solicitante</label>
-          <input name="solicitante" class="form-control" value="{{ current_user.nombre if current_user.is_authenticated else '' }}">
-        </div>
-        <div class="col-md-4">
-          <label class="form-label">Proyecto / obra</label>
-          <input name="proyecto" class="form-control" list="proyectos-recursos-list" required>
-          <datalist id="proyectos-recursos-list">
-            {% for proyecto in project_options %}
-            <option value="{{ proyecto }}"></option>
-            {% endfor %}
-          </datalist>
-        </div>
-        <div class="col-md-12">
-          <label class="form-label">Notas</label>
-          <input name="notas" class="form-control">
-        </div>
-      </div>
+  <section class="funds-flow" aria-label="Cómo funciona un fondo">
+    <div class="funds-flow-step"><div class="funds-flow-number">1</div><div class="funds-flow-copy"><strong>Pide</strong><span>Di para qué y cuánto.</span></div></div>
+    <div class="funds-flow-step"><div class="funds-flow-number">2</div><div class="funds-flow-copy"><strong>Espera</strong><span>Se revisa y autoriza.</span></div></div>
+    <div class="funds-flow-step"><div class="funds-flow-number">3</div><div class="funds-flow-copy"><strong>Gasta</strong><span>Usa el dinero autorizado.</span></div></div>
+    <div class="funds-flow-step"><div class="funds-flow-number">4</div><div class="funds-flow-copy"><strong>Comprueba</strong><span>Registra tickets y facturas.</span></div></div>
+  </section>
 
-      <div class="table-responsive mt-4">
-        <table class="table table-sm align-middle" id="recursos-items-table">
-          <thead class="table-light">
-            <tr>
-              <th style="width: 90px;">Partida</th>
-              <th style="width: 140px;">Cantidad</th>
-              <th style="min-width: 320px;">Descripcion</th>
-              <th style="width: 180px;">Importe</th>
-              <th style="width: 180px;">Total</th>
-              <th style="width: 90px;"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td class="fw-bold text-center js-partida">1</td>
-              <td><input type="number" step="any" min="0" name="cantidad[]" class="form-control form-control-sm js-cantidad"></td>
-              <td><input name="descripcion[]" class="form-control form-control-sm js-descripcion"></td>
-              <td><input type="number" step="any" min="0" name="importe[]" class="form-control form-control-sm js-importe" value="0"></td>
-              <td class="fw-bold js-total">$0.00</td>
-              <td><button type="button" class="btn btn-sm btn-outline-danger js-remove">Quitar</button></td>
-            </tr>
-          </tbody>
-          <tfoot>
-            <tr>
-              <th colspan="4" class="text-end">Importe total</th>
-              <th id="recursos-total">$0.00</th>
-              <th></th>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-      <div class="d-flex justify-content-between gap-2">
-        <button type="button" class="btn btn-outline-primary" id="recursos-add-row">Agregar renglon</button>
-        <button class="btn btn-success">Registrar solicitud</button>
-      </div>
-    </form>
-  </div>
-</div>
+  <section class="funds-action-grid" aria-label="Resumen de fondos">
+    <article class="funds-action-card funds-action-card--attention">
+      <div class="funds-action-icon" aria-hidden="true">⏳</div><div class="funds-action-value">{{ status_counts.get("SOLICITADA", 0) }}</div>
+      <div class="funds-action-label">pendiente{{ '' if status_counts.get("SOLICITADA", 0) == 1 else 's' }} de autorización</div>
+      <a class="btn btn-link" href="{{ url_for('solicitudes_recursos_index', estatus='SOLICITADA') }}">{{ 'Revisar y decidir' if can_manage_fondos else 'Ver seguimiento' }} →</a>
+    </article>
+    <article class="funds-action-card">
+      <div class="funds-action-icon" aria-hidden="true">🧾</div><div class="funds-action-value">{{ status_counts.get("AUTORIZADA", 0) }}</div>
+      <div class="funds-action-label">fondo{{ '' if status_counts.get("AUTORIZADA", 0) == 1 else 's' }} listo{{ '' if status_counts.get("AUTORIZADA", 0) == 1 else 's' }} para comprobar</div>
+      <a class="btn btn-link" href="{{ url_for('comprobar_gastos_fondos') }}">Registrar comprobantes →</a>
+    </article>
+    <article class="funds-action-card">
+      <div class="funds-action-icon" aria-hidden="true">💰</div><div class="funds-action-value">${{ "{:,.2f}".format(total_visible or 0) }}</div>
+      <div class="funds-action-label">monto de las solicitudes mostradas</div><a class="btn btn-link" href="#solicitudes">Ver solicitudes →</a>
+    </article>
+  </section>
 
-<div class="card shadow-sm border-0">
-  <div class="card-header bg-light">
-    <form method="get" action="{{ url_for('solicitudes_recursos_index') }}" class="row g-2 align-items-end">
-      <div class="col-md-6">
-        <label class="form-label">Buscar</label>
-        <input name="q" class="form-control" value="{{ q }}" placeholder="Nombre, folio, solicitante, proyecto, descripción o notas">
-      </div>
-      <div class="col-md-4">
-        <label class="form-label">Estatus</label>
-        <select name="estatus" class="form-select">
-          <option value="">Todos</option>
-          {% for item in estatus_options %}
-          <option value="{{ item }}" {% if estatus == item %}selected{% endif %}>{{ item }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2 d-grid">
-        <button class="btn btn-outline-primary">Filtrar</button>
-      </div>
-    </form>
-  </div>
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-hover align-middle mb-0">
-        <thead>
-          <tr>
-            <th>Folio</th>
-            <th>Nombre</th>
-            <th>Fecha</th>
-            <th>Solicitante</th>
-            <th>Proyecto</th>
-            <th>Estatus</th>
-            <th>Total</th>
-            <th>Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for solicitud in solicitudes %}
-          <tr>
-            <td class="fw-bold">{{ solicitud.folio }}</td>
-            <td class="fw-semibold">{{ solicitud.nombre or solicitud.folio }}</td>
-            <td>{{ solicitud.fecha.strftime("%d/%m/%Y") if solicitud.fecha else "" }}</td>
-            <td>{{ solicitud.solicitante or "" }}</td>
-            <td>{{ solicitud.proyecto or "" }}</td>
-            <td><span class="badge bg-secondary">{{ solicitud.estatus }}</span></td>
-            <td class="fw-bold">${{ "{:,.2f}".format(solicitud.total or 0) }}</td>
-            <td>
-              <div class="d-flex gap-2 justify-content-center">
-                <a class="btn btn-sm btn-outline-primary" href="{{ url_for('solicitud_recurso_detalle', solicitud_id=solicitud.id) }}">Ver</a>
-                {% if can_manage_fondos %}
-                <form method="post" action="{{ url_for('solicitud_recurso_eliminar', solicitud_id=solicitud.id) }}" class="m-0">
-                  <button
-                    type="submit"
-                    class="btn btn-sm btn-outline-danger"
-                    data-confirm-message="¿Seguro que deseas eliminar la solicitud {{ solicitud.folio }}? Esta accion no se puede deshacer."
-                  >Eliminar</button>
-                </form>
-                {% endif %}
-              </div>
-            </td>
-          </tr>
-          {% else %}
-          <tr>
-            <td colspan="8" class="text-center text-muted py-4">No hay solicitudes de fondos con estos filtros.</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+  <section class="collapse {{ 'show' if request.args.get('nueva') == '1' or not solicitudes }}" id="nuevaSolicitudPanel">
+    <div class="funds-panel">
+      <div class="funds-panel-header"><div><h3>Nueva solicitud de dinero</h3><p>Solo necesitas explicar para qué es y capturar los importes.</p></div><button class="btn-close" type="button" data-bs-toggle="collapse" data-bs-target="#nuevaSolicitudPanel" aria-label="Cerrar formulario"></button></div>
+      <form method="post" action="{{ url_for('solicitud_recurso_crear') }}" id="solicitud-recursos-form" class="fund-form">
+        <div class="fund-form-step">
+          <div class="fund-form-number">1</div>
+          <div><h4 class="fund-form-title">Identifica la solicitud</h4><p class="fund-form-help">Usa un nombre corto que cualquiera pueda reconocer después.</p>
+            <div class="row g-3">
+              <div class="col-lg-5"><label class="form-label" for="fondoNombre">¿Para qué necesitas el dinero?</label><input id="fondoNombre" name="nombre" class="form-control" placeholder="Ej. Material para obra Pfizer" autocomplete="off" required><div class="form-text">Incluye el proyecto o el motivo. El nombre no debe repetirse.</div></div>
+              <div class="col-lg-4"><label class="form-label" for="fondoProyectoSolicitud">Proyecto u obra</label><input id="fondoProyectoSolicitud" name="proyecto" class="form-control" list="proyectos-recursos-list" placeholder="Busca o escribe el proyecto" required><datalist id="proyectos-recursos-list">{% for proyecto in project_options %}<option value="{{ proyecto }}"></option>{% endfor %}</datalist></div>
+              <div class="col-lg-3"><label class="form-label" for="fondoSolicitante">Quién lo solicita</label><input id="fondoSolicitante" name="solicitante" class="form-control" value="{{ current_user.nombre if current_user.is_authenticated else '' }}" required></div>
+              <div class="col-12"><label class="form-label" for="fondoNotas">Algo más que deban saber <span class="text-muted fw-normal">(opcional)</span></label><input id="fondoNotas" name="notas" class="form-control" placeholder="Fecha límite, indicaciones o contexto útil"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fund-form-step">
+          <div class="fund-form-number">2</div>
+          <div><h4 class="fund-form-title">Agrega lo que vas a pagar</h4><p class="fund-form-help">Captura una línea por cada compra. El total se calcula solo.</p>
+            <div class="fund-items-head" aria-hidden="true"><span>Cantidad</span><span>¿Qué vas a pagar?</span><span>Precio por unidad</span><span>Subtotal</span><span></span></div>
+            <div id="recursos-items"><div class="fund-item-row">
+              <input type="number" step="any" min="0" name="cantidad[]" class="form-control js-cantidad" placeholder="Cantidad" aria-label="Cantidad" required>
+              <input name="descripcion[]" class="form-control js-descripcion" placeholder="Ej. 4 cubetas de recubrimiento" aria-label="Descripción de la compra" required>
+              <input type="number" step="any" min="0" name="importe[]" class="form-control js-importe" value="0" placeholder="$0.00" aria-label="Precio por unidad" required>
+              <div class="fund-item-subtotal js-total" aria-label="Subtotal">$0.00</div>
+              <button type="button" class="btn btn-outline-danger fund-item-remove js-remove" title="Quitar esta línea" aria-label="Quitar esta línea">×</button>
+            </div></div>
+            <button type="button" class="btn btn-outline-primary mt-1" id="recursos-add-row">＋ Agregar otra compra</button>
+            <div class="fund-total-box" aria-live="polite"><span>Total que estás solicitando</span><strong id="recursos-total">$0.00</strong></div>
+          </div>
+        </div>
+
+        <div class="fund-form-step">
+          <div class="fund-form-number">3</div><div class="fund-submit-row"><div><h4 class="fund-form-title">Envía para autorización</h4><p class="fund-form-help mb-0">Podrás seguir el avance desde esta misma pantalla.</p></div><button class="btn btn-success" type="submit">Enviar solicitud →</button></div>
+        </div>
+      </form>
     </div>
-  </div>
-</div>
+  </section>
+
+  <section class="fund-history" id="solicitudes" aria-labelledby="solicitudes-title">
+    <div class="fund-history-top">
+      <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3"><div><h3 id="solicitudes-title">Solicitudes</h3><div class="text-muted">Abre una para ver el detalle y la siguiente acción.</div></div>
+        <form method="get" action="{{ url_for('solicitudes_recursos_index') }}" class="d-flex gap-2" role="search">{% if estatus %}<input type="hidden" name="estatus" value="{{ estatus }}">{% endif %}<input name="q" class="form-control" value="{{ q }}" placeholder="Buscar por nombre, proyecto o folio" aria-label="Buscar solicitudes"><button class="btn btn-outline-primary">Buscar</button></form>
+      </div>
+      <nav class="fund-filter-chips" aria-label="Filtrar solicitudes por estado">
+        <a class="fund-filter-chip {{ 'active' if not estatus }}" href="{{ url_for('solicitudes_recursos_index', q=q) }}">Todas · {{ status_counts.values()|sum }}</a>
+        <a class="fund-filter-chip {{ 'active' if estatus == 'SOLICITADA' }}" href="{{ url_for('solicitudes_recursos_index', estatus='SOLICITADA', q=q) }}">Por autorizar · {{ status_counts.get('SOLICITADA', 0) }}</a>
+        <a class="fund-filter-chip {{ 'active' if estatus == 'AUTORIZADA' }}" href="{{ url_for('solicitudes_recursos_index', estatus='AUTORIZADA', q=q) }}">Para comprobar · {{ status_counts.get('AUTORIZADA', 0) }}</a>
+        <a class="fund-filter-chip {{ 'active' if estatus == 'RECHAZADA' }}" href="{{ url_for('solicitudes_recursos_index', estatus='RECHAZADA', q=q) }}">Rechazadas · {{ status_counts.get('RECHAZADA', 0) }}</a>
+        <a class="fund-filter-chip {{ 'active' if estatus == 'ENTREGADA' }}" href="{{ url_for('solicitudes_recursos_index', estatus='ENTREGADA', q=q) }}">Entregadas · {{ status_counts.get('ENTREGADA', 0) }}</a>
+        <a class="fund-filter-chip {{ 'active' if estatus == 'CANCELADA' }}" href="{{ url_for('solicitudes_recursos_index', estatus='CANCELADA', q=q) }}">Canceladas · {{ status_counts.get('CANCELADA', 0) }}</a>
+      </nav>
+    </div>
+    <div class="fund-request-list">
+      {% for solicitud in solicitudes %}
+      <article class="fund-request">
+        <div class="fund-request-mark fund-request-mark--{{ 'waiting' if solicitud.estatus == 'SOLICITADA' else 'ready' if solicitud.estatus == 'AUTORIZADA' else 'attention' if solicitud.estatus == 'RECHAZADA' else 'delivered' if solicitud.estatus == 'ENTREGADA' else 'muted' }}" aria-hidden="true"></div>
+        <div><h4 class="fund-request-name">{{ solicitud.nombre or solicitud.folio }}</h4><div class="fund-request-meta"><span>{{ solicitud.folio }}</span><span>•</span><span>{{ solicitud.proyecto or "Sin proyecto" }}</span><span>•</span><span>{{ solicitud.solicitante or "Sin solicitante" }}</span>{% if solicitud.fecha %}<span>•</span><span>{{ solicitud.fecha.strftime("%d/%m/%Y") }}</span>{% endif %}</div></div>
+        <div><div class="fund-request-amount">${{ "{:,.2f}".format(solicitud.total or 0) }}</div><span class="fund-status {{ estado_clase(solicitud.estatus) }} mt-2">{{ estado_texto(solicitud.estatus) }}</span></div>
+        <div class="fund-request-actions">
+          {% if solicitud.estatus == "AUTORIZADA" and (can_manage_fondos or solicitud.usuario_id == current_user.id) %}<a class="btn btn-success btn-sm" href="{{ url_for('solicitud_recurso_comprobar', solicitud_id=solicitud.id) }}">Comprobar</a>{% elif solicitud.estatus == "SOLICITADA" and can_manage_fondos %}<a class="btn btn-warning btn-sm" href="{{ url_for('solicitud_recurso_detalle', solicitud_id=solicitud.id) }}">Revisar</a>{% endif %}
+          <a class="btn btn-outline-primary btn-sm" href="{{ url_for('solicitud_recurso_detalle', solicitud_id=solicitud.id) }}">Ver detalle</a>
+          {% if can_manage_fondos %}<form method="post" action="{{ url_for('solicitud_recurso_eliminar', solicitud_id=solicitud.id) }}" class="m-0"><button type="submit" class="btn btn-link btn-sm text-danger px-1" data-confirm-message="¿Eliminar la solicitud {{ solicitud.folio }}? Esta acción no se puede deshacer." aria-label="Eliminar {{ solicitud.folio }}">Eliminar</button></form>{% endif %}
+        </div>
+      </article>
+      {% else %}
+      <div class="fund-empty"><div class="fund-empty-icon" aria-hidden="true">🗂️</div><h4>No encontramos solicitudes</h4><p>{{ 'Prueba con otra búsqueda o filtro.' if q or estatus else 'Cuando pidas dinero, aquí podrás seguir cada paso.' }}</p></div>
+      {% endfor %}
+    </div>
+  </section>
+</main>
 
 <script>
-  const recursosBody = document.querySelector("#recursos-items-table tbody");
-  const recursosAddBtn = document.getElementById("recursos-add-row");
-  const recursosTotal = document.getElementById("recursos-total");
-
-  function money(value) {
-    return Number(value || 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
-  }
-
-  function rowHasData(row) {
-    return ["js-cantidad", "js-descripcion", "js-importe"].some((className) => {
-      const input = row.querySelector("." + className);
-      return input && String(input.value || "").trim() !== "" && String(input.value || "").trim() !== "0";
-    });
-  }
-
-  function rowTotal(row) {
-    const cantidad = Number(row.querySelector(".js-cantidad")?.value || 0);
-    const importe = Number(row.querySelector(".js-importe")?.value || 0);
-    return cantidad * importe;
-  }
-
-  function updatePartidas() {
-    recursosBody.querySelectorAll("tr").forEach((row, idx) => {
-      const partida = row.querySelector(".js-partida");
-      if (partida) partida.textContent = idx + 1;
-    });
-  }
-
+(function () {
+  const rows = document.getElementById("recursos-items");
+  const addButton = document.getElementById("recursos-add-row");
+  const totalOutput = document.getElementById("recursos-total");
+  const form = document.getElementById("solicitud-recursos-form");
+  if (!rows || !addButton || !totalOutput || !form) return;
+  const money = value => Number(value || 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
+  function rowTotal(row) { return Number(row.querySelector(".js-cantidad")?.value || 0) * Number(row.querySelector(".js-importe")?.value || 0); }
   function updateTotal() {
     let total = 0;
-    recursosBody.querySelectorAll("tr").forEach((row) => {
-      const current = rowTotal(row);
-      const totalCell = row.querySelector(".js-total");
-      if (totalCell) totalCell.textContent = money(current);
-      total += current;
-    });
-    recursosTotal.textContent = money(total);
-    updatePartidas();
+    rows.querySelectorAll(".fund-item-row").forEach(row => { const current = rowTotal(row); row.querySelector(".js-total").textContent = money(current); total += current; });
+    totalOutput.textContent = money(total);
   }
-
-  function addRow(focus = true) {
-    const clone = recursosBody.querySelector("tr").cloneNode(true);
-    clone.querySelectorAll("input").forEach((input) => {
-      input.value = input.classList.contains("js-importe") ? "0" : "";
-    });
-    clone.querySelector(".js-total").textContent = money(0);
-    recursosBody.appendChild(clone);
-    wireRow(clone);
-    updateTotal();
-    if (focus) clone.querySelector(".js-cantidad").focus();
-    return clone;
-  }
-
-  function ensureTrailingRow(row) {
-    const rows = Array.from(recursosBody.querySelectorAll("tr"));
-    if (rows[rows.length - 1] === row && rowHasData(row)) addRow(false);
-  }
-
   function wireRow(row) {
-    row.querySelectorAll("input").forEach((input) => {
-      input.addEventListener("input", () => {
-        ensureTrailingRow(row);
-        updateTotal();
-      });
-    });
+    row.querySelectorAll("input").forEach(input => input.addEventListener("input", updateTotal));
     row.querySelector(".js-remove").addEventListener("click", () => {
-      if (recursosBody.querySelectorAll("tr").length > 1) {
-        row.remove();
-        updateTotal();
-      }
+      if (rows.querySelectorAll(".fund-item-row").length > 1) { row.remove(); updateTotal(); }
+      else { row.querySelectorAll("input").forEach(input => { input.value = input.classList.contains("js-importe") ? "0" : ""; }); updateTotal(); row.querySelector(".js-descripcion").focus(); }
     });
   }
-
-  recursosBody.querySelectorAll("tr").forEach(wireRow);
-  recursosAddBtn.addEventListener("click", () => addRow(true));
+  addButton.addEventListener("click", () => {
+    const clone = rows.querySelector(".fund-item-row").cloneNode(true);
+    clone.querySelectorAll("input").forEach(input => { input.value = input.classList.contains("js-importe") ? "0" : ""; });
+    clone.querySelector(".js-total").textContent = money(0); rows.appendChild(clone); wireRow(clone); clone.querySelector(".js-descripcion").focus();
+  });
+  rows.querySelectorAll(".fund-item-row").forEach(wireRow);
+  form.addEventListener("submit", event => {
+    const hasValidItem = Array.from(rows.querySelectorAll(".fund-item-row")).some(row => Number(row.querySelector(".js-cantidad")?.value || 0) > 0 && String(row.querySelector(".js-descripcion")?.value || "").trim() !== "");
+    if (!hasValidItem) { event.preventDefault(); const description = rows.querySelector(".js-descripcion"); description.setCustomValidity("Agrega por lo menos una compra con cantidad y descripción."); description.reportValidity(); description.addEventListener("input", () => description.setCustomValidity(""), { once: true }); }
+  });
   updateTotal();
+})();
 </script>
 {% endblock %}

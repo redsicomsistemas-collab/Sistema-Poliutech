@@ -3,8 +3,49 @@
 
 {% block content %}
 <style>
-  .fondo-card {
+  .proof-page { max-width: 1260px; margin: 0 auto; padding-bottom: 3rem; }
+  .proof-back { color: var(--bs-secondary-color); font-weight: 700; text-decoration: none; }
+  .proof-back:hover { color: var(--bs-primary); }
+  .proof-title { color: var(--bs-emphasis-color); font-size: clamp(1.8rem, 4vw, 2.7rem); font-weight: 850; letter-spacing: -.04em; }
+  .proof-steps {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .75rem;
+    margin-bottom: 1.25rem;
+  }
+  .proof-step {
+    display: flex;
+    align-items: center;
+    gap: .7rem;
+    padding: .85rem 1rem;
     border: 1px solid var(--bs-border-color);
+    border-radius: 14px;
+    background: var(--bs-body-bg);
+    color: var(--bs-emphasis-color);
+    font-weight: 750;
+  }
+  .proof-step span {
+    display: grid;
+    flex: 0 0 34px;
+    width: 34px;
+    height: 34px;
+    place-items: center;
+    border-radius: 50%;
+    background: rgba(var(--bs-primary-rgb), .1);
+    color: var(--bs-primary);
+    font-weight: 850;
+  }
+  .proof-metric { overflow: hidden; border: 1px solid var(--bs-border-color); border-radius: 17px; background: var(--bs-body-bg); }
+  .proof-metric .card-body { position: relative; padding: 1.1rem 1.2rem; }
+  .proof-metric-icon { position: absolute; top: .85rem; right: 1rem; font-size: 1.4rem; opacity: .8; }
+  .proof-form-card { overflow: hidden; border: 1px solid rgba(var(--bs-primary-rgb), .22) !important; border-radius: 19px; }
+  .proof-form-card > .card-header { padding: 1rem 1.2rem; font-size: 1.05rem; }
+  .proof-form-card .form-select, .proof-form-card .form-control { min-height: 44px; border-radius: 10px; }
+  .proof-summary-box { height: 100%; border: 1px solid var(--bs-border-color); border-radius: 12px !important; background: rgba(var(--bs-primary-rgb), .035); }
+  .fondo-card {
+    overflow: hidden;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 16px;
     transition: transform .15s ease, box-shadow .15s ease;
   }
   .fondo-card:hover {
@@ -30,42 +71,53 @@
     border-color: var(--bs-primary);
     color: #fff;
   }
+  @media (max-width: 767.98px) {
+    .proof-steps { grid-template-columns: 1fr; }
+    .proof-step { padding: .7rem .85rem; }
+  }
 </style>
 
+<main class="proof-page">
 <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 my-4">
   <div>
-    <div class="text-uppercase small fw-bold text-muted">Módulo independiente</div>
-    <h2 class="fw-bold text-primary mb-1">Comprobar gastos de fondos</h2>
-    <div class="text-muted">Consulta fondos autorizados y abre cada expediente consolidado para agregar o revisar comprobantes.</div>
+    <a class="proof-back" href="{{ url_for('solicitudes_recursos_index') }}">← Volver a Fondos</a>
+    <h1 class="proof-title mt-2 mb-1">Comprobar un fondo</h1>
+    <div class="text-muted">Registra en qué usaste el dinero y manda el comprobante a revisión.</div>
   </div>
-  <a href="{{ url_for('gastos_viaticos_index') }}" class="btn btn-outline-secondary">Ir a gastos individuales</a>
+  <a href="{{ url_for('gastos_viaticos_index') }}" class="btn btn-outline-secondary">Ver todos los gastos</a>
+</div>
+
+<div class="proof-steps" aria-label="Pasos para comprobar un fondo">
+  <div class="proof-step"><span>1</span> Elige el fondo</div>
+  <div class="proof-step"><span>2</span> Captura el ticket o factura</div>
+  <div class="proof-step"><span>3</span> Envía a revisión</div>
 </div>
 
 <div class="row g-3 mb-4">
   <div class="col-md-4">
-    <div class="card border-0 shadow-sm h-100"><div class="card-body">
-      <div class="small text-muted">Fondos autorizados</div>
-      <div class="h3 fw-bold text-success fondo-money mb-0">+${{ "{:,.2f}".format(total_fondos or 0) }}</div>
+    <div class="card proof-metric h-100"><div class="card-body"><span class="proof-metric-icon" aria-hidden="true">💰</span>
+      <div class="small text-muted">Dinero recibido</div>
+      <div class="h3 fw-bold text-success fondo-money mb-0">${{ "{:,.2f}".format(total_fondos or 0) }}</div>
     </div></div>
   </div>
   <div class="col-md-4">
-    <div class="card border-0 shadow-sm h-100"><div class="card-body">
-      <div class="small text-muted">Gastos comprobados</div>
-      <div class="h3 fw-bold text-primary fondo-money mb-0">-${{ "{:,.2f}".format(total_comprobado or 0) }}</div>
+    <div class="card proof-metric h-100"><div class="card-body"><span class="proof-metric-icon" aria-hidden="true">✓</span>
+      <div class="small text-muted">Ya comprobaste</div>
+      <div class="h3 fw-bold text-primary fondo-money mb-0">${{ "{:,.2f}".format(total_comprobado or 0) }}</div>
     </div></div>
   </div>
   <div class="col-md-4">
-    <div class="card border-0 shadow-sm h-100"><div class="card-body">
-      <div class="small text-muted">Saldo por comprobar</div>
+    <div class="card proof-metric h-100"><div class="card-body"><span class="proof-metric-icon" aria-hidden="true">🧾</span>
+      <div class="small text-muted">Te falta comprobar</div>
       <div class="h3 fw-bold {{ 'text-success' if (total_saldo or 0) >= 0 else 'text-danger' }} fondo-money mb-0">
-        {{ '+' if (total_saldo or 0) >= 0 else '-' }}${{ "{:,.2f}".format((total_saldo or 0)|abs) }}
+        {{ '-' if (total_saldo or 0) < 0 else '' }}${{ "{:,.2f}".format((total_saldo or 0)|abs) }}
       </div>
     </div></div>
   </div>
 </div>
 
-<div class="card border-0 shadow-sm mb-4">
-  <div class="card-header bg-primary text-white fw-bold">Capturar gastos del fondo</div>
+<div class="card proof-form-card shadow-sm mb-4">
+  <div class="card-header bg-primary text-white fw-bold">1. Elige el fondo y captura el gasto</div>
   <div class="card-body">
     <form method="post" action="{{ url_for('gastos_viaticos_crear') }}" enctype="multipart/form-data" id="comprobarFondosForm">
       <input type="hidden" name="origen" value="comprobar_fondos">
@@ -78,9 +130,9 @@
 
       <div class="row g-3 align-items-end mb-3">
         <div class="col-lg-7">
-          <label class="form-label fw-bold">Solicitud de fondos</label>
+          <label class="form-label fw-bold">¿De qué fondo salió este gasto?</label>
           <select name="solicitud_recurso_id" id="fondoSolicitud" class="form-select" required>
-            <option value="">Selecciona una solicitud autorizada</option>
+            <option value="">Selecciona el fondo</option>
             {% for solicitud in solicitudes_saldo %}
             <option
               value="{{ solicitud.id }}"
@@ -94,35 +146,35 @@
             >{{ solicitud.nombre }} · {{ solicitud.folio }} · ${{ "{:,.2f}".format(solicitud.aprobado or 0) }}</option>
             {% endfor %}
           </select>
-          <div class="form-text">El gasto quedará ligado a esta solicitud para calcular su saldo.</div>
+          <div class="form-text">Al elegirlo verás cuánto recibiste, cuánto llevas comprobado y cuánto queda.</div>
         </div>
         <div class="col-lg-5">
           <div class="form-check form-switch border rounded p-3 ps-5">
             <input class="form-check-input" type="checkbox" id="compraAgrupada">
-            <label class="form-check-label fw-bold" for="compraAgrupada">COMPRA AGRUPADA</label>
-            <div class="small text-muted">Actívala para capturar y enviar varios gastos juntos.</div>
+            <label class="form-check-label fw-bold" for="compraAgrupada">Voy a capturar varios tickets</label>
+            <div class="small text-muted">Actívalo para agregar más de un gasto antes de enviar.</div>
           </div>
         </div>
       </div>
 
       <div id="fondoResumen" class="row g-2 mb-3 d-none">
-        <div class="col-6 col-lg-3"><div class="border rounded p-2"><span class="small text-muted d-block">Autorizado</span><strong class="text-success" id="resumenAprobado">$0.00</strong></div></div>
-        <div class="col-6 col-lg-3"><div class="border rounded p-2"><span class="small text-muted d-block">Comprobado</span><strong id="resumenComprobado">$0.00</strong></div></div>
-        <div class="col-6 col-lg-3"><div class="border rounded p-2"><span class="small text-muted d-block">Pendiente revisión</span><strong class="text-warning" id="resumenPendiente">$0.00</strong></div></div>
-        <div class="col-6 col-lg-3"><div class="border rounded p-2"><span class="small text-muted d-block">Saldo</span><strong id="resumenSaldo">$0.00</strong></div></div>
-        <div class="col-12"><div class="alert alert-light border mb-0 py-2"><strong>Partidas solicitadas:</strong> <span id="resumenPartidas">—</span></div></div>
+        <div class="col-6 col-lg-3"><div class="proof-summary-box p-2"><span class="small text-muted d-block">Recibiste</span><strong class="text-success" id="resumenAprobado">$0.00</strong></div></div>
+        <div class="col-6 col-lg-3"><div class="proof-summary-box p-2"><span class="small text-muted d-block">Ya comprobaste</span><strong id="resumenComprobado">$0.00</strong></div></div>
+        <div class="col-6 col-lg-3"><div class="proof-summary-box p-2"><span class="small text-muted d-block">En revisión</span><strong class="text-warning" id="resumenPendiente">$0.00</strong></div></div>
+        <div class="col-6 col-lg-3"><div class="proof-summary-box p-2"><span class="small text-muted d-block">Disponible</span><strong id="resumenSaldo">$0.00</strong></div></div>
+        <div class="col-12"><div class="alert alert-light border mb-0 py-2"><strong>El dinero se pidió para:</strong> <span id="resumenPartidas">—</span></div></div>
       </div>
 
       <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
-        <div class="fw-bold">Gasto(s) a comprobar</div>
-        <button type="button" class="btn btn-outline-primary btn-sm d-none" id="agregarGastoFondo">Agregar otro gasto</button>
+        <div class="fw-bold">2. Captura el ticket o factura</div>
+        <button type="button" class="btn btn-outline-primary btn-sm d-none" id="agregarGastoFondo">＋ Agregar otro ticket</button>
       </div>
       <div class="table-responsive border rounded mb-3">
         <table class="table table-sm align-middle mb-0">
           <thead class="table-light">
             <tr>
-              <th>Tipo</th><th>Proveedor</th><th style="min-width:220px">Concepto</th><th>Fecha</th>
-              <th>Subtotal</th><th>IVA</th><th>Total</th><th>Comprobante</th><th></th>
+              <th>Tipo</th><th>¿A quién pagaste?</th><th style="min-width:220px">¿Qué compraste?</th><th>Fecha del ticket</th>
+              <th>Antes de IVA</th><th>IVA</th><th>Total</th><th>Ticket o factura</th><th></th>
             </tr>
           </thead>
           <tbody id="gastosFondoRows">
@@ -144,18 +196,18 @@
         </table>
       </div>
       <div class="alert alert-info py-2">
-        <strong>Guardar</strong> conserva los gastos sin notificar. <strong>Enviar</strong> los manda a revisión; si es compra agrupada, enviará juntos todos los gastos pendientes de esa solicitud.
+        Si todavía te falta información, usa <strong>Guardar borrador</strong>. Cuando todo esté listo, usa <strong>Enviar a revisión</strong>.
       </div>
       <div class="d-flex flex-column flex-sm-row justify-content-end gap-2">
-        <button class="btn btn-outline-primary" name="accion" value="guardar">Guardar sin enviar</button>
-        <button class="btn btn-success" name="accion" value="enviar">Enviar a revisión</button>
+        <button class="btn btn-outline-primary" name="accion" value="guardar">Guardar borrador</button>
+        <button class="btn btn-success" name="accion" value="enviar">3. Enviar a revisión →</button>
       </div>
     </form>
   </div>
 </div>
 
 <div class="card border-0 shadow-sm mb-4">
-  <div class="card-header bg-primary text-white fw-bold">Fondos autorizados por comprobar</div>
+  <div class="card-header bg-primary text-white fw-bold">Elige un fondo para continuar</div>
   <div class="card-body">
     <div class="row g-3">
       {% for solicitud in solicitudes_saldo %}
@@ -169,21 +221,21 @@
                 <div class="small fw-semibold">{{ solicitud.proyecto }}</div>
                 <div class="small text-muted">{{ solicitud.solicitante or "Sin solicitante" }}</div>
               </div>
-              <span class="badge bg-success align-self-start">AUTORIZADO</span>
+              <span class="badge bg-success align-self-start">Listo para comprobar</span>
             </div>
             <div class="row g-2 small">
-              <div class="col-4"><span class="text-muted d-block">Aprobado</span><strong class="text-success">${{ "{:,.2f}".format(solicitud.aprobado or 0) }}</strong></div>
-              <div class="col-4"><span class="text-muted d-block">Comprobado</span><strong>${{ "{:,.2f}".format(solicitud.comprobado or 0) }}</strong></div>
-              <div class="col-4"><span class="text-muted d-block">Saldo</span><strong class="{{ 'text-success' if (solicitud.saldo or 0) >= 0 else 'text-danger' }}">${{ "{:,.2f}".format(solicitud.saldo or 0) }}</strong></div>
+              <div class="col-4"><span class="text-muted d-block">Recibiste</span><strong class="text-success">${{ "{:,.2f}".format(solicitud.aprobado or 0) }}</strong></div>
+              <div class="col-4"><span class="text-muted d-block">Comprobaste</span><strong>${{ "{:,.2f}".format(solicitud.comprobado or 0) }}</strong></div>
+              <div class="col-4"><span class="text-muted d-block">Disponible</span><strong class="{{ 'text-success' if (solicitud.saldo or 0) >= 0 else 'text-danger' }}">${{ "{:,.2f}".format(solicitud.saldo or 0) }}</strong></div>
             </div>
             <a class="btn btn-primary w-100 mt-auto" href="{{ url_for('solicitud_recurso_comprobar', solicitud_id=solicitud.id) }}">
-              {{ "Continuar comprobación" if solicitud.movimientos else "Comenzar comprobación" }}
+              {{ "Agregar otro comprobante" if solicitud.movimientos else "Agregar primer comprobante" }}
             </a>
           </div>
         </div>
       </div>
       {% else %}
-      <div class="col-12"><div class="text-center text-muted py-4">No hay fondos autorizados pendientes de comprobación.</div></div>
+      <div class="col-12"><div class="text-center py-4"><div class="fs-2 mb-2" aria-hidden="true">✓</div><div class="fw-bold">No tienes fondos pendientes</div><div class="text-muted">Cuando se autorice uno, aparecerá aquí.</div><a class="btn btn-outline-primary mt-3" href="{{ url_for('solicitudes_recursos_index', nueva=1) }}">Pedir dinero</a></div></div>
       {% endfor %}
     </div>
   </div>
@@ -193,8 +245,8 @@
   <div class="card-header bg-light">
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
       <div>
-        <div class="fw-bold">Expedientes consolidados</div>
-        <div class="small text-muted">Cada tarjeta abre todos los movimientos y comprobantes del grupo.</div>
+        <div class="fw-bold">Comprobantes enviados</div>
+        <div class="small text-muted">Consulta qué está pendiente, en revisión o terminado.</div>
       </div>
       {% if is_admin_gastos and grupos %}
       <form id="bulkDeleteGroups" method="post" action="{{ url_for('comprobar_gastos_fondos_grupos_eliminar') }}" onsubmit="return confirmarEliminacionMultiple();">
@@ -354,6 +406,7 @@
     </div>
   </div>
 </div>
+</main>
 <script>
 (function () {
   const tabs = Array.from(document.querySelectorAll("[data-expediente-filtro]"));

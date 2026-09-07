@@ -1,49 +1,54 @@
 {% extends "base.html" %}
-{% block title %}Estado de cuenta de fondos{% endblock %}
+{% block title %}Saldos de fondos{% endblock %}
 
 {% block content %}
 <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 my-4">
   <div>
-    <h2 class="fw-bold text-primary mb-1">Estado de cuenta de fondos</h2>
-    <div class="text-muted">Dinero autorizado, comprobado y pendiente por usuario.</div>
+    <a class="text-decoration-none fw-semibold text-muted" href="{{ url_for('solicitudes_recursos_index') }}">← Volver a Fondos</a>
+    <h2 class="fw-bold text-primary mb-1 mt-2">Saldos del equipo</h2>
+    <div class="text-muted">Ve rápidamente quién ya comprobó y quién todavía tiene dinero pendiente.</div>
   </div>
-  <a class="btn btn-outline-secondary" href="{{ url_for('gastos_viaticos_index') }}">Volver a gastos</a>
+  <a class="btn btn-outline-primary" href="{{ url_for('comprobar_gastos_fondos') }}">Ir a comprobaciones</a>
 </div>
 
 <div class="row g-3 mb-4">
   <div class="col-md-4">
     <div class="card border-0 shadow-sm h-100"><div class="card-body">
-      <div class="text-muted small">Dinero enviado</div>
+      <div class="text-muted small">Dinero entregado</div>
       <div class="h3 fw-bold text-primary mb-0">${{ "{:,.2f}".format(total_enviado or 0) }}</div>
     </div></div>
   </div>
   <div class="col-md-4">
     <div class="card border-0 shadow-sm h-100"><div class="card-body">
-      <div class="text-muted small">Comprobado autorizado</div>
+      <div class="text-muted small">Ya comprobado</div>
       <div class="h3 fw-bold text-success mb-0">${{ "{:,.2f}".format(total_comprobado or 0) }}</div>
     </div></div>
   </div>
   <div class="col-md-4">
     <div class="card border-0 shadow-sm h-100"><div class="card-body">
-      <div class="text-muted small">Saldo pendiente</div>
+      <div class="text-muted small">Falta comprobar</div>
       <div class="h3 fw-bold {% if total_saldo > 0 %}text-danger{% else %}text-success{% endif %} mb-0">${{ "{:,.2f}".format(total_saldo or 0) }}</div>
     </div></div>
   </div>
 </div>
 
 <div class="card border-0 shadow-sm">
-  <div class="card-header bg-light fw-bold">Usuarios</div>
+  <div class="card-header bg-light">
+    <div class="fw-bold">Saldo por persona</div>
+    <div class="small text-muted">La barra muestra qué porcentaje del dinero entregado ya fue comprobado.</div>
+  </div>
   <div class="card-body p-0">
     <div class="table-responsive">
       <table class="table table-hover align-middle mb-0">
         <thead>
           <tr>
-            <th>Usuario</th>
-            <th class="text-end">Enviado</th>
+            <th>Responsable</th>
+            <th class="text-end">Entregado</th>
             <th class="text-end">Comprobado</th>
-            <th class="text-end">Debe</th>
-            <th>Movimientos</th>
-            <th>Ultimo movimiento</th>
+            <th style="min-width:190px">Avance</th>
+            <th class="text-end">Falta comprobar</th>
+            <th>Actividad</th>
+            <th>Último movimiento</th>
             <th></th>
           </tr>
         </thead>
@@ -56,18 +61,23 @@
             </td>
             <td class="text-end fw-bold">${{ "{:,.2f}".format(usuario.enviado or 0) }}</td>
             <td class="text-end fw-bold text-success">${{ "{:,.2f}".format(usuario.comprobado or 0) }}</td>
+            {% set avance = ([((usuario.comprobado or 0) / (usuario.enviado or 1) * 100), 100]|min) if (usuario.enviado or 0) > 0 else 0 %}
+            <td>
+              <div class="d-flex justify-content-between small mb-1"><span class="text-muted">Comprobado</span><strong>{{ "{:.0f}".format(avance) }}%</strong></div>
+              <div class="progress" role="progressbar" aria-label="Avance de {{ usuario.nombre }}" aria-valuenow="{{ avance }}" aria-valuemin="0" aria-valuemax="100" style="height:9px"><div class="progress-bar bg-success" style="width:{{ avance }}%"></div></div>
+            </td>
             <td class="text-end fw-bold {% if usuario.saldo > 0 %}text-danger{% else %}text-success{% endif %}">${{ "{:,.2f}".format(usuario.saldo or 0) }}</td>
             <td>
               <div>{{ usuario.recursos_count }} fondo(s)</div>
-              <div class="small text-muted">{{ usuario.comprobaciones_count }} comprobacion(es)</div>
+              <div class="small text-muted">{{ usuario.comprobaciones_count }} comprobante(s)</div>
             </td>
             <td>{{ usuario.ultimo.strftime("%d/%m/%Y") if usuario.ultimo else "-" }}</td>
             <td class="text-end">
-              <a class="btn btn-sm btn-outline-primary" href="{{ url_for('estado_cuenta_recursos_detalle', user_key=usuario.key) }}">Detalle</a>
+              <a class="btn btn-sm btn-outline-primary" href="{{ url_for('estado_cuenta_recursos_detalle', user_key=usuario.key) }}">Ver movimientos</a>
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="7" class="text-center text-muted py-4">Todavía no hay fondos autorizados ni comprobaciones aprobadas.</td></tr>
+          <tr><td colspan="8" class="text-center text-muted py-4">Todavía no hay fondos autorizados ni comprobantes aprobados.</td></tr>
           {% endfor %}
         </tbody>
       </table>
