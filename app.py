@@ -13603,6 +13603,13 @@ def _solicitud_recurso_recalcular(solicitud: SolicitudRecurso) -> None:
     solicitud.actualizado_en = now_cdmx_naive()
 
 
+def _solicitud_recurso_can_edit(solicitud: SolicitudRecurso) -> bool:
+    """Una solicitud pendiente puede corregirse antes de que produzca movimientos financieros."""
+    if (solicitud.estatus or "").strip().upper() != "SOLICITADA":
+        return False
+    return is_hansel_or_admin() or solicitud.usuario_id == getattr(current_user, "id", None)
+
+
 def _mobile_push_user_ids_for_hansel_only() -> list[int]:
     hansel_aliases = {"hansel", "hansel alejandro", "hansel angel", "hansel ángel"}
     hansel_emails = {"hjaramillo@poliutech.com"}
@@ -17613,7 +17620,94 @@ def solicitud_recurso_detalle(solicitud_id: int):
         ),
         estatus_options=SOLICITUD_RECURSO_ESTATUS,
         can_manage_fondos=is_hansel_or_admin(),
+        can_edit_solicitud=_solicitud_recurso_can_edit(solicitud),
+        project_options=_known_project_names(),
     )
+
+
+@app.route("/solicitudes-recursos/<int:solicitud_id>/editar", methods=["POST"])
+@login_required
+def solicitud_recurso_editar(solicitud_id: int):
+    solicitud = SolicitudRecurso.query.get_or_404(solicitud_id)
+    detail_url = url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id)
+    edit_url = f"{detail_url}?editar=1#editarSolicitud"
+    if (solicitud.estatus or "").strip().upper() != "SOLICITADA":
+        flash("Solo se puede editar una solicitud mientras espera autorización.", "warning")
+        return redirect(detail_url)
+    if not _solicitud_recurso_can_edit(solicitud):
+        abort(403)
+
+    f = request.form
+    nombre = (f.get("nombre") or "").strip()
+    proyecto = (f.get("proyecto") or "").strip()
+    solicitante = (f.get("solicitante") or "").strip()
+    fecha_raw = (f.get("fecha") or "").strip()
+    if not nombre:
+        flash("Asigna un nombre a la solicitud de fondos.", "warning")
+        return redirect(edit_url)
+    if not proyecto:
+        flash("Selecciona o captura el proyecto de la solicitud.", "warning")
+        return redirect(edit_url)
+    if not solicitante:
+        flash("Indica quién solicita el fondo.", "warning")
+        return redirect(edit_url)
+    try:
+        fecha = datetime.fromisoformat(fecha_raw)
+    except ValueError:
+        flash("Captura una fecha y hora válidas para la solicitud.", "warning")
+        return redirect(edit_url)
+
+    nombre_repetido = SolicitudRecurso.query.filter(
+        SolicitudRecurso.id != solicitud.id,
+        db.func.lower(db.func.trim(SolicitudRecurso.nombre)) == nombre.lower(),
+    ).first()
+    if nombre_repetido:
+        flash(f"Ya existe una solicitud llamada '{nombre}'. Usa un nombre diferente.", "warning")
+        return redirect(edit_url)
+
+    cantidades = f.getlist("cantidad[]")
+    conceptos = f.getlist("descripcion[]") or f.getlist("concepto[]")
+    importes = f.getlist("importe[]")
+    parsed_rows: list[tuple[float, str, float]] = []
+    total_rows = max(len(cantidades), len(conceptos), len(importes))
+    for idx in range(total_rows):
+        raw_cantidad = cantidades[idx] if idx < len(cantidades) else ""
+        concepto = (conceptos[idx] if idx < len(conceptos) else "").strip()
+        raw_importe = importes[idx] if idx < len(importes) else ""
+        if not (str(raw_cantidad).strip() or concepto or str(raw_importe).strip()):
+            continue
+        cantidad = parse_float(raw_cantidad, 0)
+        importe = parse_float(raw_importe, -1)
+        if not concepto or cantidad <= 0 or importe < 0:
+            flash("Cada partida debe tener descripción, cantidad mayor a cero e importe válido.", "warning")
+            return redirect(edit_url)
+        parsed_rows.append((fmt(cantidad), concepto, fmt(importe)))
+    if not parsed_rows:
+        flash("Agrega al menos una partida a la solicitud.", "warning")
+        return redirect(edit_url)
+
+    solicitud.nombre = nombre
+    solicitud.proyecto = proyecto
+    solicitud.solicitante = solicitante
+    solicitud.fecha = fecha
+    solicitud.notas = (f.get("notas") or "").strip() or None
+    solicitud.partidas.clear()
+    for cantidad, concepto, importe in parsed_rows:
+        solicitud.partidas.append(SolicitudRecursoPartida(
+            cantidad=cantidad,
+            concepto=concepto,
+            importe=importe,
+            total=fmt(cantidad * importe),
+        ))
+    _solicitud_recurso_recalcular(solicitud)
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        flash(f"Ya existe una solicitud llamada '{nombre}'. Usa un nombre diferente.", "warning")
+        return redirect(edit_url)
+    flash(f"Solicitud {solicitud.folio} actualizada. El nuevo total es ${solicitud.total:,.2f}.", "success")
+    return redirect(detail_url)
 
 
 @app.route("/solicitudes-recursos/<int:solicitud_id>/comprobar")

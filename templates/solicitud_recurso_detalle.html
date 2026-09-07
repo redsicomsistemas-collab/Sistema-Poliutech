@@ -31,6 +31,7 @@
   .fund-detail-folio { color: var(--fd-muted); font-size: .86rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
   .fund-detail-title { max-width: 720px; margin: .4rem 0 0; color: var(--fd-ink); font-size: clamp(1.7rem, 4vw, 2.55rem); font-weight: 850; letter-spacing: -.04em; line-height: 1.08; }
   .fund-detail-project { margin-top: .65rem; color: var(--fd-muted); font-size: 1rem; }
+  .fund-detail-side { display: flex; flex-direction: column; align-items: flex-end; gap: .7rem; }
   .fund-detail-amount { color: var(--fd-ink); font-size: clamp(1.7rem, 4vw, 2.5rem); font-weight: 850; letter-spacing: -.04em; text-align: right; white-space: nowrap; }
   .fund-detail-amount small { display: block; margin-bottom: .2rem; color: var(--fd-muted); font-size: .78rem; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
   .fd-status { display: inline-flex; align-items: center; gap: .45rem; margin-top: .65rem; border-radius: 999px; padding: .48rem .72rem; font-size: .86rem; font-weight: 800; }
@@ -96,8 +97,17 @@
   .fd-advanced-body { padding: 0 1rem 1rem; }
   .fd-advanced .card { margin-bottom: 0 !important; box-shadow: none !important; }
   .fd-admin-form { display: grid; grid-template-columns: minmax(180px, .7fr) minmax(260px, 1.3fr) auto; gap: .75rem; align-items: end; }
+  .fd-edit-panel { margin: 1rem 0; padding: clamp(1rem, 3vw, 1.5rem); border: 1px solid rgba(var(--bs-primary-rgb), .25); border-radius: 18px; background: var(--fd-surface); box-shadow: 0 12px 30px rgba(15,23,42,.07); }
+  .fd-edit-panel h2 { margin: 0; color: var(--fd-ink); font-size: 1.25rem; font-weight: 850; }
+  .fd-edit-items-head, .fd-edit-row { display: grid; grid-template-columns: 110px minmax(240px, 1fr) 155px 135px 44px; gap: .65rem; align-items: center; }
+  .fd-edit-items-head { margin-top: .9rem; padding: 0 .1rem .4rem; color: var(--fd-muted); font-size: .76rem; font-weight: 800; text-transform: uppercase; }
+  .fd-edit-row { padding: .7rem; border: 1px solid var(--fd-line); border-radius: 13px; background: rgba(var(--bs-primary-rgb), .025); }
+  .fd-edit-row + .fd-edit-row { margin-top: .6rem; }
+  .fd-edit-subtotal { text-align: right; color: var(--fd-ink); font-weight: 850; white-space: nowrap; }
+  .fd-edit-total { display: flex; justify-content: flex-end; gap: 1rem; margin-top: .9rem; font-size: 1.05rem; font-weight: 850; }
   @media (max-width: 767.98px) {
     .fund-detail-head, .fund-next { align-items: stretch; flex-direction: column; }
+    .fund-detail-side { align-items: stretch; }
     .fund-detail-amount { text-align: left; }
     .fund-timeline { grid-template-columns: 1fr; gap: .8rem; }
     .fund-timeline-step:not(:last-child)::after { top: 36px; bottom: -.8rem; left: 17px; right: auto; width: 2px; height: auto; }
@@ -107,6 +117,13 @@
     .fund-decision-actions .btn, .fund-decision-actions form { flex: 1; }
     .fund-decision-actions form .btn { width: 100%; }
     .fd-admin-form { grid-template-columns: 1fr; }
+    .fd-edit-items-head { display: none; }
+    .fd-edit-row { grid-template-columns: 1fr 1fr; }
+    .fd-edit-row .fd-edit-description { grid-column: 1 / -1; grid-row: 1; }
+    .fd-edit-row .js-edit-quantity { grid-column: 1; grid-row: 2; }
+    .fd-edit-row .js-edit-price { grid-column: 2; grid-row: 2; }
+    .fd-edit-subtotal { grid-column: 1; grid-row: 3; text-align: left; }
+    .fd-edit-row .js-edit-remove { grid-column: 2; grid-row: 3; justify-self: end; }
   }
 </style>
 
@@ -123,8 +140,42 @@
       {% elif estado == 'ENTREGADA' %}<span class="fd-status fd-status--delivered">Dinero entregado</span>
       {% else %}<span class="fd-status fd-status--muted">{{ estado|title }}</span>{% endif %}
     </div>
-    <div class="fund-detail-amount"><small>Total solicitado</small>${{ "{:,.2f}".format(solicitud.total or 0) }}</div>
+    <div class="fund-detail-side">
+      <div class="fund-detail-amount"><small>Total solicitado</small>${{ "{:,.2f}".format(solicitud.total or 0) }}</div>
+      {% if can_edit_solicitud %}<button class="btn btn-outline-primary fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#editarSolicitud" aria-expanded="{{ 'true' if request.args.get('editar') == '1' else 'false' }}">✎ Editar solicitud</button>{% endif %}
+    </div>
   </header>
+
+  {% if can_edit_solicitud %}
+  <section class="collapse {{ 'show' if request.args.get('editar') == '1' else '' }}" id="editarSolicitud">
+    <form method="post" action="{{ url_for('solicitud_recurso_editar', solicitud_id=solicitud.id) }}" class="fd-edit-panel" id="editarSolicitudForm">
+      <div class="d-flex justify-content-between align-items-start gap-3 mb-3"><div><h2>Editar solicitud</h2><div class="text-muted small mt-1">Puedes corregirla mientras siga esperando autorización.</div></div><button class="btn-close" type="button" data-bs-toggle="collapse" data-bs-target="#editarSolicitud" aria-label="Cerrar edición"></button></div>
+      <div class="row g-3">
+        <div class="col-lg-6"><label class="form-label fw-bold" for="editarFondoNombre">Nombre del fondo *</label><input class="form-control" id="editarFondoNombre" name="nombre" maxlength="180" value="{{ solicitud.nombre or '' }}" required></div>
+        <div class="col-lg-6"><label class="form-label fw-bold" for="editarFondoProyecto">Proyecto u obra *</label><input class="form-control" id="editarFondoProyecto" name="proyecto" maxlength="200" list="editarProyectosRecursos" value="{{ solicitud.proyecto or '' }}" required><datalist id="editarProyectosRecursos">{% for proyecto in project_options %}<option value="{{ proyecto }}"></option>{% endfor %}</datalist></div>
+        <div class="col-lg-6"><label class="form-label fw-bold" for="editarFondoSolicitante">Solicitante *</label><input class="form-control" id="editarFondoSolicitante" name="solicitante" maxlength="120" value="{{ solicitud.solicitante or '' }}" required></div>
+        <div class="col-lg-6"><label class="form-label fw-bold" for="editarFondoFecha">Fecha y hora *</label><input class="form-control" id="editarFondoFecha" name="fecha" type="datetime-local" value="{{ solicitud.fecha.strftime('%Y-%m-%dT%H:%M') if solicitud.fecha else '' }}" required></div>
+        <div class="col-12"><label class="form-label fw-bold" for="editarFondoNotas">Notas</label><textarea class="form-control" id="editarFondoNotas" name="notas" rows="2">{{ solicitud.notas or '' }}</textarea></div>
+      </div>
+      <div class="mt-4"><div class="fw-bold">Partidas solicitadas *</div><div class="text-muted small">Modifica conceptos, cantidades o precios; el total se recalcula automáticamente.</div></div>
+      <div class="fd-edit-items-head" aria-hidden="true"><span>Cantidad</span><span>Descripción</span><span>Precio unitario</span><span>Subtotal</span><span></span></div>
+      <div id="editarSolicitudPartidas">
+        {% for partida in solicitud.partidas %}
+        <div class="fd-edit-row">
+          <input class="form-control js-edit-quantity" type="number" name="cantidad[]" min="0.01" step="any" value="{{ partida.cantidad or 0 }}" aria-label="Cantidad" required>
+          <input class="form-control fd-edit-description" name="descripcion[]" maxlength="360" value="{{ partida.concepto }}" aria-label="Descripción" required>
+          <input class="form-control js-edit-price" type="number" name="importe[]" min="0" step="any" value="{{ partida.importe or 0 }}" aria-label="Precio unitario" required>
+          <div class="fd-edit-subtotal js-edit-subtotal">${{ "{:,.2f}".format(partida.total or 0) }}</div>
+          <button class="btn btn-outline-danger js-edit-remove" type="button" title="Quitar partida" aria-label="Quitar partida">×</button>
+        </div>
+        {% endfor %}
+      </div>
+      <button class="btn btn-outline-primary mt-3" id="agregarPartidaEdicion" type="button">＋ Agregar partida</button>
+      <div class="fd-edit-total"><span>Nuevo total:</span><span id="totalEdicionSolicitud">${{ "{:,.2f}".format(solicitud.total or 0) }}</span></div>
+      <div class="d-flex flex-wrap justify-content-end gap-2 mt-4"><button class="btn btn-light" type="button" data-bs-toggle="collapse" data-bs-target="#editarSolicitud">Cancelar</button><button class="btn btn-primary" type="submit">Guardar cambios</button></div>
+    </form>
+  </section>
+  {% endif %}
 
   <section class="fund-timeline" aria-label="Avance de la solicitud">
     {% for numero, etiqueta in [(1, 'Solicitud enviada'), (2, 'Autorización'), (3, 'Dinero disponible'), (4, 'Comprobación')] %}
@@ -166,6 +217,45 @@
   {% if can_manage_fondos and estado != 'SOLICITADA' %}
   <details class="fd-advanced"><summary>Administrar estado manualmente</summary><div class="fd-advanced-body"><form method="post" action="{{ url_for('solicitud_recurso_estatus', solicitud_id=solicitud.id) }}" class="fd-admin-form"><div><label class="form-label fw-bold">Estado</label><select name="estatus" class="form-select" id="estadoManual">{% for item in estatus_options %}<option value="{{ item }}" {% if estado == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></div><div><label class="form-label fw-bold">Motivo si se rechaza</label><textarea name="motivo_rechazo" class="form-control" rows="2" id="motivoManual">{{ solicitud.motivo_rechazo or '' }}</textarea></div><button class="btn btn-primary">Guardar cambio</button></form></div></details>
   <script>(() => { const status = document.getElementById('estadoManual'); const reason = document.getElementById('motivoManual'); const sync = () => { if (reason) reason.required = status?.value === 'RECHAZADA'; }; status?.addEventListener('change', sync); sync(); })();</script>
+  {% endif %}
+  {% if can_edit_solicitud %}
+  <script>
+  (() => {
+    const form = document.getElementById("editarSolicitudForm");
+    const rows = document.getElementById("editarSolicitudPartidas");
+    const addButton = document.getElementById("agregarPartidaEdicion");
+    const totalOutput = document.getElementById("totalEdicionSolicitud");
+    if (!form || !rows || !addButton || !totalOutput) return;
+    const money = value => Number(value || 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
+    const refresh = () => {
+      let total = 0;
+      const currentRows = [...rows.querySelectorAll(".fd-edit-row")];
+      currentRows.forEach(row => {
+        const subtotal = Number(row.querySelector(".js-edit-quantity")?.value || 0) * Number(row.querySelector(".js-edit-price")?.value || 0);
+        row.querySelector(".js-edit-subtotal").textContent = money(subtotal);
+        total += subtotal;
+      });
+      currentRows.forEach(row => { row.querySelector(".js-edit-remove").disabled = currentRows.length === 1; });
+      totalOutput.textContent = money(total);
+    };
+    rows.addEventListener("input", refresh);
+    rows.addEventListener("click", event => {
+      const removeButton = event.target.closest(".js-edit-remove");
+      if (!removeButton || rows.querySelectorAll(".fd-edit-row").length <= 1) return;
+      removeButton.closest(".fd-edit-row")?.remove();
+      refresh();
+    });
+    addButton.addEventListener("click", () => {
+      const row = document.createElement("div");
+      row.className = "fd-edit-row";
+      row.innerHTML = '<input class="form-control js-edit-quantity" type="number" name="cantidad[]" min="0.01" step="any" value="1" aria-label="Cantidad" required><input class="form-control fd-edit-description" name="descripcion[]" maxlength="360" value="" aria-label="Descripción" placeholder="Descripción de la partida" required><input class="form-control js-edit-price" type="number" name="importe[]" min="0" step="any" value="0" aria-label="Precio unitario" required><div class="fd-edit-subtotal js-edit-subtotal">$0.00</div><button class="btn btn-outline-danger js-edit-remove" type="button" title="Quitar partida" aria-label="Quitar partida">×</button>';
+      rows.appendChild(row);
+      row.querySelector(".fd-edit-description")?.focus();
+      refresh();
+    });
+    refresh();
+  })();
+  </script>
   {% endif %}
 </main>
 {% endblock %}
