@@ -58,16 +58,16 @@
       <div class="card-header bg-primary text-white py-3"><strong>Editar datos del expediente</strong></div>
       <div class="card-body p-4">
         <form method="post" action="{{ url_for('contabilidad.editar', slug=category.slug, record_id=record.id) }}" class="row g-3">
-          {% if category.tipo == 'CLIENTE' and registered_clients %}
+          {% if registered_records %}
           <div class="col-12">
-            <label class="form-label fw-semibold" for="editRegisteredClient">Cliente del directorio</label>
-            <select class="form-select" name="cliente_id" id="editRegisteredClient">
-              <option value="">Sin vincular a un cliente registrado</option>
-              {% for client in registered_clients %}
-              <option value="{{ client.id }}" {{ 'selected' if record.cliente_id == client.id }}>{{ client.nombre_cliente }}{% if client.empresa %} · {{ client.empresa }}{% endif %}{% if client.rfc %} · {{ client.rfc }}{% endif %}</option>
+            <label class="form-label fw-semibold" for="editRegisteredAccountingRecord">Copiar datos de otro registro de Contabilidad</label>
+            <select class="form-select" name="registro_origen_id" id="editRegisteredAccountingRecord">
+              <option value="">Conservar los datos actuales</option>
+              {% for source in registered_records %}
+              <option value="{{ source.id }}">{{ source.label }}</option>
               {% endfor %}
             </select>
-            <div class="form-text">Al cambiar el cliente se reemplazarán los datos de contacto y fiscales con los del directorio.</div>
+            <div class="form-text">Sólo reemplaza la información de identificación y contacto; no modifica monto, proyecto, factura ni fechas.</div>
           </div>
           {% endif %}
           <div class="col-md-6"><label class="form-label fw-semibold">Nombre *</label><input class="form-control" name="nombre" value="{{ record.nombre }}" required></div>
@@ -261,32 +261,23 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 </script>
 {% endif %}
-{% if can_manage and category.tipo == 'CLIENTE' and registered_clients %}
-<script id="registeredClientsEditData" type="application/json">{{ registered_clients|tojson }}</script>
+{% if can_manage and registered_records %}
+<script id="registeredAccountingRecordsEditData" type="application/json">{{ registered_records|tojson }}</script>
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-  const picker = document.getElementById("editRegisteredClient");
+  const picker = document.getElementById("editRegisteredAccountingRecord");
   const form = picker?.closest("form");
   if (!picker || !form) return;
-  const clients = JSON.parse(document.getElementById("registeredClientsEditData")?.textContent || "[]");
-  const byId = new Map(clients.map((client) => [String(client.id), client]));
+  const records = JSON.parse(document.getElementById("registeredAccountingRecordsEditData")?.textContent || "[]");
+  const byId = new Map(records.map((record) => [String(record.id), record]));
   const setField = (name, value) => {
     const field = form.elements.namedItem(name);
     if (field) field.value = value || "";
   };
   picker.addEventListener("change", () => {
-    const client = byId.get(picker.value);
-    if (!client) return;
-    setField("nombre", client.empresa || client.nombre_cliente);
-    setField("razon_social", client.razon_social || client.empresa);
-    setField("rfc", client.rfc);
-    setField("regimen_fiscal", client.regimen_fiscal);
-    setField("codigo_postal_fiscal", client.codigo_postal_fiscal);
-    setField("uso_cfdi", client.uso_cfdi || "G03");
-    setField("contacto", client.nombre_cliente);
-    setField("correo", client.correo);
-    setField("telefono", client.telefono);
-    setField("direccion", client.direccion);
+    const source = byId.get(picker.value);
+    if (!source) return;
+    ["nombre", "razon_social", "rfc", "regimen_fiscal", "codigo_postal_fiscal", "uso_cfdi", "contacto", "correo", "telefono", "direccion", "identificador", "marca", "modelo", "anio", "descripcion"].forEach((field) => setField(field, source[field]));
   });
 });
 </script>

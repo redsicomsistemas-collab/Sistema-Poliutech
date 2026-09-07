@@ -24,11 +24,11 @@ from flask_login import current_user, login_required
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
-from sqlalchemy import func, or_
+from sqlalchemy import or_
 from werkzeug.utils import secure_filename
 
 from contabilidad_access import can_access_contabilidad, can_manage_contabilidad
-from models import Cliente, ContabilidadAbono, ContabilidadDocumento, ContabilidadRegistro, db
+from models import ContabilidadAbono, ContabilidadDocumento, ContabilidadRegistro, db
 
 
 contabilidad_bp = Blueprint("contabilidad", __name__, url_prefix="/contabilidad")
@@ -187,29 +187,66 @@ def _require_manage() -> None:
         abort(403)
 
 
-def _client_payload(client: Cliente) -> dict:
+def _record_payload(record: ContabilidadRegistro) -> dict:
+    detail_parts = []
+    if record.razon_social and record.razon_social.casefold() != record.nombre.casefold():
+        detail_parts.append(record.razon_social)
+    if record.rfc:
+        detail_parts.append(f"RFC {record.rfc}")
+    if record.identificador:
+        detail_parts.append(record.identificador)
+    if record.marca or record.modelo:
+        detail_parts.append(" ".join(item for item in (record.marca, record.modelo) if item))
+    label = " · ".join([record.nombre, *detail_parts])
     return {
-        "id": client.id,
-        "nombre_cliente": (client.nombre_cliente or "").strip(),
-        "empresa": (client.empresa or "").strip(),
-        "razon_social": (client.razon_social or "").strip(),
-        "rfc": (client.rfc or "").strip(),
-        "regimen_fiscal": (client.regimen_fiscal or "").strip(),
-        "codigo_postal_fiscal": (client.codigo_postal_fiscal or "").strip(),
-        "uso_cfdi": (client.uso_cfdi or "G03").strip(),
-        "correo": (client.correo or "").strip(),
-        "telefono": (client.telefono or "").strip(),
-        "direccion": (client.direccion or "").strip(),
+        "id": record.id,
+        "folio": record.folio,
+        "label": label,
+        "nombre": (record.nombre or "").strip(),
+        "razon_social": (record.razon_social or "").strip(),
+        "rfc": (record.rfc or "").strip(),
+        "regimen_fiscal": (record.regimen_fiscal or "").strip(),
+        "codigo_postal_fiscal": (record.codigo_postal_fiscal or "").strip(),
+        "uso_cfdi": (record.uso_cfdi or "").strip(),
+        "contacto": (record.contacto or "").strip(),
+        "correo": (record.correo or "").strip(),
+        "telefono": (record.telefono or "").strip(),
+        "direccion": (record.direccion or "").strip(),
+        "identificador": (record.identificador or "").strip(),
+        "marca": (record.marca or "").strip(),
+        "modelo": (record.modelo or "").strip(),
+        "anio": record.anio or "",
+        "descripcion": (record.descripcion or "").strip(),
     }
 
 
-def _load_registered_clients() -> list[dict]:
-    clients = Cliente.query.order_by(
-        func.lower(Cliente.nombre_cliente).asc(),
-        func.lower(Cliente.empresa).asc(),
-        Cliente.id.asc(),
-    ).all()
-    return [_client_payload(client) for client in clients]
+def _record_identity(record: ContabilidadRegistro) -> str:
+    if record.tipo in {"CLIENTE", "PROVEEDOR"}:
+        value = record.rfc or record.razon_social or record.nombre
+    else:
+        value = record.identificador or record.nombre
+    return (value or str(record.id)).strip().casefold()
+
+
+def _load_registered_records(category: dict, *, exclude_id: int | None = None) -> list[dict]:
+    """Devuelve la versión más reciente de cada entidad registrada en la categoría."""
+    records = (
+        ContabilidadRegistro.query
+        .filter(ContabilidadRegistro.tipo == category["tipo"])
+        .order_by(ContabilidadRegistro.actualizado_en.desc(), ContabilidadRegistro.id.desc())
+        .all()
+    )
+    seen: set[str] = set()
+    result: list[dict] = []
+    for record in records:
+        if exclude_id and record.id == exclude_id:
+            continue
+        identity = _record_identity(record)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        result.append(_record_payload(record))
+    return sorted(result, key=lambda item: item["label"].casefold())
 
 
 def _load_altas(category: dict) -> list[dict]:
@@ -325,27 +362,22 @@ def _files_from_initial_form(category: dict) -> list[tuple[object, str, str]]:
 
 
 def _apply_form(record: ContabilidadRegistro, category: dict) -> None:
-    client = None
-    client_changed = False
-    if category["tipo"] == "CLIENTE":
-        client_id = request.form.get("cliente_id", type=int)
-        if client_id:
-            client = db.session.get(Cliente, client_id)
-            if client is None:
-                raise ValueError("El cliente seleccionado ya no existe en el catálogo.")
-            client_changed = client.id != record.cliente_id
-            record.cliente_id = client.id
+    source_record = None
+    source_id = request.form.get("registro_origen_id", type=int)
+    if source_id:
+        source_record = db.session.get(ContabilidadRegistro, source_id)
+        if source_record is None or source_record.tipo != category["tipo"] or source_record.id == record.id:
+            raise ValueError("El registro anterior seleccionado no es válido para esta categoría.")
+        if category["tipo"] == "CLIENTE":
+            record.cliente_id = source_record.cliente_id
 
-    client_data = _client_payload(client) if client else {}
-
-    def _form_value(field: str, source_field: str | None = None) -> str:
+    def _form_value(field: str) -> str:
         submitted = (request.form.get(field) or "").strip()
-        if submitted or not client or (record.id and not client_changed):
+        if submitted or source_record is None:
             return submitted
-        return str(client_data.get(source_field or field) or "").strip()
+        return str(getattr(source_record, field, "") or "").strip()
 
-    default_name = client_data.get("empresa") or client_data.get("nombre_cliente") or ""
-    name = _form_value("nombre") or default_name
+    name = _form_value("nombre")
     if not name:
         raise ValueError(f"El nombre del {category['singular']} es obligatorio.")
     amount = _money(request.form.get("monto_total"), required=category["financial"])
@@ -361,16 +393,16 @@ def _apply_form(record: ContabilidadRegistro, category: dict) -> None:
     record.regimen_fiscal = _form_value("regimen_fiscal")[:10] or None
     record.codigo_postal_fiscal = _form_value("codigo_postal_fiscal")[:10] or None
     record.uso_cfdi = _form_value("uso_cfdi")[:10].upper() or None
-    record.contacto = _form_value("contacto", "nombre_cliente")[:160] or None
+    record.contacto = _form_value("contacto")[:160] or None
     record.correo = _form_value("correo")[:160] or None
     record.telefono = _form_value("telefono")[:60] or None
     record.direccion = _form_value("direccion")[:300] or None
     record.proyecto = (request.form.get("proyecto") or "").strip()[:200] or None
-    record.identificador = (request.form.get("identificador") or "").strip()[:100] or None
-    record.marca = (request.form.get("marca") or "").strip()[:100] or None
-    record.modelo = (request.form.get("modelo") or "").strip()[:100] or None
-    record.anio = _optional_year(request.form.get("anio"))
-    record.descripcion = (request.form.get("descripcion") or "").strip() or None
+    record.identificador = _form_value("identificador")[:100] or None
+    record.marca = _form_value("marca")[:100] or None
+    record.modelo = _form_value("modelo")[:100] or None
+    record.anio = _optional_year(_form_value("anio"))
+    record.descripcion = _form_value("descripcion") or None
     record.folio_factura = (request.form.get("folio_factura") or "").strip()[:120] or None
     record.monto_total = amount
     record.moneda = (request.form.get("moneda") or "MXN").strip().upper()[:10] or "MXN"
@@ -498,7 +530,7 @@ def registros(slug: str):
         category=category,
         records=records,
         altas=altas,
-        registered_clients=_load_registered_clients() if category["tipo"] == "CLIENTE" else [],
+        registered_records=_load_registered_records(category),
         selected_alta=selected_alta,
         can_manage=_can_manage_records(),
         q=q,
@@ -521,7 +553,7 @@ def detalle(slug: str, record_id: int):
         record=record,
         document_types=DOCUMENT_TYPES,
         documents_by_type=documents_by_type,
-        registered_clients=_load_registered_clients() if category["tipo"] == "CLIENTE" else [],
+        registered_records=_load_registered_records(category, exclude_id=record.id),
         can_manage=_can_manage_records(),
         today=datetime.now().date().isoformat(),
     )
