@@ -1082,9 +1082,13 @@ class ContabilidadRegistro(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     folio = db.Column(db.String(40), nullable=False, unique=True, index=True)
     tipo = db.Column(db.String(30), nullable=False, index=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey("cliente.id"), nullable=True, index=True)
     nombre = db.Column(db.String(180), nullable=False, index=True)
     razon_social = db.Column(db.String(200))
     rfc = db.Column(db.String(20), index=True)
+    regimen_fiscal = db.Column(db.String(10))
+    codigo_postal_fiscal = db.Column(db.String(10))
+    uso_cfdi = db.Column(db.String(10))
     contacto = db.Column(db.String(160))
     correo = db.Column(db.String(160))
     telefono = db.Column(db.String(60))
@@ -1109,6 +1113,7 @@ class ContabilidadRegistro(db.Model):
     actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     creado_por = db.relationship("Usuario", foreign_keys=[creado_por_id])
+    cliente_registrado = db.relationship("Cliente", foreign_keys=[cliente_id])
     abonos = db.relationship(
         "ContabilidadAbono",
         backref="registro",

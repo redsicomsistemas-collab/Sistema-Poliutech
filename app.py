@@ -3890,10 +3890,14 @@ def ensure_schema():
     except Exception as e:
         print("⚠️ ensure_schema(cliente fiscal):", e)
 
-    # --- CONTABILIDAD: plazo, vencimiento y folio de factura ---
+    # --- CONTABILIDAD: cliente de origen, datos fiscales, plazo y factura ---
     try:
         contabilidad_cols = _table_columns("contabilidad_registro")
         for col, stmt in [
+            ("cliente_id", "ALTER TABLE contabilidad_registro ADD COLUMN cliente_id INTEGER"),
+            ("regimen_fiscal", "ALTER TABLE contabilidad_registro ADD COLUMN regimen_fiscal VARCHAR(10)"),
+            ("codigo_postal_fiscal", "ALTER TABLE contabilidad_registro ADD COLUMN codigo_postal_fiscal VARCHAR(10)"),
+            ("uso_cfdi", "ALTER TABLE contabilidad_registro ADD COLUMN uso_cfdi VARCHAR(10)"),
             ("folio_factura", "ALTER TABLE contabilidad_registro ADD COLUMN folio_factura VARCHAR(120)"),
             ("tiempo_credito_dias", "ALTER TABLE contabilidad_registro ADD COLUMN tiempo_credito_dias INTEGER"),
             ("fecha_vencimiento", "ALTER TABLE contabilidad_registro ADD COLUMN fecha_vencimiento DATE"),

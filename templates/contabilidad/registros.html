@@ -7,6 +7,8 @@
   .accounting-tabs .nav-link { white-space: nowrap; border-radius: .65rem; font-weight: 600; }
   .balance-cell { min-width: 145px; }
   .register-card { border-radius: .9rem; }
+  .client-picker { background: linear-gradient(135deg, rgba(12, 60, 120, .08), rgba(23, 103, 165, .03)); border: 1px solid rgba(12, 60, 120, .18); border-radius: .85rem; }
+  .client-picker-summary { background: rgba(255, 255, 255, .72); border-radius: .65rem; }
 </style>
 
 <div class="py-4">
@@ -20,7 +22,7 @@
       <a class="btn btn-outline-secondary" href="{{ url_for('contabilidad.index') }}">Resumen</a>
       <a class="btn btn-success" href="{{ url_for('contabilidad.exportar', slug=category.slug, q=q, estatus=status) }}">📊 Exportar Excel</a>
       {% if category.financial %}<a class="btn btn-outline-primary" href="{{ url_for('altas_proveedores', relacion=category.tipo) }}">🗂️ Abrir Altas</a>{% endif %}
-      <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#newRecord" aria-expanded="{{ 'true' if not records or selected_alta else 'false' }}">＋ Nuevo registro</button>
+      <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#newRecord" aria-expanded="{{ 'true' if not records or selected_alta else 'false' }}">＋ {{ 'Nuevo movimiento' if category.financial else 'Nueva alta' }}</button>
     </div>
   </div>
 
@@ -33,9 +35,33 @@
 
   <div class="collapse {{ 'show' if not records or selected_alta else '' }} mb-4" id="newRecord">
     <div class="card register-card border-0 shadow-sm">
-      <div class="card-header bg-primary text-white py-3"><strong>Nueva alta de {{ category.singular }}</strong></div>
+      <div class="card-header bg-primary text-white py-3"><strong>{{ 'Nuevo movimiento de' if category.financial else 'Nueva alta de' }} {{ category.singular }}</strong></div>
       <div class="card-body p-4">
-        <form method="post" enctype="multipart/form-data" class="row g-3">
+        <form method="post" enctype="multipart/form-data" class="row g-3" id="newRecordForm">
+          {% if category.tipo == 'CLIENTE' %}
+          <div class="col-12">
+            <div class="client-picker p-3 p-md-4">
+              <label class="form-label fw-bold" for="registeredClient">Seleccionar cliente registrado</label>
+              {% if registered_clients %}
+              <select class="form-select form-select-lg" name="cliente_id" id="registeredClient" {{ 'required' if not selected_alta }}>
+                <option value="">Escribe o selecciona el nombre del cliente…</option>
+                {% for client in registered_clients %}
+                <option value="{{ client.id }}">{{ client.nombre_cliente }}{% if client.empresa %} · {{ client.empresa }}{% endif %}{% if client.rfc %} · {{ client.rfc }}{% endif %}</option>
+                {% endfor %}
+              </select>
+              <div class="form-text">Hay {{ registered_clients|length }} cliente{{ '' if registered_clients|length == 1 else 's' }} registrado{{ '' if registered_clients|length == 1 else 's' }}. Al seleccionar uno se completan automáticamente todos sus datos.</div>
+              <div class="client-picker-summary mt-3 p-3 d-none" id="selectedClientSummary" aria-live="polite">
+                <div class="fw-bold" id="selectedClientName"></div>
+                <div class="small text-muted mt-1" id="selectedClientFiscal"></div>
+                <div class="small text-muted" id="selectedClientContact"></div>
+              </div>
+              {% else %}
+              <div class="alert alert-warning mb-2">No hay clientes en el directorio. Registra uno para poder seleccionarlo en los movimientos.</div>
+              <a class="btn btn-outline-primary btn-sm" href="{{ url_for('clientes_index') }}">Ir a registrar cliente</a>
+              {% endif %}
+            </div>
+          </div>
+          {% endif %}
           <div class="col-md-6">
             <label class="form-label fw-semibold">{% if category.tipo in ['CLIENTE', 'PROVEEDOR'] %}Nombre comercial{% elif category.tipo == 'TRABAJADOR' %}Nombre completo{% else %}Nombre del equipo{% endif %} *</label>
             <input class="form-control" name="nombre" maxlength="180" value="{{ (selected_alta.empresa or selected_alta.razon_social) if selected_alta else '' }}" required>
@@ -65,6 +91,20 @@
             <label class="form-label fw-semibold">Domicilio</label>
             <input class="form-control" name="direccion" maxlength="300">
           </div>
+          {% if category.tipo == 'CLIENTE' %}
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Régimen fiscal</label>
+            <input class="form-control" name="regimen_fiscal" inputmode="numeric" maxlength="10">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">C.P. fiscal</label>
+            <input class="form-control" name="codigo_postal_fiscal" inputmode="numeric" maxlength="10">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Uso CFDI</label>
+            <input class="form-control text-uppercase" name="uso_cfdi" maxlength="10" value="G03">
+          </div>
+          {% endif %}
           {% elif category.tipo == 'TRABAJADOR' %}
           <div class="col-md-6">
             <label class="form-label fw-semibold">Puesto / especialidad</label>
@@ -156,7 +196,7 @@
           </div>
           <div class="col-12 d-flex justify-content-end gap-2">
             <button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#newRecord">Cancelar</button>
-            <button class="btn btn-primary" type="submit">Guardar alta</button>
+            <button class="btn btn-primary" type="submit">Guardar {{ 'movimiento' if category.financial else 'alta' }}</button>
           </div>
         </form>
       </div>
@@ -197,7 +237,7 @@
             {% endif %}
             <td><span class="badge text-bg-light border">{{ item.documentos|length }}</span></td>
             <td><span class="badge {{ 'text-bg-success' if item.estatus in ['LIQUIDADO', 'ACTIVO'] else 'text-bg-warning' }}">{{ item.estatus }}</span></td>
-            <td class="text-end"><div class="d-inline-flex gap-1"><a class="btn btn-sm btn-outline-primary" href="{{ url_for('contabilidad.detalle', slug=category.slug, record_id=item.id) }}">Abrir</a>{% if (current_user.rol or '')|upper == 'ADMIN' %}<form method="post" action="{{ url_for('contabilidad.eliminar_registro', slug=category.slug, record_id=item.id) }}" onsubmit="return confirm('¿Eliminar definitivamente este registro y todos sus abonos y documentos?');"><button class="btn btn-sm btn-outline-danger" title="Eliminar registro" aria-label="Eliminar registro">🗑️</button></form>{% endif %}</div></td>
+            <td class="text-end"><div class="d-inline-flex gap-1"><a class="btn btn-sm btn-outline-primary" href="{{ url_for('contabilidad.detalle', slug=category.slug, record_id=item.id) }}">Abrir</a>{% if can_manage %}<form method="post" action="{{ url_for('contabilidad.eliminar_registro', slug=category.slug, record_id=item.id) }}" onsubmit="return confirm('¿Eliminar definitivamente este registro y todos sus abonos y documentos?');"><button class="btn btn-sm btn-outline-danger" title="Eliminar registro" aria-label="Eliminar registro">🗑️</button></form>{% endif %}</div></td>
           </tr>
           {% else %}
           <tr><td colspan="{{ 10 if category.financial else 7 }}" class="text-center py-5"><div class="fs-2 mb-2">{{ category.icon }}</div><div class="fw-semibold">No hay registros</div><div class="text-muted small">Crea el primer registro o cambia los filtros.</div></td></tr>
@@ -237,6 +277,43 @@ document.addEventListener("DOMContentLoaded", () => {
   days.addEventListener("input", updateDue);
   due.addEventListener("change", updateDays);
   if (!due.value) updateDue();
+});
+</script>
+{% endif %}
+{% if category.tipo == 'CLIENTE' and registered_clients %}
+<script id="registeredClientsData" type="application/json">{{ registered_clients|tojson }}</script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const picker = document.getElementById("registeredClient");
+  const form = document.getElementById("newRecordForm");
+  const summary = document.getElementById("selectedClientSummary");
+  if (!picker || !form || !summary) return;
+  const clients = JSON.parse(document.getElementById("registeredClientsData")?.textContent || "[]");
+  const byId = new Map(clients.map((client) => [String(client.id), client]));
+  const setField = (name, value) => {
+    const field = form.elements.namedItem(name);
+    if (field) field.value = value || "";
+  };
+  const fillClient = () => {
+    const client = byId.get(picker.value);
+    summary.classList.toggle("d-none", !client);
+    if (!client) return;
+    setField("nombre", client.empresa || client.nombre_cliente);
+    setField("razon_social", client.razon_social || client.empresa);
+    setField("rfc", client.rfc);
+    setField("regimen_fiscal", client.regimen_fiscal);
+    setField("codigo_postal_fiscal", client.codigo_postal_fiscal);
+    setField("uso_cfdi", client.uso_cfdi || "G03");
+    setField("contacto", client.nombre_cliente);
+    setField("correo", client.correo);
+    setField("telefono", client.telefono);
+    setField("direccion", client.direccion);
+    document.getElementById("selectedClientName").textContent = client.empresa ? `${client.nombre_cliente} · ${client.empresa}` : client.nombre_cliente;
+    document.getElementById("selectedClientFiscal").textContent = `Razón social: ${client.razon_social || "—"} · RFC: ${client.rfc || "—"} · Régimen: ${client.regimen_fiscal || "—"} · C.P.: ${client.codigo_postal_fiscal || "—"} · Uso CFDI: ${client.uso_cfdi || "G03"}`;
+    document.getElementById("selectedClientContact").textContent = `Correo: ${client.correo || "—"} · Teléfono: ${client.telefono || "—"} · Domicilio: ${client.direccion || "—"}`;
+  };
+  picker.addEventListener("change", fillClient);
+  if (picker.value) fillClient();
 });
 </script>
 {% endif %}

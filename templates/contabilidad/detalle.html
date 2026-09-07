@@ -19,9 +19,9 @@
     </div>
     <div class="d-flex flex-wrap gap-2">
       <a class="btn btn-outline-secondary" href="{{ url_for('contabilidad.registros', slug=category.slug) }}">← Volver</a>
-      <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#editRecord">Editar datos</button>
+      {% if can_manage %}<button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#editRecord">Editar datos</button>{% endif %}
       <a class="btn btn-success" href="{{ url_for('contabilidad.exportar', slug=category.slug, q=record.folio) }}">📊 Exportar registro</a>
-      {% if (current_user.rol or '')|upper == 'ADMIN' %}<form method="post" action="{{ url_for('contabilidad.eliminar_registro', slug=category.slug, record_id=record.id) }}" onsubmit="return confirm('¿Eliminar definitivamente este registro y todos sus abonos y documentos?');"><button class="btn btn-outline-danger" title="Eliminar registro">🗑️ Eliminar</button></form>{% endif %}
+      {% if can_manage %}<form method="post" action="{{ url_for('contabilidad.eliminar_registro', slug=category.slug, record_id=record.id) }}" onsubmit="return confirm('¿Eliminar definitivamente este registro y todos sus abonos y documentos?');"><button class="btn btn-outline-danger" title="Eliminar registro">🗑️ Eliminar</button></form>{% endif %}
     </div>
   </div>
 
@@ -53,11 +53,23 @@
   </div></section>
   {% endif %}
 
-  <div class="collapse mb-4 section-anchor" id="editRecord">
+  {% if can_manage %}<div class="collapse mb-4 section-anchor" id="editRecord">
     <div class="card border-0 shadow-sm" id="datos">
       <div class="card-header bg-primary text-white py-3"><strong>Editar datos del expediente</strong></div>
       <div class="card-body p-4">
         <form method="post" action="{{ url_for('contabilidad.editar', slug=category.slug, record_id=record.id) }}" class="row g-3">
+          {% if category.tipo == 'CLIENTE' and registered_clients %}
+          <div class="col-12">
+            <label class="form-label fw-semibold" for="editRegisteredClient">Cliente del directorio</label>
+            <select class="form-select" name="cliente_id" id="editRegisteredClient">
+              <option value="">Sin vincular a un cliente registrado</option>
+              {% for client in registered_clients %}
+              <option value="{{ client.id }}" {{ 'selected' if record.cliente_id == client.id }}>{{ client.nombre_cliente }}{% if client.empresa %} · {{ client.empresa }}{% endif %}{% if client.rfc %} · {{ client.rfc }}{% endif %}</option>
+              {% endfor %}
+            </select>
+            <div class="form-text">Al cambiar el cliente se reemplazarán los datos de contacto y fiscales con los del directorio.</div>
+          </div>
+          {% endif %}
           <div class="col-md-6"><label class="form-label fw-semibold">Nombre *</label><input class="form-control" name="nombre" value="{{ record.nombre }}" required></div>
           {% if category.tipo in ['CLIENTE', 'PROVEEDOR'] %}
           <div class="col-md-6"><label class="form-label fw-semibold">Razón social</label><input class="form-control" name="razon_social" value="{{ record.razon_social or '' }}"></div>
@@ -66,6 +78,11 @@
           <div class="col-md-4"><label class="form-label fw-semibold">Teléfono</label><input class="form-control" name="telefono" value="{{ record.telefono or '' }}"></div>
           <div class="col-md-6"><label class="form-label fw-semibold">Correo</label><input class="form-control" type="email" name="correo" value="{{ record.correo or '' }}"></div>
           <div class="col-md-6"><label class="form-label fw-semibold">Domicilio</label><input class="form-control" name="direccion" value="{{ record.direccion or '' }}"></div>
+          {% if category.tipo == 'CLIENTE' %}
+          <div class="col-md-4"><label class="form-label fw-semibold">Régimen fiscal</label><input class="form-control" name="regimen_fiscal" value="{{ record.regimen_fiscal or '' }}"></div>
+          <div class="col-md-4"><label class="form-label fw-semibold">C.P. fiscal</label><input class="form-control" name="codigo_postal_fiscal" value="{{ record.codigo_postal_fiscal or '' }}"></div>
+          <div class="col-md-4"><label class="form-label fw-semibold">Uso CFDI</label><input class="form-control text-uppercase" name="uso_cfdi" value="{{ record.uso_cfdi or 'G03' }}"></div>
+          {% endif %}
           <div class="col-md-6"><label class="form-label fw-semibold">Folio de factura</label><input class="form-control" name="folio_factura" value="{{ record.folio_factura or '' }}"></div>
           {% elif category.tipo == 'TRABAJADOR' %}
           <div class="col-md-6"><label class="form-label fw-semibold">Puesto / especialidad</label><input class="form-control" name="descripcion" value="{{ record.descripcion or '' }}"></div>
@@ -91,20 +108,20 @@
         </form>
       </div>
     </div>
-  </div>
+  </div>{% endif %}
 
   <div class="row g-4">
     <div class="{{ 'col-xl-7' if category.financial else 'col-12' }}">
       <section class="card border-0 shadow-sm section-anchor" id="documentos">
         <div class="card-header bg-white py-3"><h2 class="h5 fw-bold mb-0">📎 Expediente de documentos</h2></div>
-        <div class="card-body border-bottom">
+        {% if can_manage %}<div class="card-body border-bottom">
           <form method="post" enctype="multipart/form-data" action="{{ url_for('contabilidad.agregar_documentos', slug=category.slug, record_id=record.id) }}" class="row g-3 align-items-end">
             <div class="col-md-4"><label class="form-label small fw-semibold">Tipo</label><select class="form-select" name="tipo">{% for key, label in document_types.items() %}<option value="{{ key }}" {% if (category.tipo in ['CLIENTE', 'PROVEEDOR'] and key == 'FACTURA') or (category.tipo not in ['CLIENTE', 'PROVEEDOR'] and key == 'DOCUMENTACION') %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
             <div class="col-md-5"><label class="form-label small fw-semibold">Archivos PDF</label><input class="form-control" type="file" name="archivos" accept="application/pdf,.pdf" multiple required></div>
             <div class="col-md-3 d-grid"><button class="btn btn-primary">Cargar PDF</button></div>
             <div class="col-12"><input class="form-control" name="descripcion" placeholder="Descripción opcional del documento"></div>
           </form>
-        </div>
+        </div>{% endif %}
         <div class="list-group list-group-flush">
           {% for document in record.documentos %}
           <div class="list-group-item document-row py-3">
@@ -115,9 +132,18 @@
               </div>
               <div class="d-flex gap-2 flex-shrink-0">
                 <a class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener" href="{{ url_for('contabilidad.ver_documento', document_id=document.id) }}">Ver PDF</a>
-                <form method="post" action="{{ url_for('contabilidad.eliminar_documento', document_id=document.id) }}" onsubmit="return confirm('¿Eliminar este documento del expediente?');"><button class="btn btn-sm btn-outline-danger">Eliminar</button></form>
+                {% if can_manage %}<button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#editDocument{{ document.id }}">Editar</button>
+                <form method="post" action="{{ url_for('contabilidad.eliminar_documento', document_id=document.id) }}" onsubmit="return confirm('¿Eliminar este documento del expediente?');"><button class="btn btn-sm btn-outline-danger">Eliminar</button></form>{% endif %}
               </div>
             </div>
+            {% if can_manage %}<div class="collapse mt-3" id="editDocument{{ document.id }}">
+              <form method="post" action="{{ url_for('contabilidad.editar_documento', document_id=document.id) }}" class="row g-2 align-items-end rounded bg-light p-2">
+                <div class="col-md-4"><label class="form-label small fw-semibold">Nombre visible</label><input class="form-control form-control-sm" name="nombre_original" value="{{ document.nombre_original }}" required></div>
+                <div class="col-md-3"><label class="form-label small fw-semibold">Tipo</label><select class="form-select form-select-sm" name="tipo">{% for key, label in document_types.items() %}<option value="{{ key }}" {{ 'selected' if document.tipo == key }}>{{ label }}</option>{% endfor %}</select></div>
+                <div class="col-md-3"><label class="form-label small fw-semibold">Descripción</label><input class="form-control form-control-sm" name="descripcion" value="{{ document.descripcion or '' }}"></div>
+                <div class="col-md-2 d-grid"><button class="btn btn-sm btn-primary">Guardar</button></div>
+              </form>
+            </div>{% endif %}
           </div>
           {% else %}
           <div class="text-center text-muted py-5"><div class="fs-2 mb-2">📄</div>Este expediente todavía no tiene documentos PDF.</div>
@@ -130,7 +156,7 @@
     <div class="col-xl-5">
       <section class="card border-0 shadow-sm section-anchor" id="abonos">
         <div class="card-header bg-white py-3"><h2 class="h5 fw-bold mb-0">💳 Abonos</h2></div>
-        {% if not record.esta_liquidado %}
+        {% if can_manage and not record.esta_liquidado %}
         <div class="card-body border-bottom">
           <form method="post" action="{{ url_for('contabilidad.agregar_abono', slug=category.slug, record_id=record.id) }}" class="row g-3">
             <div class="col-sm-7"><label class="form-label small fw-semibold">Monto del abono *</label><div class="input-group"><span class="input-group-text">$</span><input id="paymentAmount" class="form-control" name="monto" type="number" min="0.01" max="{{ '%.2f'|format(record.saldo_pendiente) }}" step="0.01" required></div></div>
@@ -147,8 +173,18 @@
         {% endif %}
         <div class="list-group list-group-flush">
           {% for payment in record.abonos %}
-          <div class="list-group-item payment-row py-3">
-            <div class="d-flex justify-content-between gap-3"><div><strong>{{ payment.fecha.strftime('%d/%m/%Y') }}</strong><div class="small text-muted">{{ payment.metodo_pago or 'Método no indicado' }}{% if payment.referencia %} · {{ payment.referencia }}{% endif %}</div>{% if payment.notas %}<div class="small mt-1">{{ payment.notas }}</div>{% endif %}</div><strong class="text-success text-nowrap">+ ${{ '{:,.2f}'.format(payment.monto) }}</strong></div>
+          <div class="list-group-item payment-row py-3 section-anchor" id="abono-{{ payment.id }}">
+            <div class="d-flex justify-content-between gap-3"><div><strong>{{ payment.fecha.strftime('%d/%m/%Y') }}</strong><div class="small text-muted">{{ payment.metodo_pago or 'Método no indicado' }}{% if payment.referencia %} · {{ payment.referencia }}{% endif %}</div>{% if payment.notas %}<div class="small mt-1">{{ payment.notas }}</div>{% endif %}</div><div class="text-end"><strong class="text-success text-nowrap d-block">+ ${{ '{:,.2f}'.format(payment.monto) }}</strong>{% if can_manage %}<div class="d-flex gap-1 mt-2"><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#editPayment{{ payment.id }}">Editar</button><form method="post" action="{{ url_for('contabilidad.eliminar_abono', slug=category.slug, record_id=record.id, payment_id=payment.id) }}" onsubmit="return confirm('¿Eliminar este abono? El saldo pendiente se recalculará.');"><button class="btn btn-sm btn-outline-danger">Eliminar</button></form></div>{% endif %}</div></div>
+            {% if can_manage %}<div class="collapse mt-3" id="editPayment{{ payment.id }}">
+              <form method="post" action="{{ url_for('contabilidad.editar_abono', slug=category.slug, record_id=record.id, payment_id=payment.id) }}" class="row g-2 rounded bg-light p-2">
+                <div class="col-sm-6"><label class="form-label small fw-semibold">Monto</label><input class="form-control form-control-sm" name="monto" type="number" min="0.01" max="{{ '%.2f'|format(record.saldo_pendiente + payment.monto) }}" step="0.01" value="{{ '%.2f'|format(payment.monto) }}" required></div>
+                <div class="col-sm-6"><label class="form-label small fw-semibold">Fecha</label><input class="form-control form-control-sm" name="fecha" type="date" value="{{ payment.fecha.isoformat() }}" required></div>
+                <div class="col-sm-6"><label class="form-label small fw-semibold">Método</label><select class="form-select form-select-sm" name="metodo_pago"><option value="">Seleccionar</option>{% for method in ['Transferencia', 'Depósito', 'Efectivo', 'Cheque', 'Tarjeta', 'Otro'] %}<option {{ 'selected' if payment.metodo_pago == method }}>{{ method }}</option>{% endfor %}</select></div>
+                <div class="col-sm-6"><label class="form-label small fw-semibold">Referencia</label><input class="form-control form-control-sm" name="referencia" value="{{ payment.referencia or '' }}"></div>
+                <div class="col-12"><label class="form-label small fw-semibold">Notas</label><input class="form-control form-control-sm" name="notas" value="{{ payment.notas or '' }}"></div>
+                <div class="col-12 text-end"><button class="btn btn-sm btn-primary">Guardar cambios</button></div>
+              </form>
+            </div>{% endif %}
           </div>
           {% else %}
           <div class="text-center text-muted py-5">Aún no se han registrado abonos.</div>
@@ -169,6 +205,9 @@
       <div class="col-md-3"><span class="text-muted d-block">Registró</span><strong>{{ record.creado_por_nombre or '—' }}</strong></div>
       {% if record.razon_social %}<div class="col-md-3"><span class="text-muted d-block">Razón social</span><strong>{{ record.razon_social }}</strong></div>{% endif %}
       {% if record.rfc %}<div class="col-md-3"><span class="text-muted d-block">RFC</span><strong>{{ record.rfc }}</strong></div>{% endif %}
+      {% if record.regimen_fiscal %}<div class="col-md-3"><span class="text-muted d-block">Régimen fiscal</span><strong>{{ record.regimen_fiscal }}</strong></div>{% endif %}
+      {% if record.codigo_postal_fiscal %}<div class="col-md-3"><span class="text-muted d-block">C.P. fiscal</span><strong>{{ record.codigo_postal_fiscal }}</strong></div>{% endif %}
+      {% if record.uso_cfdi %}<div class="col-md-3"><span class="text-muted d-block">Uso CFDI</span><strong>{{ record.uso_cfdi }}</strong></div>{% endif %}
       {% if record.contacto %}<div class="col-md-3"><span class="text-muted d-block">Contacto</span><strong>{{ record.contacto }}</strong></div>{% endif %}
       {% if record.telefono %}<div class="col-md-3"><span class="text-muted d-block">Teléfono</span><strong>{{ record.telefono }}</strong></div>{% endif %}
       {% if record.correo %}<div class="col-md-3"><span class="text-muted d-block">Correo</span><strong>{{ record.correo }}</strong></div>{% endif %}
@@ -219,6 +258,36 @@ document.addEventListener("DOMContentLoaded", () => {
   start.addEventListener("change", updateDue);
   days.addEventListener("input", updateDue);
   due.addEventListener("change", updateDays);
+});
+</script>
+{% endif %}
+{% if can_manage and category.tipo == 'CLIENTE' and registered_clients %}
+<script id="registeredClientsEditData" type="application/json">{{ registered_clients|tojson }}</script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const picker = document.getElementById("editRegisteredClient");
+  const form = picker?.closest("form");
+  if (!picker || !form) return;
+  const clients = JSON.parse(document.getElementById("registeredClientsEditData")?.textContent || "[]");
+  const byId = new Map(clients.map((client) => [String(client.id), client]));
+  const setField = (name, value) => {
+    const field = form.elements.namedItem(name);
+    if (field) field.value = value || "";
+  };
+  picker.addEventListener("change", () => {
+    const client = byId.get(picker.value);
+    if (!client) return;
+    setField("nombre", client.empresa || client.nombre_cliente);
+    setField("razon_social", client.razon_social || client.empresa);
+    setField("rfc", client.rfc);
+    setField("regimen_fiscal", client.regimen_fiscal);
+    setField("codigo_postal_fiscal", client.codigo_postal_fiscal);
+    setField("uso_cfdi", client.uso_cfdi || "G03");
+    setField("contacto", client.nombre_cliente);
+    setField("correo", client.correo);
+    setField("telefono", client.telefono);
+    setField("direccion", client.direccion);
+  });
 });
 </script>
 {% endif %}

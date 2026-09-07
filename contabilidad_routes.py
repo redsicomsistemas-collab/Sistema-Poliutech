@@ -24,11 +24,11 @@ from flask_login import current_user, login_required
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from werkzeug.utils import secure_filename
 
-from contabilidad_access import can_access_contabilidad
-from models import ContabilidadAbono, ContabilidadDocumento, ContabilidadRegistro, db
+from contabilidad_access import can_access_contabilidad, can_manage_contabilidad
+from models import Cliente, ContabilidadAbono, ContabilidadDocumento, ContabilidadRegistro, db
 
 
 contabilidad_bp = Blueprint("contabilidad", __name__, url_prefix="/contabilidad")
@@ -178,8 +178,38 @@ def _credit_days(raw: str | None) -> int | None:
     return days
 
 
-def _can_delete_records() -> bool:
-    return can_access_contabilidad(current_user)
+def _can_manage_records() -> bool:
+    return can_manage_contabilidad(current_user)
+
+
+def _require_manage() -> None:
+    if not _can_manage_records():
+        abort(403)
+
+
+def _client_payload(client: Cliente) -> dict:
+    return {
+        "id": client.id,
+        "nombre_cliente": (client.nombre_cliente or "").strip(),
+        "empresa": (client.empresa or "").strip(),
+        "razon_social": (client.razon_social or "").strip(),
+        "rfc": (client.rfc or "").strip(),
+        "regimen_fiscal": (client.regimen_fiscal or "").strip(),
+        "codigo_postal_fiscal": (client.codigo_postal_fiscal or "").strip(),
+        "uso_cfdi": (client.uso_cfdi or "G03").strip(),
+        "correo": (client.correo or "").strip(),
+        "telefono": (client.telefono or "").strip(),
+        "direccion": (client.direccion or "").strip(),
+    }
+
+
+def _load_registered_clients() -> list[dict]:
+    clients = Cliente.query.order_by(
+        func.lower(Cliente.nombre_cliente).asc(),
+        func.lower(Cliente.empresa).asc(),
+        Cliente.id.asc(),
+    ).all()
+    return [_client_payload(client) for client in clients]
 
 
 def _load_altas(category: dict) -> list[dict]:
@@ -295,7 +325,27 @@ def _files_from_initial_form(category: dict) -> list[tuple[object, str, str]]:
 
 
 def _apply_form(record: ContabilidadRegistro, category: dict) -> None:
-    name = (request.form.get("nombre") or "").strip()
+    client = None
+    client_changed = False
+    if category["tipo"] == "CLIENTE":
+        client_id = request.form.get("cliente_id", type=int)
+        if client_id:
+            client = db.session.get(Cliente, client_id)
+            if client is None:
+                raise ValueError("El cliente seleccionado ya no existe en el catálogo.")
+            client_changed = client.id != record.cliente_id
+            record.cliente_id = client.id
+
+    client_data = _client_payload(client) if client else {}
+
+    def _form_value(field: str, source_field: str | None = None) -> str:
+        submitted = (request.form.get(field) or "").strip()
+        if submitted or not client or (record.id and not client_changed):
+            return submitted
+        return str(client_data.get(source_field or field) or "").strip()
+
+    default_name = client_data.get("empresa") or client_data.get("nombre_cliente") or ""
+    name = _form_value("nombre") or default_name
     if not name:
         raise ValueError(f"El nombre del {category['singular']} es obligatorio.")
     amount = _money(request.form.get("monto_total"), required=category["financial"])
@@ -306,12 +356,15 @@ def _apply_form(record: ContabilidadRegistro, category: dict) -> None:
 
     start_date = _date(request.form.get("fecha_inicio"))
     record.nombre = name[:180]
-    record.razon_social = (request.form.get("razon_social") or "").strip()[:200] or None
-    record.rfc = (request.form.get("rfc") or "").strip().upper()[:20] or None
-    record.contacto = (request.form.get("contacto") or "").strip()[:160] or None
-    record.correo = (request.form.get("correo") or "").strip()[:160] or None
-    record.telefono = (request.form.get("telefono") or "").strip()[:60] or None
-    record.direccion = (request.form.get("direccion") or "").strip()[:300] or None
+    record.razon_social = _form_value("razon_social")[:200] or None
+    record.rfc = _form_value("rfc").upper()[:20] or None
+    record.regimen_fiscal = _form_value("regimen_fiscal")[:10] or None
+    record.codigo_postal_fiscal = _form_value("codigo_postal_fiscal")[:10] or None
+    record.uso_cfdi = _form_value("uso_cfdi")[:10].upper() or None
+    record.contacto = _form_value("contacto", "nombre_cliente")[:160] or None
+    record.correo = _form_value("correo")[:160] or None
+    record.telefono = _form_value("telefono")[:60] or None
+    record.direccion = _form_value("direccion")[:300] or None
     record.proyecto = (request.form.get("proyecto") or "").strip()[:200] or None
     record.identificador = (request.form.get("identificador") or "").strip()[:100] or None
     record.marca = (request.form.get("marca") or "").strip()[:100] or None
@@ -399,6 +452,7 @@ def index():
 def registros(slug: str):
     category = _category_or_404(slug)
     if request.method == "POST":
+        _require_manage()
         record = ContabilidadRegistro(
             folio=_next_folio(category),
             tipo=category["tipo"],
@@ -425,7 +479,8 @@ def registros(slug: str):
                     pass
             flash(str(exc), "warning")
             return redirect(url_for("contabilidad.registros", slug=slug))
-        flash(f"Alta de {category['singular']} registrada correctamente.", "success")
+        success_label = "Movimiento" if category["financial"] else "Alta"
+        flash(f"{success_label} de {category['singular']} registrado correctamente.", "success")
         return redirect(url_for("contabilidad.detalle", slug=slug, record_id=record.id))
 
     query, q, status = _filtered_query(category)
@@ -443,7 +498,9 @@ def registros(slug: str):
         category=category,
         records=records,
         altas=altas,
+        registered_clients=_load_registered_clients() if category["tipo"] == "CLIENTE" else [],
         selected_alta=selected_alta,
+        can_manage=_can_manage_records(),
         q=q,
         status=status,
         today=datetime.now().date().isoformat(),
@@ -464,6 +521,8 @@ def detalle(slug: str, record_id: int):
         record=record,
         document_types=DOCUMENT_TYPES,
         documents_by_type=documents_by_type,
+        registered_clients=_load_registered_clients() if category["tipo"] == "CLIENTE" else [],
+        can_manage=_can_manage_records(),
         today=datetime.now().date().isoformat(),
     )
 
@@ -472,6 +531,7 @@ def detalle(slug: str, record_id: int):
 @login_required
 def editar(slug: str, record_id: int):
     category, record = _record_or_404(slug, record_id)
+    _require_manage()
     try:
         _apply_form(record, category)
         db.session.commit()
@@ -487,8 +547,7 @@ def editar(slug: str, record_id: int):
 @login_required
 def eliminar_registro(slug: str, record_id: int):
     category, record = _record_or_404(slug, record_id)
-    if not _can_delete_records():
-        abort(403)
+    _require_manage()
     document_paths = [_document_path(document) for document in (record.documentos or [])]
     record_name = record.nombre
     db.session.delete(record)
@@ -506,6 +565,7 @@ def eliminar_registro(slug: str, record_id: int):
 @login_required
 def agregar_abono(slug: str, record_id: int):
     category, record = _record_or_404(slug, record_id)
+    _require_manage()
     if not category["financial"]:
         abort(404)
     try:
@@ -540,10 +600,70 @@ def agregar_abono(slug: str, record_id: int):
     return redirect(url_for("contabilidad.detalle", slug=slug, record_id=record.id) + "#abonos")
 
 
+def _payment_or_404(record: ContabilidadRegistro, payment_id: int) -> ContabilidadAbono:
+    payment = db.session.get(ContabilidadAbono, payment_id)
+    if payment is None or payment.registro_id != record.id:
+        abort(404)
+    return payment
+
+
+@contabilidad_bp.post("/<slug>/<int:record_id>/abonos/<int:payment_id>/editar")
+@login_required
+def editar_abono(slug: str, record_id: int, payment_id: int):
+    category, record = _record_or_404(slug, record_id)
+    _require_manage()
+    if not category["financial"]:
+        abort(404)
+    payment = _payment_or_404(record, payment_id)
+    try:
+        amount = _money(request.form.get("monto"), required=True)
+        payment_date = _date(request.form.get("fecha"))
+        available = round(record.saldo_pendiente + float(payment.monto or 0), 2)
+        if amount <= 0:
+            raise ValueError("El abono debe ser mayor a cero.")
+        if amount - available > 0.005:
+            raise ValueError(f"El abono no puede superar el saldo disponible de ${available:,.2f}.")
+        payment.monto = amount
+        payment.fecha = payment_date
+        payment.referencia = (request.form.get("referencia") or "").strip()[:120] or None
+        payment.metodo_pago = (request.form.get("metodo_pago") or "").strip()[:80] or None
+        payment.notas = (request.form.get("notas") or "").strip() or None
+        total_after_update = sum(float(item.monto or 0) for item in record.abonos)
+        record.estatus = "LIQUIDADO" if float(record.monto_total or 0) - total_after_update <= 0.005 else "PENDIENTE"
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        flash(str(exc), "warning")
+        return redirect(url_for("contabilidad.detalle", slug=slug, record_id=record.id) + f"#abono-{payment.id}")
+    flash("Abono actualizado correctamente.", "success")
+    return redirect(url_for("contabilidad.detalle", slug=slug, record_id=record.id) + "#abonos")
+
+
+@contabilidad_bp.post("/<slug>/<int:record_id>/abonos/<int:payment_id>/eliminar")
+@login_required
+def eliminar_abono(slug: str, record_id: int, payment_id: int):
+    category, record = _record_or_404(slug, record_id)
+    _require_manage()
+    if not category["financial"]:
+        abort(404)
+    payment = _payment_or_404(record, payment_id)
+    remaining_paid = sum(
+        float(item.monto or 0)
+        for item in record.abonos
+        if item.id != payment.id
+    )
+    db.session.delete(payment)
+    record.estatus = "LIQUIDADO" if float(record.monto_total or 0) - remaining_paid <= 0.005 else "PENDIENTE"
+    db.session.commit()
+    flash("Abono eliminado correctamente.", "success")
+    return redirect(url_for("contabilidad.detalle", slug=slug, record_id=record.id) + "#abonos")
+
+
 @contabilidad_bp.post("/<slug>/<int:record_id>/documentos")
 @login_required
 def agregar_documentos(slug: str, record_id: int):
     _, record = _record_or_404(slug, record_id)
+    _require_manage()
     document_type = (request.form.get("tipo") or "DOCUMENTACION").strip().upper()
     if document_type not in DOCUMENT_TYPES:
         flash("Selecciona un tipo de documento válido.", "warning")
@@ -594,6 +714,7 @@ def ver_documento(document_id: int):
 @contabilidad_bp.post("/documentos/<int:document_id>/eliminar")
 @login_required
 def eliminar_documento(document_id: int):
+    _require_manage()
     document = db.session.get(ContabilidadDocumento, document_id)
     if document is None:
         abort(404)
@@ -609,6 +730,33 @@ def eliminar_documento(document_id: int):
     except OSError:
         current_app.logger.warning("No se pudo retirar el PDF contable %s", path)
     flash("Documento eliminado del expediente.", "success")
+    return redirect(url_for("contabilidad.detalle", slug=category["slug"], record_id=record.id) + "#documentos")
+
+
+@contabilidad_bp.post("/documentos/<int:document_id>/editar")
+@login_required
+def editar_documento(document_id: int):
+    _require_manage()
+    document = db.session.get(ContabilidadDocumento, document_id)
+    if document is None:
+        abort(404)
+    record = document.registro
+    category = CATEGORY_BY_TYPE.get(record.tipo)
+    if not category:
+        abort(404)
+    document_type = (request.form.get("tipo") or "").strip().upper()
+    display_name = Path((request.form.get("nombre_original") or "").strip()).name[:260]
+    if document_type not in DOCUMENT_TYPES:
+        flash("Selecciona un tipo de documento válido.", "warning")
+        return redirect(url_for("contabilidad.detalle", slug=category["slug"], record_id=record.id) + "#documentos")
+    if not display_name:
+        flash("El nombre visible del documento es obligatorio.", "warning")
+        return redirect(url_for("contabilidad.detalle", slug=category["slug"], record_id=record.id) + "#documentos")
+    document.tipo = document_type
+    document.nombre_original = display_name
+    document.descripcion = (request.form.get("descripcion") or "").strip()[:260] or None
+    db.session.commit()
+    flash("Documento actualizado correctamente.", "success")
     return redirect(url_for("contabilidad.detalle", slug=category["slug"], record_id=record.id) + "#documentos")
 
 
