@@ -17,6 +17,7 @@ from email.message import EmailMessage
 from email.utils import formataddr, getaddresses, parseaddr
 from html import escape
 import xml.etree.ElementTree as ET
+from contabilidad_access import can_access_contabilidad
 from utils.pdf_conditions import format_pdf_condition_lines
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from werkzeug.utils import secure_filename
@@ -3185,6 +3186,7 @@ def inject_endpoint_helpers():
 
     return {
         "endpoint_exists": endpoint_exists,
+        "contabilidad_can_view": lambda: can_access_contabilidad(current_user),
         "gastos_admin_can_view": lambda: _gastos_admin_can_view(),
         "estado_cuenta_recursos_can_view": lambda: _estado_cuenta_recursos_can_view(),
         "evaluacion_departamental_can_view": lambda: _evaluacion_departamental_can_view(),
@@ -7192,13 +7194,21 @@ def cotizador_voice_preview():
 
 @app.route("/altas", methods=["GET", "POST"])
 @login_required
+def altas_proveedores_legacy():
+    if not can_access_contabilidad(current_user):
+        abort(403)
+    target = url_for("altas_proveedores", **request.args.to_dict(flat=True))
+    return redirect(target, code=307 if request.method == "POST" else 302)
+
+
+@app.route("/contabilidad/altas", methods=["GET", "POST"])
+@login_required
 def altas_proveedores():
-    if not _altas_can_view():
+    if not can_access_contabilidad(current_user):
         abort(403)
 
-    # Los usuarios autorizados para Altas (Admin y Marco) pueden consultar y
-    # administrar el catálogo completo.
-    can_manage_altas = _altas_can_view()
+    # Los usuarios autorizados para Contabilidad pueden administrar Altas.
+    can_manage_altas = True
     if request.method == "POST" and not can_manage_altas:
         abort(403)
 
@@ -7237,7 +7247,7 @@ def altas_proveedores():
                         raise ValueError
                     monto_credito = f"{monto_numerico:.2f}"
                 except (TypeError, ValueError):
-                    flash(f"Captura un monto de crédito válido para '{empresa or numero or 'el proveedor'}'.", "danger")
+                    flash(f"Captura un monto de crédito válido para '{empresa or numero or 'el registro'}'.", "danger")
                     return redirect(url_for("altas_proveedores"))
 
             if not any([numero, empresa, razon_social, contacto, telefono, correo]):
@@ -7313,8 +7323,16 @@ def altas_proveedores():
 
 @app.route("/altas/export.xlsx")
 @login_required
+def export_altas_proveedores_xlsx_legacy():
+    if not can_access_contabilidad(current_user):
+        abort(403)
+    return redirect(url_for("export_altas_proveedores_xlsx", **request.args.to_dict(flat=True)))
+
+
+@app.route("/contabilidad/altas/export.xlsx")
+@login_required
 def export_altas_proveedores_xlsx():
-    if not _altas_can_view():
+    if not can_access_contabilidad(current_user):
         abort(403)
 
     filters = _provider_filters_from_request()
@@ -7356,14 +7374,22 @@ def export_altas_proveedores_xlsx():
     return Response(
         output_bytes,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="altas_proveedores_{stamp}.xlsx"'},
+        headers={"Content-Disposition": f'attachment; filename="altas_clientes_proveedores_{stamp}.xlsx"'},
     )
 
 
 @app.route("/altas/export.pdf")
 @login_required
+def export_altas_proveedores_pdf_legacy():
+    if not can_access_contabilidad(current_user):
+        abort(403)
+    return redirect(url_for("export_altas_proveedores_pdf", **request.args.to_dict(flat=True)))
+
+
+@app.route("/contabilidad/altas/export.pdf")
+@login_required
 def export_altas_proveedores_pdf():
-    if not _altas_can_view():
+    if not can_access_contabilidad(current_user):
         abort(403)
 
     filters = _provider_filters_from_request()
@@ -7408,7 +7434,7 @@ def export_altas_proveedores_pdf():
 
         canv.setFont("Helvetica-Bold", 14)
         canv.setFillColor(colors.white)
-        canv.drawRightString(page_size[0] - 12, page_size[1] - 18, "ALTAS DE PROVEEDORES")
+        canv.drawRightString(page_size[0] - 12, page_size[1] - 18, "ALTAS DE CLIENTES Y PROVEEDORES")
         canv.setFont("Helvetica", 10)
         canv.drawRightString(page_size[0] - 12, page_size[1] - 31, "Recubrimientos Especializados")
         canv.restoreState()
@@ -7432,7 +7458,7 @@ def export_altas_proveedores_pdf():
         canv.drawCentredString(page_size[0] / 2, 15, "Tel: 55 5938 6530 / 55 5938 0536 - info@poliutech.com - www.poliutech.com")
 
         try:
-            canv.setTitle("Altas de proveedores")
+            canv.setTitle("Altas de clientes y proveedores")
         except Exception:
             pass
 
@@ -7538,7 +7564,7 @@ def export_altas_proveedores_pdf():
     response = Response(
         buf.getvalue(),
         mimetype="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="altas_proveedores_{stamp}.pdf"'},
+        headers={"Content-Disposition": f'inline; filename="altas_clientes_proveedores_{stamp}.pdf"'},
     )
     response.direct_passthrough = False
     return response

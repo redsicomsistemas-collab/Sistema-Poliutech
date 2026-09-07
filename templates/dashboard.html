@@ -470,11 +470,13 @@
       💰 Nueva cotizacion
     </a>
   </div>
+  {% if contabilidad_can_view() %}
   <div class="col-md-3">
     <a href="{{ url_for('altas_proveedores') }}" class="btn btn-outline-secondary w-100 shadow-sm py-3 fw-bold">
-      🗂️ Proveedores
+      🗂️ Altas clientes/proveedores
     </a>
   </div>
+  {% endif %}
 </div>
 
 <!-- 📊 GRÁFICAS -->

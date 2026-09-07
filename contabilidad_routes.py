@@ -27,6 +27,7 @@ from openpyxl.utils import get_column_letter
 from sqlalchemy import or_
 from werkzeug.utils import secure_filename
 
+from contabilidad_access import can_access_contabilidad
 from models import ContabilidadAbono, ContabilidadDocumento, ContabilidadRegistro, db
 
 
@@ -95,6 +96,12 @@ DOCUMENT_TYPES = {
     "SEGURO": "Seguro / póliza",
     "TARJETA_CIRCULACION": "Tarjeta de circulación",
 }
+
+
+@contabilidad_bp.before_request
+def _restrict_accounting_module():
+    if getattr(current_user, "is_authenticated", False) and not can_access_contabilidad(current_user):
+        abort(403)
 
 
 def _category_or_404(slug: str) -> dict:
@@ -172,10 +179,7 @@ def _credit_days(raw: str | None) -> int | None:
 
 
 def _can_delete_records() -> bool:
-    return bool(
-        getattr(current_user, "is_authenticated", False)
-        and (getattr(current_user, "rol", "") or "").upper() == "ADMIN"
-    )
+    return can_access_contabilidad(current_user)
 
 
 def _load_altas(category: dict) -> list[dict]:
@@ -381,6 +385,7 @@ def index():
     return render_template(
         "contabilidad/index.html",
         cards=cards,
+        altas_count=len(_load_altas({"tipo": "CLIENTE"})) + len(_load_altas({"tipo": "PROVEEDOR"})),
         recent=records[:8],
         total_monto=sum(float(item.monto_total or 0) for item in financial),
         total_abonado=sum(float(item.total_abonado or 0) for item in financial),

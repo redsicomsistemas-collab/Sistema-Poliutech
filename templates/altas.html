@@ -7,16 +7,28 @@
     pointer-events: none;
   }
   .credito-monto-wrap { min-width: 180px; }
+  .accounting-tabs { scrollbar-width: thin; }
+  .accounting-tabs .nav-link { white-space: nowrap; border-radius: .65rem; font-weight: 600; }
 </style>
 <div class="py-4">
   <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
     <div>
+      <div class="small text-muted mb-1"><a class="text-decoration-none" href="{{ url_for('contabilidad.index') }}">Contabilidad</a> / Altas</div>
       <h2 class="mb-1">Altas de clientes y proveedores</h2>
-      <a class="small text-decoration-none" href="{{ url_for('contabilidad.index') }}">← Volver a Contabilidad</a>
+      <div class="text-muted">Catálogo general de clientes y proveedores.</div>
     </div>
     <div class="text-muted small">
       Total de registros: <strong>{{ rows|length }}</strong>
     </div>
+  </div>
+
+  <div class="nav nav-pills accounting-tabs flex-nowrap overflow-auto gap-2 mb-4 pb-1">
+    <a class="nav-link active" href="{{ url_for('altas_proveedores') }}">Altas</a>
+    <a class="nav-link" href="{{ url_for('contabilidad.registros', slug='clientes') }}">Clientes</a>
+    <a class="nav-link" href="{{ url_for('contabilidad.registros', slug='proveedores') }}">Proveedores</a>
+    <a class="nav-link" href="{{ url_for('contabilidad.registros', slug='trabajadores') }}">Trabajadores</a>
+    <a class="nav-link" href="{{ url_for('contabilidad.registros', slug='maquinaria') }}">Maquinaria</a>
+    <a class="nav-link" href="{{ url_for('contabilidad.registros', slug='transporte') }}">Transporte</a>
   </div>
 
   <div class="card shadow-sm">
@@ -62,7 +74,7 @@
                 <th style="min-width: 240px;">CORREO</th>
                 <th style="min-width: 110px;">CRÉDITO</th>
                 <th style="min-width: 190px;">MONTO DE CRÉDITO</th>
-                {% if can_manage_altas %}<th style="width: 140px;">Accion</th>{% endif %}
+                {% if can_manage_altas %}<th style="min-width: 245px;">Acción</th>{% endif %}
               </tr>
             </thead>
             <tbody>
@@ -85,10 +97,11 @@
                 <td><input type="email" name="correo[]" class="form-control altas-input" value="{{ row.correo }}" readonly></td>
                 <td class="text-center">
                   <input type="hidden" name="credito[]" class="credito-value" value="{{ '1' if row.credito else '0' }}">
-                  <input type="checkbox" class="form-check-input credito-check" {% if row.credito %}checked{% endif %} disabled aria-label="Proveedor con crédito">
+                  <input type="checkbox" class="form-check-input credito-check" {% if row.credito %}checked{% endif %} disabled aria-label="Registro con crédito">
                 </td>
                 <td><div class="input-group credito-monto-wrap {% if not row.credito %}d-none{% endif %}"><span class="input-group-text">$</span><input type="number" name="monto_credito[]" class="form-control credito-monto" min="0" step="0.01" value="{{ row.monto_credito }}" {% if not row.credito %}disabled{% endif %} readonly></div><input type="hidden" class="monto-vacio" name="monto_credito[]" value="" {% if row.credito %}disabled{% endif %}></td>
                 {% if can_manage_altas %}<td class="text-center">
+                  <a class="btn btn-primary btn-sm mb-1" href="{{ url_for('contabilidad.registros', slug='clientes' if row.relacion == 'CLIENTE' else 'proveedores', alta=row.id) }}#newRecord">Registrar</a>
                   <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>
                   <button type="button" class="btn btn-outline-danger btn-sm btn-remove-row">Quitar</button>
                 </td>{% endif %}
@@ -103,7 +116,7 @@
                 <td><input type="text" name="contacto[]" class="form-control altas-input"></td>
                 <td><input type="text" name="telefono[]" class="form-control altas-input"></td>
                 <td><input type="email" name="correo[]" class="form-control altas-input"></td>
-                <td class="text-center"><input type="hidden" name="credito[]" class="credito-value" value="0"><input type="checkbox" class="form-check-input credito-check" aria-label="Proveedor con crédito"></td>
+                <td class="text-center"><input type="hidden" name="credito[]" class="credito-value" value="0"><input type="checkbox" class="form-check-input credito-check" aria-label="Registro con crédito"></td>
                 <td><div class="input-group credito-monto-wrap d-none"><span class="input-group-text">$</span><input type="number" name="monto_credito[]" class="form-control credito-monto" min="0" step="0.01" disabled></div><input type="hidden" class="monto-vacio" name="monto_credito[]" value=""></td>
                 <td class="text-center">
                   <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>
@@ -133,7 +146,7 @@
     <td><input type="text" name="contacto[]" class="form-control altas-input"></td>
     <td><input type="text" name="telefono[]" class="form-control altas-input"></td>
     <td><input type="email" name="correo[]" class="form-control altas-input"></td>
-    <td class="text-center"><input type="hidden" name="credito[]" class="credito-value" value="0"><input type="checkbox" class="form-check-input credito-check" aria-label="Proveedor con crédito"></td>
+    <td class="text-center"><input type="hidden" name="credito[]" class="credito-value" value="0"><input type="checkbox" class="form-check-input credito-check" aria-label="Registro con crédito"></td>
     <td><div class="input-group credito-monto-wrap d-none"><span class="input-group-text">$</span><input type="number" name="monto_credito[]" class="form-control credito-monto" min="0" step="0.01" disabled></div><input type="hidden" class="monto-vacio" name="monto_credito[]" value=""></td>
     <td class="text-center">
       <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>

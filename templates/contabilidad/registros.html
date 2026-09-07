@@ -19,46 +19,17 @@
     <div class="d-flex flex-wrap gap-2">
       <a class="btn btn-outline-secondary" href="{{ url_for('contabilidad.index') }}">Resumen</a>
       <a class="btn btn-success" href="{{ url_for('contabilidad.exportar', slug=category.slug, q=q, estatus=status) }}">📊 Exportar Excel</a>
-      {% if category.financial %}<button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#altasCatalog">🗂️ Altas</button>{% endif %}
+      {% if category.financial %}<a class="btn btn-outline-primary" href="{{ url_for('altas_proveedores', relacion=category.tipo) }}">🗂️ Abrir Altas</a>{% endif %}
       <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#newRecord" aria-expanded="{{ 'true' if not records or selected_alta else 'false' }}">＋ Nuevo registro</button>
     </div>
   </div>
 
   <div class="nav nav-pills accounting-tabs flex-nowrap overflow-auto gap-2 mb-4 pb-1">
+    <a class="nav-link" href="{{ url_for('altas_proveedores') }}">Altas</a>
     {% for nav_slug, nav in [('clientes', 'Clientes'), ('proveedores', 'Proveedores'), ('trabajadores', 'Trabajadores'), ('maquinaria', 'Maquinaria'), ('transporte', 'Transporte')] %}
     <a class="nav-link {{ 'active' if nav_slug == category.slug }}" href="{{ url_for('contabilidad.registros', slug=nav_slug) }}">{{ nav }}</a>
     {% endfor %}
   </div>
-
-  {% if category.financial %}
-  <div class="collapse {{ 'show' if selected_alta else '' }} mb-4" id="altasCatalog">
-    <div class="card register-card border-0 shadow-sm">
-      <div class="card-header bg-white py-3 d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
-        <div><strong>Altas de {{ category.label|lower }}</strong><div class="small text-muted">Selecciona un alta existente para completar el nuevo expediente contable.</div></div>
-        {% if (current_user.rol or '')|upper == 'ADMIN' %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('altas_proveedores', relacion=category.tipo) }}">Administrar catálogo de Altas</a>{% endif %}
-      </div>
-      <div class="table-responsive">
-        <table class="table table-hover align-middle mb-0">
-          <thead><tr><th>Número</th><th>Empresa</th><th>Razón social</th><th>Contacto</th><th>Crédito registrado</th><th></th></tr></thead>
-          <tbody>
-            {% for alta in altas %}
-            <tr>
-              <td>{{ alta.numero or '—' }}</td>
-              <td class="fw-semibold">{{ alta.empresa or '—' }}</td>
-              <td>{{ alta.razon_social or '—' }}</td>
-              <td><div>{{ alta.contacto or '—' }}</div><div class="small text-muted">{{ alta.correo or alta.telefono or '' }}</div></td>
-              <td>{% if alta.credito %}${{ alta.monto_credito or '0.00' }}{% else %}<span class="text-muted">Sin crédito</span>{% endif %}</td>
-              <td class="text-end"><a class="btn btn-sm btn-primary" href="{{ url_for('contabilidad.registros', slug=category.slug, alta=alta.id) }}#newRecord">Usar alta</a></td>
-            </tr>
-            {% else %}
-            <tr><td colspan="6" class="text-center text-muted py-4">No hay registros clasificados como {{ category.singular }} en Altas.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-  {% endif %}
 
   <div class="collapse {{ 'show' if not records or selected_alta else '' }} mb-4" id="newRecord">
     <div class="card register-card border-0 shadow-sm">

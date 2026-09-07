@@ -44,6 +44,21 @@
   </div>
 
   <div class="row g-4 mb-4">
+    <div class="col-md-6 col-xl-4">
+      <a class="text-decoration-none text-body" href="{{ url_for('altas_proveedores') }}">
+        <div class="card accounting-module shadow-sm">
+          <div class="card-body p-4">
+            <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+              <span class="accounting-icon">🗂️</span>
+              <span class="badge rounded-pill text-bg-primary">{{ altas_count }} alta{{ '' if altas_count == 1 else 's' }}</span>
+            </div>
+            <h2 class="h5 fw-bold">Altas de clientes y proveedores</h2>
+            <p class="text-muted mb-3">Administra el catálogo completo de clientes y proveedores.</p>
+            <div class="border-top pt-3 small fw-semibold text-primary">Abrir Altas →</div>
+          </div>
+        </div>
+      </a>
+    </div>
     {% for card in cards %}
     <div class="col-md-6 col-xl-4">
       <a class="text-decoration-none text-body" href="{{ url_for('contabilidad.registros', slug=card.slug) }}">
