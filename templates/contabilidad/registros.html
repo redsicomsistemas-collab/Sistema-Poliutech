@@ -9,6 +9,7 @@
   .register-card { border-radius: .9rem; }
   .record-picker { background: linear-gradient(135deg, rgba(12, 60, 120, .08), rgba(23, 103, 165, .03)); border: 1px solid rgba(12, 60, 120, .18); border-radius: .85rem; }
   .record-picker-summary { background: rgba(255, 255, 255, .72); border-radius: .65rem; }
+  .record-mode-label { min-width: 220px; }
 </style>
 
 <div class="py-4">
@@ -22,7 +23,12 @@
       <a class="btn btn-outline-secondary" href="{{ url_for('contabilidad.index') }}">Resumen</a>
       <a class="btn btn-success" href="{{ url_for('contabilidad.exportar', slug=category.slug, q=q, estatus=status) }}">📊 Exportar Excel</a>
       {% if category.financial %}<a class="btn btn-outline-primary" href="{{ url_for('altas_proveedores', relacion=category.tipo) }}">🗂️ Abrir Altas</a>{% endif %}
+      {% if category.tipo == 'CLIENTE' %}
+      <button class="btn btn-primary record-mode-trigger" type="button" data-record-mode="new" data-bs-toggle="collapse" data-bs-target="#newRecord" aria-expanded="{{ 'true' if not records or selected_alta else 'false' }}">＋ Registrar cliente nuevo</button>
+      {% if registered_records %}<button class="btn btn-outline-primary record-mode-trigger" type="button" data-record-mode="existing" data-bs-toggle="collapse" data-bs-target="#newRecord">＋ Movimiento de cliente registrado</button>{% endif %}
+      {% else %}
       <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#newRecord" aria-expanded="{{ 'true' if not records or selected_alta else 'false' }}">＋ {{ 'Nuevo movimiento' if category.financial else 'Nueva alta' }}</button>
+      {% endif %}
     </div>
   </div>
 
@@ -35,11 +41,39 @@
 
   <div class="collapse {{ 'show' if not records or selected_alta else '' }} mb-4" id="newRecord">
     <div class="card register-card border-0 shadow-sm">
-      <div class="card-header bg-primary text-white py-3"><strong>{{ 'Nuevo movimiento de' if category.financial else 'Nueva alta de' }} {{ category.singular }}</strong></div>
+      <div class="card-header bg-primary text-white py-3"><strong id="newRecordHeader">{% if category.tipo == 'CLIENTE' %}Registrar cliente nuevo{% else %}{{ 'Nuevo movimiento de' if category.financial else 'Nueva alta de' }} {{ category.singular }}{% endif %}</strong></div>
       <div class="card-body p-4">
         <form method="post" enctype="multipart/form-data" class="row g-3" id="newRecordForm">
           <div class="col-12">
             <div class="record-picker p-3 p-md-4">
+              {% if category.tipo == 'CLIENTE' %}
+              <div class="fw-bold mb-2">¿Vas a registrar un cliente nuevo o usar uno existente?</div>
+              {% if registered_records %}
+              <div class="d-flex flex-wrap gap-2" role="group" aria-label="Tipo de captura del cliente">
+                <input class="btn-check" type="radio" name="record_mode" id="recordModeNew" value="new" checked>
+                <label class="btn btn-outline-primary record-mode-label" for="recordModeNew">＋ Registrar cliente nuevo</label>
+                <input class="btn-check" type="radio" name="record_mode" id="recordModeExisting" value="existing">
+                <label class="btn btn-outline-primary record-mode-label" for="recordModeExisting">Usar cliente ya registrado</label>
+              </div>
+              <div class="form-text mt-2" id="newRecordModeHelp">Completa abajo los datos del cliente nuevo. Al guardar el movimiento, quedará disponible para futuros registros.</div>
+              <div class="mt-3 d-none" id="registeredRecordPickerPanel">
+                <label class="form-label fw-semibold" for="registeredAccountingRecord">Selecciona el cliente registrado *</label>
+                <select class="form-select form-select-lg" name="registro_origen_id" id="registeredAccountingRecord">
+                  <option value="">Seleccionar cliente...</option>
+                  {% for source in registered_records %}
+                  <option value="{{ source.id }}">{{ source.label }}</option>
+                  {% endfor %}
+                </select>
+                <div class="form-text">Se copiarán la identificación, los datos fiscales y el contacto. El monto, proyecto, factura y fechas serán nuevos.</div>
+                <div class="record-picker-summary mt-3 p-3 d-none" id="selectedRecordSummary" aria-live="polite">
+                  <div class="fw-bold" id="selectedRecordName"></div>
+                  <div class="small text-muted mt-1" id="selectedRecordDetails"></div>
+                </div>
+              </div>
+              {% else %}
+              <div class="alert alert-primary mb-0"><strong>Registrar cliente nuevo:</strong> completa los datos que aparecen abajo y guarda el movimiento. Ese cliente aparecerá como opción la próxima vez.</div>
+              {% endif %}
+              {% else %}
               <label class="form-label fw-bold" for="registeredAccountingRecord">Reutilizar datos registrados en Contabilidad</label>
               {% if registered_records %}
               <select class="form-select form-select-lg" name="registro_origen_id" id="registeredAccountingRecord">
@@ -55,6 +89,7 @@
               </div>
               {% else %}
               <div class="text-muted small">Aún no hay datos previos en esta categoría. Captura el primer registro manualmente; desde el siguiente movimiento aparecerá aquí para seleccionarlo.</div>
+              {% endif %}
               {% endif %}
             </div>
           </div>
@@ -192,7 +227,7 @@
           </div>
           <div class="col-12 d-flex justify-content-end gap-2">
             <button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#newRecord">Cancelar</button>
-            <button class="btn btn-primary" type="submit">Guardar {{ 'movimiento' if category.financial else 'alta' }}</button>
+            <button class="btn btn-primary" type="submit" id="saveRecordButton">{% if category.tipo == 'CLIENTE' %}Registrar cliente y guardar movimiento{% else %}Guardar {{ 'movimiento' if category.financial else 'alta' }}{% endif %}</button>
           </div>
         </form>
       </div>
@@ -286,19 +321,55 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!picker || !form || !summary) return;
   const records = JSON.parse(document.getElementById("registeredAccountingRecordsData")?.textContent || "[]");
   const byId = new Map(records.map((record) => [String(record.id), record]));
+  const identityFields = ["nombre", "razon_social", "rfc", "regimen_fiscal", "codigo_postal_fiscal", "uso_cfdi", "contacto", "correo", "telefono", "direccion", "identificador", "marca", "modelo", "anio", "descripcion"];
+  const modeNew = document.getElementById("recordModeNew");
+  const modeExisting = document.getElementById("recordModeExisting");
+  const pickerPanel = document.getElementById("registeredRecordPickerPanel");
+  const newModeHelp = document.getElementById("newRecordModeHelp");
+  const formHeader = document.getElementById("newRecordHeader");
+  const saveButton = document.getElementById("saveRecordButton");
+  let currentMode = "new";
+  let manualValues = Object.fromEntries(identityFields.map((name) => [name, form.elements.namedItem(name)?.value || ""]));
   const setField = (name, value) => {
     const field = form.elements.namedItem(name);
     if (field) field.value = value || "";
+  };
+  const setMode = (mode) => {
+    const useExisting = mode === "existing";
+    if (useExisting && currentMode === "new") {
+      manualValues = Object.fromEntries(identityFields.map((name) => [name, form.elements.namedItem(name)?.value || ""]));
+    }
+    if (!useExisting && currentMode === "existing") {
+      identityFields.forEach((name) => setField(name, manualValues[name]));
+    }
+    currentMode = mode;
+    if (modeNew) modeNew.checked = !useExisting;
+    if (modeExisting) modeExisting.checked = useExisting;
+    pickerPanel?.classList.toggle("d-none", !useExisting);
+    newModeHelp?.classList.toggle("d-none", useExisting);
+    if (formHeader && modeNew) formHeader.textContent = useExisting ? "Nuevo movimiento de cliente registrado" : "Registrar cliente nuevo";
+    if (saveButton && modeNew) saveButton.textContent = useExisting ? "Guardar movimiento" : "Registrar cliente y guardar movimiento";
+    picker.required = useExisting;
+    if (!useExisting) {
+      picker.value = "";
+      summary.classList.add("d-none");
+    }
   };
   const fillRecord = () => {
     const source = byId.get(picker.value);
     summary.classList.toggle("d-none", !source);
     if (!source) return;
-    ["nombre", "razon_social", "rfc", "regimen_fiscal", "codigo_postal_fiscal", "uso_cfdi", "contacto", "correo", "telefono", "direccion", "identificador", "marca", "modelo", "anio", "descripcion"].forEach((field) => setField(field, source[field]));
+    identityFields.forEach((field) => setField(field, source[field]));
     document.getElementById("selectedRecordName").textContent = source.label;
     document.getElementById("selectedRecordDetails").textContent = `Datos tomados del registro ${source.folio}. Captura el monto y los datos propios del nuevo movimiento.`;
   };
   picker.addEventListener("change", fillRecord);
+  modeNew?.addEventListener("change", () => setMode("new"));
+  modeExisting?.addEventListener("change", () => setMode("existing"));
+  document.querySelectorAll(".record-mode-trigger").forEach((button) => {
+    button.addEventListener("click", () => setMode(button.dataset.recordMode || "new"));
+  });
+  if (modeNew) setMode("new");
   if (picker.value) fillRecord();
 });
 </script>
