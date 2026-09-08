@@ -903,6 +903,7 @@ def _financial_excel_response(records: list[ContabilidadRegistro], filename_pref
         "Proyecto",
         "FOLIO FACTURA",
         "Fecha de inicio",
+        "Vigencia / plazo del crédito (días)",
         "fecha de vencimiento",
         "Monto total",
         "Total abonado",
@@ -919,6 +920,7 @@ def _financial_excel_response(records: list[ContabilidadRegistro], filename_pref
                 record.proyecto or "",
                 record.folio_factura or "",
                 record.fecha_inicio,
+                record.tiempo_credito_dias if record.tiempo_credito_dias is not None else "",
                 record.fecha_vencimiento,
                 float(record.monto_total or 0),
                 float(record.total_abonado or 0),
@@ -938,20 +940,21 @@ def _financial_excel_response(records: list[ContabilidadRegistro], filename_pref
     for row in ws.iter_rows(min_row=2):
         for cell in row:
             cell.font = Font(name="Arial", size=10)
-            cell.alignment = Alignment(vertical="top", wrap_text=cell.column in {1, 3, 11})
-        for index in (5, 6):
+            cell.alignment = Alignment(vertical="top", wrap_text=cell.column in {1, 3, 12})
+        for index in (5, 7):
             row[index - 1].number_format = "dd/mm/yyyy"
             row[index - 1].alignment = Alignment(horizontal="center", vertical="top")
-        for index in (7, 8, 9):
+        row[5].alignment = Alignment(horizontal="center", vertical="top")
+        for index in (8, 9, 10):
             row[index - 1].number_format = '"$"#,##0.00'
             row[index - 1].alignment = Alignment(horizontal="right", vertical="top")
 
-    widths = [34, 18, 28, 20, 18, 21, 18, 18, 18, 16, 42]
+    widths = [34, 18, 28, 20, 18, 24, 21, 18, 18, 18, 16, 42]
     for index, width in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(index)].width = width
     ws.row_dimensions[1].height = 28
     ws.freeze_panes = "A2"
-    ws.auto_filter.ref = f"A1:K{max(ws.max_row, 1)}"
+    ws.auto_filter.ref = f"A1:L{max(ws.max_row, 1)}"
     ws.sheet_view.showGridLines = False
     ws.print_title_rows = "1:1"
     ws.page_setup.orientation = "landscape"

@@ -28,20 +28,25 @@
   {% if category.financial %}
   <section class="card accounting-summary border-0 shadow-sm mb-4">
     <div class="row g-0">
-      <div class="col-lg-4 summary-main p-4">
+      <div class="col-12 col-lg-3 summary-main p-4">
         <div class="small text-uppercase fw-semibold opacity-75">Saldo pendiente</div>
         <div class="summary-value">${{ '{:,.2f}'.format(record.saldo_pendiente) }}</div>
         <span class="badge {{ 'text-bg-success' if record.esta_liquidado else 'text-bg-warning' }} mt-2">{{ record.estatus }}</span>
       </div>
-      <div class="col-6 col-lg-4 p-4 border-end">
+      <div class="col-12 col-sm-4 col-lg-3 p-4 border-end">
         <div class="small text-muted text-uppercase fw-semibold">Monto de crédito / obra</div>
         <div class="h4 fw-bold mb-0">${{ '{:,.2f}'.format(record.monto_total or 0) }}</div>
         <div class="small text-muted">{{ record.moneda }}</div>
       </div>
-      <div class="col-6 col-lg-4 p-4">
+      <div class="col-12 col-sm-4 col-lg-3 p-4 border-end">
         <div class="small text-muted text-uppercase fw-semibold">Total abonado</div>
         <div class="h4 fw-bold text-success mb-0">${{ '{:,.2f}'.format(record.total_abonado) }}</div>
         <div class="small text-muted">{{ record.abonos|length }} movimiento{{ '' if record.abonos|length == 1 else 's' }}</div>
+      </div>
+      <div class="col-12 col-sm-4 col-lg-3 p-4">
+        <div class="small text-muted text-uppercase fw-semibold">Vigencia / plazo del crédito</div>
+        <div class="h4 fw-bold mb-0">{{ record.tiempo_credito_dias ~ ' días' if record.tiempo_credito_dias is not none else '—' }}</div>
+        <div class="small text-muted">{{ 'Vence el ' ~ record.fecha_vencimiento.strftime('%d/%m/%Y') if record.fecha_vencimiento else 'Sin vencimiento registrado' }}</div>
       </div>
     </div>
   </section>
@@ -100,8 +105,8 @@
           <div class="col-md-3"><label class="form-label fw-semibold">Fecha de inicio *</label><input class="form-control credit-start" type="date" name="fecha_inicio" value="{{ record.fecha_inicio.isoformat() }}" required></div>
           <div class="col-md-4"><label class="form-label fw-semibold">{{ 'Monto de crédito u obra *' if category.financial else 'Valor / costo de referencia' }}</label><div class="input-group"><span class="input-group-text">$</span><input class="form-control" type="number" min="0" step="0.01" name="monto_total" value="{{ '%.2f'|format(record.monto_total or 0) }}" {% if category.financial %}required{% endif %}><select class="form-select" name="moneda" style="max-width: 95px"><option {{ 'selected' if record.moneda == 'MXN' }}>MXN</option><option {{ 'selected' if record.moneda == 'USD' }}>USD</option></select></div></div>
           {% if category.financial %}
-          <div class="col-md-6"><label class="form-label fw-semibold">Tiempo de crédito (días) *</label><input class="form-control credit-days" type="number" min="0" max="3650" name="tiempo_credito_dias" value="{{ record.tiempo_credito_dias if record.tiempo_credito_dias is not none else '' }}" required></div>
-          <div class="col-md-6"><label class="form-label fw-semibold">Fecha de vencimiento *</label><input class="form-control credit-due" type="date" name="fecha_vencimiento" value="{{ record.fecha_vencimiento.isoformat() if record.fecha_vencimiento else '' }}" required></div>
+          <div class="col-md-6"><label class="form-label fw-semibold">Vigencia / plazo del crédito (días) *</label><input class="form-control credit-days" type="number" min="0" max="3650" name="tiempo_credito_dias" list="creditTermOptionsEdit" value="{{ record.tiempo_credito_dias if record.tiempo_credito_dias is not none else '' }}" required><datalist id="creditTermOptionsEdit"><option value="7"></option><option value="15"></option><option value="30"></option><option value="45"></option><option value="60"></option><option value="90"></option></datalist><div class="form-text">Ej. 30, 60 o 90 días.</div></div>
+          <div class="col-md-6"><label class="form-label fw-semibold">Fecha de vencimiento *</label><input class="form-control credit-due" type="date" name="fecha_vencimiento" value="{{ record.fecha_vencimiento.isoformat() if record.fecha_vencimiento else '' }}" required><div class="form-text">Se recalcula al cambiar la fecha de inicio o el plazo.</div></div>
           {% endif %}
           <div class="col-12"><label class="form-label fw-semibold">Notas</label><textarea class="form-control" name="notas" rows="2">{{ record.notas or '' }}</textarea></div>
           <div class="col-12 d-flex justify-content-end gap-2"><button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#editRecord">Cancelar</button><button class="btn btn-primary">Guardar cambios</button></div>
@@ -199,7 +204,7 @@
     <h2 class="h6 fw-bold mb-3">Información del expediente</h2>
     <div class="row g-3 small">
       <div class="col-md-3"><span class="text-muted d-block">Fecha de inicio</span><strong>{{ record.fecha_inicio.strftime('%d/%m/%Y') }}</strong></div>
-      {% if category.financial %}<div class="col-md-3"><span class="text-muted d-block">Tiempo de crédito</span><strong>{{ record.tiempo_credito_dias ~ ' días' if record.tiempo_credito_dias is not none else '—' }}</strong></div><div class="col-md-3"><span class="text-muted d-block">Fecha de vencimiento</span><strong>{{ record.fecha_vencimiento.strftime('%d/%m/%Y') if record.fecha_vencimiento else '—' }}</strong></div><div class="col-md-3"><span class="text-muted d-block">Folio de factura</span><strong>{{ record.folio_factura or '—' }}</strong></div>{% endif %}
+      {% if category.financial %}<div class="col-md-3"><span class="text-muted d-block">Vigencia / plazo del crédito</span><strong>{{ record.tiempo_credito_dias ~ ' días' if record.tiempo_credito_dias is not none else '—' }}</strong></div><div class="col-md-3"><span class="text-muted d-block">Fecha de vencimiento</span><strong>{{ record.fecha_vencimiento.strftime('%d/%m/%Y') if record.fecha_vencimiento else '—' }}</strong></div><div class="col-md-3"><span class="text-muted d-block">Folio de factura</span><strong>{{ record.folio_factura or '—' }}</strong></div>{% endif %}
       <div class="col-md-3"><span class="text-muted d-block">Proyecto / obra</span><strong>{{ record.proyecto or 'Sin asignar' }}</strong></div>
       <div class="col-md-3"><span class="text-muted d-block">Identificador</span><strong>{{ record.identificador or '—' }}</strong></div>
       <div class="col-md-3"><span class="text-muted d-block">Registró</span><strong>{{ record.creado_por_nombre or '—' }}</strong></div>

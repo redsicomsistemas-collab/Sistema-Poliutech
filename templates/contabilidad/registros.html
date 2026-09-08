@@ -189,12 +189,15 @@
           </div>
           {% if category.financial %}
           <div class="col-md-4">
-            <label class="form-label fw-semibold">Tiempo de crédito (días) *</label>
-            <input class="form-control credit-days" name="tiempo_credito_dias" type="number" min="0" max="3650" value="30" required>
+            <label class="form-label fw-semibold">Vigencia / plazo del crédito (días) *</label>
+            <input class="form-control credit-days" name="tiempo_credito_dias" type="number" min="0" max="3650" value="30" list="creditTermOptionsNew" required>
+            <datalist id="creditTermOptionsNew"><option value="7"></option><option value="15"></option><option value="30"></option><option value="45"></option><option value="60"></option><option value="90"></option></datalist>
+            <div class="form-text">Ej. 30, 60 o 90 días.</div>
           </div>
           <div class="col-md-4">
             <label class="form-label fw-semibold">Fecha de vencimiento *</label>
             <input class="form-control credit-due" name="fecha_vencimiento" type="date" required>
+            <div class="form-text">Se calcula automáticamente con el plazo.</div>
           </div>
           {% endif %}
           <div class="col-md-4">
@@ -253,14 +256,14 @@
     </div>
     <div class="table-responsive">
       <table class="table table-hover align-middle mb-0">
-        <thead><tr><th>Registro</th><th>Proyecto / identificación</th><th>Inicio</th>{% if category.financial %}<th>Vencimiento</th>{% endif %}<th>Monto</th>{% if category.financial %}<th>Abonado</th><th class="balance-cell">Saldo pendiente</th>{% endif %}<th>PDF</th><th>Estatus</th><th></th></tr></thead>
+        <thead><tr><th>Registro</th><th>Proyecto / identificación</th><th>Inicio</th>{% if category.financial %}<th>Plazo / vencimiento</th>{% endif %}<th>Monto</th>{% if category.financial %}<th>Abonado</th><th class="balance-cell">Saldo pendiente</th>{% endif %}<th>PDF</th><th>Estatus</th><th></th></tr></thead>
         <tbody>
           {% for item in records %}
           <tr>
             <td><div class="fw-semibold">{{ item.nombre }}</div><div class="small text-muted">{{ item.folio }}{% if item.rfc %} · {{ item.rfc }}{% endif %}</div></td>
             <td><div>{{ item.proyecto or 'Sin proyecto' }}</div><div class="small text-muted">{% if item.folio_factura %}Factura {{ item.folio_factura }}{% endif %}{% if item.folio_factura and item.identificador %} · {% endif %}{% if item.identificador %}Alta {{ item.identificador }}{% elif not item.folio_factura %}{{ item.razon_social or '' }}{% endif %}</div></td>
             <td>{{ item.fecha_inicio.strftime('%d/%m/%Y') }}</td>
-            {% if category.financial %}<td><div>{{ item.fecha_vencimiento.strftime('%d/%m/%Y') if item.fecha_vencimiento else '—' }}</div><div class="small text-muted">{{ item.tiempo_credito_dias ~ ' días' if item.tiempo_credito_dias is not none else '' }}</div></td>{% endif %}
+            {% if category.financial %}<td><div class="fw-semibold">{{ item.tiempo_credito_dias ~ ' días' if item.tiempo_credito_dias is not none else 'Sin plazo registrado' }}</div><div class="small text-muted">{{ 'Vence ' ~ item.fecha_vencimiento.strftime('%d/%m/%Y') if item.fecha_vencimiento else 'Sin fecha de vencimiento' }}</div></td>{% endif %}
             <td>${{ '{:,.2f}'.format(item.monto_total or 0) }} <span class="small text-muted">{{ item.moneda }}</span></td>
             {% if category.financial %}
             <td class="text-success">${{ '{:,.2f}'.format(item.total_abonado) }}</td>
