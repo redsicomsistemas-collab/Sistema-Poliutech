@@ -92,6 +92,9 @@
   .fd-fact:last-child { border-bottom: 0; }
   .fd-fact dt { margin-bottom: .22rem; color: var(--fd-muted); font-size: .78rem; font-weight: 800; letter-spacing: .045em; text-transform: uppercase; }
   .fd-fact dd { margin: 0; color: var(--fd-ink); font-weight: 700; overflow-wrap: anywhere; }
+  .fd-note-display { white-space: pre-wrap; }
+  .fd-note-edit { margin-top: .75rem; }
+  .fd-note-edit textarea { min-height: 110px; resize: vertical; }
   .fd-advanced { margin-top: 1rem; border: 1px solid var(--fd-line); border-radius: 16px; background: var(--fd-surface); }
   .fd-advanced summary { cursor: pointer; padding: 1rem 1.1rem; color: var(--fd-ink); font-weight: 800; }
   .fd-advanced-body { padding: 0 1rem 1rem; }
@@ -209,7 +212,27 @@
       {% for partida in solicitud.partidas %}<div class="fd-line-item"><div class="fd-line-number">{{ loop.index }}</div><div><div class="fd-line-description">{{ partida.concepto }}</div><div class="fd-line-calculation">{{ "{:,.2f}".format(partida.cantidad or 0) }} × ${{ "{:,.2f}".format(partida.importe or 0) }}</div></div><div class="fd-line-total">${{ "{:,.2f}".format(partida.total or ((partida.cantidad or 0) * (partida.importe or 0))) }}</div></div>{% else %}<div class="p-4 text-muted text-center">No hay compras desglosadas.</div>{% endfor %}
       <div class="fd-grand-total"><span>Total</span><span>${{ "{:,.2f}".format(solicitud.total or 0) }}</span></div>
     </section>
-    <aside class="fd-card" aria-labelledby="datos-title"><div class="fd-card-head"><h2 id="datos-title">Datos de la solicitud</h2></div><dl class="fd-facts"><div class="fd-fact"><dt>Solicitante</dt><dd>{{ solicitud.solicitante or "Sin dato" }}</dd></div><div class="fd-fact"><dt>Proyecto u obra</dt><dd>{{ solicitud.proyecto or "Sin dato" }}</dd></div><div class="fd-fact"><dt>Fecha</dt><dd>{{ solicitud.fecha.strftime("%d/%m/%Y a las %H:%M") if solicitud.fecha else "Sin dato" }}</dd></div><div class="fd-fact"><dt>Notas</dt><dd>{{ solicitud.notas or "Sin notas adicionales" }}</dd></div></dl></aside>
+    <aside class="fd-card" id="datosSolicitud" aria-labelledby="datos-title">
+      <div class="fd-card-head"><h2 id="datos-title">Datos de la solicitud</h2></div>
+      <dl class="fd-facts">
+        <div class="fd-fact"><dt>Solicitante</dt><dd>{{ solicitud.solicitante or "Sin dato" }}</dd></div>
+        <div class="fd-fact"><dt>Proyecto u obra</dt><dd>{{ solicitud.proyecto or "Sin dato" }}</dd></div>
+        <div class="fd-fact"><dt>Fecha</dt><dd>{{ solicitud.fecha.strftime("%d/%m/%Y a las %H:%M") if solicitud.fecha else "Sin dato" }}</dd></div>
+        <div class="fd-fact">
+          <dt class="d-flex justify-content-between align-items-center gap-2"><span>Notas</span>{% if can_edit_notas %}<button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#editarNotasSolicitud" aria-expanded="false">✎ Editar notas</button>{% endif %}</dt>
+          <dd class="fd-note-display">{{ solicitud.notas or "Sin notas adicionales" }}</dd>
+          {% if can_edit_notas %}
+          <div class="collapse fd-note-edit" id="editarNotasSolicitud">
+            <form method="post" action="{{ url_for('solicitud_recurso_editar_notas', solicitud_id=solicitud.id) }}">
+              <label class="visually-hidden" for="notasSolicitud">Notas de la solicitud</label>
+              <textarea class="form-control" id="notasSolicitud" name="notas" placeholder="Agrega indicaciones, contexto o comentarios">{{ solicitud.notas or '' }}</textarea>
+              <div class="d-flex justify-content-end gap-2 mt-2"><button class="btn btn-sm btn-light" type="button" data-bs-toggle="collapse" data-bs-target="#editarNotasSolicitud">Cancelar</button><button class="btn btn-sm btn-primary" type="submit">Guardar notas</button></div>
+            </form>
+          </div>
+          {% endif %}
+        </div>
+      </dl>
+    </aside>
   </div>
 
   <details class="fd-advanced"><summary>Más información del solicitante</summary><div class="fd-advanced-body">{% include "_cliente_seguimiento_card.html" %}</div></details>

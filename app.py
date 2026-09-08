@@ -13610,6 +13610,15 @@ def _solicitud_recurso_can_edit(solicitud: SolicitudRecurso) -> bool:
     return is_hansel_or_admin() or solicitud.usuario_id == getattr(current_user, "id", None)
 
 
+def _solicitud_recurso_can_edit_notes(solicitud: SolicitudRecurso) -> bool:
+    """Las notas no cambian importes y pueden mantenerse durante todo el seguimiento."""
+    return (
+        is_hansel_or_admin()
+        or has_permission("fondos.gestionar_solicitudes")
+        or solicitud.usuario_id == getattr(current_user, "id", None)
+    )
+
+
 def _mobile_push_user_ids_for_hansel_only() -> list[int]:
     hansel_aliases = {"hansel", "hansel alejandro", "hansel angel", "hansel ángel"}
     hansel_emails = {"hjaramillo@poliutech.com"}
@@ -17621,6 +17630,7 @@ def solicitud_recurso_detalle(solicitud_id: int):
         estatus_options=SOLICITUD_RECURSO_ESTATUS,
         can_manage_fondos=is_hansel_or_admin(),
         can_edit_solicitud=_solicitud_recurso_can_edit(solicitud),
+        can_edit_notas=_solicitud_recurso_can_edit_notes(solicitud),
         project_options=_known_project_names(),
     )
 
@@ -17708,6 +17718,19 @@ def solicitud_recurso_editar(solicitud_id: int):
         return redirect(edit_url)
     flash(f"Solicitud {solicitud.folio} actualizada. El nuevo total es ${solicitud.total:,.2f}.", "success")
     return redirect(detail_url)
+
+
+@app.route("/solicitudes-recursos/<int:solicitud_id>/notas", methods=["POST"])
+@login_required
+def solicitud_recurso_editar_notas(solicitud_id: int):
+    solicitud = SolicitudRecurso.query.get_or_404(solicitud_id)
+    if not _solicitud_recurso_can_edit_notes(solicitud):
+        abort(403)
+    solicitud.notas = (request.form.get("notas") or "").strip() or None
+    solicitud.actualizado_en = now_cdmx_naive()
+    db.session.commit()
+    flash(f"Notas de la solicitud {solicitud.folio} actualizadas.", "success")
+    return redirect(url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id) + "#datosSolicitud")
 
 
 @app.route("/solicitudes-recursos/<int:solicitud_id>/comprobar")
