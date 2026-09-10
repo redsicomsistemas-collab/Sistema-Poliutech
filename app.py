@@ -13406,7 +13406,8 @@ def _reporte_semanal_periodo(reporte: ReporteDiario) -> str:
         return ""
     inicio, fin_exclusivo = _reporte_semanal_rango(reporte.fecha)
     fin = fin_exclusivo - timedelta(days=1)
-    return f"{inicio.strftime('%d/%m/%Y')} al {fin.strftime('%d/%m/%Y')}"
+    numero_semana = inicio.isocalendar().week
+    return f"Semana {numero_semana} · del {inicio.strftime('%d/%m/%Y')} al {fin.strftime('%d/%m/%Y')}"
 
 
 def _json_dumps(value) -> str:
@@ -17490,8 +17491,7 @@ def reporte_diario_detalle(reporte_id: int):
         title=f"Reporte {reporte.folio}",
         reporte=reporte,
         payload=_reporte_diario_payload(reporte),
-        semana_inicio=_reporte_semanal_rango(reporte.fecha)[0],
-        semana_fin=_reporte_semanal_rango(reporte.fecha)[1] - timedelta(days=1),
+        periodo_semanal=_reporte_semanal_periodo(reporte),
     )
 
 

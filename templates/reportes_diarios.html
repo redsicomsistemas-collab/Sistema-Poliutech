@@ -29,9 +29,10 @@
           <input name="puesto" class="form-control" value="{{ borrador_edicion.puesto or '' if borrador_edicion else '' }}">
         </div>
         <div class="col-md-4">
-          <label class="form-label">Fecha de referencia</label>
-          <input type="date" name="fecha" class="form-control" value="{{ borrador_edicion.fecha.strftime('%Y-%m-%d') if borrador_edicion and borrador_edicion.fecha else fecha_hoy }}" required>
-          <div class="form-text">Puede ser cualquier día de la semana que estás reportando.</div>
+          <label class="form-label">Calendario de la semana</label>
+          <input type="date" name="fecha" id="fecha-reporte-semanal" class="form-control" value="{{ borrador_edicion.fecha.strftime('%Y-%m-%d') if borrador_edicion and borrador_edicion.fecha else fecha_hoy }}" required>
+          <div class="form-text">Elige cualquier día; el sistema calculará la semana completa.</div>
+          <div class="alert alert-info py-2 px-3 mt-2 mb-0 fw-semibold" id="periodo-reporte-semanal" aria-live="polite"></div>
         </div>
       </div>
 
@@ -231,7 +232,7 @@
         <div class="bg-white border rounded p-3 mb-2">
           <div class="fw-bold">{{ reporte.folio }}</div>
           <div>{{ reporte.colaborador }}</div>
-          <div class="small text-muted mb-2">Semana {{ reporte_semanal_periodo(reporte) }} · Borrador</div>
+          <div class="small text-muted mb-2">{{ reporte_semanal_periodo(reporte) }} · Borrador</div>
           {% if reporte.usuario_id == current_user.id %}
           <a class="btn btn-sm btn-warning" href="{{ url_for('reportes_diarios_index', editar=reporte.id) }}#reporte-diario-form">Editar</a>
           {% endif %}
@@ -254,7 +255,7 @@
         <a class="d-block text-decoration-none text-dark bg-white border rounded p-3 mb-2" href="{{ url_for('reporte_diario_detalle', reporte_id=reporte.id) }}">
           <div class="fw-bold">{{ reporte.folio }}</div>
           <div>{{ reporte.colaborador }}</div>
-          <div class="small text-muted">Semana {{ reporte_semanal_periodo(reporte) }} · {{ reporte.cumplimiento or "Sin indicador" }}</div>
+          <div class="small text-muted">{{ reporte_semanal_periodo(reporte) }} · {{ reporte.cumplimiento or "Sin indicador" }}</div>
         </a>
         {% else %}
         <div class="text-muted small p-3">Sin reportes en esta columna.</div>
@@ -270,6 +271,39 @@
   const form = document.getElementById("reporte-diario-form");
   const saveButton = document.getElementById("guardar-reporte-diario");
   const submitButton = document.getElementById("enviar-reporte-diario");
+  const dateInput = document.getElementById("fecha-reporte-semanal");
+  const periodSummary = document.getElementById("periodo-reporte-semanal");
+
+  function formatDate(date) {
+    return new Intl.DateTimeFormat("es-MX", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(date);
+  }
+
+  function isoWeek(date) {
+    const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const day = utcDate.getUTCDay() || 7;
+    utcDate.setUTCDate(utcDate.getUTCDate() + 4 - day);
+    const yearStart = new Date(Date.UTC(utcDate.getUTCFullYear(), 0, 1));
+    return Math.ceil((((utcDate - yearStart) / 86400000) + 1) / 7);
+  }
+
+  function updateWeekSummary() {
+    if (!dateInput?.value || !periodSummary) return;
+    const [year, month, day] = dateInput.value.split("-").map(Number);
+    const selected = new Date(year, month - 1, day);
+    const monday = new Date(selected);
+    const weekday = selected.getDay() || 7;
+    monday.setDate(selected.getDate() - weekday + 1);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    periodSummary.textContent = `Reporte semanal · Semana ${isoWeek(selected)} · del ${formatDate(monday)} al ${formatDate(sunday)}`;
+  }
+
+  dateInput?.addEventListener("change", updateWeekSummary);
+  updateWeekSummary();
 
   form?.addEventListener("submit", () => {
     if (!form.checkValidity()) return;

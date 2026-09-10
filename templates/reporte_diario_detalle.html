@@ -18,7 +18,7 @@
 <div class="row g-3 mb-4">
   <div class="col-md-3"><div class="border rounded p-3 h-100"><div class="text-muted small">Colaborador</div><div class="fw-bold">{{ reporte.colaborador }}</div></div></div>
   <div class="col-md-3"><div class="border rounded p-3 h-100"><div class="text-muted small">Puesto</div><div class="fw-bold">{{ reporte.puesto or "-" }}</div></div></div>
-  <div class="col-md-2"><div class="border rounded p-3 h-100"><div class="text-muted small">Semana</div><div class="fw-bold">{{ semana_inicio.strftime("%d/%m/%Y") }} al {{ semana_fin.strftime("%d/%m/%Y") }}</div></div></div>
+  <div class="col-md-2"><div class="border rounded p-3 h-100"><div class="text-muted small">Reporte semanal</div><div class="fw-bold">{{ periodo_semanal }}</div></div></div>
   <div class="col-md-2"><div class="border rounded p-3 h-100"><div class="text-muted small">Cumplimiento</div><div class="fw-bold">{{ reporte.cumplimiento or "-" }}</div></div></div>
   <div class="col-md-2"><div class="border rounded p-3 h-100"><div class="text-muted small">Semaforo</div><div class="fw-bold">{{ reporte.semaforo }}</div></div></div>
 </div>
