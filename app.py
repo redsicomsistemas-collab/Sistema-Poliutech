@@ -3647,6 +3647,17 @@ def ensure_schema():
     print("🔍 Verificando estructura de la base de datos...")
     db.create_all()
 
+    # --- REPORTE SEMANAL: periodo elegido por el colaborador ---
+    try:
+        cols_reporte = _table_columns("reporte_diario")
+        if "fecha_fin" not in cols_reporte:
+            db.session.execute(text("ALTER TABLE reporte_diario ADD COLUMN fecha_fin TIMESTAMP NULL"))
+        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_reporte_diario_fecha_fin ON reporte_diario (fecha_fin)"))
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print("⚠️ ensure_schema(reporte_diario.fecha_fin):", e)
+
     # --- DEMO_ENVIRONMENT: identidad visual propia por prospecto ---
     try:
         cols_demo = _table_columns("demo_environment")
@@ -13404,10 +13415,13 @@ def _reporte_semanal_rango(fecha: datetime) -> tuple[datetime, datetime]:
 def _reporte_semanal_periodo(reporte: ReporteDiario) -> str:
     if not reporte.fecha:
         return ""
-    inicio, fin_exclusivo = _reporte_semanal_rango(reporte.fecha)
-    fin = fin_exclusivo - timedelta(days=1)
-    numero_semana = inicio.isocalendar().week
-    return f"Semana {numero_semana} · del {inicio.strftime('%d/%m/%Y')} al {fin.strftime('%d/%m/%Y')}"
+    inicio = reporte.fecha.replace(hour=0, minute=0, second=0, microsecond=0)
+    if reporte.fecha_fin:
+        fin = reporte.fecha_fin.replace(hour=0, minute=0, second=0, microsecond=0)
+    else:
+        _, fin_exclusivo = _reporte_semanal_rango(reporte.fecha)
+        fin = fin_exclusivo - timedelta(days=1)
+    return f"Del {inicio.strftime('%d/%m/%Y')} al {fin.strftime('%d/%m/%Y')}"
 
 
 def _json_dumps(value) -> str:
@@ -13445,7 +13459,8 @@ def _clean_parallel_rows(*columns: list[str]) -> list[tuple[str, ...]]:
 
 
 def _reporte_diario_from_form(f) -> ReporteDiario:
-    fecha = _parse_date_or_none(f.get("fecha")) or now_cdmx_naive()
+    fecha = _parse_date_or_none(f.get("fecha_desde") or f.get("fecha")) or now_cdmx_naive()
+    fecha_fin = _parse_date_or_none(f.get("fecha_hasta")) or fecha
     colaborador = (f.get("colaborador") or responsable_actual() or "").strip()
     puesto = (f.get("puesto") or "").strip()
     cumplimiento = (f.get("cumplimiento") or "").strip().upper()
@@ -13501,6 +13516,7 @@ def _reporte_diario_from_form(f) -> ReporteDiario:
         colaborador=colaborador,
         puesto=puesto or None,
         fecha=fecha,
+        fecha_fin=fecha_fin,
         hora_envio=now_cdmx_naive(),
         estatus="ENVIADO",
         cumplimiento=cumplimiento or None,
@@ -13535,7 +13551,7 @@ def _reporte_diario_mail_html(reporte: ReporteDiario, detail_url: str) -> str:
       <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
         <tr><td style="padding:7px;color:#64748b;font-weight:700;">Colaborador</td><td style="padding:7px;">{escape(reporte.colaborador or '-')}</td></tr>
         <tr><td style="padding:7px;color:#64748b;font-weight:700;">Puesto</td><td style="padding:7px;">{escape(reporte.puesto or '-')}</td></tr>
-        <tr><td style="padding:7px;color:#64748b;font-weight:700;">Semana</td><td style="padding:7px;">{_reporte_semanal_periodo(reporte)}</td></tr>
+        <tr><td style="padding:7px;color:#64748b;font-weight:700;">Periodo</td><td style="padding:7px;">{_reporte_semanal_periodo(reporte)}</td></tr>
         <tr><td style="padding:7px;color:#64748b;font-weight:700;">Cumplimiento</td><td style="padding:7px;">{escape(reporte.cumplimiento or '-')}</td></tr>
         <tr><td style="padding:7px;color:#64748b;font-weight:700;">Semaforo</td><td style="padding:7px;font-weight:700;">{escape(reporte.semaforo or '-')}</td></tr>
       </table>
@@ -13563,7 +13579,7 @@ def _send_reporte_diario_email(reporte: ReporteDiario) -> None:
     msg.set_content(
         f"Reporte semanal {reporte.folio or reporte.id}\n"
         f"Colaborador: {reporte.colaborador}\n"
-        f"Semana: {_reporte_semanal_periodo(reporte)}\n"
+        f"Periodo: {_reporte_semanal_periodo(reporte)}\n"
         f"Cumplimiento: {reporte.cumplimiento or '-'}\n"
         f"Semaforo: {reporte.semaforo or '-'}\n"
         f"Ver: {detail_url}\n"
@@ -17291,7 +17307,7 @@ def reportes_diarios_evaluacion_export_xlsx():
             ws_emp.cell(ws_emp.max_row, 6).fill = danger_fill
 
     ws_rep = wb.create_sheet("Reportes")
-    ws_rep.append(["Semana", "Folio", "Empleado", "Departamento", "Score", "Nivel", "Cumplimiento", "Semaforo", "Fortalezas", "Debilidades"])
+    ws_rep.append(["Periodo", "Folio", "Empleado", "Departamento", "Score", "Nivel", "Cumplimiento", "Semaforo", "Fortalezas", "Debilidades"])
     for cell in ws_rep[1]:
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = header_fill
@@ -17405,6 +17421,14 @@ def reportes_diarios_index():
         ReporteDiario.fecha < semana_siguiente,
     ).order_by(ReporteDiario.hora_envio.desc(), ReporteDiario.id.desc()).first()
 
+    fecha_desde_form = borrador_edicion.fecha if borrador_edicion and borrador_edicion.fecha else semana_actual
+    if borrador_edicion and borrador_edicion.fecha_fin:
+        fecha_hasta_form = borrador_edicion.fecha_fin
+    elif borrador_edicion and borrador_edicion.fecha:
+        fecha_hasta_form = _reporte_semanal_rango(borrador_edicion.fecha)[1] - timedelta(days=1)
+    else:
+        fecha_hasta_form = semana_siguiente - timedelta(days=1)
+
     return render_template(
         "reportes_diarios.html",
         title="Reportes semanales",
@@ -17419,7 +17443,8 @@ def reportes_diarios_index():
         semaforo_options=REPORTE_DIARIO_SEMAFORO,
         cumplimiento_options=REPORTE_DIARIO_CUMPLIMIENTO,
         actividad_estatus_options=REPORTE_DIARIO_ACTIVIDAD_ESTATUS,
-        fecha_hoy=now_cdmx_naive().strftime("%Y-%m-%d"),
+        fecha_desde_form=fecha_desde_form.strftime("%Y-%m-%d"),
+        fecha_hasta_form=fecha_hasta_form.strftime("%Y-%m-%d"),
         responsable_default=responsable_actual() or "",
         ultimo_reporte_semana=ultimo_reporte_semana,
         reporte_semanal_periodo=_reporte_semanal_periodo,
@@ -17445,7 +17470,7 @@ def reporte_diario_crear():
         ).first_or_404()
 
         for field in (
-            "colaborador", "puesto", "fecha", "cumplimiento", "semaforo",
+            "colaborador", "puesto", "fecha", "fecha_fin", "cumplimiento", "semaforo",
             "actividades_json", "puntos_importantes_json",
             "prioridades_siguientes_json", "tiempos_json",
             "problemas_riesgos_json", "apoyo_direccion", "observaciones",
@@ -17453,6 +17478,13 @@ def reporte_diario_crear():
             setattr(reporte, field, getattr(reporte_form, field))
     else:
         reporte = reporte_form
+
+    if reporte.fecha_fin and reporte.fecha_fin < reporte.fecha:
+        message = "La fecha 'Hasta el día' debe ser igual o posterior a 'Desde el día'."
+        if guardar_borrador or request.accept_mimetypes.best == "application/json":
+            return jsonify(ok=False, message=message), 400
+        flash(message, "warning")
+        return redirect(url_for("reportes_diarios_index"))
 
     if not reporte.colaborador:
         if guardar_borrador or request.accept_mimetypes.best == "application/json":

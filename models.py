@@ -939,6 +939,7 @@ class ReporteDiario(db.Model):
     colaborador = db.Column(db.String(120), nullable=False, index=True)
     puesto = db.Column(db.String(120))
     fecha = db.Column(db.DateTime, nullable=False, index=True)
+    fecha_fin = db.Column(db.DateTime, nullable=True, index=True)
     hora_envio = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
     estatus = db.Column(db.String(30), default="ENVIADO", nullable=False, index=True)
     cumplimiento = db.Column(db.String(30), index=True)
