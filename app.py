@@ -3077,7 +3077,8 @@ NOTIFICATION_EVENT_CATALOG = {
     "cotizacion_seguimiento": ("Cotizaciones", "Seguimiento pendiente"),
     "ticket_soporte": ("Soporte", "Nuevo ticket de soporte"),
     "usuario_alta_cambio": ("Administración", "Alta o modificación de usuario"),
-    "reporte_diario": ("Operación", "Nuevo reporte diario"),
+    # La clave se conserva por compatibilidad con destinatarios ya configurados.
+    "reporte_diario": ("Operación", "Nuevo reporte semanal"),
     "solicitud_fondos": ("Finanzas", "Nueva solicitud de fondos"),
     "solicitud_fondos_resultado": ("Finanzas", "Resultado de solicitud de fondos"),
     "finanzas_autorizacion": ("Finanzas", "Partida autorizada para finanzas"),
@@ -3258,7 +3259,7 @@ DEMO_MODULE_META = {
     "facturacion": {"label": "Facturación", "icon": "🧾", "endpoint": "facturacion.index", "group": "Finanzas", "description": "Administra facturas y configuración fiscal."},
     "contabilidad": {"label": "Contabilidad", "icon": "📒", "endpoint": "contabilidad.index", "group": "Finanzas", "description": "Controla saldos, abonos, expedientes, personal y activos."},
     "gastos": {"label": "Gastos y viáticos", "icon": "💸", "endpoint": "gastos_viaticos_index", "group": "Finanzas", "description": "Registra comprobantes, viáticos y revisiones."},
-    "reportes": {"label": "Reportes diarios", "icon": "🗓️", "endpoint": "reportes_diarios_index", "group": "Gestión", "description": "Documenta actividades y avance diario."},
+    "reportes": {"label": "Reportes semanales", "icon": "🗓️", "endpoint": "reportes_diarios_index", "group": "Gestión", "description": "Documenta actividades y avance semanal."},
     "rrhh": {"label": "Recursos Humanos", "icon": "👥", "endpoint": "rrhh_index", "group": "Gestión", "description": "Gestiona solicitudes y justificantes del personal."},
     "soporte": {"label": "Soporte", "icon": "🎫", "endpoint": "soporte_tickets", "group": "Gestión", "description": "Registra y consulta solicitudes de soporte."},
 }
@@ -3356,6 +3357,7 @@ def _demo_module_for_path(path: str) -> str | None:
         ("/finanzas", "finanzas"),
         ("/facturacion", "facturacion"),
         ("/contabilidad", "contabilidad"),
+        ("/reportes-semanales", "reportes"),
         ("/reportes-diarios", "reportes"),
         ("/recursos-humanos", "rrhh"),
         ("/soporte", "soporte"),
@@ -4252,8 +4254,8 @@ PERMISSION_CATALOG = (
     {
         "key": "reportes.ver_todos",
         "group": "Reportes",
-        "name": "Ver reportes diarios de todas las cuentas",
-        "description": "Quita el filtro por usuario en el módulo de reportes diarios.",
+        "name": "Ver reportes semanales de todas las cuentas",
+        "description": "Quita el filtro por usuario en el módulo de reportes semanales.",
     },
     {
         "key": "reportes.evaluacion_departamental",
@@ -13373,8 +13375,9 @@ def _solicitud_recurso_next_folio() -> str:
 
 
 def _reporte_diario_next_folio() -> str:
+    """Genera folios RS sin renombrar el modelo/tabla históricos."""
     year = now_cdmx_naive().year
-    prefix = f"RD-{year}-"
+    prefix = f"RS-{year}-"
     latest = (
         ReporteDiario.query
         .filter(ReporteDiario.folio.like(f"{prefix}%"))
@@ -13389,6 +13392,21 @@ def _reporte_diario_next_folio() -> str:
     else:
         seq = 1
     return f"{prefix}{seq:04d}"
+
+
+def _reporte_semanal_rango(fecha: datetime) -> tuple[datetime, datetime]:
+    """Devuelve el intervalo [lunes, lunes siguiente) de la semana elegida."""
+    dia = fecha.replace(hour=0, minute=0, second=0, microsecond=0)
+    inicio = dia - timedelta(days=dia.weekday())
+    return inicio, inicio + timedelta(days=7)
+
+
+def _reporte_semanal_periodo(reporte: ReporteDiario) -> str:
+    if not reporte.fecha:
+        return ""
+    inicio, fin_exclusivo = _reporte_semanal_rango(reporte.fecha)
+    fin = fin_exclusivo - timedelta(days=1)
+    return f"{inicio.strftime('%d/%m/%Y')} al {fin.strftime('%d/%m/%Y')}"
 
 
 def _json_dumps(value) -> str:
@@ -13511,20 +13529,20 @@ def _reporte_diario_mail_html(reporte: ReporteDiario, detail_url: str) -> str:
 
     return f"""
     <div style="font-family:Arial,sans-serif;color:#0f172a;max-width:820px;margin:0 auto;">
-      <h2 style="margin:0 0 8px;color:#0C3C78;">Reporte diario de actividades</h2>
+      <h2 style="margin:0 0 8px;color:#0C3C78;">Reporte semanal de actividades</h2>
       <p style="margin:0 0 18px;color:#475569;"><b>{escape(reporte.folio or str(reporte.id))}</b> enviado por {escape(reporte.colaborador or '')}.</p>
       <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
         <tr><td style="padding:7px;color:#64748b;font-weight:700;">Colaborador</td><td style="padding:7px;">{escape(reporte.colaborador or '-')}</td></tr>
         <tr><td style="padding:7px;color:#64748b;font-weight:700;">Puesto</td><td style="padding:7px;">{escape(reporte.puesto or '-')}</td></tr>
-        <tr><td style="padding:7px;color:#64748b;font-weight:700;">Fecha</td><td style="padding:7px;">{reporte.fecha.strftime('%d/%m/%Y') if reporte.fecha else ''}</td></tr>
+        <tr><td style="padding:7px;color:#64748b;font-weight:700;">Semana</td><td style="padding:7px;">{_reporte_semanal_periodo(reporte)}</td></tr>
         <tr><td style="padding:7px;color:#64748b;font-weight:700;">Cumplimiento</td><td style="padding:7px;">{escape(reporte.cumplimiento or '-')}</td></tr>
         <tr><td style="padding:7px;color:#64748b;font-weight:700;">Semaforo</td><td style="padding:7px;font-weight:700;">{escape(reporte.semaforo or '-')}</td></tr>
       </table>
       <h3 style="font-size:16px;color:#0C3C78;">Actividades realizadas</h3>
       <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;margin-bottom:16px;">{rows(payload['actividades'], ['no', 'actividad', 'estatus', 'avance'])}</table>
-      <h3 style="font-size:16px;color:#0C3C78;">Puntos importantes</h3>
+      <h3 style="font-size:16px;color:#0C3C78;">Puntos importantes de la semana</h3>
       <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;margin-bottom:16px;">{rows(payload['puntos'], ['no', 'prioridad', 'resultado', 'impacto'])}</table>
-      <h3 style="font-size:16px;color:#0C3C78;">Prioridades siguiente dia</h3>
+      <h3 style="font-size:16px;color:#0C3C78;">Prioridades de la siguiente semana</h3>
       <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;margin-bottom:16px;">{rows(payload['prioridades'], ['no', 'actividad', 'objetivo'])}</table>
       <p><b>Apoyo requerido:</b> {escape(reporte.apoyo_direccion or '-')}</p>
       <p><b>Observaciones:</b> {escape(reporte.observaciones or '-')}</p>
@@ -13538,13 +13556,13 @@ def _send_reporte_diario_email(reporte: ReporteDiario) -> None:
     bcc = _parse_email_list(REPORTE_DIARIO_BCC_EMAIL)
     detail_url = url_for("reporte_diario_detalle", reporte_id=reporte.id, _external=True)
     msg = EmailMessage()
-    msg["Subject"] = f"Reporte diario {reporte.folio or reporte.id} - {reporte.colaborador}"
+    msg["Subject"] = f"Reporte semanal {reporte.folio or reporte.id} - {reporte.colaborador}"
     msg["From"] = f"SISTEMA MAR <{SMTP_FROM or SMTP_USERNAME}>"
     msg["To"] = ", ".join(recipients)
     msg.set_content(
-        f"Reporte diario {reporte.folio or reporte.id}\n"
+        f"Reporte semanal {reporte.folio or reporte.id}\n"
         f"Colaborador: {reporte.colaborador}\n"
-        f"Fecha: {reporte.fecha.strftime('%d/%m/%Y') if reporte.fecha else ''}\n"
+        f"Semana: {_reporte_semanal_periodo(reporte)}\n"
         f"Cumplimiento: {reporte.cumplimiento or '-'}\n"
         f"Semaforo: {reporte.semaforo or '-'}\n"
         f"Ver: {detail_url}\n"
@@ -13557,10 +13575,10 @@ def _send_reporte_diario_push_hansel(reporte: ReporteDiario) -> dict[str, int]:
     user_ids = notification_targets("reporte_diario", "push") or _mobile_push_user_ids_for_hansel_only()
     tokens = _mobile_push_tokens_for_users(user_ids)
     if not tokens:
-        logger.warning("Push reporte diario %s: Hjaramillo no tiene token movil activo.", reporte.folio or reporte.id)
+        logger.warning("Push reporte semanal %s: Hjaramillo no tiene token movil activo.", reporte.folio or reporte.id)
     return _send_push_notification(
         tokens,
-        title="Nuevo reporte diario",
+        title="Nuevo reporte semanal",
         body=f"{reporte.colaborador} - {reporte.semaforo}",
         data={
             "type": "reporte_diario",
@@ -13577,14 +13595,14 @@ def _notify_reporte_diario_created(reporte: ReporteDiario) -> str | None:
         _send_reporte_diario_email(reporte)
     except Exception as exc:
         email_error = str(exc)
-        logger.warning("Correo de reporte diario %s fallo: %s", reporte.folio or reporte.id, exc)
+        logger.warning("Correo de reporte semanal %s fallo: %s", reporte.folio or reporte.id, exc)
     try:
         _send_reporte_diario_push_hansel(reporte)
     except Exception as exc:
-        logger.warning("Push de reporte diario %s fallo: %s", reporte.folio or reporte.id, exc)
+        logger.warning("Push de reporte semanal %s fallo: %s", reporte.folio or reporte.id, exc)
     _send_configured_sms(
         "reporte_diario",
-        f"Nuevo reporte diario {reporte.folio or reporte.id}: {reporte.colaborador} - {reporte.semaforo}",
+        f"Nuevo reporte semanal {reporte.folio or reporte.id}: {reporte.colaborador} - {reporte.semaforo}",
     )
     return email_error
 
@@ -17053,6 +17071,7 @@ def _evaluacion_departamentos(reportes: list[ReporteDiario]) -> dict:
             "id": reporte.id,
             "folio": reporte.folio,
             "fecha": reporte.fecha,
+            "periodo": _reporte_semanal_periodo(reporte),
             "score": score,
             "cumplimiento": reporte.cumplimiento,
             "semaforo": reporte.semaforo,
@@ -17069,10 +17088,11 @@ def _evaluacion_departamentos(reportes: list[ReporteDiario]) -> dict:
         if cumplimiento in col["cumplimiento_counts"]:
             col["cumplimiento_counts"][cumplimiento] += 1
         if reporte.fecha:
-            day = reporte.fecha.strftime("%Y-%m-%d")
-            timeline.setdefault(day, {status: 0 for status in REPORTE_DIARIO_SEMAFORO})
-            if semaforo in timeline[day]:
-                timeline[day][semaforo] += 1
+            week_start, _ = _reporte_semanal_rango(reporte.fecha)
+            week = week_start.strftime("%Y-%m-%d")
+            timeline.setdefault(week, {status: 0 for status in REPORTE_DIARIO_SEMAFORO})
+            if semaforo in timeline[week]:
+                timeline[week][semaforo] += 1
 
     for dep in departamentos.values():
         dep["score"] = round(dep["score_total"] / dep["reportes"]) if dep["reportes"] else 0
@@ -17105,6 +17125,7 @@ def _evaluacion_departamentos(reportes: list[ReporteDiario]) -> dict:
 
 
 @app.route("/reportes-diarios/evaluacion")
+@app.route("/reportes-semanales/evaluacion")
 @login_required
 def reportes_diarios_evaluacion():
     if not _evaluacion_departamental_can_view():
@@ -17141,10 +17162,12 @@ def reportes_diarios_evaluacion():
         colaboradores_options=colaboradores_options,
         semaforo_options=REPORTE_DIARIO_SEMAFORO,
         cumplimiento_options=REPORTE_DIARIO_CUMPLIMIENTO,
+        reporte_semanal_periodo=_reporte_semanal_periodo,
     )
 
 
 @app.route("/reportes-diarios/evaluacion/export.xlsx")
+@app.route("/reportes-semanales/evaluacion/export.xlsx")
 @login_required
 def reportes_diarios_evaluacion_export_xlsx():
     if not _evaluacion_departamental_can_view():
@@ -17192,7 +17215,7 @@ def reportes_diarios_evaluacion_export_xlsx():
         for cell in sheet[sheet.max_row]:
             cell.border = border
 
-    ws.append(["Reporte de evaluacion por reportes diarios"])
+    ws.append(["Reporte de evaluacion por reportes semanales"])
     ws["A1"].font = Font(bold=True, size=16, color=MAR_BLUE_XLSX)
     ws.merge_cells("A1:D1")
     ws.append([])
@@ -17207,7 +17230,7 @@ def reportes_diarios_evaluacion_export_xlsx():
     ws.append(["Criterio", "Peso", "Como se interpreta"])
     style_header(ws.max_row)
     criterios = [
-        ["Cumplimiento del dia", "35%", "Indicador declarado en el reporte: 100%, 80-99%, 60-79% o menor a 60%."],
+        ["Cumplimiento de la semana", "35%", "Indicador declarado en el reporte: 100%, 80-99%, 60-79% o menor a 60%."],
         ["Avance de actividades", "40%", "Promedio de avances capturados y actividades terminadas/pendientes."],
         ["Riesgo operativo", "25%", "Semaforo del reporte: sin incidencias, riesgos identificados o intervencion inmediata."],
         ["Fortalezas", "Cualitativo", "Impactos positivos, resultados obtenidos y actividades terminadas recurrentes."],
@@ -17258,7 +17281,7 @@ def reportes_diarios_evaluacion_export_xlsx():
             col["alertas"],
             "; ".join(item for item, count in col["fortalezas_top"]),
             "; ".join(item for item, count in col["debilidades_top"]),
-            f"{ultimo.folio or ultimo.id} - {ultimo.fecha.strftime('%d/%m/%Y') if ultimo.fecha else ''}",
+            f"{ultimo.folio or ultimo.id} - {_reporte_semanal_periodo(ultimo)}",
         ])
         for cell in ws_emp[ws_emp.max_row]:
             cell.border = border
@@ -17267,7 +17290,7 @@ def reportes_diarios_evaluacion_export_xlsx():
             ws_emp.cell(ws_emp.max_row, 6).fill = danger_fill
 
     ws_rep = wb.create_sheet("Reportes")
-    ws_rep.append(["Fecha", "Folio", "Empleado", "Departamento", "Score", "Nivel", "Cumplimiento", "Semaforo", "Fortalezas", "Debilidades"])
+    ws_rep.append(["Semana", "Folio", "Empleado", "Departamento", "Score", "Nivel", "Cumplimiento", "Semaforo", "Fortalezas", "Debilidades"])
     for cell in ws_rep[1]:
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = header_fill
@@ -17276,7 +17299,7 @@ def reportes_diarios_evaluacion_export_xlsx():
         score, fortalezas, debilidades = _reporte_diario_score(reporte)
         alerta_reporte = 1 if (reporte.semaforo or "").upper() != "SIN INCIDENCIAS" else 0
         ws_rep.append([
-            reporte.fecha.strftime("%d/%m/%Y") if reporte.fecha else "",
+            _reporte_semanal_periodo(reporte),
             reporte.folio or reporte.id,
             reporte.colaborador or "",
             _departamento_reporte_diario(reporte),
@@ -17314,7 +17337,7 @@ def reportes_diarios_evaluacion_export_xlsx():
     wb.save(bio)
     bio.seek(0)
     stamp = now_cdmx_naive().strftime("%Y%m%d_%H%M%S")
-    filename = f"evaluacion_reportes_diarios_{stamp}.xlsx"
+    filename = f"evaluacion_reportes_semanales_{stamp}.xlsx"
     return Response(
         bio.getvalue(),
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -17323,6 +17346,7 @@ def reportes_diarios_evaluacion_export_xlsx():
 
 
 @app.route("/reportes-diarios")
+@app.route("/reportes-semanales")
 @login_required
 def reportes_diarios_index():
     q = (request.args.get("q") or "").strip()
@@ -17343,8 +17367,7 @@ def reportes_diarios_index():
     if semaforo in REPORTE_DIARIO_SEMAFORO:
         query = query.filter(ReporteDiario.semaforo == semaforo)
     if fecha:
-        start = fecha.replace(hour=0, minute=0, second=0, microsecond=0)
-        end = start + timedelta(days=1)
+        start, end = _reporte_semanal_rango(fecha)
         query = query.filter(ReporteDiario.fecha >= start, ReporteDiario.fecha < end)
 
     reportes = query.filter(ReporteDiario.estatus != "BORRADOR").order_by(
@@ -17373,17 +17396,17 @@ def reportes_diarios_index():
     for reporte in reportes:
         kanban.setdefault(reporte.semaforo or "SIN INCIDENCIAS", []).append(reporte)
 
-    hoy = now_cdmx_naive().replace(hour=0, minute=0, second=0, microsecond=0)
-    ya_envio_hoy = ReporteDiario.query.filter(
+    semana_actual, semana_siguiente = _reporte_semanal_rango(now_cdmx_naive())
+    ultimo_reporte_semana = ReporteDiario.query.filter(
         ReporteDiario.usuario_id == getattr(current_user, "id", None),
         ReporteDiario.estatus != "BORRADOR",
-        ReporteDiario.fecha >= hoy,
-        ReporteDiario.fecha < hoy + timedelta(days=1),
-    ).first()
+        ReporteDiario.fecha >= semana_actual,
+        ReporteDiario.fecha < semana_siguiente,
+    ).order_by(ReporteDiario.hora_envio.desc(), ReporteDiario.id.desc()).first()
 
     return render_template(
         "reportes_diarios.html",
-        title="Reportes diarios",
+        title="Reportes semanales",
         reportes=reportes,
         borradores=borradores,
         borrador_edicion=borrador_edicion,
@@ -17397,12 +17420,14 @@ def reportes_diarios_index():
         actividad_estatus_options=REPORTE_DIARIO_ACTIVIDAD_ESTATUS,
         fecha_hoy=now_cdmx_naive().strftime("%Y-%m-%d"),
         responsable_default=responsable_actual() or "",
-        ya_envio_hoy=ya_envio_hoy,
+        ultimo_reporte_semana=ultimo_reporte_semana,
+        reporte_semanal_periodo=_reporte_semanal_periodo,
         can_view_all=_reportes_diarios_can_view_all(),
     )
 
 
 @app.route("/reportes-diarios/crear", methods=["POST"])
+@app.route("/reportes-semanales/crear", methods=["POST"])
 @login_required
 def reporte_diario_crear():
     accion = (request.form.get("accion") or "enviar").strip().lower()
@@ -17443,20 +17468,6 @@ def reporte_diario_crear():
         db.session.commit()
         return jsonify(ok=True, reporte_id=reporte.id, folio=reporte.folio)
 
-    start = reporte.fecha.replace(hour=0, minute=0, second=0, microsecond=0)
-    existing = ReporteDiario.query.filter(
-        ReporteDiario.usuario_id == getattr(current_user, "id", None),
-        ReporteDiario.estatus != "BORRADOR",
-        ReporteDiario.fecha >= start,
-        ReporteDiario.fecha < start + timedelta(days=1),
-    )
-    if reporte.id:
-        existing = existing.filter(ReporteDiario.id != reporte.id)
-    existing = existing.first()
-    if existing:
-        flash(f"Ya existe un reporte diario para esa fecha: {existing.folio}.", "warning")
-        return redirect(url_for("reporte_diario_detalle", reporte_id=existing.id))
-
     reporte.estatus = "ENVIADO"
     reporte.hora_envio = now_cdmx_naive()
     db.session.add(reporte)
@@ -17470,6 +17481,7 @@ def reporte_diario_crear():
 
 
 @app.route("/reportes-diarios/<int:reporte_id>")
+@app.route("/reportes-semanales/<int:reporte_id>")
 @login_required
 def reporte_diario_detalle(reporte_id: int):
     reporte = _reportes_diarios_query().filter(ReporteDiario.id == reporte_id).first_or_404()
@@ -17478,10 +17490,13 @@ def reporte_diario_detalle(reporte_id: int):
         title=f"Reporte {reporte.folio}",
         reporte=reporte,
         payload=_reporte_diario_payload(reporte),
+        semana_inicio=_reporte_semanal_rango(reporte.fecha)[0],
+        semana_fin=_reporte_semanal_rango(reporte.fecha)[1] - timedelta(days=1),
     )
 
 
 @app.route("/reportes-diarios/<int:reporte_id>/eliminar", methods=["POST"])
+@app.route("/reportes-semanales/<int:reporte_id>/eliminar", methods=["POST"])
 @login_required
 def reporte_diario_eliminar(reporte_id: int):
     reporte = _reportes_diarios_query().filter(ReporteDiario.id == reporte_id).first_or_404()

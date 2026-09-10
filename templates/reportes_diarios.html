@@ -1,20 +1,20 @@
 {% extends "base.html" %}
-{% block title %}Reportes diarios{% endblock %}
+{% block title %}Reportes semanales{% endblock %}
 
 {% block content %}
 <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 my-4">
   <div>
-    <h2 class="fw-bold text-primary mb-1">Reportes diarios</h2>
-    <div class="text-muted">Captura diaria por colaborador con seguimiento tipo Kanban/Scrum.</div>
+    <h2 class="fw-bold text-primary mb-1">Reportes semanales</h2>
+    <div class="text-muted">Captura semanal por colaborador, disponible cualquier día y sin límite de envíos.</div>
   </div>
-  {% if ya_envio_hoy %}
-  <a class="btn btn-outline-primary" href="{{ url_for('reporte_diario_detalle', reporte_id=ya_envio_hoy.id) }}">Ver reporte de hoy</a>
+  {% if ultimo_reporte_semana %}
+  <a class="btn btn-outline-primary" href="{{ url_for('reporte_diario_detalle', reporte_id=ultimo_reporte_semana.id) }}">Ver último reporte de esta semana</a>
   {% endif %}
 </div>
 
 <div class="card shadow-sm border-0 mb-4">
   <div class="card-header bg-primary text-white fw-bold">
-    {% if borrador_edicion %}Editar borrador {{ borrador_edicion.folio }}{% else %}Formato de reporte diario de actividades{% endif %}
+    {% if borrador_edicion %}Editar borrador {{ borrador_edicion.folio }}{% else %}Formato de reporte semanal de actividades{% endif %}
   </div>
   <div class="card-body">
     <form method="post" action="{{ url_for('reporte_diario_crear') }}" id="reporte-diario-form">
@@ -29,8 +29,9 @@
           <input name="puesto" class="form-control" value="{{ borrador_edicion.puesto or '' if borrador_edicion else '' }}">
         </div>
         <div class="col-md-4">
-          <label class="form-label">Fecha</label>
+          <label class="form-label">Fecha de referencia</label>
           <input type="date" name="fecha" class="form-control" value="{{ borrador_edicion.fecha.strftime('%Y-%m-%d') if borrador_edicion and borrador_edicion.fecha else fecha_hoy }}" required>
+          <div class="form-text">Puede ser cualquier día de la semana que estás reportando.</div>
         </div>
       </div>
 
@@ -71,7 +72,7 @@
       <button type="button" class="btn btn-outline-primary btn-sm js-add-row" data-table="actividades-table">Agregar actividad</button>
 
       <hr class="my-4">
-      <h5 class="fw-bold text-primary">2. Los 3 puntos mas importantes del dia</h5>
+      <h5 class="fw-bold text-primary">2. Los 3 puntos más importantes de la semana</h5>
       <div class="row g-3">
         {% for i in range(1, 4) %}
         {% set punto = borrador_payload.puntos[i - 1] if i - 1 < borrador_payload.puntos|length else {} %}
@@ -89,7 +90,7 @@
       </div>
 
       <hr class="my-4">
-      <h5 class="fw-bold text-primary">3. Tres prioridades para el dia siguiente</h5>
+      <h5 class="fw-bold text-primary">3. Tres prioridades para la semana siguiente</h5>
       <div class="table-responsive">
         <table class="table table-sm align-middle" id="prioridades-table">
           <thead class="table-light">
@@ -111,7 +112,7 @@
       <hr class="my-4">
       <div class="row g-3">
         <div class="col-lg-5">
-          <h5 class="fw-bold text-primary">4. Indicadores del dia</h5>
+          <h5 class="fw-bold text-primary">4. Indicadores de la semana</h5>
           <label class="form-label">Cumplimiento de actividades</label>
           <select name="cumplimiento" class="form-select mb-3" required>
             <option value="">Seleccionar</option>
@@ -168,7 +169,7 @@
           <textarea name="observaciones" class="form-control" rows="4">{{ borrador_edicion.observaciones or '' if borrador_edicion else '' }}</textarea>
         </div>
         <div class="col-lg-6">
-          <label class="form-label fw-bold">Semaforo del dia</label>
+          <label class="form-label fw-bold">Semáforo de la semana</label>
           <select name="semaforo" class="form-select" required>
             {% for item in semaforo_options %}
             <option value="{{ item }}" {% if borrador_edicion and borrador_edicion.semaforo == item %}selected{% endif %}>{{ item }}</option>
@@ -200,8 +201,9 @@
         <input name="q" class="form-control" value="{{ q }}" placeholder="Folio, colaborador, actividad u observacion">
       </div>
       <div class="col-md-3">
-        <label class="form-label">Fecha</label>
+        <label class="form-label">Semana</label>
         <input type="date" name="fecha" class="form-control" value="{{ fecha }}">
+        <div class="form-text">Elige cualquier día de la semana.</div>
       </div>
       <div class="col-md-3">
         <label class="form-label">Semaforo</label>
@@ -229,7 +231,7 @@
         <div class="bg-white border rounded p-3 mb-2">
           <div class="fw-bold">{{ reporte.folio }}</div>
           <div>{{ reporte.colaborador }}</div>
-          <div class="small text-muted mb-2">{{ reporte.fecha.strftime("%d/%m/%Y") if reporte.fecha else "" }} · Borrador</div>
+          <div class="small text-muted mb-2">Semana {{ reporte_semanal_periodo(reporte) }} · Borrador</div>
           {% if reporte.usuario_id == current_user.id %}
           <a class="btn btn-sm btn-warning" href="{{ url_for('reportes_diarios_index', editar=reporte.id) }}#reporte-diario-form">Editar</a>
           {% endif %}
@@ -252,7 +254,7 @@
         <a class="d-block text-decoration-none text-dark bg-white border rounded p-3 mb-2" href="{{ url_for('reporte_diario_detalle', reporte_id=reporte.id) }}">
           <div class="fw-bold">{{ reporte.folio }}</div>
           <div>{{ reporte.colaborador }}</div>
-          <div class="small text-muted">{{ reporte.fecha.strftime("%d/%m/%Y") if reporte.fecha else "" }} · {{ reporte.cumplimiento or "Sin indicador" }}</div>
+          <div class="small text-muted">Semana {{ reporte_semanal_periodo(reporte) }} · {{ reporte.cumplimiento or "Sin indicador" }}</div>
         </a>
         {% else %}
         <div class="text-muted small p-3">Sin reportes en esta columna.</div>

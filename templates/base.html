@@ -791,7 +791,7 @@
           <li><hr class="dropdown-divider"></li>
           {% if is_demo_account %}<li><a class="dropdown-item" href="{{ url_for('demo_onboarding') }}">⚙️ Configuración de la demo</a></li><li><a class="dropdown-item" href="{{ url_for('download_demo_app') }}">📱 Descargar app Android</a></li><li><hr class="dropdown-divider"></li>{% endif %}
           <li><a class="dropdown-item" href="{{ url_for('mis_asignaciones') }}">📌 Mis asignaciones</a></li>
-          {% if not is_demo_account or 'reportes' in demo_modules %}<li><a class="dropdown-item" href="{{ url_for('reportes_diarios_index') }}">🗓️ Reportes diarios</a></li>{% endif %}
+          {% if not is_demo_account or 'reportes' in demo_modules %}<li><a class="dropdown-item" href="{{ url_for('reportes_diarios_index') }}">🗓️ Reportes semanales</a></li>{% endif %}
           {% if can_view_eval_departamental %}
           <li><a class="dropdown-item" href="{{ url_for('reportes_diarios_evaluacion') }}">📊 Evaluacion departamental</a></li>
           {% endif %}
@@ -818,7 +818,7 @@
           </button>
           <div class="collapse mobile-user-actions" id="mobileUserActions">
             <a href="{{ url_for('mis_asignaciones') }}">📌 Mis asignaciones</a>
-            {% if not is_demo_account or 'reportes' in demo_modules %}<a href="{{ url_for('reportes_diarios_index') }}">🗓️ Reportes diarios</a>{% endif %}
+            {% if not is_demo_account or 'reportes' in demo_modules %}<a href="{{ url_for('reportes_diarios_index') }}">🗓️ Reportes semanales</a>{% endif %}
             {% if can_view_eval_departamental %}
             <a href="{{ url_for('reportes_diarios_evaluacion') }}">📊 Evaluacion departamental</a>
             {% endif %}
@@ -863,7 +863,7 @@
         </div>
         <div class="menu-category">
           <button class="nav-link menu-category-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#menuGestion" aria-expanded="{{ 'true' if menu_gestion_open else 'false' }}"><span>📊 Gestión</span><span class="menu-category-chevron">▼</span></button>
-          <div class="collapse {{ 'show' if menu_gestion_open }} menu-category-items" id="menuGestion"><a class="nav-link" href="{{ url_for('soporte_tickets') }}">🎫 Soporte</a><a class="nav-link" href="{{ url_for('reportes_diarios_index') }}">🗓️ Reportes diarios</a>{% if can_view_eval_departamental %}<a class="nav-link" href="{{ url_for('reportes_diarios_evaluacion') }}">📊 Evaluación departamental</a>{% endif %}<a class="nav-link" href="{{ url_for('admin_catalogos') }}">📚 Catálogos</a></div>
+          <div class="collapse {{ 'show' if menu_gestion_open }} menu-category-items" id="menuGestion"><a class="nav-link" href="{{ url_for('soporte_tickets') }}">🎫 Soporte</a><a class="nav-link" href="{{ url_for('reportes_diarios_index') }}">🗓️ Reportes semanales</a>{% if can_view_eval_departamental %}<a class="nav-link" href="{{ url_for('reportes_diarios_evaluacion') }}">📊 Evaluación departamental</a>{% endif %}<a class="nav-link" href="{{ url_for('admin_catalogos') }}">📚 Catálogos</a></div>
         </div>
         <div class="menu-category">
           <button class="nav-link menu-category-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#menuRRHH" aria-expanded="{{ 'true' if menu_rrhh_open else 'false' }}"><span>👥 Recursos Humanos</span><span class="menu-category-chevron">▼</span></button>

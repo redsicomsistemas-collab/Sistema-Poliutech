@@ -12,9 +12,9 @@
     <h2 class="fw-bold text-primary mb-1">{% if vista_empleado %}Evaluacion de empleado{% else %}Evaluacion departamental{% endif %}</h2>
     <div class="text-muted">
       {% if vista_empleado %}
-      Perfil de {{ empleado_seleccionado.nombre }} generado desde sus reportes diarios.
+      Perfil de {{ empleado_seleccionado.nombre }} generado desde sus reportes semanales.
       {% else %}
-      Fortalezas, debilidades y alertas generadas desde reportes diarios.
+      Fortalezas, debilidades y alertas generadas desde reportes semanales.
       {% endif %}
     </div>
   </div>
@@ -23,7 +23,7 @@
     <a class="btn btn-outline-primary" href="{{ url_for('reportes_diarios_evaluacion', fecha_ini=fecha_ini, fecha_fin=fecha_fin, departamento=departamento) }}">Vista global</a>
     {% endif %}
     <a class="btn btn-success" href="{{ url_for('reportes_diarios_evaluacion_export_xlsx', fecha_ini=fecha_ini, fecha_fin=fecha_fin, departamento=departamento, colaborador=colaborador) }}">Descargar reporte</a>
-    <a class="btn btn-outline-primary" href="{{ url_for('reportes_diarios_index') }}">Ver reportes diarios</a>
+    <a class="btn btn-outline-primary" href="{{ url_for('reportes_diarios_index') }}">Ver reportes semanales</a>
   </div>
 </div>
 
@@ -67,7 +67,7 @@
   <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
     <div>
       <h5 class="fw-bold text-primary mb-2">Criterio sugerido de evaluacion</h5>
-      <div class="text-muted small">Score operativo calculado con los reportes diarios; fortalezas y debilidades quedan como lectura cualitativa para seguimiento.</div>
+      <div class="text-muted small">Score operativo calculado con los reportes semanales; fortalezas y debilidades quedan como lectura cualitativa para seguimiento.</div>
     </div>
     <div class="d-flex flex-wrap gap-2">
       <span class="badge bg-primary p-2">Cumplimiento 35%</span>
@@ -179,7 +179,7 @@
       <thead class="table-light">
         <tr>
           <th>Reporte</th>
-          <th>Fecha</th>
+          <th>Semana</th>
           <th class="text-center">Score</th>
           <th>Cumplimiento</th>
           <th>Semaforo</th>
@@ -189,7 +189,7 @@
         {% for item in empleado_seleccionado.reportes_rows|reverse %}
         <tr>
           <td><a href="{{ url_for('reporte_diario_detalle', reporte_id=item.id) }}">{{ item.folio }}</a></td>
-          <td>{{ item.fecha.strftime("%d/%m/%Y") if item.fecha else "" }}</td>
+          <td>{{ item.periodo }}</td>
           <td class="text-center fw-bold">{{ item.score }}%</td>
           <td>{{ item.cumplimiento or "-" }}</td>
           <td>{{ item.semaforo or "-" }}</td>
@@ -261,7 +261,7 @@
   </div>
   {% else %}
   <div class="col-12">
-    <div class="alert alert-info">No hay reportes diarios con los filtros seleccionados.</div>
+    <div class="alert alert-info">No hay reportes semanales con los filtros seleccionados.</div>
   </div>
   {% endfor %}
 </div>
@@ -298,7 +298,7 @@
           </td>
           <td>
             <a href="{{ url_for('reporte_diario_detalle', reporte_id=col.ultimo_reporte.id) }}">{{ col.ultimo_reporte.folio }}</a>
-            <span class="text-muted small">{{ col.ultimo_reporte.fecha.strftime("%d/%m/%Y") if col.ultimo_reporte.fecha else "" }}</span>
+            <span class="text-muted small">{{ reporte_semanal_periodo(col.ultimo_reporte) }}</span>
           </td>
           <td class="text-end">
             <a class="btn btn-sm btn-outline-primary" href="{{ url_for('reportes_diarios_evaluacion', fecha_ini=fecha_ini, fecha_fin=fecha_fin, departamento=departamento, colaborador=col.nombre) }}">Ver</a>
