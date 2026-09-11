@@ -4,6 +4,7 @@
     "numero": "15367672",
     "empresa": "P&G",
     "razon_social_poliutech": "CESAR",
+    "relacion": "CLIENTE",
     "contacto": "",
     "telefono": "",
     "correo": ""
@@ -13,6 +14,7 @@
     "numero": "155535-1002",
     "empresa": "EQUINIX",
     "razon_social_poliutech": "CESAR",
+    "relacion": "CLIENTE",
     "contacto": "",
     "telefono": "",
     "correo": ""
@@ -22,6 +24,7 @@
     "numero": "1309",
     "empresa": "VALLOUREC",
     "razon_social_poliutech": "CESAR",
+    "relacion": "CLIENTE",
     "contacto": "",
     "telefono": "",
     "correo": ""
@@ -31,6 +34,7 @@
     "numero": "60776",
     "empresa": "COPPEL",
     "razon_social_poliutech": "CESAR",
+    "relacion": "CLIENTE",
     "contacto": "",
     "telefono": "",
     "correo": ""
@@ -40,6 +44,7 @@
     "numero": "4180144",
     "empresa": "CFE",
     "razon_social_poliutech": "CESAR",
+    "relacion": "CLIENTE",
     "contacto": "",
     "telefono": "",
     "correo": ""
@@ -49,6 +54,7 @@
     "numero": "260123",
     "empresa": "PEMEX",
     "razon_social_poliutech": "CESAR",
+    "relacion": "CLIENTE",
     "contacto": "",
     "telefono": "",
     "correo": ""
@@ -58,6 +64,7 @@
     "numero": "70001873",
     "empresa": "BOS",
     "razon_social_poliutech": "CESAR",
+    "relacion": "CLIENTE",
     "contacto": "",
     "telefono": "",
     "correo": ""
@@ -67,6 +74,7 @@
     "numero": "101559",
     "empresa": "IMMSA",
     "razon_social_poliutech": "CESAR",
+    "relacion": "CLIENTE",
     "contacto": "",
     "telefono": "",
     "correo": ""
@@ -76,6 +84,7 @@
     "numero": "43161",
     "empresa": "CARVAJAL",
     "razon_social_poliutech": "CESAR",
+    "relacion": "CLIENTE",
     "contacto": "",
     "telefono": "",
     "correo": ""
@@ -85,6 +94,7 @@
     "numero": "PN02431",
     "empresa": "VICEROY",
     "razon_social_poliutech": "RIDACE",
+    "relacion": "CLIENTE",
     "contacto": "",
     "telefono": "",
     "correo": ""
@@ -94,6 +104,7 @@
     "numero": "51878",
     "empresa": "CHRISTUS MUGUERZA",
     "razon_social_poliutech": "RIDACE",
+    "relacion": "CLIENTE",
     "contacto": "",
     "telefono": "",
     "correo": ""
@@ -103,6 +114,7 @@
     "numero": "50493",
     "empresa": "KIMBERLY CLARK",
     "razon_social_poliutech": "RIDACE",
+    "relacion": "CLIENTE",
     "contacto": "",
     "telefono": "",
     "correo": ""
@@ -112,6 +124,7 @@
     "numero": "6853352",
     "empresa": "BAYER",
     "razon_social_poliutech": "RIDACE",
+    "relacion": "CLIENTE",
     "contacto": "",
     "telefono": "",
     "correo": ""
@@ -121,6 +134,7 @@
     "numero": "11087",
     "empresa": "WTC",
     "razon_social_poliutech": "RIDACE",
+    "relacion": "CLIENTE",
     "contacto": "",
     "telefono": "",
     "correo": ""
@@ -130,6 +144,7 @@
     "numero": "2-9959",
     "empresa": "SADASI",
     "razon_social_poliutech": "RIDACE",
+    "relacion": "CLIENTE",
     "contacto": "",
     "telefono": "",
     "correo": ""
@@ -137,8 +152,9 @@
   {
     "id": 16,
     "numero": "114489",
-    "empresa": "PEMEX PTRI TRASNFORMACION\nINDUSTRIAL",
+    "empresa": "PEMEX PTRI TRASNFORMACIONINDUSTRIAL",
     "razon_social_poliutech": "RIDACE",
+    "relacion": "CLIENTE",
     "contacto": "",
     "telefono": "",
     "correo": ""
@@ -148,6 +164,7 @@
     "numero": "6199397",
     "empresa": "ESSITY",
     "razon_social_poliutech": "RIDACE",
+    "relacion": "CLIENTE",
     "contacto": "",
     "telefono": "",
     "correo": ""
@@ -157,6 +174,7 @@
     "numero": "204131",
     "empresa": "CARNOT",
     "razon_social_poliutech": "RIDACE",
+    "relacion": "CLIENTE",
     "contacto": "",
     "telefono": "",
     "correo": ""
@@ -169,7 +187,9 @@
     "relacion": "PROVEEDOR",
     "contacto": "Mónica Tenorio",
     "telefono": "+52 5592000250",
-    "correo": "tenorio.monica@mx.sika.com"
+    "correo": "tenorio.monica@mx.sika.com",
+    "credito": true,
+    "monto_credito": "700000.00"
   },
   {
     "id": 20,
@@ -179,7 +199,9 @@
     "relacion": "PROVEEDOR",
     "contacto": "Mónica Tenorio",
     "telefono": "+52 5592000250",
-    "correo": "tenorio.monica@mx.sika.com"
+    "correo": "tenorio.monica@mx.sika.com",
+    "credito": true,
+    "monto_credito": "1000000.00"
   },
   {
     "id": 21,
@@ -189,7 +211,9 @@
     "relacion": "PROVEEDOR",
     "contacto": "Alejandro Pascual",
     "telefono": "+52 446 133 7058",
-    "correo": "e.pascual@mapei.com"
+    "correo": "e.pascual@mapei.com",
+    "credito": true,
+    "monto_credito": "400000.00"
   },
   {
     "id": 22,
@@ -199,7 +223,9 @@
     "relacion": "PROVEEDOR",
     "contacto": "Antonio Espino",
     "telefono": "+52 1 55 4833 1317",
-    "correo": "Antonio.A.Espino@sherwin.com"
+    "correo": "Antonio.A.Espino@sherwin.com",
+    "credito": true,
+    "monto_credito": "500000.00"
   },
   {
     "id": 23,
@@ -209,7 +235,9 @@
     "relacion": "PROVEEDOR",
     "contacto": "Juan Carlos Barbosa Araujo",
     "telefono": "",
-    "correo": "Juan.Barbosa@impac.com.mx"
+    "correo": "Juan.Barbosa@impac.com.mx",
+    "credito": true,
+    "monto_credito": "20000000.00"
   },
   {
     "id": 24,
@@ -260,5 +288,37 @@
     "contacto": "David Cruz Hernández",
     "telefono": "+52 938 152 6605",
     "correo": ""
+  },
+  {
+    "id": 29,
+    "numero": "",
+    "empresa": "EUCOMEX",
+    "razon_social_poliutech": "RIDACE",
+    "relacion": "PROVEEDOR",
+    "contacto": "David Solis",
+    "telefono": "+52 1 81 1684 8177",
+    "correo": "dsolis@eucomex.com.mx",
+    "credito": true,
+    "monto_credito": "300000.00"
+  },
+  {
+    "id": 30,
+    "numero": "",
+    "empresa": "SOPREMA",
+    "razon_social_poliutech": "RIDACE",
+    "relacion": "PROVEEDOR",
+    "contacto": "Regina Mariscal",
+    "telefono": "+52 554 504 3033",
+    "correo": "rmariscal@soprema.com.mx"
+  },
+  {
+    "id": 31,
+    "numero": "",
+    "empresa": "GCP/ SAINT GOBAIN",
+    "razon_social_poliutech": "RIDACE",
+    "relacion": "PROVEEDOR",
+    "contacto": "Alfonso Quijano",
+    "telefono": "+52 729 182 1150",
+    "correo": "Alonso.Quijano@saint-gobain.com"
   }
 ]

@@ -97,7 +97,16 @@ TICKET_ALLOWED_EXTENSIONS = {
     ".pdf", ".txt", ".log", ".csv", ".xlsx", ".xls", ".doc", ".docx",
 }
 TICKET_MAX_ATTACHMENTS = 6
-PROVIDER_NUMBERS_JSON = Path(__file__).resolve().parent / "provider_numbers.json"
+PROVIDER_NUMBERS_SEED_JSON = Path(__file__).resolve().parent / "provider_numbers.json"
+_configured_provider_numbers_json = (os.getenv("PROVIDER_NUMBERS_JSON_PATH") or "").strip()
+if _configured_provider_numbers_json:
+    PROVIDER_NUMBERS_JSON = Path(_configured_provider_numbers_json).expanduser().resolve()
+elif Path("/data").is_dir():
+    # Render reemplaza el checkout en cada deploy; el disco montado en /data sí
+    # conserva las altas capturadas entre versiones.
+    PROVIDER_NUMBERS_JSON = Path("/data/provider_numbers.json")
+else:
+    PROVIDER_NUMBERS_JSON = PROVIDER_NUMBERS_SEED_JSON
 PROVIDER_NUMBERS_XLSX = Path.home() / "Downloads" / "NUMEROS DE PROVEEDOR POLIUTECH.xlsx"
 REGISTRO_OBRAS_JSON = Path(__file__).resolve().parent / "registro_obras.json"
 OPENAI_API_KEY = (os.getenv("OPENAI_API_KEY") or "").strip()
@@ -244,10 +253,18 @@ def _load_provider_numbers_from_xlsx() -> list[dict]:
 
 
 def _save_provider_numbers(rows: list[dict]) -> None:
-    PROVIDER_NUMBERS_JSON.write_text(
-        json.dumps(rows, ensure_ascii=False, indent=2),
-        encoding="utf-8",
+    PROVIDER_NUMBERS_JSON.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = PROVIDER_NUMBERS_JSON.with_name(
+        f".{PROVIDER_NUMBERS_JSON.name}.{secrets.token_hex(8)}.tmp"
     )
+    try:
+        temp_path.write_text(
+            json.dumps(rows, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        temp_path.replace(PROVIDER_NUMBERS_JSON)
+    finally:
+        temp_path.unlink(missing_ok=True)
 
 
 def _normalize_provider_row(row: Optional[dict], idx: int) -> dict:
@@ -275,8 +292,21 @@ def _load_provider_numbers() -> list[dict]:
             data = json.loads(PROVIDER_NUMBERS_JSON.read_text(encoding="utf-8"))
             if isinstance(data, list):
                 return [_normalize_provider_row(row, idx) for idx, row in enumerate(data, start=1)]
-        except Exception:
-            pass
+            raise ValueError("el contenido no es una lista")
+        except Exception as exc:
+            # No sustituir silenciosamente un archivo dañado por un catálogo
+            # vacío: eso aparenta que todos los registros fueron borrados.
+            raise RuntimeError(f"No se pudo leer {PROVIDER_NUMBERS_JSON}: {exc}") from exc
+
+    if PROVIDER_NUMBERS_JSON != PROVIDER_NUMBERS_SEED_JSON and PROVIDER_NUMBERS_SEED_JSON.exists():
+        try:
+            data = json.loads(PROVIDER_NUMBERS_SEED_JSON.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                seeded = [_normalize_provider_row(row, idx) for idx, row in enumerate(data, start=1)]
+                _save_provider_numbers(seeded)
+                return seeded
+        except Exception as exc:
+            raise RuntimeError(f"No se pudo migrar {PROVIDER_NUMBERS_SEED_JSON}: {exc}") from exc
 
     seeded = _load_provider_numbers_from_xlsx()
     _save_provider_numbers(seeded)
