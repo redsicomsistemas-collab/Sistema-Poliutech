@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: mar-productivy-analytics
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    envVars:
+      - key: MAR_ADMIN_PASSWORD
+        sync: false
+      - key: MAR_PUBLIC_URL
+        sync: false
+      - key: MAR_DATA_PATH
+        value: /var/data
+    disk:
+      name: mar-productivy-data
+      mountPath: /var/data
+      sizeGB: 1
