@@ -14,7 +14,11 @@
 
 <div class="card shadow-sm border-0 mb-4">
   <div class="card-header bg-primary text-white fw-bold">
-    {% if borrador_edicion %}Editar borrador {{ borrador_edicion.folio }}{% else %}Formato de reporte semanal de actividades{% endif %}
+    {% if borrador_edicion %}
+      Editar {{ "borrador" if borrador_edicion.estatus == "BORRADOR" else "reporte" }} {{ borrador_edicion.folio }}
+    {% else %}
+      Formato de reporte semanal de actividades
+    {% endif %}
   </div>
   <div class="card-body">
     <form method="post" action="{{ url_for('reporte_diario_crear') }}" id="reporte-diario-form">
@@ -185,13 +189,16 @@
         {% if borrador_edicion %}
         <a class="btn btn-outline-secondary btn-lg" href="{{ url_for('reportes_diarios_index') }}">Cancelar edición</a>
         {% endif %}
+        {% if not borrador_edicion or borrador_edicion.estatus == "BORRADOR" %}
         <button type="button" class="btn btn-outline-primary btn-lg" id="guardar-reporte-diario">
-          Guardar
+          Guardar borrador
         </button>
+        {% endif %}
         <button type="submit" name="accion" value="enviar" class="btn btn-success btn-lg" id="enviar-reporte-diario">
-          Enviar
+          {{ "Guardar cambios" if borrador_edicion and borrador_edicion.estatus != "BORRADOR" else "Enviar" }}
         </button>
       </div>
+      <div class="form-text text-end mt-2">Enter avanza al siguiente campo; el reporte solo se guarda o envía con los botones.</div>
     </form>
   </div>
 </div>
@@ -254,11 +261,14 @@
       </div>
       <div class="p-2">
         {% for reporte in items %}
-        <a class="d-block text-decoration-none text-dark bg-white border rounded p-3 mb-2" href="{{ url_for('reporte_diario_detalle', reporte_id=reporte.id) }}">
-          <div class="fw-bold">{{ reporte.folio }}</div>
-          <div>{{ reporte.colaborador }}</div>
-          <div class="small text-muted">{{ reporte_semanal_periodo(reporte) }} · {{ reporte.cumplimiento or "Sin indicador" }}</div>
-        </a>
+        <div class="bg-white border rounded p-3 mb-2">
+          <a class="d-block text-decoration-none text-dark" href="{{ url_for('reporte_diario_detalle', reporte_id=reporte.id) }}">
+            <div class="fw-bold">{{ reporte.folio }}</div>
+            <div>{{ reporte.colaborador }}</div>
+            <div class="small text-muted">{{ reporte_semanal_periodo(reporte) }} · {{ reporte.cumplimiento or "Sin indicador" }}</div>
+          </a>
+          <a class="btn btn-sm btn-outline-primary mt-2" href="{{ url_for('reportes_diarios_index', editar=reporte.id) }}#reporte-diario-form">Editar reporte</a>
+        </div>
         {% else %}
         <div class="text-muted small p-3">Sin reportes en esta columna.</div>
         {% endfor %}
@@ -277,8 +287,22 @@
   form?.addEventListener("submit", () => {
     if (!form.checkValidity()) return;
     submitButton.disabled = true;
-    saveButton.disabled = true;
-    submitButton.textContent = "Enviando...";
+    if (saveButton) saveButton.disabled = true;
+    submitButton.textContent = "Guardando...";
+  });
+
+  form?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || event.isComposing) return;
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || target.matches("textarea, button")) return;
+
+    event.preventDefault();
+    const fields = Array.from(form.querySelectorAll(
+      "input:not([type='hidden']):not([type='button']):not([type='submit']):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])"
+    )).filter((field) => field.offsetParent !== null);
+    const currentIndex = fields.indexOf(target);
+    const nextField = fields[currentIndex + 1];
+    if (nextField) nextField.focus();
   });
 
   saveButton?.addEventListener("click", async () => {

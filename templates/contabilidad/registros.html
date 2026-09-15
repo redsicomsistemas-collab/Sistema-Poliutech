@@ -190,7 +190,7 @@
           {% if category.financial %}
           <div class="col-md-4">
             <label class="form-label fw-semibold">Vigencia / plazo del crédito (días) *</label>
-            <input class="form-control credit-days" name="tiempo_credito_dias" type="number" min="0" max="3650" value="30" list="creditTermOptionsNew" required>
+            <input class="form-control credit-days" name="tiempo_credito_dias" type="number" min="0" max="3650" value="{{ selected_alta.plazo_credito_dias if selected_alta and selected_alta.credito and selected_alta.plazo_credito_dias != '' else 30 }}" list="creditTermOptionsNew" required>
             <datalist id="creditTermOptionsNew"><option value="7"></option><option value="15"></option><option value="30"></option><option value="45"></option><option value="60"></option><option value="90"></option></datalist>
             <div class="form-text">Ej. 30, 60 o 90 días.</div>
           </div>

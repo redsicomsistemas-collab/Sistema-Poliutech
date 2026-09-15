@@ -278,6 +278,7 @@ def _load_altas(category: dict) -> list[dict]:
                 "correo": str(raw.get("correo") or "").strip(),
                 "credito": bool(raw.get("credito", False)),
                 "monto_credito": str(raw.get("monto_credito") or "").strip(),
+                "plazo_credito_dias": str(raw.get("plazo_credito_dias") if raw.get("plazo_credito_dias") is not None else "").strip(),
             }
         )
     return rows

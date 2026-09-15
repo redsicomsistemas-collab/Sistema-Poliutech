@@ -7,6 +7,7 @@
     pointer-events: none;
   }
   .credito-monto-wrap { min-width: 180px; }
+  .credito-plazo-wrap { min-width: 175px; }
   .accounting-tabs { scrollbar-width: thin; }
   .accounting-tabs .nav-link { white-space: nowrap; border-radius: .65rem; font-weight: 600; }
 </style>
@@ -74,6 +75,7 @@
                 <th style="min-width: 240px;">CORREO</th>
                 <th style="min-width: 110px;">CRÉDITO</th>
                 <th style="min-width: 190px;">MONTO DE CRÉDITO</th>
+                <th style="min-width: 185px;">PLAZO DEL CRÉDITO</th>
                 {% if can_manage_altas %}<th style="min-width: 245px;">Acción</th>{% endif %}
               </tr>
             </thead>
@@ -100,6 +102,7 @@
                   <input type="checkbox" class="form-check-input credito-check" {% if row.credito %}checked{% endif %} disabled aria-label="Registro con crédito">
                 </td>
                 <td><div class="input-group credito-monto-wrap {% if not row.credito %}d-none{% endif %}"><span class="input-group-text">$</span><input type="number" name="monto_credito[]" class="form-control credito-monto" min="0" step="0.01" value="{{ row.monto_credito }}" {% if not row.credito %}disabled{% endif %} readonly></div><input type="hidden" class="monto-vacio" name="monto_credito[]" value="" {% if row.credito %}disabled{% endif %}></td>
+                <td><div class="input-group credito-plazo-wrap {% if not row.credito %}d-none{% endif %}"><input type="number" name="plazo_credito_dias[]" class="form-control credito-plazo" min="0" max="3650" step="1" value="{{ row.plazo_credito_dias }}" {% if not row.credito %}disabled{% endif %} readonly aria-label="Plazo del crédito en días"><span class="input-group-text">días</span></div><input type="hidden" class="plazo-vacio" name="plazo_credito_dias[]" value="" {% if row.credito %}disabled{% endif %}></td>
                 {% if can_manage_altas %}<td class="text-center">
                   <a class="btn btn-primary btn-sm mb-1" href="{{ url_for('contabilidad.registros', slug='clientes' if row.relacion == 'CLIENTE' else 'proveedores', alta=row.id) }}#newRecord">Registrar</a>
                   <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>
@@ -118,11 +121,12 @@
                 <td><input type="email" name="correo[]" class="form-control altas-input"></td>
                 <td class="text-center"><input type="hidden" name="credito[]" class="credito-value" value="0"><input type="checkbox" class="form-check-input credito-check" aria-label="Registro con crédito"></td>
                 <td><div class="input-group credito-monto-wrap d-none"><span class="input-group-text">$</span><input type="number" name="monto_credito[]" class="form-control credito-monto" min="0" step="0.01" disabled></div><input type="hidden" class="monto-vacio" name="monto_credito[]" value=""></td>
+                <td><div class="input-group credito-plazo-wrap d-none"><input type="number" name="plazo_credito_dias[]" class="form-control credito-plazo" min="0" max="3650" step="1" disabled aria-label="Plazo del crédito en días"><span class="input-group-text">días</span></div><input type="hidden" class="plazo-vacio" name="plazo_credito_dias[]" value=""></td>
                 <td class="text-center">
                   <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>
                   <button type="button" class="btn btn-outline-danger btn-sm btn-remove-row">Quitar</button>
                 </td>
-              </tr>{% else %}<tr><td colspan="9" class="text-center text-muted py-4">No hay registros disponibles.</td></tr>{% endif %}
+              </tr>{% else %}<tr><td colspan="10" class="text-center text-muted py-4">No hay registros disponibles.</td></tr>{% endif %}
               {% endif %}
             </tbody>
           </table>
@@ -148,6 +152,7 @@
     <td><input type="email" name="correo[]" class="form-control altas-input"></td>
     <td class="text-center"><input type="hidden" name="credito[]" class="credito-value" value="0"><input type="checkbox" class="form-check-input credito-check" aria-label="Registro con crédito"></td>
     <td><div class="input-group credito-monto-wrap d-none"><span class="input-group-text">$</span><input type="number" name="monto_credito[]" class="form-control credito-monto" min="0" step="0.01" disabled></div><input type="hidden" class="monto-vacio" name="monto_credito[]" value=""></td>
+    <td><div class="input-group credito-plazo-wrap d-none"><input type="number" name="plazo_credito_dias[]" class="form-control credito-plazo" min="0" max="3650" step="1" disabled aria-label="Plazo del crédito en días"><span class="input-group-text">días</span></div><input type="hidden" class="plazo-vacio" name="plazo_credito_dias[]" value=""></td>
     <td class="text-center">
       <button type="button" class="btn btn-outline-primary btn-sm btn-edit-row">Editar</button>
       <button type="button" class="btn btn-outline-danger btn-sm btn-remove-row">Quitar</button>
@@ -180,13 +185,23 @@ document.addEventListener("DOMContentLoaded", () => {
     const wrap = row?.querySelector(".credito-monto-wrap");
     const amount = row?.querySelector(".credito-monto");
     const emptyAmount = row?.querySelector(".monto-vacio");
-    if (!check || !value || !wrap || !amount || !emptyAmount) return;
+    const termWrap = row?.querySelector(".credito-plazo-wrap");
+    const term = row?.querySelector(".credito-plazo");
+    const emptyTerm = row?.querySelector(".plazo-vacio");
+    if (!check || !value || !wrap || !amount || !emptyAmount || !termWrap || !term || !emptyTerm) return;
     value.value = check.checked ? "1" : "0";
     wrap.classList.toggle("d-none", !check.checked);
+    termWrap.classList.toggle("d-none", !check.checked);
     amount.disabled = !check.checked;
+    term.disabled = !check.checked;
     emptyAmount.disabled = check.checked;
-    if (!check.checked) amount.value = "";
+    emptyTerm.disabled = check.checked;
+    if (!check.checked) {
+      amount.value = "";
+      term.value = "";
+    }
     amount.required = check.checked;
+    term.required = check.checked;
   }
 
   function applyFilters() {
@@ -223,6 +238,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const relacionInput = row?.querySelector(".relacion-input");
       const creditCheck = row?.querySelector(".credito-check");
       const creditAmount = row?.querySelector(".credito-monto");
+      const creditTerm = row?.querySelector(".credito-plazo");
       const willEnable = Array.from(inputs).every((input) => input.hasAttribute("readonly"));
       inputs.forEach((input) => {
         if (willEnable) {
@@ -238,6 +254,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       if (creditCheck) creditCheck.disabled = !willEnable;
       if (creditAmount) creditAmount.readOnly = !willEnable;
+      if (creditTerm) creditTerm.readOnly = !willEnable;
       editButton.textContent = willEnable ? "Bloquear" : "Editar";
       if (willEnable && inputs.length > 0) {
         inputs[0].focus();

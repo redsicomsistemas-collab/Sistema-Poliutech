@@ -248,6 +248,7 @@ def _load_provider_numbers_from_xlsx() -> list[dict]:
                 "correo": "",
                 "credito": False,
                 "monto_credito": "",
+                "plazo_credito_dias": "",
             })
         return records
 
@@ -272,6 +273,15 @@ def _normalize_provider_row(row: Optional[dict], idx: int) -> dict:
     relacion = str(row.get("relacion", "")).strip().upper()
     if relacion not in {"CLIENTE", "PROVEEDOR"}:
         relacion = "PROVEEDOR"
+    credito = bool(row.get("credito", False))
+    plazo_credito_dias: int | str = ""
+    if credito:
+        try:
+            plazo_credito_dias = int(str(row.get("plazo_credito_dias", "")).strip())
+            if plazo_credito_dias < 0 or plazo_credito_dias > 3650:
+                plazo_credito_dias = ""
+        except (TypeError, ValueError):
+            plazo_credito_dias = ""
     return {
         "id": idx,
         "numero": str(row.get("numero", "")).strip(),
@@ -281,8 +291,9 @@ def _normalize_provider_row(row: Optional[dict], idx: int) -> dict:
         "contacto": str(row.get("contacto", "")).strip(),
         "telefono": str(row.get("telefono", "")).strip(),
         "correo": str(row.get("correo", "")).strip(),
-        "credito": bool(row.get("credito", False)),
-        "monto_credito": str(row.get("monto_credito", "")).strip() if row.get("credito", False) else "",
+        "credito": credito,
+        "monto_credito": str(row.get("monto_credito", "")).strip() if credito else "",
+        "plazo_credito_dias": plazo_credito_dias,
     }
 
 
@@ -7271,8 +7282,9 @@ def altas_proveedores():
         correos = request.form.getlist("correo[]")
         creditos = request.form.getlist("credito[]")
         montos_credito = request.form.getlist("monto_credito[]")
+        plazos_credito = request.form.getlist("plazo_credito_dias[]")
 
-        total_rows = max(len(numeros), len(empresas), len(razones), len(relaciones), len(contactos), len(telefonos), len(correos), len(creditos), len(montos_credito), 0)
+        total_rows = max(len(numeros), len(empresas), len(razones), len(relaciones), len(contactos), len(telefonos), len(correos), len(creditos), len(montos_credito), len(plazos_credito), 0)
         rows: list[dict] = []
         for idx in range(total_rows):
             numero = (numeros[idx] if idx < len(numeros) else "").strip()
@@ -7286,6 +7298,7 @@ def altas_proveedores():
             correo = (correos[idx] if idx < len(correos) else "").strip()
             credito = (creditos[idx] if idx < len(creditos) else "0").strip() == "1"
             monto_credito = (montos_credito[idx] if idx < len(montos_credito) else "").strip() if credito else ""
+            plazo_credito_dias: int | str = (plazos_credito[idx] if idx < len(plazos_credito) else "").strip() if credito else ""
 
             if credito:
                 try:
@@ -7295,6 +7308,13 @@ def altas_proveedores():
                     monto_credito = f"{monto_numerico:.2f}"
                 except (TypeError, ValueError):
                     flash(f"Captura un monto de crédito válido para '{empresa or numero or 'el registro'}'.", "danger")
+                    return redirect(url_for("altas_proveedores"))
+                try:
+                    plazo_credito_dias = int(plazo_credito_dias)
+                    if plazo_credito_dias < 0 or plazo_credito_dias > 3650:
+                        raise ValueError
+                except (TypeError, ValueError):
+                    flash(f"Captura un plazo de crédito válido, entre 0 y 3650 días, para '{empresa or numero or 'el registro'}'.", "danger")
                     return redirect(url_for("altas_proveedores"))
 
             if not any([numero, empresa, razon_social, contacto, telefono, correo]):
@@ -7316,6 +7336,7 @@ def altas_proveedores():
                             "correo": (correos[pos] if pos < len(correos) else "").strip(),
                             "credito": (creditos[pos] if pos < len(creditos) else "0").strip() == "1",
                             "monto_credito": (montos_credito[pos] if pos < len(montos_credito) else "").strip(),
+                            "plazo_credito_dias": (plazos_credito[pos] if pos < len(plazos_credito) else "").strip(),
                         }, pos + 1)
                         for pos in range(total_rows)
                     ],
@@ -7331,6 +7352,7 @@ def altas_proveedores():
                                 "correo": (correos[pos] if pos < len(correos) else "").strip(),
                                 "credito": (creditos[pos] if pos < len(creditos) else "0").strip() == "1",
                                 "monto_credito": (montos_credito[pos] if pos < len(montos_credito) else "").strip(),
+                                "plazo_credito_dias": (plazos_credito[pos] if pos < len(plazos_credito) else "").strip(),
                             }, pos + 1)
                             for pos in range(total_rows)
                         ],
@@ -7351,6 +7373,7 @@ def altas_proveedores():
                 "correo": correo,
                 "credito": credito,
                 "monto_credito": monto_credito,
+                "plazo_credito_dias": plazo_credito_dias,
             })
 
         _save_provider_numbers(rows)
@@ -7395,6 +7418,7 @@ def export_altas_proveedores_xlsx():
         "CORREO",
         "CREDITO",
         "MONTO DE CREDITO",
+        "PLAZO DE CREDITO (DIAS)",
     ]
     body_rows = []
     for row in rows:
@@ -7408,13 +7432,14 @@ def export_altas_proveedores_xlsx():
             row.get("correo", ""),
             "SI" if row.get("credito") else "NO",
             row.get("monto_credito", "") if row.get("credito") else "",
+            row.get("plazo_credito_dias", "") if row.get("credito") else "",
         ])
 
     output_bytes = _build_simple_xlsx(
         "Altas",
         headers,
         body_rows,
-        column_widths=[18, 28, 28, 18, 24, 18, 32, 12, 20],
+        column_widths=[18, 28, 28, 18, 24, 18, 32, 12, 20, 20],
     )
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -7549,6 +7574,7 @@ def export_altas_proveedores_pdf():
         "CORREO",
         "CREDITO",
         "MONTO",
+        "PLAZO (DIAS)",
     ]]
     for row in rows:
         data.append([
@@ -7561,6 +7587,12 @@ def export_altas_proveedores_pdf():
             Paragraph(_truncate_pdf_text(row.get("correo", ""), 42), styles["AltasCell"]),
             Paragraph("SI" if row.get("credito") else "NO", styles["AltasCenter"]),
             Paragraph(f"$ {row.get('monto_credito', '')}" if row.get("credito") else "-", styles["AltasCenter"]),
+            Paragraph(
+                f"{row.get('plazo_credito_dias')} días"
+                if row.get("credito") and row.get("plazo_credito_dias") != ""
+                else "-",
+                styles["AltasCenter"],
+            ),
         ])
 
     if len(data) == 1:
@@ -7574,11 +7606,12 @@ def export_altas_proveedores_pdf():
             Paragraph("-", styles["AltasCenter"]),
             Paragraph("-", styles["AltasCenter"]),
             Paragraph("-", styles["AltasCenter"]),
+            Paragraph("-", styles["AltasCenter"]),
         ])
 
     tbl = Table(
         data,
-        colWidths=[18 * mm, 40 * mm, 45 * mm, 25 * mm, 32 * mm, 25 * mm, 52 * mm, 15 * mm, 25 * mm],
+        colWidths=[17 * mm, 36 * mm, 40 * mm, 23 * mm, 29 * mm, 23 * mm, 45 * mm, 14 * mm, 23 * mm, 27 * mm],
         repeatRows=1,
         hAlign="CENTER",
     )
@@ -17427,10 +17460,10 @@ def reportes_diarios_index():
     borrador_edicion = None
     editar_id = request.args.get("editar", type=int)
     if editar_id:
-        borrador_edicion = ReporteDiario.query.filter_by(
-            id=editar_id,
-            estatus="BORRADOR",
-            usuario_id=getattr(current_user, "id", None),
+        # La misma consulta que permite ver un reporte permite editarlo. Así los
+        # reportes históricos y los visibles con permiso global no quedan fuera.
+        borrador_edicion = _reportes_diarios_query().filter(
+            ReporteDiario.id == editar_id,
         ).first_or_404()
     borrador_payload = _reporte_diario_payload(borrador_edicion) if borrador_edicion else {
         "actividades": [],
@@ -17492,12 +17525,12 @@ def reporte_diario_crear():
     reporte_form = _reporte_diario_from_form(request.form)
 
     reporte = None
+    reporte_ya_enviado = False
     if reporte_id:
-        reporte = ReporteDiario.query.filter_by(
-            id=reporte_id,
-            estatus="BORRADOR",
-            usuario_id=getattr(current_user, "id", None),
+        reporte = _reportes_diarios_query().filter(
+            ReporteDiario.id == reporte_id,
         ).first_or_404()
+        reporte_ya_enviado = reporte.estatus != "BORRADOR"
 
         for field in (
             "colaborador", "puesto", "fecha", "fecha_fin", "cumplimiento", "semaforo",
@@ -17521,25 +17554,33 @@ def reporte_diario_crear():
             return jsonify(ok=False, message="Captura el colaborador del reporte."), 400
         flash("Captura el colaborador del reporte.", "warning")
         return redirect(url_for("reportes_diarios_index"))
-    if not guardar_borrador and not _json_loads_list(reporte.actividades_json):
+    if (not guardar_borrador or reporte_ya_enviado) and not _json_loads_list(reporte.actividades_json):
         flash("Agrega al menos una actividad realizada.", "warning")
         return redirect(url_for("reportes_diarios_index"))
 
     if guardar_borrador:
-        reporte.estatus = "BORRADOR"
+        reporte.estatus = "ENVIADO" if reporte_ya_enviado else "BORRADOR"
         db.session.add(reporte)
         db.session.commit()
-        return jsonify(ok=True, reporte_id=reporte.id, folio=reporte.folio)
+        return jsonify(
+            ok=True,
+            reporte_id=reporte.id,
+            folio=reporte.folio,
+            estatus=reporte.estatus,
+        )
 
     reporte.estatus = "ENVIADO"
     reporte.hora_envio = now_cdmx_naive()
     db.session.add(reporte)
     db.session.commit()
-    email_error = _notify_reporte_diario_created(reporte)
-    if email_error:
-        flash(f"Reporte {reporte.folio} guardado, pero no se pudo enviar el correo: {email_error}", "warning")
+    if reporte_ya_enviado:
+        flash(f"Reporte {reporte.folio} actualizado correctamente.", "success")
     else:
-        flash(f"Reporte {reporte.folio} enviado correctamente.", "success")
+        email_error = _notify_reporte_diario_created(reporte)
+        if email_error:
+            flash(f"Reporte {reporte.folio} guardado, pero no se pudo enviar el correo: {email_error}", "warning")
+        else:
+            flash(f"Reporte {reporte.folio} enviado correctamente.", "success")
     return redirect(url_for("reporte_diario_detalle", reporte_id=reporte.id))
 
 

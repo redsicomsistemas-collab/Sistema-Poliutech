@@ -9,6 +9,7 @@
   </div>
   <div class="d-flex gap-2">
     <a class="btn btn-outline-primary" href="{{ url_for('reportes_diarios_index') }}">Volver</a>
+    <a class="btn btn-primary" href="{{ url_for('reportes_diarios_index', editar=reporte.id) }}#reporte-diario-form">Editar reporte</a>
     <form method="post" action="{{ url_for('reporte_diario_eliminar', reporte_id=reporte.id) }}" class="m-0">
       <button class="btn btn-outline-danger" data-confirm-message="¿Seguro que deseas eliminar el reporte {{ reporte.folio }}?">Eliminar</button>
     </form>
