@@ -10,7 +10,7 @@
     </div>
 
     <div class="card-body">
-      <form method="POST" action="{{ url_for('actualizar_cotizacion', cot_id=c.id) }}">
+      <form id="frm-cotizacion-edit" method="POST" action="{{ url_for('actualizar_cotizacion', cot_id=c.id) }}">
 
         <h5 class="fw-bold text-primary mb-3">Datos del cliente</h5>
         <div class="row mb-3">
@@ -57,6 +57,7 @@
         </div>
 
         <h5 class="fw-bold text-primary mt-4 mb-3">Renglones de cotización</h5>
+        <div class="small text-muted mb-2">Enter pasa al siguiente renglón; Shift + Enter agrega una línea dentro de Concepto o Descripción.</div>
         <div id="items">
           {% for d in c.detalles %}
           <div class="row g-2 align-items-start mb-2 border-bottom pb-2 item-edit-row">
@@ -167,8 +168,11 @@ function agregarRenglon() {
       </div>
     </div>
   </div>`;
-  document.getElementById('items').insertAdjacentHTML('beforeend', html);
+  const items = document.getElementById('items');
+  items.insertAdjacentHTML('beforeend', html);
+  const row = items.lastElementChild;
   actualizarBotonesOrden();
+  return row;
 }
 
 function moverRenglon(btn, direccion) {
@@ -192,6 +196,39 @@ function actualizarBotonesOrden() {
   });
 }
 
-document.addEventListener('DOMContentLoaded', actualizarBotonesOrden);
+document.addEventListener('DOMContentLoaded', () => {
+  actualizarBotonesOrden();
+  const form = document.getElementById('frm-cotizacion-edit');
+  const items = document.getElementById('items');
+
+  items?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' || event.isComposing) return;
+    const target = event.target;
+    const currentRow = target.closest('.item-edit-row');
+    if (!currentRow || target.matches('button')) return;
+    if (target.matches('textarea') && event.shiftKey) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const nextRow = currentRow.nextElementSibling || agregarRenglon();
+    const nextField = nextRow?.querySelector('.item-edit-nombre, input, textarea, select');
+    if (nextField) {
+      nextField.focus();
+      nextField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  });
+
+  form?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' || event.isComposing || event.target.closest('#items')) return;
+    const target = event.target;
+    if (target.matches('textarea, button')) return;
+    event.preventDefault();
+    const fields = Array.from(form.querySelectorAll(
+      "input:not([type='hidden']):not([type='button']):not([type='submit']):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])"
+    )).filter((field) => field.offsetParent !== null);
+    const currentIndex = fields.indexOf(target);
+    const nextField = currentIndex >= 0 ? fields[currentIndex + 1] : null;
+    if (nextField) nextField.focus();
+  });
+});
 </script>
 {% endblock %}

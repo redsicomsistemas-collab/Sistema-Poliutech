@@ -130,7 +130,10 @@
   <!-- LISTA DE CONCEPTOS -->
   <section class="panel mb-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
-      <h5 class="text-secondary mb-0">Conceptos de Cotización</h5>
+      <div>
+        <h5 class="text-secondary mb-0">Conceptos de Cotización</h5>
+        <div class="small text-muted">Enter pasa al siguiente renglón; Shift + Enter agrega una línea dentro de Concepto o Descripción.</div>
+      </div>
       <button type="button" id="btn-add-row" class="btn btn-outline-primary btn-sm">➕ Agregar Concepto</button>
     </div>
 
@@ -211,6 +214,6 @@
 </form>
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="{{ url_for('static', filename='js/cotizador2.js') }}"></script>
+<script src="{{ url_for('static', filename='js/cotizador2.js', v='20260915-enter-row') }}"></script>
 
 {% endblock %}

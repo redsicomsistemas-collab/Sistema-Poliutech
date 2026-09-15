@@ -204,6 +204,41 @@ document.addEventListener("DOMContentLoaded", ()=>{
   if (btnAdd) btnAdd.addEventListener("click", addRow);
   addRow();
 
+  function focusNextQuoteRow(currentRow){
+    let nextRow = currentRow.nextElementSibling;
+    if(!nextRow) nextRow = addRow();
+    const nextField = nextRow?.querySelector(".item-nombre, input, textarea, select");
+    if(nextField){
+      nextField.focus();
+      nextField.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }
+
+  tbody.addEventListener("keydown", (event)=>{
+    if(event.key !== "Enter" || event.isComposing) return;
+    const target = event.target;
+    const currentRow = target.closest("tr");
+    if(!currentRow || target.matches("button")) return;
+    // Shift + Enter conserva el salto de línea en Concepto y Descripción.
+    if(target.matches("textarea") && event.shiftKey) return;
+    event.preventDefault();
+    event.stopPropagation();
+    focusNextQuoteRow(currentRow);
+  });
+
+  frm?.addEventListener("keydown", (event)=>{
+    if(event.key !== "Enter" || event.isComposing || event.target.closest("#items-body")) return;
+    const target = event.target;
+    if(target.matches("textarea, button")) return;
+    event.preventDefault();
+    const fields = Array.from(frm.querySelectorAll(
+      "input:not([type='hidden']):not([type='button']):not([type='submit']):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])"
+    )).filter((field)=> field.offsetParent !== null);
+    const currentIndex = fields.indexOf(target);
+    const nextField = currentIndex >= 0 ? fields[currentIndex + 1] : null;
+    if(nextField) nextField.focus();
+  });
+
   const ivaField = document.getElementById("iva_porc");
   if (ivaField) ivaField.addEventListener("input", recalcTotals);
 
