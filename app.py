@@ -4876,7 +4876,6 @@ def _build_dashboard_cotizaciones_query(
 
     estatus_normalizado = db.func.upper(db.func.trim(db.func.coalesce(Cotizacion.estatus, "")))
     resultado_normalizado = db.func.upper(db.func.trim(db.func.coalesce(Cotizacion.resultado, "")))
-    aprobacion_normalizada = db.func.upper(db.func.trim(db.func.coalesce(Cotizacion.estatus_aprobacion, "")))
     es_ganada = or_(
         estatus_normalizado.in_(ESTATUS_COTIZACION_GANADA),
         resultado_normalizado.in_(ESTATUS_COTIZACION_GANADA),
@@ -4885,28 +4884,22 @@ def _build_dashboard_cotizaciones_query(
         estatus_normalizado.in_(ESTATUS_COTIZACION_PERDIDA),
         resultado_normalizado.in_(ESTATUS_COTIZACION_PERDIDA),
     )
-    es_perdida_o_rechazada_explicita = or_(
-        estatus_normalizado.in_({"PERDIDA", "PÉRDIDA", "RECHAZADA", "RECHAZADO"}),
-        resultado_normalizado.in_({"PERDIDA", "PÉRDIDA", "RECHAZADA", "RECHAZADO"}),
-        aprobacion_normalizada.in_({"RECHAZADA", "RECHAZADO"}),
-    )
-    if vista == "ganadas":
+    if vista == "todos":
+        # Listado maestro: incluye cada cotizacion no eliminada, sin importar
+        # su seguimiento, aprobacion o resultado.
+        pass
+    elif vista == "ganadas":
         q = q.filter(es_ganada)
     elif vista == "perdidas":
         q = q.filter(~es_ganada, es_perdida)
     elif vista == "activas":
         q = q.filter(~es_ganada, ~es_perdida)
-    elif vista == "todos":
-        # Sin filtros se muestran todas las cotizaciones no eliminadas,
-        # incluyendo las de proyectos y las que siguen en 0%. Sólo se ocultan
-        # las marcadas expresamente como perdidas o rechazadas.
-        q = q.filter(~es_perdida_o_rechazada_explicita)
     elif vista == "historico":
         # Métrica independiente: incluye todas las cotizaciones no eliminadas,
         # incluso perdidas, rechazadas y las que se encuentran en 0%.
         pass
     else:
-        q = q.filter(~es_perdida_o_rechazada_explicita)
+        pass
 
     if not is_admin() and not can_manage_quote_assignments():
         q = q.filter(Cotizacion.responsable == responsable_actual())
@@ -6704,8 +6697,6 @@ def logout():
 def index():
     if is_demo_user():
         return redirect(url_for("demo_inicio"))
-    page = request.args.get("page", 1, type=int)
-    per_page = 20
     desde = (request.args.get("desde") or "").strip()
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
@@ -6786,10 +6777,12 @@ def index():
         or 0
     )
     total_cotizaciones_historico = historical_query.count()
-    quotes_query = base_query.order_by(Cotizacion.fecha.desc())
-
-    pagination = quotes_query.paginate(page=page, per_page=per_page, error_out=False)
-    cotizaciones = pagination.items
+    # Se carga el conjunto completo para que el dashboard no omita folios por
+    # paginacion. El id mantiene un orden estable cuando se repite la fecha.
+    cotizaciones = base_query.order_by(
+        Cotizacion.fecha.desc(),
+        Cotizacion.id.desc(),
+    ).all()
 
     total_catalogo = 0 if is_demo_user() else Concepto.query.count()
     responsables_cotizacion = [
@@ -6872,7 +6865,7 @@ def index():
         total_cotizaciones_historico=total_cotizaciones_historico,
         total_catalogo=total_catalogo,
         cotizaciones=cotizaciones,
-        pagination=pagination,
+        pagination=None,
         dashboard_filters=dashboard_filters,
         valid_estatus=VALID_ESTATUS_SEGUIMIENTO,
         valid_estatus_filtro=sorted(
