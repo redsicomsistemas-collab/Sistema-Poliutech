@@ -4,7 +4,7 @@
 # =========================================================
 from __future__ import annotations
 
-import os, io, csv, sys, math, re, json, traceback, unicodedata, smtplib, zipfile, logging, base64, secrets, hashlib, threading
+import os, io, csv, sys, math, re, json, traceback, unicodedata, smtplib, zipfile, logging, base64, secrets, hashlib, shutil, threading
 import mimetypes
 import requests
 from datetime import datetime, timedelta
@@ -82,14 +82,27 @@ PROSPECT_STATUS_OPTIONS = [
     "FINALIZADO",
     "RECHAZADO",
 ]
-TICKET_STATUS_OPTIONS = [
-    "NUEVO",
-    "EN REVISION",
-    "EN PROCESO",
-    "ESPERANDO RESPUESTA",
-    "RESUELTO",
-    "CERRADO",
-]
+TICKET_STATUS_OPTIONS = ["EN REVISION", "RESUELTO", "CERRADO"]
+TICKET_STATUS_META = {
+    "EN REVISION": {
+        "label": "En revisión",
+        "description": "Soporte está trabajando en la solicitud.",
+        "icon": "🛠️",
+        "color": "primary",
+    },
+    "RESUELTO": {
+        "label": "Resuelto",
+        "description": "El trabajo terminó y el solicitante está comprobando el resultado.",
+        "icon": "👀",
+        "color": "warning",
+    },
+    "CERRADO": {
+        "label": "Cerrado",
+        "description": "El solicitante confirmó que está satisfecho con el resultado.",
+        "icon": "✅",
+        "color": "success",
+    },
+}
 TICKET_PRIORITY_OPTIONS = ["BAJA", "MEDIA", "ALTA", "URGENTE"]
 TICKET_CATEGORY_OPTIONS = ["GENERAL", "SISTEMA", "COTIZACIONES", "COMPRAS", "FACTURACION", "APP MOVIL"]
 TICKET_ALLOWED_EXTENSIONS = {
@@ -2412,7 +2425,15 @@ def _filter_prospectos(rows: list[dict], filters: dict[str, str]) -> list[dict]:
 
 def _normalize_ticket_status(value: object) -> str:
     status = str(value or "").strip().upper()
-    return status if status in TICKET_STATUS_OPTIONS else "NUEVO"
+    aliases = {
+        "NUEVO": "EN REVISION",
+        "ABIERTO": "EN REVISION",
+        "EN PROCESO": "EN REVISION",
+        "PENDIENTE": "EN REVISION",
+        "ESPERANDO RESPUESTA": "RESUELTO",
+    }
+    status = aliases.get(status, status)
+    return status if status in TICKET_STATUS_OPTIONS else "EN REVISION"
 
 
 def _normalize_ticket_priority(value: object) -> str:
@@ -2426,7 +2447,7 @@ def _normalize_ticket_category(value: object) -> str:
 
 
 def _ticket_is_closed(status: str) -> bool:
-    return _normalize_ticket_status(status) in {"RESUELTO", "CERRADO"}
+    return _normalize_ticket_status(status) == "CERRADO"
 
 
 def _ticket_upload_root(ticket_id: int) -> Path:
@@ -3687,6 +3708,80 @@ def ensure_schema():
     """Crea tablas si no existen y agrega/normaliza columnas clave."""
     print("🔍 Verificando estructura de la base de datos...")
     db.create_all()
+
+    # --- TICKETS: flujo unico de tres estados ---
+    try:
+        db.session.execute(text("""
+            UPDATE ticket_soporte
+            SET estado = CASE
+                WHEN UPPER(TRIM(COALESCE(estado, ''))) = 'CERRADO' THEN 'CERRADO'
+                WHEN UPPER(TRIM(COALESCE(estado, ''))) IN ('RESUELTO', 'ESPERANDO RESPUESTA') THEN 'RESUELTO'
+                ELSE 'EN REVISION'
+            END
+        """))
+        db.session.execute(text("""
+            UPDATE ticket_soporte
+            SET cerrado_en = NULL
+            WHERE estado <> 'CERRADO'
+        """))
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print("⚠️ ensure_schema(ticket_soporte.estados):", e)
+
+    # --- TICKETS: retiro unico de registros usados como prueba ---
+    try:
+        migration_key = "cleanup_ticket_tests_20260917"
+        db.session.execute(text("""
+            CREATE TABLE IF NOT EXISTS app_data_migration (
+                clave VARCHAR(120) PRIMARY KEY,
+                ejecutado_en TIMESTAMP NOT NULL
+            )
+        """))
+        cleanup_done = db.session.execute(
+            text("SELECT 1 FROM app_data_migration WHERE clave = :clave"),
+            {"clave": migration_key},
+        ).first()
+
+        if not cleanup_done:
+            test_values = (
+                "prueba",
+                "pruebas",
+                "test",
+                "testing",
+                "demo",
+                "ticket de prueba",
+                "ticket prueba",
+                "prueba de ticket",
+                "test ticket",
+            )
+            asunto_normalizado = db.func.lower(db.func.trim(db.func.coalesce(TicketSoporte.asunto, "")))
+            solicitante_normalizado = db.func.lower(db.func.trim(db.func.coalesce(TicketSoporte.solicitante, "")))
+            descripcion_normalizada = db.func.lower(db.func.trim(db.func.coalesce(TicketSoporte.descripcion, "")))
+            test_tickets = TicketSoporte.query.filter(or_(
+                asunto_normalizado.in_(test_values),
+                asunto_normalizado.like("prueba %"),
+                asunto_normalizado.like("test %"),
+                solicitante_normalizado.in_(test_values),
+                descripcion_normalizada.in_(test_values),
+            )).all()
+
+            uploads_root = (Path(app.static_folder or "static") / "uploads" / "tickets").resolve()
+            for ticket in test_tickets:
+                ticket_dir = (uploads_root / str(ticket.id)).resolve()
+                if ticket_dir.parent == uploads_root and ticket_dir.is_dir():
+                    shutil.rmtree(ticket_dir)
+                db.session.delete(ticket)
+
+            db.session.execute(
+                text("INSERT INTO app_data_migration (clave, ejecutado_en) VALUES (:clave, :ejecutado_en)"),
+                {"clave": migration_key, "ejecutado_en": now_cdmx_naive()},
+            )
+            db.session.commit()
+            print(f"✅ Tickets de prueba eliminados: {len(test_tickets)}")
+    except Exception as e:
+        db.session.rollback()
+        print("⚠️ ensure_schema(ticket_soporte.pruebas):", e)
 
     # --- REPORTE SEMANAL: periodo elegido por el colaborador ---
     try:
@@ -7947,7 +8042,10 @@ def eliminar_prospecto_seguimiento(prospecto_id: int, seg_id: int):
 def soporte_tickets():
     filters = _ticket_filters_from_request()
     rows = _load_ticket_rows(filters)
-    total_abiertos = sum(1 for row in rows if row["estado"] not in {"RESUELTO", "CERRADO"})
+    ticket_columns = {
+        estado: [row for row in rows if row["estado"] == estado]
+        for estado in TICKET_STATUS_OPTIONS
+    }
     total_urgentes = sum(1 for row in rows if row["prioridad"] == "URGENTE")
     return render_template(
         "soporte_tickets.html",
@@ -7955,9 +8053,10 @@ def soporte_tickets():
         rows=rows,
         filters=filters,
         status_options=TICKET_STATUS_OPTIONS,
+        status_meta=TICKET_STATUS_META,
+        ticket_columns=ticket_columns,
         priority_options=TICKET_PRIORITY_OPTIONS,
         category_options=TICKET_CATEGORY_OPTIONS,
-        total_abiertos=total_abiertos,
         total_urgentes=total_urgentes,
         default_responsable=responsable_actual() or "",
     )
@@ -7991,7 +8090,7 @@ def soporte_ticket_nuevo():
             empresa=None,
             categoria=categoria,
             prioridad=prioridad,
-            estado="NUEVO",
+            estado="EN REVISION",
             responsable=responsable or None,
             creado_por_id=getattr(current_user, "id", None),
             creado_en=now_cdmx_naive(),
@@ -8077,8 +8176,7 @@ def soporte_ticket_detalle(ticket_id: int):
                 flash(str(exc), "danger")
                 return redirect(url_for("soporte_ticket_detalle", ticket_id=ticket.id))
 
-            if ticket.estado == "NUEVO":
-                ticket.estado = "EN REVISION"
+            ticket.estado = _normalize_ticket_status(ticket.estado)
             ticket.actualizado_en = now_cdmx_naive()
             db.session.commit()
             try:
@@ -8117,6 +8215,8 @@ def soporte_ticket_detalle(ticket_id: int):
         comentarios=ticket.comentarios,
         adjuntos=ticket.adjuntos,
         status_options=TICKET_STATUS_OPTIONS,
+        status_meta=TICKET_STATUS_META,
+        ticket_status_index=TICKET_STATUS_OPTIONS.index(_normalize_ticket_status(ticket.estado)),
         priority_options=TICKET_PRIORITY_OPTIONS,
         category_options=TICKET_CATEGORY_OPTIONS,
         mention_users=_usuarios_menciones_payload(),

@@ -634,7 +634,7 @@ class TicketSoporte(db.Model):
     empresa = db.Column(db.String(160))
     categoria = db.Column(db.String(80), default="GENERAL", nullable=False)
     prioridad = db.Column(db.String(20), default="MEDIA", nullable=False)
-    estado = db.Column(db.String(30), default="NUEVO", nullable=False, index=True)
+    estado = db.Column(db.String(30), default="EN REVISION", nullable=False, index=True)
     responsable = db.Column(db.String(120), index=True)
     creado_por_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
     creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
