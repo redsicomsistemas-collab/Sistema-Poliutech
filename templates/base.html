@@ -138,6 +138,48 @@
       gap: 0.75rem;
     }
 
+    .support-ticket-cta {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.45rem;
+      min-height: 44px;
+      padding: 0.62rem 0.9rem;
+      border: 1px solid rgba(255, 255, 255, 0.62);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--mar-blue);
+      box-shadow: 0 6px 16px rgba(15, 23, 42, 0.18);
+      font-size: 0.82rem;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: 0.02em;
+      text-decoration: none;
+      white-space: nowrap;
+      transition: background-color 0.18s ease, color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    .support-ticket-cta:hover,
+    .support-ticket-cta:focus-visible,
+    .support-ticket-cta.is-active {
+      background: #ffc107;
+      color: #172554;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.26);
+      transform: translateY(-1px);
+      outline: none;
+    }
+
+    .support-ticket-cta:focus-visible {
+      outline: 2px solid #ffc107;
+      outline-offset: 2px;
+    }
+
+    .support-ticket-icon {
+      font-size: 1.05rem;
+      line-height: 1;
+    }
+
     .invoice-cta {
       background: #20c997;
       color: #06281f;
@@ -353,6 +395,10 @@
         max-width: 46vw;
       }
 
+      .support-ticket-cta {
+        padding-inline: 0.75rem;
+      }
+
       .app-layout {
         width: 100%;
         gap: 0;
@@ -464,6 +510,21 @@
         transform: translateX(-50%);
         padding: 0.68rem 0.82rem;
         font-size: 0.92rem;
+      }
+    }
+
+    @media (max-width: 575.98px) {
+      .topbar-inner {
+        gap: 0.55rem;
+      }
+
+      .support-ticket-cta {
+        width: 44px;
+        padding: 0;
+      }
+
+      .support-ticket-label {
+        display: none;
       }
     }
 
@@ -779,6 +840,12 @@
       </div>
 
       {% if current_user.is_authenticated %}
+      {% if not is_demo_account or 'soporte' in demo_modules %}
+      <a class="support-ticket-cta{% if request.path.startswith('/soporte') %} is-active{% endif %}" href="{{ url_for('soporte_tickets') }}" aria-label="Ticket de soporte" title="Ticket de soporte"{% if request.path.startswith('/soporte') %} aria-current="page"{% endif %}>
+        <span class="support-ticket-icon" aria-hidden="true">🎫</span>
+        <span class="support-ticket-label">TICKET DE SOPORTE</span>
+      </a>
+      {% endif %}
       <button class="theme-toggle" type="button" id="themeToggle" aria-label="Activar tema oscuro" aria-pressed="false" title="Activar tema oscuro">
         <span class="theme-toggle-icon" aria-hidden="true">🌙</span>
       </button>
@@ -831,7 +898,7 @@
       {% set menu_comercial_open = menu_endpoint in ['prospectos', 'clientes_index', 'clientes_guardar', 'registro_obras', 'cotizador'] %}
       {% set menu_operacion_open = menu_endpoint in ['inventario_index', 'ordenes_compra_index'] or menu_endpoint.startswith('pu.') %}
       {% set menu_finanzas_open = menu_endpoint in ['solicitudes_recursos_index', 'finanzas_index', 'altas_proveedores', 'gastos_viaticos_index', 'comprobar_gastos_fondos', 'estado_cuenta_recursos_panel', 'gastos_admin_panel'] or menu_endpoint.startswith('facturacion.') or menu_endpoint.startswith('contabilidad.') %}
-      {% set menu_gestion_open = menu_endpoint in ['soporte_tickets', 'reportes_diarios_index', 'reportes_diarios_evaluacion', 'admin_catalogos'] %}
+      {% set menu_gestion_open = menu_endpoint in ['reportes_diarios_index', 'reportes_diarios_evaluacion', 'admin_catalogos'] %}
       {% set menu_rrhh_open = menu_endpoint in ['rrhh_index', 'rrhh_crear', 'rrhh_detalle', 'rrhh_revisar', 'rrhh_adjunto'] %}
       {% set menu_admin_open = menu_endpoint in ['papelera_cotizaciones', 'admin_demos', 'admin_personalizacion', 'admin_notificaciones', 'admin_usuarios', 'admin_permisos', 'admin_bitacora'] %}
       <nav class="nav flex-column" id="sideMenuCategories">
@@ -840,9 +907,11 @@
           <a class="nav-link" href="{{ url_for('demo_inicio') }}">🏠 Inicio</a>
         </div>
         {% for item in demo_module_items %}
+        {% if item.key != 'soporte' %}
         <div class="menu-category">
           <a class="nav-link" href="{{ url_for(item.endpoint) }}"><span>{{ item.icon }} {{ item.label }}</span></a>
         </div>
+        {% endif %}
         {% endfor %}
         {% else %}
         <div class="menu-category">
@@ -863,7 +932,7 @@
         </div>
         <div class="menu-category">
           <button class="nav-link menu-category-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#menuGestion" aria-expanded="{{ 'true' if menu_gestion_open else 'false' }}"><span>📊 Gestión</span><span class="menu-category-chevron">▼</span></button>
-          <div class="collapse {{ 'show' if menu_gestion_open }} menu-category-items" id="menuGestion"><a class="nav-link" href="{{ url_for('soporte_tickets') }}">🎫 Soporte</a><a class="nav-link" href="{{ url_for('reportes_diarios_index') }}">🗓️ Reportes semanales</a>{% if can_view_eval_departamental %}<a class="nav-link" href="{{ url_for('reportes_diarios_evaluacion') }}">📊 Evaluación departamental</a>{% endif %}<a class="nav-link" href="{{ url_for('admin_catalogos') }}">📚 Catálogos</a></div>
+          <div class="collapse {{ 'show' if menu_gestion_open }} menu-category-items" id="menuGestion"><a class="nav-link" href="{{ url_for('reportes_diarios_index') }}">🗓️ Reportes semanales</a>{% if can_view_eval_departamental %}<a class="nav-link" href="{{ url_for('reportes_diarios_evaluacion') }}">📊 Evaluación departamental</a>{% endif %}<a class="nav-link" href="{{ url_for('admin_catalogos') }}">📚 Catálogos</a></div>
         </div>
         <div class="menu-category">
           <button class="nav-link menu-category-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#menuRRHH" aria-expanded="{{ 'true' if menu_rrhh_open else 'false' }}"><span>👥 Recursos Humanos</span><span class="menu-category-chevron">▼</span></button>
