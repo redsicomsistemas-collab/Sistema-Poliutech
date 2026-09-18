@@ -3633,11 +3633,209 @@ def _get_client_ip():
     return (request.remote_addr or "")[:60]
 
 
+AUDIT_SENSITIVE_KEYS = {
+    "password", "pass", "passwd", "clave", "contrasena", "contraseña",
+    "token", "secret", "authorization", "cookie", "csrf", "api_key",
+}
+AUDIT_DETAIL_KEYS = {
+    "action", "accion", "estado", "estatus", "prioridad", "categoria", "tipo",
+    "responsable", "asignado_a", "folio", "proyecto", "cliente_id", "cotizacion_id",
+    "ticket_id", "solicitud_id", "prospecto_id", "gasto_id", "producto_id", "usuario_id",
+    "metodo", "vista", "bandeja", "page", "per", "q", "resultado", "motivo",
+}
+
+
+def _audit_is_sensitive_key(key: object) -> bool:
+    normalized = str(key or "").strip().lower()
+    return any(marker in normalized for marker in AUDIT_SENSITIVE_KEYS)
+
+
+def _audit_safe_value(value: object, limit: int = 160) -> str:
+    clean = re.sub(r"[\x00-\x1f\x7f]+", " ", str(value or "")).strip()
+    return clean[:limit]
+
+
+def _audit_safe_query_string() -> str | None:
+    parts = []
+    try:
+        for key, values in request.args.lists():
+            if _audit_is_sensitive_key(key):
+                parts.append(f"{key}=<hidden>")
+                continue
+            for value in values[:5]:
+                parts.append(f"{key}={_audit_safe_value(value)}")
+    except Exception:
+        return None
+    return "&".join(parts)[:780] or None
+
+
+def _audit_safe_details(payload: object = None) -> str | None:
+    details: dict[str, object] = {}
+    try:
+        for key, value in (request.view_args or {}).items():
+            if not _audit_is_sensitive_key(key):
+                details[str(key)] = _audit_safe_value(value)
+
+        sources = [request.args, request.form]
+        if isinstance(payload, dict):
+            sources.append(payload)
+        for source in sources:
+            for key in source.keys():
+                normalized = str(key).strip().lower().removesuffix("[]")
+                if normalized not in AUDIT_DETAIL_KEYS or _audit_is_sensitive_key(key):
+                    continue
+                values = source.getlist(key) if hasattr(source, "getlist") else [source.get(key)]
+                clean_values = [_audit_safe_value(value) for value in values[:5] if value not in (None, "")]
+                if clean_values:
+                    details[str(key)] = clean_values if len(clean_values) > 1 else clean_values[0]
+
+        uploads = []
+        for key, files in request.files.lists():
+            for uploaded in files[:5]:
+                filename = _audit_safe_value(getattr(uploaded, "filename", ""), 120)
+                if filename:
+                    uploads.append({"campo": str(key)[:60], "archivo": filename})
+        if uploads:
+            details["archivos"] = uploads[:10]
+    except Exception:
+        pass
+    return json.dumps(details, ensure_ascii=False, separators=(",", ":"))[:3000] if details else None
+
+
+def _audit_parse_user_agent(
+    ua: str,
+    *,
+    platform_hint: str = "",
+    mobile_hint: str = "",
+    reported_name: str = "",
+) -> dict[str, str]:
+    ua = (ua or "")[:300]
+    platform_hint = (platform_hint or "").strip('" ')[:80]
+    browser = "Navegador desconocido"
+    browser_patterns = (
+        ("Microsoft Edge", r"Edg(?:A|iOS)?/([\d.]+)"),
+        ("Opera", r"(?:OPR|Opera)/([\d.]+)"),
+        ("Google Chrome", r"(?:Chrome|CriOS)/([\d.]+)"),
+        ("Mozilla Firefox", r"(?:Firefox|FxiOS)/([\d.]+)"),
+        ("Safari", r"Version/([\d.]+).*Safari/"),
+    )
+    for name, pattern in browser_patterns:
+        match = re.search(pattern, ua, flags=re.IGNORECASE)
+        if match:
+            browser = f"{name} {match.group(1)}"
+            break
+
+    os_name = platform_hint or "Sistema desconocido"
+    if re.search(r"Windows NT 10\.0", ua, re.IGNORECASE):
+        os_name = "Windows 10/11"
+    elif re.search(r"Windows NT 6\.3", ua, re.IGNORECASE):
+        os_name = "Windows 8.1"
+    elif re.search(r"Windows NT 6\.1", ua, re.IGNORECASE):
+        os_name = "Windows 7"
+    elif (match := re.search(r"Android\s+([\d.]+)", ua, re.IGNORECASE)):
+        os_name = f"Android {match.group(1)}"
+    elif (match := re.search(r"(?:iPhone OS|CPU OS)\s+([\d_]+)", ua, re.IGNORECASE)):
+        os_name = f"iOS {match.group(1).replace('_', '.')}"
+    elif (match := re.search(r"Mac OS X\s+([\d_]+)", ua, re.IGNORECASE)):
+        os_name = f"macOS {match.group(1).replace('_', '.')}"
+    elif "CrOS" in ua:
+        os_name = "ChromeOS"
+    elif "Linux" in ua:
+        os_name = "Linux"
+
+    if mobile_hint == "?1" or re.search(r"Mobile|iPhone|Android.*Mobile", ua, re.IGNORECASE):
+        device_type = "Teléfono"
+    elif re.search(r"iPad|Tablet|Android", ua, re.IGNORECASE):
+        device_type = "Tableta"
+    else:
+        device_type = "Computadora"
+
+    reported_name = (reported_name or "").strip()[:120]
+    device = f"{reported_name} · {device_type}" if reported_name else device_type
+    return {
+        "user_agent": ua,
+        "browser": browser,
+        "os": os_name,
+        "device": device,
+    }
+
+
+def _audit_client_context() -> dict[str, str]:
+    return _audit_parse_user_agent(
+        request.headers.get("User-Agent") or "",
+        platform_hint=request.headers.get("Sec-CH-UA-Platform") or "",
+        mobile_hint=request.headers.get("Sec-CH-UA-Mobile") or "",
+        reported_name=(
+            request.headers.get("X-Device-Name")
+            or request.headers.get("X-Computer-Name")
+            or ""
+        ),
+    )
+
+
+def _audit_module() -> str:
+    source = f"{request.endpoint or ''} {request.path or ''}".lower()
+    rules = (
+        (("bitacora",), "Bitácora"),
+        (("soporte", "ticket"), "Soporte"),
+        (("cotizacion",), "Cotizaciones"),
+        (("cliente",), "Clientes"),
+        (("prospect",), "Prospectos"),
+        (("inventario",), "Inventario"),
+        (("orden_compra", "compras"), "Compras"),
+        (("gasto", "viatico"), "Gastos"),
+        (("solicitud_recurso", "fondos"), "Fondos"),
+        (("finanz",), "Finanzas"),
+        (("factur",), "Facturación"),
+        (("contabil",), "Contabilidad"),
+        (("reporte",), "Reportes"),
+        (("rrhh", "recursos-humanos"), "Recursos Humanos"),
+        (("usuario", "permis"), "Usuarios y permisos"),
+        (("demo", "preventa"), "Demos"),
+        (("pu_", "/pu/"), "Precios unitarios"),
+        (("catalog",), "Catálogos"),
+        (("login", "logout"), "Seguridad"),
+        (("dashboard",), "Dashboard"),
+    )
+    for markers, label in rules:
+        if any(marker in source for marker in markers):
+            return label
+    return "Sistema"
+
+
+def _audit_resource_label() -> str:
+    source = f"{request.endpoint or ''} {request.path or ''}".lower()
+    resource_rules = (
+        (("soporte", "ticket"), "el ticket"),
+        (("cotizacion",), "la cotización"),
+        (("cliente",), "el cliente"),
+        (("prospect",), "el prospecto"),
+        (("inventario", "producto"), "el artículo de inventario"),
+        (("orden_compra",), "la orden de compra"),
+        (("gasto",), "el gasto"),
+        (("solicitud_recurso",), "la solicitud de recursos"),
+        (("reporte",), "el reporte"),
+        (("rrhh", "recursos-humanos"), "el expediente de Recursos Humanos"),
+        (("usuario",), "el usuario"),
+        (("demo", "preventa"), "la demostración"),
+        (("bitacora",), "la bitácora"),
+        (("login",), "su sesión"),
+    )
+    label = "el sistema"
+    for markers, candidate in resource_rules:
+        if any(marker in source for marker in markers):
+            label = candidate
+            break
+    view_args = request.view_args or {}
+    object_id = next((value for key, value in view_args.items() if key == "id" or key.endswith("_id")), None)
+    return f"{label} #{object_id}" if object_id is not None else label
+
+
 
 # ---------------------------------------------------------
 # Audit retention / cleanup (keep DB from growing forever)
 # ---------------------------------------------------------
-AUDIT_LOG_RETENTION_DAYS = int(os.getenv("AUDIT_LOG_RETENTION_DAYS", "90"))
+AUDIT_LOG_RETENTION_DAYS = int(os.getenv("AUDIT_LOG_RETENTION_DAYS", "365"))
 AUDIT_CLEANUP_EVERY_HOURS = int(os.getenv("AUDIT_CLEANUP_EVERY_HOURS", "24"))
 
 def _audit_cleanup_stamp_path() -> str:
@@ -3696,41 +3894,58 @@ def maybe_cleanup_audit_logs() -> None:
             _mark_audit_cleanup(now)
     except Exception:
         pass
-def _describe_action():
-    # Acción legible sin datos sensibles
+def _describe_action(status_code: int = 200):
+    """Produce una frase de auditoría comprensible sin guardar secretos."""
     try:
-        ep = (request.endpoint or "").strip()
-        m = request.method
-        p = request.path
+        endpoint = (request.endpoint or "").strip().lower()
+        method = request.method.upper()
+        resource = _audit_resource_label()
+        json_payload = request.get_json(silent=True)
+        requested_action = (
+            request.form.get("action")
+            or request.form.get("accion")
+            or (json_payload.get("action") if isinstance(json_payload, dict) else "")
+            or (json_payload.get("accion") if isinstance(json_payload, dict) else "")
+            or ""
+        ).strip().lower()
+        action_source = f"{endpoint} {requested_action}"
 
-        # Login explícito
-        if ep == "login" and m == "POST":
-            nombre = (
+        if endpoint == "login" and method == "POST":
+            username = _audit_safe_value(
                 request.form.get("nombre")
                 or request.form.get("username")
                 or request.form.get("usuario")
                 or request.form.get("user")
-                or ""
-            ).strip()[:60]
-            return f"LOGIN intento usuario={nombre}"
+                or "usuario desconocido",
+                60,
+            )
+            if getattr(current_user, "is_authenticated", False):
+                return f"inició sesión como {username}"
+            return f"intentó iniciar sesión como {username} sin éxito"
+        if endpoint == "logout":
+            return "cerró su sesión"
+        if status_code >= 400:
+            return f"intentó acceder a {resource}; el servidor respondió {status_code}"
+        if method == "GET":
+            if any(token in action_source for token in ("export", "download", "descargar", "pdf", "xlsx", "adjunto")):
+                return f"descargó o exportó {resource}"
+            return f"consultó {resource}"
 
-        if ep == "logout":
-            return "LOGOUT"
-
-        # Cotizaciones (patrones comunes)
-        if "cotizacion" in p.lower():
-            return f"{m} {p}"
-
-        if "cliente" in p.lower():
-            return f"{m} {p}"
-
-        if "catalog" in p.lower() or "catalogo" in p.lower():
-            return f"{m} {p}"
-
-        # Default
-        return f"{m} {p}"
+        if method == "DELETE" or any(token in action_source for token in ("eliminar", "delete", "borrar")):
+            return f"eliminó {resource}"
+        if any(token in action_source for token in ("enviar", "send", "email", "notificar")):
+            return f"envió una notificación desde {resource}"
+        if any(token in action_source for token in ("comment", "coment", "seguimiento")):
+            return f"registró seguimiento en {resource}"
+        if any(token in action_source for token in ("crear", "nuevo", "create", "registrar", "alta")):
+            return f"creó {resource}"
+        if any(token in action_source for token in ("actualizar", "editar", "update", "revisar", "aprobar", "rechazar", "estado")):
+            return f"actualizó {resource}"
+        if method in {"POST", "PUT", "PATCH"}:
+            return f"guardó cambios en {resource}"
+        return f"realizó una acción en {resource}"
     except Exception:
-        return f"{request.method} {request.path}"
+        return f"realizó {request.method} en {request.path}"
 
 @app.before_request
 def _audit_before_request():
@@ -3742,21 +3957,37 @@ def _audit_before_request():
         g._skip_audit = False
 
         g._audit_started_at = now_cdmx_naive()
+        g._audit_request_id = (request.headers.get("X-Request-ID") or secrets.token_hex(8))[:40]
 
-        # Captura keys sin valores
+        actor = {"usuario": "ANON", "usuario_id": None, "rol": None, "email": None}
+        try:
+            if current_user and getattr(current_user, "is_authenticated", False):
+                actor = {
+                    "usuario": (_usuario_nombre_representante(current_user) or "ANON")[:60],
+                    "usuario_id": getattr(current_user, "id", None),
+                    "rol": getattr(current_user, "rol", None),
+                    "email": (getattr(current_user, "correo", None) or "")[:160] or None,
+                }
+        except Exception:
+            pass
+        g._audit_actor = actor
+
+        # Captura nombres de campos y un subconjunto seguro de valores útiles.
         form_keys = None
         json_keys = None
+        json_payload = None
         if request.method in ("POST", "PUT", "PATCH", "DELETE"):
             if request.form:
                 form_keys = _safe_join_keys(request.form.keys())
-            j = request.get_json(silent=True)
-            if isinstance(j, dict):
-                json_keys = _safe_join_keys(j.keys())
+            json_payload = request.get_json(silent=True)
+            if isinstance(json_payload, dict):
+                json_keys = _safe_join_keys(json_payload.keys())
 
         g._audit_payload = {
             "form_keys": form_keys,
             "json_keys": json_keys,
-            "query_string": (request.query_string.decode("utf-8", "ignore")[:780] if request.query_string else None),
+            "query_string": _audit_safe_query_string(),
+            "detalles": _audit_safe_details(json_payload),
         }
     except Exception:
         # no rompemos request por falla de bitácora
@@ -3768,39 +3999,75 @@ def _audit_after_request(response):
         if getattr(g, "_skip_audit", False):
             return response
 
-        # Usuario
-        usuario = "ANON"
-        usuario_id = None
-        rol = None
-        try:
-            if current_user and getattr(current_user, "is_authenticated", False):
-                usuario = (_usuario_nombre_representante(current_user) or "ANON")[:60]
-                usuario_id = getattr(current_user, "id", None)
-                rol = getattr(current_user, "rol", None)
-        except Exception:
-            pass
+        actor = getattr(g, "_audit_actor", None) or {
+            "usuario": "ANON", "usuario_id": None, "rol": None, "email": None,
+        }
+        # En el login el usuario se autentica durante la petición; capturamos el resultado real.
+        if actor["usuario"] == "ANON":
+            try:
+                if current_user and getattr(current_user, "is_authenticated", False):
+                    actor = {
+                        "usuario": (_usuario_nombre_representante(current_user) or "ANON")[:60],
+                        "usuario_id": getattr(current_user, "id", None),
+                        "rol": getattr(current_user, "rol", None),
+                        "email": (getattr(current_user, "correo", None) or "")[:160] or None,
+                    }
+            except Exception:
+                pass
 
-        # acción
-        accion = getattr(g, "_audit_action", None) or _describe_action()
+        status_code = int(getattr(response, "status_code", 0) or 0)
+        accion = getattr(g, "_audit_action", None) or _describe_action(status_code)
+        client = _audit_client_context()
+        device_id = (request.cookies.get("mar_device_id") or secrets.token_hex(8))[:40]
+        started_at = getattr(g, "_audit_started_at", None)
+        duration_ms = None
+        if started_at:
+            duration_ms = max(0, int((now_cdmx_naive() - started_at).total_seconds() * 1000))
+        response_bytes = response.calculate_content_length()
 
         log = ActivityLog(
             fecha=now_cdmx_naive(),
-            usuario_id=usuario_id,
-            usuario=usuario,
-            rol=rol,
+            usuario_id=actor["usuario_id"],
+            usuario=actor["usuario"],
+            rol=actor["rol"],
+            usuario_email=actor["email"],
             metodo=request.method,
             ruta=(request.path or "")[:300],
             endpoint=(request.endpoint or "")[:120] if request.endpoint else None,
-            status_code=int(getattr(response, "status_code", 0) or 0),
+            status_code=status_code,
             ip=_get_client_ip(),
-            user_agent=(request.headers.get("User-Agent", "")[:300] if request.headers else None),
+            user_agent=client["user_agent"] or None,
+            forwarded_for=(request.headers.get("X-Forwarded-For", "")[:300] or None),
+            navegador=client["browser"],
+            sistema_operativo=client["os"],
+            dispositivo=client["device"],
+            device_id=device_id,
+            idioma=(request.headers.get("Accept-Language", "")[:80] or None),
+            referer=(request.headers.get("Referer", "")[:500] or None),
+            host=(request.host or "")[:180] or None,
+            scheme=(request.scheme or "")[:12] or None,
             query_string=(g._audit_payload.get("query_string") if hasattr(g, "_audit_payload") else None),
             form_keys=(g._audit_payload.get("form_keys") if hasattr(g, "_audit_payload") else None),
             json_keys=(g._audit_payload.get("json_keys") if hasattr(g, "_audit_payload") else None),
+            detalles=(g._audit_payload.get("detalles") if hasattr(g, "_audit_payload") else None),
+            modulo=_audit_module(),
+            request_id=getattr(g, "_audit_request_id", None),
+            duracion_ms=duration_ms,
+            response_bytes=int(response_bytes) if response_bytes is not None else None,
             accion=accion[:500],
         )
         db.session.add(log)
         db.session.commit()
+        response.headers.setdefault("X-Request-ID", getattr(g, "_audit_request_id", ""))
+        if not request.cookies.get("mar_device_id"):
+            response.set_cookie(
+                "mar_device_id",
+                device_id,
+                max_age=60 * 60 * 24 * 365 * 2,
+                secure=request.is_secure,
+                httponly=True,
+                samesite="Lax",
+            )
     except Exception:
         try:
             db.session.rollback()
@@ -3915,6 +4182,63 @@ def ensure_schema():
     except Exception as e:
         db.session.rollback()
         print("⚠️ ensure_schema(ticket_soporte.pruebas):", e)
+
+    # --- BITÁCORA: contexto útil de usuario, equipo y petición ---
+    try:
+        audit_columns = _table_columns("activity_log")
+        audit_column_definitions = {
+            "usuario_email": "VARCHAR(160)",
+            "forwarded_for": "VARCHAR(300)",
+            "navegador": "VARCHAR(100)",
+            "sistema_operativo": "VARCHAR(100)",
+            "dispositivo": "VARCHAR(180)",
+            "device_id": "VARCHAR(40)",
+            "idioma": "VARCHAR(80)",
+            "referer": "VARCHAR(500)",
+            "host": "VARCHAR(180)",
+            "scheme": "VARCHAR(12)",
+            "detalles": "TEXT",
+            "modulo": "VARCHAR(80)",
+            "request_id": "VARCHAR(40)",
+            "duracion_ms": "INTEGER",
+            "response_bytes": "INTEGER",
+        }
+        for column_name, column_type in audit_column_definitions.items():
+            if column_name not in audit_columns:
+                db.session.execute(text(
+                    f"ALTER TABLE activity_log ADD COLUMN {column_name} {column_type}"
+                ))
+        db.session.execute(text("""
+            UPDATE activity_log
+            SET modulo = CASE
+                WHEN LOWER(COALESCE(endpoint, '') || ' ' || COALESCE(ruta, '')) LIKE '%bitacora%' THEN 'Bitácora'
+                WHEN LOWER(COALESCE(endpoint, '') || ' ' || COALESCE(ruta, '')) LIKE '%soporte%'
+                  OR LOWER(COALESCE(endpoint, '') || ' ' || COALESCE(ruta, '')) LIKE '%ticket%' THEN 'Soporte'
+                WHEN LOWER(COALESCE(endpoint, '') || ' ' || COALESCE(ruta, '')) LIKE '%cotizacion%' THEN 'Cotizaciones'
+                WHEN LOWER(COALESCE(endpoint, '') || ' ' || COALESCE(ruta, '')) LIKE '%cliente%' THEN 'Clientes'
+                WHEN LOWER(COALESCE(endpoint, '') || ' ' || COALESCE(ruta, '')) LIKE '%prospect%' THEN 'Prospectos'
+                WHEN LOWER(COALESCE(endpoint, '') || ' ' || COALESCE(ruta, '')) LIKE '%inventario%' THEN 'Inventario'
+                WHEN LOWER(COALESCE(endpoint, '') || ' ' || COALESCE(ruta, '')) LIKE '%gasto%' THEN 'Gastos'
+                WHEN LOWER(COALESCE(endpoint, '') || ' ' || COALESCE(ruta, '')) LIKE '%finanz%' THEN 'Finanzas'
+                WHEN LOWER(COALESCE(endpoint, '') || ' ' || COALESCE(ruta, '')) LIKE '%factur%' THEN 'Facturación'
+                WHEN LOWER(COALESCE(endpoint, '') || ' ' || COALESCE(ruta, '')) LIKE '%contabil%' THEN 'Contabilidad'
+                WHEN LOWER(COALESCE(endpoint, '') || ' ' || COALESCE(ruta, '')) LIKE '%reporte%' THEN 'Reportes'
+                WHEN LOWER(COALESCE(endpoint, '') || ' ' || COALESCE(ruta, '')) LIKE '%usuario%'
+                  OR LOWER(COALESCE(endpoint, '') || ' ' || COALESCE(ruta, '')) LIKE '%permis%' THEN 'Usuarios y permisos'
+                WHEN LOWER(COALESCE(endpoint, '') || ' ' || COALESCE(ruta, '')) LIKE '%login%'
+                  OR LOWER(COALESCE(endpoint, '') || ' ' || COALESCE(ruta, '')) LIKE '%logout%' THEN 'Seguridad'
+                ELSE 'Sistema'
+            END
+            WHERE modulo IS NULL OR TRIM(modulo) = ''
+        """))
+        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_activity_log_fecha ON activity_log (fecha)"))
+        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_activity_log_device_id ON activity_log (device_id)"))
+        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_activity_log_modulo ON activity_log (modulo)"))
+        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_activity_log_request_id ON activity_log (request_id)"))
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print("⚠️ ensure_schema(activity_log.contexto):", e)
 
     # --- REPORTE SEMANAL: periodo elegido por el colaborador ---
     try:
@@ -9827,7 +10151,7 @@ def crear_cotizacion():
     db.session.commit()
 
     # Guarda folio e ID para localizar la creación y su autor en la bitácora.
-    g._audit_action = f"COTIZACION CREADA folio={cot.folio} id={cot.id}"
+    g._audit_action = f"creó la cotización {cot.folio or cot.id} (ID {cot.id})"
 
     _send_quote_created_notification(cot)
     _send_quote_review_email_safely(cot)
@@ -13020,14 +13344,20 @@ def admin_bitacora():
     if not is_admin_account():
         abort(403)
 
-    page = int(request.args.get("page", 1) or 1)
-    per_page = int(request.args.get("per", 100) or 100)
+    page = max(1, request.args.get("page", type=int) or 1)
+    per_page = request.args.get("per", type=int) or 100
     per_page = max(20, min(per_page, 300))
 
     q = (request.args.get("q") or "").strip()
     usuario_f = (request.args.get("usuario") or "").strip()
     metodo_f = (request.args.get("metodo") or "").strip().upper()
     status_f = (request.args.get("status") or "").strip()
+    modulo_f = (request.args.get("modulo") or "").strip()
+    ip_f = (request.args.get("ip") or "").strip()
+    dispositivo_f = (request.args.get("dispositivo") or "").strip()
+    desde_f = (request.args.get("desde") or "").strip()
+    hasta_f = (request.args.get("hasta") or "").strip()
+    resultado_f = (request.args.get("resultado") or "").strip().lower()
 
     query = ActivityLog.query
     cotizaciones_encontradas = []
@@ -13041,6 +13371,16 @@ def admin_bitacora():
             ActivityLog.accion.ilike(like),
             ActivityLog.endpoint.ilike(like),
             ActivityLog.query_string.ilike(like),
+            ActivityLog.ip.ilike(like),
+            ActivityLog.usuario_email.ilike(like),
+            ActivityLog.navegador.ilike(like),
+            ActivityLog.sistema_operativo.ilike(like),
+            ActivityLog.dispositivo.ilike(like),
+            ActivityLog.device_id.ilike(like),
+            ActivityLog.user_agent.ilike(like),
+            ActivityLog.detalles.ilike(like),
+            ActivityLog.modulo.ilike(like),
+            ActivityLog.request_id.ilike(like),
         ]
 
         filtro_cotizacion = Cotizacion.folio.ilike(like)
@@ -13076,19 +13416,81 @@ def admin_bitacora():
         query = query.filter(ActivityLog.metodo == metodo_f)
     if status_f.isdigit():
         query = query.filter(ActivityLog.status_code == int(status_f))
+    if modulo_f:
+        query = query.filter(ActivityLog.modulo == modulo_f)
+    if ip_f:
+        query = query.filter(ActivityLog.ip.ilike(f"%{ip_f}%"))
+    if dispositivo_f:
+        like_device = f"%{dispositivo_f}%"
+        query = query.filter(or_(
+            ActivityLog.dispositivo.ilike(like_device),
+            ActivityLog.device_id.ilike(like_device),
+            ActivityLog.navegador.ilike(like_device),
+            ActivityLog.sistema_operativo.ilike(like_device),
+            ActivityLog.user_agent.ilike(like_device),
+        ))
+    if desde_f:
+        try:
+            query = query.filter(ActivityLog.fecha >= datetime.strptime(desde_f, "%Y-%m-%d"))
+        except ValueError:
+            desde_f = ""
+    if hasta_f:
+        try:
+            hasta_dt = datetime.strptime(hasta_f, "%Y-%m-%d") + timedelta(days=1)
+            query = query.filter(ActivityLog.fecha < hasta_dt)
+        except ValueError:
+            hasta_f = ""
+    if resultado_f == "correctos":
+        query = query.filter(ActivityLog.status_code < 400)
+    elif resultado_f == "errores":
+        query = query.filter(ActivityLog.status_code >= 400)
 
     total = query.count()
+    unique_users = query.with_entities(db.func.count(db.distinct(ActivityLog.usuario))).scalar() or 0
+    total_changes = query.filter(ActivityLog.metodo != "GET").count()
+    total_errors = query.filter(ActivityLog.status_code >= 400).count()
     logs = (query.order_by(ActivityLog.fecha.desc())
                 .offset((page - 1) * per_page)
                 .limit(per_page)
                 .all())
 
+    now = now_cdmx_naive()
+    entries = []
+    for log in logs:
+        parsed_client = _audit_parse_user_agent(log.user_agent or "")
+        seconds = max(0, int((now - log.fecha).total_seconds())) if log.fecha else 0
+        if seconds < 60:
+            relative_time = "hace menos de un minuto"
+        elif seconds < 3600:
+            relative_time = f"hace {seconds // 60} min"
+        elif seconds < 86400:
+            relative_time = f"hace {seconds // 3600} h"
+        elif seconds < 604800:
+            relative_time = f"hace {seconds // 86400} día(s)"
+        else:
+            relative_time = f"hace {seconds // 604800} semana(s)"
+        try:
+            detail_data = json.loads(log.detalles or "{}")
+            pretty_details = json.dumps(detail_data, ensure_ascii=False, indent=2) if detail_data else ""
+        except (TypeError, ValueError):
+            pretty_details = log.detalles or ""
+        entries.append({
+            "log": log,
+            "relative_time": relative_time,
+            "pretty_details": pretty_details,
+            "device_label": log.dispositivo or parsed_client["device"],
+            "browser_label": log.navegador or parsed_client["browser"],
+            "os_label": log.sistema_operativo or parsed_client["os"],
+        })
+
     # usuarios distintos para dropdown
     usuarios = [u[0] for u in db.session.query(ActivityLog.usuario).distinct().order_by(ActivityLog.usuario).all()]
+    modulos = [m[0] for m in db.session.query(ActivityLog.modulo).filter(ActivityLog.modulo.isnot(None)).distinct().order_by(ActivityLog.modulo).all()]
 
     return render_template(
         "admin_bitacora.html",
         logs=logs,
+        entries=entries,
         page=page,
         per_page=per_page,
         total=total,
@@ -13096,7 +13498,17 @@ def admin_bitacora():
         usuario_f=usuario_f,
         metodo_f=metodo_f,
         status_f=status_f,
+        modulo_f=modulo_f,
+        ip_f=ip_f,
+        dispositivo_f=dispositivo_f,
+        desde_f=desde_f,
+        hasta_f=hasta_f,
+        resultado_f=resultado_f,
         usuarios=usuarios,
+        modulos=modulos,
+        unique_users=unique_users,
+        total_changes=total_changes,
+        total_errors=total_errors,
         cotizaciones_encontradas=cotizaciones_encontradas,
         cotizacion_autores_originales=cotizacion_autores_originales,
     )

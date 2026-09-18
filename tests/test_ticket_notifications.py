@@ -80,7 +80,66 @@ def test_modified_templates_compile():
     environment = Environment(loader=FileSystemLoader("templates"))
     for template_name in (
         "dashboard.html",
+        "admin_bitacora.html",
         "soporte_tickets.html",
         "soporte_ticket_detalle.html",
     ):
         environment.get_template(template_name)
+
+
+def test_audit_parser_identifies_windows_chrome_computer():
+    if app_module is None:
+        return
+    context = app_module._audit_parse_user_agent(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36"
+    )
+    assert context["device"] == "Computadora"
+    assert context["os"] == "Windows 10/11"
+    assert context["browser"] == "Google Chrome 140.0.0.0"
+
+
+def test_audit_query_hides_sensitive_values():
+    if app_module is None:
+        return
+    with app_module.app.test_request_context("/admin/bitacora?q=COT-25&token=secreto"):
+        query = app_module._audit_safe_query_string()
+    assert "q=COT-25" in query
+    assert "token=<hidden>" in query
+    assert "secreto" not in query
+
+
+def test_audit_request_records_network_and_device_context():
+    if app_module is None:
+        return
+    user_agent = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36"
+    )
+    with app_module.app.test_client() as client:
+        response = client.get(
+            "/login?q=auditoria&token=no-guardar",
+            headers={
+                "User-Agent": user_agent,
+                "X-Forwarded-For": "203.0.113.24, 10.0.0.5",
+                "X-Device-Name": "PC-Pruebas",
+            },
+        )
+    request_id = response.headers.get("X-Request-ID")
+    assert response.status_code == 200
+    assert request_id
+    assert "mar_device_id=" in response.headers.get("Set-Cookie", "")
+
+    with app_module.app.app_context():
+        log = app_module.ActivityLog.query.filter_by(request_id=request_id).one()
+        try:
+            assert log.ip == "203.0.113.24"
+            assert log.dispositivo == "PC-Pruebas · Computadora"
+            assert log.sistema_operativo == "Windows 10/11"
+            assert log.navegador == "Google Chrome 140.0.0.0"
+            assert log.duracion_ms is not None
+            assert "token=<hidden>" in (log.query_string or "")
+            assert "no-guardar" not in (log.query_string or "")
+        finally:
+            app_module.db.session.delete(log)
+            app_module.db.session.commit()

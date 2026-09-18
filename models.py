@@ -703,12 +703,13 @@ class ActivityLog(db.Model):
     __tablename__ = "activity_log"
     id = db.Column(db.Integer, primary_key=True)
 
-    fecha = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    fecha = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
 
     # Usuario (puede ser ANON si no está autenticado)
     usuario_id = db.Column(db.Integer, nullable=True)
     usuario = db.Column(db.String(60), nullable=False, default="ANON")
     rol = db.Column(db.String(10), nullable=True)
+    usuario_email = db.Column(db.String(160), nullable=True)
 
     # Request metadata
     metodo = db.Column(db.String(10), nullable=False)
@@ -718,11 +719,25 @@ class ActivityLog(db.Model):
 
     ip = db.Column(db.String(60), nullable=True)
     user_agent = db.Column(db.String(300), nullable=True)
+    forwarded_for = db.Column(db.String(300), nullable=True)
+    navegador = db.Column(db.String(100), nullable=True)
+    sistema_operativo = db.Column(db.String(100), nullable=True)
+    dispositivo = db.Column(db.String(180), nullable=True)
+    device_id = db.Column(db.String(40), nullable=True, index=True)
+    idioma = db.Column(db.String(80), nullable=True)
+    referer = db.Column(db.String(500), nullable=True)
+    host = db.Column(db.String(180), nullable=True)
+    scheme = db.Column(db.String(12), nullable=True)
 
     # Contexto (sin valores sensibles)
     query_string = db.Column(db.String(800), nullable=True)
     form_keys = db.Column(db.String(800), nullable=True)
     json_keys = db.Column(db.String(800), nullable=True)
+    detalles = db.Column(db.Text, nullable=True)
+    modulo = db.Column(db.String(80), nullable=True, index=True)
+    request_id = db.Column(db.String(40), nullable=True, index=True)
+    duracion_ms = db.Column(db.Integer, nullable=True)
+    response_bytes = db.Column(db.Integer, nullable=True)
 
     # Acción legible
     accion = db.Column(db.String(500), nullable=False, default="REQUEST")
