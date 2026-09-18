@@ -2639,6 +2639,139 @@ def _send_support_ticket_email(ticket: "TicketSoporte") -> None:
     )
 
 
+def _support_ticket_update_recipients(
+    ticket: "TicketSoporte", *, include_requester: bool = True
+) -> list[str]:
+    support_recipients = notification_targets("ticket_soporte", "email") or _parse_email_list(
+        SUPPORT_TICKET_EMAIL
+    )
+    requester_recipients: list[str] = []
+    if include_requester:
+        requester_recipients.extend(_parse_email_list(ticket.correo))
+        creator = getattr(ticket, "creado_por", None)
+        requester_recipients.extend(_parse_email_list(getattr(creator, "correo", None)))
+    return _unique_emails(requester_recipients, support_recipients)
+
+
+def _support_ticket_update_email_html(
+    ticket: "TicketSoporte",
+    *,
+    author: str,
+    detail_url: str,
+    changes: list[str],
+    comment: str,
+    internal: bool,
+) -> str:
+    status = _normalize_ticket_status(ticket.estado)
+    status_meta = TICKET_STATUS_META[status]
+    status_colors = {
+        "primary": "#0d6efd",
+        "warning": "#f59f00",
+        "success": "#198754",
+    }
+    status_color = status_colors.get(status_meta["color"], "#0d6efd")
+    changes_html = "".join(
+        f'<li style="margin:0 0 7px;">{escape(change)}</li>' for change in changes
+    )
+    if changes_html:
+        changes_block = f"""
+          <div style="margin:20px 0;padding:16px 18px;border:1px solid #dbe4ef;border-radius:8px;background:#f8fafc;">
+            <div style="font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:#64748b;font-weight:800;margin-bottom:10px;">Cambios</div>
+            <ul style="margin:0;padding-left:20px;">{changes_html}</ul>
+          </div>
+        """
+    else:
+        changes_block = ""
+
+    comment_block = ""
+    if comment:
+        comment_label = "Comentario interno" if internal else "Nueva respuesta"
+        comment_block = f"""
+          <div style="margin:20px 0;padding:16px 18px;border-left:6px solid {status_color};background:#f8fafc;">
+            <div style="font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:#64748b;font-weight:800;margin-bottom:8px;">{comment_label}</div>
+            <div style="white-space:pre-wrap;line-height:1.55;">{escape(comment)}</div>
+          </div>
+        """
+
+    return f"""
+    <html>
+      <body style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+        <div style="max-width:720px;margin:0 auto;padding:28px 14px;">
+          <div style="background:#ffffff;border:1px solid #d9e2ec;border-radius:10px;overflow:hidden;">
+            <div style="background:#0c3c78;color:#ffffff;padding:22px 26px;">
+              <div style="font-size:12px;letter-spacing:.8px;text-transform:uppercase;font-weight:800;opacity:.85;">Ticket actualizado</div>
+              <div style="font-size:24px;font-weight:800;margin-top:5px;">{escape(ticket.folio or f'TCK-{ticket.id:06d}')}</div>
+              <div style="font-size:15px;margin-top:5px;opacity:.92;">{escape(ticket.asunto or '')}</div>
+            </div>
+            <div style="padding:24px 26px;">
+              <div style="display:inline-block;background:{status_color};color:#ffffff;border-radius:6px;padding:8px 12px;font-weight:800;">{escape(status_meta['label'])}</div>
+              <p style="margin:18px 0 0;color:#475569;">Actualizado por <strong>{escape(author or 'Sistema')}</strong>.</p>
+              {changes_block}
+              {comment_block}
+              <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+                <tr><td style="padding:9px;border:1px solid #dbe4ef;color:#64748b;font-weight:700;width:34%;">Prioridad</td><td style="padding:9px;border:1px solid #dbe4ef;">{escape(ticket.prioridad or 'MEDIA')}</td></tr>
+                <tr><td style="padding:9px;border:1px solid #dbe4ef;color:#64748b;font-weight:700;">Categoría</td><td style="padding:9px;border:1px solid #dbe4ef;">{escape(ticket.categoria or 'GENERAL')}</td></tr>
+                <tr><td style="padding:9px;border:1px solid #dbe4ef;color:#64748b;font-weight:700;">Responsable</td><td style="padding:9px;border:1px solid #dbe4ef;">{escape(ticket.responsable or 'Sin asignar')}</td></tr>
+              </table>
+              <a href="{escape(detail_url)}" style="display:inline-block;background:#0c3c78;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:7px;font-weight:800;">Ver ticket</a>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+    """.strip()
+
+
+def _send_support_ticket_update_email(
+    ticket: "TicketSoporte",
+    *,
+    author: str,
+    changes: Optional[list[str]] = None,
+    comment: str = "",
+    internal: bool = False,
+) -> list[str]:
+    changes = changes or []
+    recipients = _support_ticket_update_recipients(ticket, include_requester=not internal)
+    if not recipients:
+        raise ValueError("No hay correos configurados para avisos del ticket.")
+
+    folio = ticket.folio or f"TCK-{ticket.id:06d}"
+    detail_url = url_for("soporte_ticket_detalle", ticket_id=ticket.id, _external=True)
+    update_label = "Comentario interno" if internal else "Actualización"
+    lines = [
+        f"{update_label} del ticket {folio}",
+        f"Asunto: {ticket.asunto or ''}",
+        f"Estado: {TICKET_STATUS_META[_normalize_ticket_status(ticket.estado)]['label']}",
+        f"Prioridad: {ticket.prioridad or 'MEDIA'}",
+        f"Responsable: {ticket.responsable or 'Sin asignar'}",
+        f"Actualizado por: {author or 'Sistema'}",
+    ]
+    if changes:
+        lines.extend(["", "Cambios:", *[f"- {change}" for change in changes]])
+    if comment:
+        lines.extend(["", "Comentario:", comment])
+    lines.extend(["", f"Ver ticket: {detail_url}"])
+
+    msg = EmailMessage()
+    msg["Subject"] = f"{update_label} de ticket {folio}: {ticket.asunto or 'Soporte'}"
+    msg["From"] = f"SISTEMA MAR DE TICKETS <{SMTP_FROM or SMTP_USERNAME}>"
+    msg["To"] = ", ".join(recipients)
+    msg.set_content("\n".join(lines))
+    msg.add_alternative(
+        _support_ticket_update_email_html(
+            ticket,
+            author=author,
+            detail_url=detail_url,
+            changes=changes,
+            comment=comment,
+            internal=internal,
+        ),
+        subtype="html",
+    )
+    _send_smtp_message(msg, to_addrs=recipients)
+    return recipients
+
+
 def _build_simple_xls(sheet_name: str, headers: list[str], rows: list[list[str]]) -> bytes:
     def html_cell(value: object) -> str:
         text = "" if value is None else str(value)
@@ -4955,6 +5088,7 @@ def _cliente_seguimiento_payload(
 
 def _build_dashboard_cotizaciones_query(
     *,
+    folio: str = "",
     desde: str = "",
     hasta: str = "",
     estatus: str = "",
@@ -4998,6 +5132,12 @@ def _build_dashboard_cotizaciones_query(
 
     if not is_admin() and not can_manage_quote_assignments():
         q = q.filter(Cotizacion.responsable == responsable_actual())
+
+    folio = (folio or "").strip().lower()
+    if folio:
+        q = q.filter(
+            db.func.lower(db.func.coalesce(Cotizacion.folio, "")).like(f"%{folio}%")
+        )
 
     if desde:
         try:
@@ -6792,6 +6932,7 @@ def logout():
 def index():
     if is_demo_user():
         return redirect(url_for("demo_inicio"))
+    folio = (request.args.get("folio") or "").strip()
     desde = (request.args.get("desde") or "").strip()
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
@@ -6808,6 +6949,7 @@ def index():
     if bandeja not in {"", "mis", "sin_asignar", "vencidas", "hoy", "proximas"}:
         bandeja = ""
     dashboard_filters = {
+        "folio": folio,
         "desde": desde,
         "hasta": hasta,
         "estatus": estatus,
@@ -6823,6 +6965,7 @@ def index():
 
     try:
         base_query = _build_dashboard_cotizaciones_query(
+            folio=folio,
             desde=desde,
             hasta=hasta,
             estatus=estatus,
@@ -6836,7 +6979,7 @@ def index():
         )
     except ValueError:
         base_query = _build_dashboard_cotizaciones_query(vista=vista)
-        dashboard_filters = {"desde": "", "hasta": "", "estatus": "", "cliente": "", "proyecto": "", "especialidad": "", "especialidad_descripcion": "", "responsable": "", "asignado_a": "", "bandeja": bandeja, "vista": vista}
+        dashboard_filters = {"folio": "", "desde": "", "hasta": "", "estatus": "", "cliente": "", "proyecto": "", "especialidad": "", "especialidad_descripcion": "", "responsable": "", "asignado_a": "", "bandeja": bandeja, "vista": vista}
 
     ahora = now_cdmx_naive()
     inicio_hoy = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -6849,6 +6992,7 @@ def index():
     # sus respectivos alcances.
     importe_vivas_query = _apply_dashboard_bandeja(
         _build_dashboard_cotizaciones_query(
+            folio=folio,
             desde=desde,
             hasta=hasta,
             estatus=estatus,
@@ -8042,8 +8186,11 @@ def eliminar_prospecto_seguimiento(prospecto_id: int, seg_id: int):
 def soporte_tickets():
     filters = _ticket_filters_from_request()
     rows = _load_ticket_rows(filters)
+    summary_filters = dict(filters)
+    summary_filters["estado"] = ""
+    summary_rows = _load_ticket_rows(summary_filters)
     ticket_columns = {
-        estado: [row for row in rows if row["estado"] == estado]
+        estado: [row for row in summary_rows if row["estado"] == estado]
         for estado in TICKET_STATUS_OPTIONS
     }
     total_urgentes = sum(1 for row in rows if row["prioridad"] == "URGENTE")
@@ -8139,6 +8286,12 @@ def soporte_ticket_detalle(ticket_id: int):
         action = (request.form.get("action") or "").strip().lower()
 
         if action == "update":
+            previous = {
+                "estado": _normalize_ticket_status(ticket.estado),
+                "prioridad": _normalize_ticket_priority(ticket.prioridad),
+                "categoria": _normalize_ticket_category(ticket.categoria),
+                "responsable": (ticket.responsable or "").strip(),
+            }
             ticket.estado = _normalize_ticket_status(request.form.get("estado"))
             ticket.prioridad = _normalize_ticket_priority(request.form.get("prioridad"))
             ticket.categoria = _normalize_ticket_category(request.form.get("categoria"))
@@ -8147,7 +8300,42 @@ def soporte_ticket_detalle(ticket_id: int):
             ticket.actualizado_en = now_cdmx_naive()
             ticket.cerrado_en = now_cdmx_naive() if _ticket_is_closed(ticket.estado) else None
             db.session.commit()
-            flash("Ticket actualizado.", "success")
+
+            current_values = {
+                "estado": _normalize_ticket_status(ticket.estado),
+                "prioridad": _normalize_ticket_priority(ticket.prioridad),
+                "categoria": _normalize_ticket_category(ticket.categoria),
+                "responsable": (ticket.responsable or "").strip(),
+            }
+            labels = {
+                "estado": "Estado",
+                "prioridad": "Prioridad",
+                "categoria": "Categoría",
+                "responsable": "Responsable",
+            }
+            changes = [
+                f"{labels[key]}: {previous[key] or 'Sin asignar'} → {current_values[key] or 'Sin asignar'}"
+                for key in labels
+                if previous[key] != current_values[key]
+            ]
+            if not changes:
+                flash("No hubo cambios en el ticket.", "info")
+                return redirect(url_for("soporte_ticket_detalle", ticket_id=ticket.id))
+
+            author = (responsable_actual() or "Sistema").strip()
+            try:
+                recipients = _send_support_ticket_update_email(
+                    ticket,
+                    author=author,
+                    changes=changes,
+                )
+                flash(
+                    f"Ticket actualizado y aviso enviado a {len(recipients)} destinatario(s).",
+                    "success",
+                )
+            except Exception as exc:
+                logger.exception("No se pudo enviar aviso de actualización del ticket %s", ticket.id)
+                flash(f"Ticket actualizado, pero no se pudo enviar el correo: {exc}", "warning")
             return redirect(url_for("soporte_ticket_detalle", ticket_id=ticket.id))
 
         if action == "comment":
@@ -8179,6 +8367,17 @@ def soporte_ticket_detalle(ticket_id: int):
             ticket.estado = _normalize_ticket_status(ticket.estado)
             ticket.actualizado_en = now_cdmx_naive()
             db.session.commit()
+            notification_errors = []
+            try:
+                _send_support_ticket_update_email(
+                    ticket,
+                    author=autor,
+                    comment=comentario_final,
+                    internal=seg.es_interno,
+                )
+            except Exception as exc:
+                logger.exception("No se pudo enviar aviso de respuesta del ticket %s", ticket.id)
+                notification_errors.append(f"aviso general: {exc}")
             try:
                 _notify_tagged_followup(
                     tagged_users=tagged_users,
@@ -8191,9 +8390,14 @@ def soporte_ticket_detalle(ticket_id: int):
                 )
             except Exception as exc:
                 logger.exception("No se pudo notificar etiquetas del ticket %s", ticket.id)
-                flash(f"Comentario guardado, pero no se pudo enviar correo a etiquetados: {exc}", "warning")
-                return redirect(url_for("soporte_ticket_detalle", ticket_id=ticket.id, _anchor=f"comentario-{seg.id}"))
-            flash("Comentario guardado.", "success")
+                notification_errors.append(f"usuarios etiquetados: {exc}")
+            if notification_errors:
+                flash(
+                    "Comentario guardado, pero falló el envío de " + "; ".join(notification_errors),
+                    "warning",
+                )
+            else:
+                flash("Comentario guardado y aviso enviado.", "success")
             return redirect(url_for("soporte_ticket_detalle", ticket_id=ticket.id, _anchor=f"comentario-{seg.id}"))
 
         flash("Acción no válida para el ticket.", "danger")
@@ -10077,6 +10281,7 @@ def bulk_eliminar_filtradas():
     payload = request.get_json(silent=True) or {}
     filters = payload.get("filters") or {}
 
+    folio_s = (filters.get("folio") or "").strip()
     desde_s = (filters.get("desde") or "").strip()
     hasta_s = (filters.get("hasta") or "").strip()
     estatus_s = (filters.get("estatus") or "").strip()
@@ -10089,6 +10294,7 @@ def bulk_eliminar_filtradas():
 
     try:
         q = _build_dashboard_cotizaciones_query(
+            folio=folio_s,
             desde=desde_s,
             hasta=hasta_s,
             estatus=estatus_s,
@@ -11628,6 +11834,7 @@ def export_dashboard_cotizaciones_xlsx():
     if Workbook is None:
         abort(501, description="openpyxl no instalado en el servidor.")
 
+    folio = (request.args.get("folio") or "").strip()
     desde = (request.args.get("desde") or "").strip()
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
@@ -11640,6 +11847,7 @@ def export_dashboard_cotizaciones_xlsx():
 
     try:
         cotizaciones = (_build_dashboard_cotizaciones_query(
+            folio=folio,
             desde=desde,
             hasta=hasta,
             estatus=estatus,
@@ -11671,6 +11879,8 @@ def export_dashboard_cotizaciones_xlsx():
     ws["A1"].alignment = center
 
     filtros_texto = []
+    if folio:
+        filtros_texto.append(f"Folio: {folio}")
     if desde:
         filtros_texto.append(f"Desde: {desde}")
     if hasta:
@@ -11896,6 +12106,7 @@ def export_dashboard_cotizaciones_xlsx():
 @app.route("/cotizaciones/export/seguimientos.pdf")
 @login_required
 def export_dashboard_followups_pdf():
+    folio = (request.args.get("folio") or "").strip()
     desde = (request.args.get("desde") or "").strip()
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
@@ -11909,6 +12120,7 @@ def export_dashboard_followups_pdf():
     try:
         cotizaciones = (
             _build_dashboard_cotizaciones_query(
+                folio=folio,
                 desde=desde,
                 hasta=hasta,
                 estatus=estatus,
@@ -11980,6 +12192,8 @@ def export_dashboard_followups_pdf():
         canv.restoreState()
 
     filtros_texto = []
+    if folio:
+        filtros_texto.append(f"Folio: {folio}")
     if desde:
         filtros_texto.append(f"Desde: {desde}")
     if hasta:
@@ -12081,6 +12295,7 @@ def export_dashboard_followups_pdf():
 @app.route("/api/dashboard/filter-summary")
 @login_required
 def api_dashboard_filter_summary():
+    folio = (request.args.get("folio") or "").strip()
     desde = (request.args.get("desde") or "").strip()
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
@@ -12094,6 +12309,7 @@ def api_dashboard_filter_summary():
 
     try:
         q = _build_dashboard_cotizaciones_query(
+            folio=folio,
             desde=desde,
             hasta=hasta,
             estatus=estatus,
@@ -12109,6 +12325,7 @@ def api_dashboard_filter_summary():
     q = _apply_dashboard_bandeja(q, bandeja)
     importe_vivas_query = _apply_dashboard_bandeja(
         _build_dashboard_cotizaciones_query(
+            folio=folio,
             desde=desde,
             hasta=hasta,
             estatus=estatus,
@@ -12504,6 +12721,7 @@ def api_cotizaciones_search():
 @app.route("/api/dashboard/metrics")
 @login_required
 def api_dashboard_metrics():
+    folio = (request.args.get("folio") or "").strip()
     desde = (request.args.get("desde") or "").strip()
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
@@ -12517,6 +12735,7 @@ def api_dashboard_metrics():
 
     try:
         q = _build_dashboard_cotizaciones_query(
+            folio=folio,
             desde=desde,
             hasta=hasta,
             estatus=estatus,
@@ -12557,6 +12776,7 @@ def api_dashboard_metrics():
 @app.route("/api/dashboard/status_breakdown")
 @login_required
 def api_dashboard_status_breakdown():
+    folio = (request.args.get("folio") or "").strip()
     desde = (request.args.get("desde") or "").strip()
     hasta = (request.args.get("hasta") or "").strip()
     estatus = (request.args.get("estatus") or "").strip()
@@ -12570,6 +12790,7 @@ def api_dashboard_status_breakdown():
 
     try:
         q = _build_dashboard_cotizaciones_query(
+            folio=folio,
             desde=desde,
             hasta=hasta,
             estatus=estatus,
@@ -12600,6 +12821,7 @@ def api_dashboard_status_breakdown():
 @login_required
 def api_dashboard_outcome_breakdown():
     filtros = {
+        "folio": (request.args.get("folio") or "").strip(),
         "desde": (request.args.get("desde") or "").strip(),
         "hasta": (request.args.get("hasta") or "").strip(),
         "estatus": (request.args.get("estatus") or "").strip(),

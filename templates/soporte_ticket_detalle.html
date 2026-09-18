@@ -2,6 +2,12 @@
 {% block content %}
 <style>
   .ticket-description, .comment-text { white-space: pre-wrap; }
+  .ticket-detail-header {
+    background: #0c3c78;
+    color: #fff;
+    border-radius: 1rem;
+    padding: 1.25rem 1.4rem;
+  }
   .attachment-thumb {
     width: 180px;
     height: 120px;
@@ -48,13 +54,15 @@
   }
   .ticket-progress-step.is-current {
     border-color: var(--step-color);
-    box-shadow: 0 0 0 .22rem color-mix(in srgb, var(--step-color) 18%, transparent);
+    background: var(--step-color);
+    color: #fff;
+    box-shadow: 0 .35rem .9rem rgba(15, 23, 42, .14);
     opacity: 1;
   }
+  .ticket-progress-step.is-current .text-muted { color: rgba(255,255,255,.82) !important; }
   .ticket-progress-step.is-complete {
-    border-color: color-mix(in srgb, var(--step-color) 65%, var(--bs-border-color));
-    background: color-mix(in srgb, var(--step-color) 7%, var(--bs-body-bg));
-    opacity: .86;
+    border-color: var(--step-color);
+    opacity: 1;
   }
   .ticket-progress-step-primary, .ticket-state-choice-primary { --step-color: #0d6efd; }
   .ticket-progress-step-warning, .ticket-state-choice-warning { --step-color: #f59f00; }
@@ -81,9 +89,13 @@
   .ticket-state-choice:hover { transform: translateY(-1px); border-color: var(--step-color); }
   .btn-check:checked + .ticket-state-choice {
     border-color: var(--step-color);
-    background: color-mix(in srgb, var(--step-color) 10%, var(--bs-body-bg));
-    box-shadow: 0 0 0 .18rem color-mix(in srgb, var(--step-color) 15%, transparent);
+    background: var(--step-color);
+    color: #fff;
+    box-shadow: 0 .25rem .65rem rgba(15, 23, 42, .13);
   }
+  .btn-check:checked + .ticket-state-choice .text-muted { color: rgba(255,255,255,.82) !important; }
+  .btn-check:checked + .ticket-state-choice-warning,
+  .btn-check:checked + .ticket-state-choice-warning .text-muted { color: #1f2937 !important; }
   @media (max-width: 767.98px) {
     .ticket-progress { grid-template-columns: 1fr; }
     .ticket-progress-step { min-height: 0; }
@@ -91,13 +103,13 @@
 </style>
 
 <div class="container py-4">
-  <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+  <div class="ticket-detail-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
     <div>
       <h2 class="mb-1">{{ ticket.folio or ("TCK-%06d"|format(ticket.id)) }}</h2>
-      <div class="text-muted">{{ ticket.asunto }}</div>
+      <div class="text-white-50">{{ ticket.asunto }}</div>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-      <a href="{{ url_for('soporte_tickets') }}" class="btn btn-outline-secondary">Volver</a>
+      <a href="{{ url_for('soporte_tickets') }}" class="btn btn-light">Volver</a>
       <a href="{{ url_for('soporte_ticket_nuevo') }}" class="btn btn-success">Nuevo ticket</a>
     </div>
   </div>

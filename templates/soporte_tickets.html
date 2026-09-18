@@ -1,155 +1,128 @@
 {% extends "base.html" %}
 {% block content %}
 <style>
-  .tickets-hero {
-    background: linear-gradient(135deg, #0c3c78 0%, #1565c0 60%, #3b82f6 100%);
+  .tickets-header {
+    background: #0c3c78;
     color: #fff;
-    border-radius: 1.25rem;
-    padding: 1.5rem;
-    box-shadow: 0 1rem 2.5rem rgba(12, 60, 120, .2);
-  }
-  .new-ticket-cta {
-    min-width: 210px;
-    padding: .85rem 1.2rem;
-    font-weight: 800;
-    box-shadow: 0 .75rem 1.5rem rgba(0, 0, 0, .18);
-  }
-  .workflow-stage {
-    position: relative;
-    height: 100%;
-    padding: 1rem;
-    border: 1px solid var(--bs-border-color);
     border-radius: 1rem;
-    background: var(--bs-body-bg);
-    box-shadow: 0 .35rem 1rem rgba(15, 23, 42, .07);
-    overflow: hidden;
+    padding: 1.4rem 1.5rem;
+    box-shadow: 0 .45rem 1.2rem rgba(12, 60, 120, .18);
   }
-  .workflow-stage::before {
-    content: "";
-    position: absolute;
-    inset: 0 auto 0 0;
-    width: .36rem;
-    background: var(--stage-color);
-  }
-  .workflow-stage-primary { --stage-color: #0d6efd; }
-  .workflow-stage-warning { --stage-color: #f59f00; }
-  .workflow-stage-success { --stage-color: #198754; }
-  .workflow-icon {
-    display: grid;
-    place-items: center;
-    width: 2.8rem;
-    height: 2.8rem;
-    flex: 0 0 2.8rem;
-    border-radius: .9rem;
-    background: color-mix(in srgb, var(--stage-color) 15%, transparent);
-    font-size: 1.3rem;
-  }
-  .ticket-lane {
+  .tickets-header .btn { min-width: 190px; font-weight: 800; }
+  .ticket-status-summary {
+    display: block;
     height: 100%;
-    min-height: 20rem;
-    padding: .8rem;
-    border: 1px solid var(--bs-border-color);
-    border-top: .35rem solid var(--lane-color);
-    border-radius: 1rem;
-    background: color-mix(in srgb, var(--lane-color) 5%, var(--bs-body-bg));
-  }
-  .ticket-lane-primary { --lane-color: #0d6efd; }
-  .ticket-lane-warning { --lane-color: #f59f00; }
-  .ticket-lane-success { --lane-color: #198754; }
-  .ticket-card {
-    border: 0;
-    border-left: .28rem solid var(--lane-color);
+    padding: 1rem 1.1rem;
     border-radius: .85rem;
-    box-shadow: 0 .3rem .9rem rgba(15, 23, 42, .09);
-    transition: transform .16s ease, box-shadow .16s ease;
+    color: #fff;
+    text-decoration: none;
+    transition: transform .15s ease, box-shadow .15s ease;
   }
-  .ticket-card:hover {
+  .ticket-status-summary:hover {
+    color: #fff;
     transform: translateY(-2px);
-    box-shadow: 0 .55rem 1.25rem rgba(15, 23, 42, .14);
+    box-shadow: 0 .45rem 1rem rgba(15, 23, 42, .15);
   }
-  .ticket-card-title {
-    display: -webkit-box;
-    overflow: hidden;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+  .ticket-status-summary-primary { background: #0d6efd; }
+  .ticket-status-summary-warning { background: #f59f00; color: #1f2937; }
+  .ticket-status-summary-warning:hover { color: #1f2937; }
+  .ticket-status-summary-success { background: #198754; }
+  .ticket-status-count { font-size: 1.8rem; line-height: 1; font-weight: 900; }
+  .ticket-filters,
+  .ticket-table-card {
+    border: 1px solid var(--bs-border-color);
+    border-radius: .9rem;
   }
-  .priority-light {
+  .ticket-table-card { overflow: hidden; }
+  .ticket-table { margin-bottom: 0; }
+  .ticket-table thead th {
+    padding: .85rem 1rem;
+    background: #e9eef5;
+    color: #334155;
+    border-bottom: 1px solid #cbd5e1;
+    font-size: .76rem;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .ticket-table tbody td { padding: .9rem 1rem; vertical-align: middle; }
+  .ticket-table tbody tr { border-left: .38rem solid var(--ticket-state-color); }
+  .ticket-table tbody tr:hover > td { background: var(--bs-tertiary-bg); }
+  .ticket-row-primary { --ticket-state-color: #0d6efd; }
+  .ticket-row-warning { --ticket-state-color: #f59f00; }
+  .ticket-row-success { --ticket-state-color: #198754; }
+  .ticket-state-badge,
+  .ticket-priority-badge {
     display: inline-flex;
     align-items: center;
-    gap: .35rem;
-    border: 1px solid var(--bs-border-color);
-    border-radius: 999px;
-    padding: .2rem .5rem;
+    justify-content: center;
+    border-radius: .4rem;
+    padding: .38rem .55rem;
     font-size: .72rem;
+    font-weight: 900;
+    white-space: nowrap;
+  }
+  .ticket-state-badge-primary { background: #0d6efd; color: #fff; }
+  .ticket-state-badge-warning { background: #f59f00; color: #1f2937; }
+  .ticket-state-badge-success { background: #198754; color: #fff; }
+  .ticket-priority-badge.BAJA { background: #198754; color: #fff; }
+  .ticket-priority-badge.MEDIA { background: #ffc107; color: #1f2937; }
+  .ticket-priority-badge.ALTA { background: #fd7e14; color: #fff; }
+  .ticket-priority-badge.URGENTE { background: #dc3545; color: #fff; }
+  .ticket-subject {
+    display: block;
+    max-width: 34rem;
     font-weight: 800;
-    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    text-decoration: none;
   }
-  .priority-light::before {
-    content: "";
-    width: .62rem;
-    height: .62rem;
-    border-radius: 50%;
+  .ticket-subject:hover { color: var(--bs-primary); }
+  html[data-bs-theme="dark"] .ticket-table thead th {
+    background: #253247;
+    color: #e5edf8;
+    border-bottom-color: #3b4a61;
   }
-  .priority-light.BAJA::before { background: #198754; }
-  .priority-light.MEDIA::before { background: #ffc107; }
-  .priority-light.ALTA::before { background: #fd7e14; }
-  .priority-light.URGENTE::before { background: #dc3545; box-shadow: 0 0 0 .2rem rgba(220, 53, 69, .15); }
-  .empty-lane {
-    display: grid;
-    place-items: center;
-    min-height: 12rem;
-    border: 2px dashed var(--bs-border-color);
-    border-radius: .85rem;
-    color: var(--bs-secondary-color);
-    text-align: center;
+  @media (max-width: 767.98px) {
+    .tickets-header .btn { width: 100%; min-width: 0; }
+    .ticket-table { min-width: 820px; }
   }
 </style>
 
 <div class="py-4">
-  <section class="tickets-hero mb-4">
+  <section class="tickets-header mb-4">
     <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
       <div>
         <div class="small text-white-50 text-uppercase fw-bold mb-1">Mesa de ayuda</div>
-        <h2 class="mb-1">Soporte técnico</h2>
-        <div class="text-white-50">Cada ticket avanza por un flujo simple de tres etapas.</div>
+        <h2 class="mb-1">Tickets de soporte</h2>
+        <div class="text-white-50">Busca el folio, revisa su estado y abre el ticket para responder.</div>
       </div>
-      <div class="d-flex align-items-center gap-3 flex-wrap">
-        <div class="text-center">
-          <div class="fs-3 fw-bold">{{ rows|length }}</div>
-          <div class="small text-white-50">Mostrados</div>
-        </div>
-        {% if total_urgentes %}
-        <span class="badge rounded-pill text-bg-danger px-3 py-2">{{ total_urgentes }} urgentes</span>
-        {% endif %}
-        <a href="{{ url_for('soporte_ticket_nuevo') }}" class="btn btn-light btn-lg new-ticket-cta">＋ Nuevo ticket</a>
-      </div>
+      <a href="{{ url_for('soporte_ticket_nuevo') }}" class="btn btn-light btn-lg">＋ Nuevo ticket</a>
     </div>
   </section>
 
-  <div class="row g-3 mb-4" aria-label="Flujo de atención de tickets">
+  <div class="row g-3 mb-4" aria-label="Resumen por estado">
     {% for estado in status_options %}
     {% set meta = status_meta[estado] %}
-    <div class="col-md-4">
-      <div class="workflow-stage workflow-stage-{{ meta.color }}">
-        <div class="d-flex align-items-start gap-3">
-          <div class="workflow-icon">{{ meta.icon }}</div>
+    <div class="col-12 col-md-4">
+      <a class="ticket-status-summary ticket-status-summary-{{ meta.color }}" href="{{ url_for('soporte_tickets', estado=estado) }}">
+        <div class="d-flex justify-content-between align-items-center gap-3">
           <div>
-            <div class="small text-muted fw-bold">ETAPA {{ loop.index }}</div>
-            <div class="fw-bold fs-5">{{ meta.label }}</div>
-            <div class="small text-muted">{{ meta.description }}</div>
+            <div class="small fw-bold text-uppercase opacity-75">{{ meta.label }}</div>
+            <div class="small mt-1">{{ meta.description }}</div>
           </div>
+          <div class="ticket-status-count">{{ ticket_columns[estado]|length }}</div>
         </div>
-      </div>
+      </a>
     </div>
     {% endfor %}
   </div>
 
-  <div class="card shadow-sm border-0 mb-4">
+  <div class="card ticket-filters shadow-sm mb-4">
     <div class="card-body">
       <form method="get" class="row g-3 align-items-end">
         <div class="col-xl-4 col-md-6">
-          <label class="form-label small fw-bold text-secondary mb-1">Buscar</label>
-          <input type="text" name="q" class="form-control" value="{{ filters.q if filters else '' }}" placeholder="Folio, asunto o solicitante">
+          <label class="form-label small fw-bold text-secondary mb-1">Buscar ticket</label>
+          <input type="search" name="q" class="form-control" value="{{ filters.q if filters else '' }}" placeholder="Folio, asunto o solicitante" autocomplete="off">
         </div>
         <div class="col-xl-2 col-md-3">
           <label class="form-label small fw-bold text-secondary mb-1">Estado</label>
@@ -171,59 +144,64 @@
         </div>
         <div class="col-xl-2 col-md-4">
           <label class="form-label small fw-bold text-secondary mb-1">Responsable</label>
-          <input type="text" name="responsable" class="form-control" value="{{ filters.responsable if filters else '' }}">
+          <input type="text" name="responsable" class="form-control" value="{{ filters.responsable if filters else '' }}" placeholder="Nombre">
         </div>
         <div class="col-xl-2 col-md-4 d-flex gap-2">
-          <button type="submit" class="btn btn-primary flex-fill">Filtrar</button>
+          <button type="submit" class="btn btn-primary flex-fill">Buscar</button>
           <a href="{{ url_for('soporte_tickets') }}" class="btn btn-outline-secondary">Limpiar</a>
         </div>
       </form>
     </div>
   </div>
 
-  <div class="row g-3 align-items-stretch">
-    {% for estado in status_options %}
-    {% set meta = status_meta[estado] %}
-    {% set state_rows = ticket_columns[estado] %}
-    <div class="col-12 col-xl-4">
-      <section class="ticket-lane ticket-lane-{{ meta.color }}" aria-labelledby="lane-{{ loop.index }}">
-        <div class="d-flex justify-content-between align-items-center gap-2 mb-3 px-1">
-          <div>
-            <div class="small text-muted">{{ meta.icon }} Etapa {{ loop.index }}</div>
-            <h5 class="mb-0" id="lane-{{ loop.index }}">{{ meta.label }}</h5>
-          </div>
-          <span class="badge rounded-pill text-bg-{{ meta.color }} fs-6">{{ state_rows|length }}</span>
-        </div>
+  <div class="d-flex justify-content-between align-items-center gap-3 mb-2">
+    <h5 class="mb-0">Resultados</h5>
+    <div class="small text-muted">{{ rows|length }} ticket(s){% if total_urgentes %} · {{ total_urgentes }} urgente(s){% endif %}</div>
+  </div>
 
-        <div class="d-grid gap-3">
-          {% for row in state_rows %}
-          <article class="card ticket-card">
-            <div class="card-body">
-              <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
-                <a href="{{ url_for('soporte_ticket_detalle', ticket_id=row.id) }}" class="small fw-bold text-decoration-none">{{ row.folio }}</a>
-                <span class="priority-light {{ row.prioridad }}">{{ row.prioridad }}</span>
-              </div>
-              <a href="{{ url_for('soporte_ticket_detalle', ticket_id=row.id) }}" class="ticket-card-title fw-bold text-body text-decoration-none mb-2">{{ row.asunto }}</a>
-              <div class="small text-muted mb-3">{{ row.categoria }} · {{ row.solicitante }}</div>
-              <div class="small mb-1"><span class="text-muted">Responsable:</span> {{ row.responsable or "Sin asignar" }}</div>
-              <div class="d-flex justify-content-between align-items-center gap-2 mt-3 pt-3 border-top small text-muted">
-                <span>💬 {{ row.comentarios_count }} &nbsp; 📎 {{ row.adjuntos_count }}</span>
-                <span>{{ row.actualizado_en.strftime('%d/%m/%Y') if row.actualizado_en else "Sin fecha" }}</span>
-              </div>
-            </div>
-          </article>
+  <div class="ticket-table-card shadow-sm">
+    <div class="table-responsive">
+      <table class="table ticket-table align-middle">
+        <thead>
+          <tr>
+            <th>Folio</th>
+            <th>Asunto</th>
+            <th>Estado</th>
+            <th>Prioridad</th>
+            <th>Responsable</th>
+            <th>Actualización</th>
+            <th class="text-end">Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          {% set meta = status_meta[row.estado] %}
+          <tr class="ticket-row-{{ meta.color }}">
+            <td><a href="{{ url_for('soporte_ticket_detalle', ticket_id=row.id) }}" class="fw-bold text-decoration-none">{{ row.folio }}</a></td>
+            <td>
+              <a href="{{ url_for('soporte_ticket_detalle', ticket_id=row.id) }}" class="ticket-subject">{{ row.asunto }}</a>
+              <div class="small text-muted mt-1">{{ row.solicitante }} · {{ row.categoria }}</div>
+            </td>
+            <td><span class="ticket-state-badge ticket-state-badge-{{ meta.color }}">{{ meta.icon }} {{ meta.label }}</span></td>
+            <td><span class="ticket-priority-badge {{ row.prioridad }}">{{ row.prioridad }}</span></td>
+            <td>{{ row.responsable or "Sin asignar" }}</td>
+            <td>
+              <div>{{ row.actualizado_en.strftime('%d/%m/%Y') if row.actualizado_en else "Sin fecha" }}</div>
+              <div class="small text-muted">{{ row.comentarios_count }} respuesta(s) · {{ row.adjuntos_count }} adjunto(s)</div>
+            </td>
+            <td class="text-end"><a href="{{ url_for('soporte_ticket_detalle', ticket_id=row.id) }}" class="btn btn-primary btn-sm">Abrir</a></td>
+          </tr>
           {% else %}
-          <div class="empty-lane">
-            <div>
-              <div class="fs-3 mb-1">{{ meta.icon }}</div>
-              <div class="fw-semibold">Sin tickets en esta etapa</div>
-            </div>
-          </div>
+          <tr>
+            <td colspan="7" class="text-center text-muted py-5">
+              <div class="fw-semibold">No hay tickets con estos filtros.</div>
+              <div class="small mt-1">Prueba otra búsqueda o limpia los filtros.</div>
+            </td>
+          </tr>
           {% endfor %}
-        </div>
-      </section>
+        </tbody>
+      </table>
     </div>
-    {% endfor %}
   </div>
 </div>
 {% endblock %}
