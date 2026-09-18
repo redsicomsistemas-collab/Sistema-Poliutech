@@ -1,207 +1,779 @@
 {% extends "base.html" %}
 {% block content %}
 <style>
-  .tickets-header {
-    background: #0c3c78;
+  .ticket-hub {
+    --ticket-blue: #0d6efd;
+    --ticket-amber: #f59f00;
+    --ticket-green: #198754;
+    --ticket-navy: #0c3c78;
+    --ticket-surface: var(--bs-body-bg);
+    --ticket-soft: var(--bs-tertiary-bg);
+  }
+  .ticket-hero {
+    position: relative;
+    overflow: hidden;
+    background: var(--ticket-navy);
     color: #fff;
-    border-radius: 1rem;
-    padding: 1.4rem 1.5rem;
-    box-shadow: 0 .45rem 1.2rem rgba(12, 60, 120, .18);
+    border-radius: 1.2rem;
+    padding: 1.6rem;
+    box-shadow: 0 .8rem 2rem rgba(12, 60, 120, .2);
   }
-  .tickets-header .btn { min-width: 190px; font-weight: 800; }
-  .ticket-status-summary {
-    display: block;
-    height: 100%;
-    padding: 1rem 1.1rem;
-    border-radius: .85rem;
-    color: #fff;
-    text-decoration: none;
-    transition: transform .15s ease, box-shadow .15s ease;
+  .ticket-hero::after {
+    content: "";
+    position: absolute;
+    right: -42px;
+    bottom: -78px;
+    width: 210px;
+    height: 210px;
+    border: 28px solid rgba(255,255,255,.08);
+    border-radius: 50%;
+    pointer-events: none;
   }
-  .ticket-status-summary:hover {
-    color: #fff;
-    transform: translateY(-2px);
-    box-shadow: 0 .45rem 1rem rgba(15, 23, 42, .15);
-  }
-  .ticket-status-summary-primary { background: #0d6efd; }
-  .ticket-status-summary-warning { background: #f59f00; color: #1f2937; }
-  .ticket-status-summary-warning:hover { color: #1f2937; }
-  .ticket-status-summary-success { background: #198754; }
-  .ticket-status-count { font-size: 1.8rem; line-height: 1; font-weight: 900; }
-  .ticket-filters,
-  .ticket-table-card {
-    border: 1px solid var(--bs-border-color);
-    border-radius: .9rem;
-  }
-  .ticket-table-card { overflow: hidden; }
-  .ticket-table { margin-bottom: 0; }
-  .ticket-table thead th {
-    padding: .85rem 1rem;
-    background: #e9eef5;
-    color: #334155;
-    border-bottom: 1px solid #cbd5e1;
+  .ticket-live {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .36rem .65rem;
+    border: 1px solid rgba(255,255,255,.24);
+    border-radius: 999px;
+    color: rgba(255,255,255,.86);
     font-size: .76rem;
-    letter-spacing: .04em;
+    font-weight: 800;
     text-transform: uppercase;
-    white-space: nowrap;
+    letter-spacing: .05em;
   }
-  .ticket-table tbody td { padding: .9rem 1rem; vertical-align: middle; }
-  .ticket-table tbody tr { border-left: .38rem solid var(--ticket-state-color); }
-  .ticket-table tbody tr:hover > td { background: var(--bs-tertiary-bg); }
-  .ticket-row-primary { --ticket-state-color: #0d6efd; }
-  .ticket-row-warning { --ticket-state-color: #f59f00; }
-  .ticket-row-success { --ticket-state-color: #198754; }
-  .ticket-state-badge,
-  .ticket-priority-badge {
+  .ticket-live-dot {
+    width: .55rem;
+    height: .55rem;
+    border-radius: 50%;
+    background: #4ade80;
+    box-shadow: 0 0 0 .22rem rgba(74,222,128,.18);
+  }
+  .ticket-metric {
+    height: 100%;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 1rem;
+    background: var(--ticket-surface);
+    padding: 1rem 1.05rem;
+    box-shadow: 0 .35rem 1rem rgba(15,23,42,.06);
+  }
+  .ticket-metric-label {
+    color: var(--bs-secondary-color);
+    font-size: .72rem;
+    font-weight: 800;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+  }
+  .ticket-metric-value {
+    font-size: 1.7rem;
+    line-height: 1;
+    font-weight: 900;
+  }
+  .ticket-metric-mark {
+    width: .75rem;
+    height: .75rem;
+    border-radius: .22rem;
+    flex: 0 0 auto;
+  }
+  .ticket-command {
+    position: sticky;
+    top: .75rem;
+    z-index: 15;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 1rem;
+    background: var(--bs-body-bg);
+    box-shadow: 0 .5rem 1.4rem rgba(15,23,42,.08);
+  }
+  .ticket-search-wrap { position: relative; }
+  .ticket-search-icon {
+    position: absolute;
+    left: .85rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--bs-secondary-color);
+    pointer-events: none;
+  }
+  .ticket-search { padding-left: 2.35rem; padding-right: 3rem; }
+  .ticket-shortcut {
+    position: absolute;
+    right: .65rem;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: .08rem .4rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: .35rem;
+    color: var(--bs-secondary-color);
+    background: var(--ticket-soft);
+    font-size: .72rem;
+  }
+  .ticket-view-toggle {
+    display: inline-flex;
+    gap: .25rem;
+    padding: .25rem;
+    border-radius: .7rem;
+    background: var(--ticket-soft);
+  }
+  .ticket-view-toggle .btn { border: 0; border-radius: .5rem; font-weight: 800; }
+  .ticket-view-toggle .btn.is-active {
+    color: #fff;
+    background: var(--ticket-navy);
+    box-shadow: 0 .2rem .5rem rgba(12,60,120,.18);
+  }
+  .ticket-status-tabs {
+    display: flex;
+    gap: .55rem;
+    overflow-x: auto;
+    padding-bottom: .15rem;
+    scrollbar-width: thin;
+  }
+  .ticket-status-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    flex: 0 0 auto;
+    padding: .55rem .8rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: .7rem;
+    background: var(--ticket-surface);
+    color: var(--bs-body-color);
+    font-size: .82rem;
+    font-weight: 800;
+  }
+  .ticket-status-tab:hover { border-color: var(--ticket-navy); }
+  .ticket-status-tab.is-active { color: #fff; background: var(--ticket-navy); border-color: var(--ticket-navy); }
+  .ticket-status-tab .count {
+    display: inline-flex;
+    min-width: 1.45rem;
+    height: 1.45rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    padding: 0 .35rem;
+    background: var(--ticket-soft);
+    color: var(--bs-body-color);
+    font-size: .7rem;
+  }
+  .ticket-status-tab.is-active .count { background: rgba(255,255,255,.18); color: #fff; }
+  .ticket-board {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(310px, 1fr));
+    gap: 1rem;
+    min-width: 1000px;
+  }
+  .ticket-board.is-focused { grid-template-columns: minmax(340px, 760px); min-width: 0; }
+  .ticket-column {
+    display: flex;
+    flex-direction: column;
+    min-height: 31rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 1rem;
+    background: var(--ticket-soft);
+    overflow: hidden;
+  }
+  .ticket-column[hidden] { display: none !important; }
+  .ticket-column-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: .9rem 1rem;
+    min-height: 5.35rem;
+    color: #fff;
+    font-weight: 900;
+  }
+  .ticket-column-primary .ticket-column-head { background: var(--ticket-blue); }
+  .ticket-column-warning .ticket-column-head { background: var(--ticket-amber); color: #1f2937; }
+  .ticket-column-success .ticket-column-head { background: var(--ticket-green); }
+  .ticket-column-count {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: .4rem;
-    padding: .38rem .55rem;
-    font-size: .72rem;
+    min-width: 1.8rem;
+    height: 1.8rem;
+    padding: 0 .45rem;
+    border-radius: .5rem;
+    background: rgba(255,255,255,.2);
+    font-size: .76rem;
+  }
+  .ticket-column-warning .ticket-column-count { background: rgba(31,41,55,.12); }
+  .ticket-dropzone {
+    flex: 1;
+    padding: .8rem;
+    transition: background .16s ease, box-shadow .16s ease;
+  }
+  .ticket-dropzone.is-over {
+    background: rgba(13,110,253,.08);
+    box-shadow: inset 0 0 0 2px rgba(13,110,253,.25);
+  }
+  .ticket-card {
+    position: relative;
+    margin-bottom: .75rem;
+    border: 1px solid var(--bs-border-color);
+    border-left: .34rem solid var(--ticket-state-color);
+    border-radius: .82rem;
+    background: var(--ticket-surface);
+    padding: .9rem;
+    cursor: pointer;
+    box-shadow: 0 .25rem .7rem rgba(15,23,42,.06);
+    transition: transform .16s ease, box-shadow .16s ease, opacity .16s ease;
+    animation: ticket-enter .22s ease both;
+  }
+  .ticket-card:hover { transform: translateY(-2px); box-shadow: 0 .65rem 1.2rem rgba(15,23,42,.11); }
+  .ticket-card.is-dragging { opacity: .38; transform: rotate(1deg) scale(.98); }
+  .ticket-card.is-updating { opacity: .58; pointer-events: none; }
+  .ticket-card[hidden] { display: none !important; }
+  .ticket-card-primary { --ticket-state-color: var(--ticket-blue); }
+  .ticket-card-warning { --ticket-state-color: var(--ticket-amber); }
+  .ticket-card-success { --ticket-state-color: var(--ticket-green); }
+  .ticket-card-folio { color: var(--ticket-state-color); font-size: .75rem; font-weight: 900; letter-spacing: .04em; }
+  .ticket-card-title { margin: .6rem 0 .35rem; font-size: .96rem; font-weight: 900; line-height: 1.28; }
+  .ticket-card-meta { color: var(--bs-secondary-color); font-size: .78rem; }
+  .ticket-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: .28rem .48rem;
+    border-radius: .38rem;
+    background: var(--ticket-soft);
+    color: var(--bs-body-color);
+    font-size: .68rem;
     font-weight: 900;
+  }
+  .ticket-priority-baja { background: #198754; color: #fff; }
+  .ticket-priority-media { background: #ffc107; color: #1f2937; }
+  .ticket-priority-alta { background: #fd7e14; color: #fff; }
+  .ticket-priority-urgente { background: #dc3545; color: #fff; }
+  .ticket-owner {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    gap: .45rem;
+    color: var(--bs-secondary-color);
+    font-size: .76rem;
+  }
+  .ticket-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.65rem;
+    height: 1.65rem;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: var(--ticket-navy);
+    color: #fff;
+    font-size: .68rem;
+    font-weight: 900;
+  }
+  .ticket-quick-state { max-width: 9rem; font-size: .72rem; font-weight: 800; }
+  .ticket-empty-column {
+    display: none;
+    padding: 2.2rem .7rem;
+    color: var(--bs-secondary-color);
+    text-align: center;
+    font-size: .82rem;
+  }
+  .ticket-empty-column.is-visible { display: block; }
+  .ticket-list-card {
+    overflow: hidden;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 1rem;
+    background: var(--ticket-surface);
+  }
+  .ticket-list-table { margin: 0; min-width: 900px; }
+  .ticket-list-table thead th {
+    padding: .8rem .9rem;
+    border-bottom: 1px solid var(--bs-border-color);
+    background: var(--ticket-navy);
+    color: #fff;
+    font-size: .7rem;
+    letter-spacing: .05em;
+    text-transform: uppercase;
     white-space: nowrap;
   }
-  .ticket-state-badge-primary { background: #0d6efd; color: #fff; }
-  .ticket-state-badge-warning { background: #f59f00; color: #1f2937; }
-  .ticket-state-badge-success { background: #198754; color: #fff; }
-  .ticket-priority-badge.BAJA { background: #198754; color: #fff; }
-  .ticket-priority-badge.MEDIA { background: #ffc107; color: #1f2937; }
-  .ticket-priority-badge.ALTA { background: #fd7e14; color: #fff; }
-  .ticket-priority-badge.URGENTE { background: #dc3545; color: #fff; }
-  .ticket-subject {
-    display: block;
-    max-width: 34rem;
-    font-weight: 800;
-    color: var(--bs-body-color);
-    text-decoration: none;
+  .ticket-list-row[hidden] { display: none !important; }
+  .ticket-list-row td { padding: .82rem .9rem; vertical-align: middle; }
+  .ticket-state-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: .32rem .52rem;
+    border-radius: .4rem;
+    color: #fff;
+    font-size: .7rem;
+    font-weight: 900;
   }
-  .ticket-subject:hover { color: var(--bs-primary); }
-  html[data-bs-theme="dark"] .ticket-table thead th {
-    background: #253247;
-    color: #e5edf8;
-    border-bottom-color: #3b4a61;
+  .ticket-state-badge-primary { background: var(--ticket-blue); }
+  .ticket-state-badge-warning { background: var(--ticket-amber); color: #1f2937; }
+  .ticket-state-badge-success { background: var(--ticket-green); }
+  .ticket-global-empty {
+    display: none;
+    padding: 3.4rem 1rem;
+    border: 1px dashed var(--bs-border-color);
+    border-radius: 1rem;
+    color: var(--bs-secondary-color);
+    text-align: center;
   }
-  @media (max-width: 767.98px) {
-    .tickets-header .btn { width: 100%; min-width: 0; }
-    .ticket-table { min-width: 820px; }
+  .ticket-global-empty.is-visible { display: block; }
+  .ticket-toast {
+    position: fixed;
+    right: 1.25rem;
+    bottom: 1.25rem;
+    z-index: 1090;
+    width: min(390px, calc(100vw - 2rem));
+    border-radius: .8rem;
+    background: #111827;
+    color: #fff;
+    padding: .9rem 1rem;
+    box-shadow: 0 1rem 2rem rgba(15,23,42,.25);
+    transform: translateY(1rem);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .18s ease, transform .18s ease;
+  }
+  .ticket-toast.is-visible { opacity: 1; transform: translateY(0); }
+  .ticket-toast.is-warning { background: #92400e; }
+  .ticket-toast.is-danger { background: #991b1b; }
+  [data-ticket-view][hidden] { display: none !important; }
+  @keyframes ticket-enter { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+  @media (prefers-reduced-motion: reduce) {
+    .ticket-card, .ticket-toast, .ticket-dropzone { animation: none; transition: none; }
+  }
+  @media (max-width: 991.98px) {
+    .ticket-command { position: static; }
   }
 </style>
 
-<div class="py-4">
-  <section class="tickets-header mb-4">
-    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
+<div class="ticket-hub py-4">
+  <section class="ticket-hero mb-4">
+    <div class="position-relative d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-4" style="z-index:1">
       <div>
-        <div class="small text-white-50 text-uppercase fw-bold mb-1">Mesa de ayuda</div>
-        <h2 class="mb-1">Tickets de soporte</h2>
-        <div class="text-white-50">Busca el folio, revisa su estado y abre el ticket para responder.</div>
+        <div class="ticket-live mb-3"><span class="ticket-live-dot"></span> Mesa de ayuda activa</div>
+        <h1 class="h2 fw-bold mb-2">Centro de tickets</h1>
+        <p class="mb-0 text-white-50">Localiza, organiza y mueve cada solicitud sin perder el contexto.</p>
       </div>
-      <a href="{{ url_for('soporte_ticket_nuevo') }}" class="btn btn-light btn-lg">＋ Nuevo ticket</a>
+      <div class="d-flex flex-column flex-sm-row align-items-stretch gap-2">
+        <div class="rounded-3 px-3 py-2 text-center" style="background:rgba(255,255,255,.1)">
+          <div class="small text-white-50">Atención urgente</div>
+          <div class="fs-5 fw-bold"><span id="heroUrgentCount">{{ total_urgentes }}</span> ticket(s)</div>
+        </div>
+        <a href="{{ url_for('soporte_ticket_nuevo') }}" class="btn btn-light btn-lg fw-bold d-flex align-items-center justify-content-center">＋ Nuevo ticket</a>
+      </div>
     </div>
   </section>
 
-  <div class="row g-3 mb-4" aria-label="Resumen por estado">
+  <section class="row g-3 mb-4" aria-label="Resumen de tickets">
+    <div class="col-6 col-xl-3">
+      <div class="ticket-metric">
+        <div class="d-flex align-items-center gap-2 mb-2"><span class="ticket-metric-mark" style="background:#0c3c78"></span><span class="ticket-metric-label">Total</span></div>
+        <div class="ticket-metric-value" id="metricTotal">{{ rows|length }}</div>
+      </div>
+    </div>
     {% for estado in status_options %}
     {% set meta = status_meta[estado] %}
-    <div class="col-12 col-md-4">
-      <a class="ticket-status-summary ticket-status-summary-{{ meta.color }}" href="{{ url_for('soporte_tickets', estado=estado) }}">
-        <div class="d-flex justify-content-between align-items-center gap-3">
-          <div>
-            <div class="small fw-bold text-uppercase opacity-75">{{ meta.label }}</div>
-            <div class="small mt-1">{{ meta.description }}</div>
-          </div>
-          <div class="ticket-status-count">{{ ticket_columns[estado]|length }}</div>
-        </div>
-      </a>
+    <div class="col-6 col-xl-3">
+      <div class="ticket-metric">
+        <div class="d-flex align-items-center gap-2 mb-2"><span class="ticket-metric-mark" style="background:{% if meta.color == 'primary' %}#0d6efd{% elif meta.color == 'warning' %}#f59f00{% else %}#198754{% endif %}"></span><span class="ticket-metric-label">{{ meta.label }}</span></div>
+        <div class="ticket-metric-value" data-metric-state="{{ estado }}">{{ ticket_columns[estado]|length }}</div>
+      </div>
     </div>
     {% endfor %}
-  </div>
+  </section>
 
-  <div class="card ticket-filters shadow-sm mb-4">
-    <div class="card-body">
-      <form method="get" class="row g-3 align-items-end">
-        <div class="col-xl-4 col-md-6">
-          <label class="form-label small fw-bold text-secondary mb-1">Buscar ticket</label>
-          <input type="search" name="q" class="form-control" value="{{ filters.q if filters else '' }}" placeholder="Folio, asunto o solicitante" autocomplete="off">
+  <section class="ticket-command p-3 mb-3">
+    <div class="row g-2 align-items-center">
+      <div class="col-12 col-xl-5">
+        <label for="ticketSearch" class="visually-hidden">Buscar ticket</label>
+        <div class="ticket-search-wrap">
+          <span class="ticket-search-icon" aria-hidden="true">⌕</span>
+          <input id="ticketSearch" type="search" class="form-control ticket-search" value="{{ filters.q }}" placeholder="Buscar por folio, asunto, solicitante o categoría" autocomplete="off">
+          <span class="ticket-shortcut">/</span>
         </div>
-        <div class="col-xl-2 col-md-3">
-          <label class="form-label small fw-bold text-secondary mb-1">Estado</label>
-          <select name="estado" class="form-select">
-            <option value="">Todos</option>
-            {% for estado in status_options %}
-            <option value="{{ estado }}" {% if filters and filters.estado == estado %}selected{% endif %}>{{ status_meta[estado].label }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="col-xl-2 col-md-3">
-          <label class="form-label small fw-bold text-secondary mb-1">Prioridad</label>
-          <select name="prioridad" class="form-select">
-            <option value="">Todas</option>
-            {% for prioridad in priority_options %}
-            <option value="{{ prioridad }}" {% if filters and filters.prioridad == prioridad %}selected{% endif %}>{{ prioridad }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="col-xl-2 col-md-4">
-          <label class="form-label small fw-bold text-secondary mb-1">Responsable</label>
-          <input type="text" name="responsable" class="form-control" value="{{ filters.responsable if filters else '' }}" placeholder="Nombre">
-        </div>
-        <div class="col-xl-2 col-md-4 d-flex gap-2">
-          <button type="submit" class="btn btn-primary flex-fill">Buscar</button>
-          <a href="{{ url_for('soporte_tickets') }}" class="btn btn-outline-secondary">Limpiar</a>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <div class="d-flex justify-content-between align-items-center gap-3 mb-2">
-    <h5 class="mb-0">Resultados</h5>
-    <div class="small text-muted">{{ rows|length }} ticket(s){% if total_urgentes %} · {{ total_urgentes }} urgente(s){% endif %}</div>
-  </div>
-
-  <div class="ticket-table-card shadow-sm">
-    <div class="table-responsive">
-      <table class="table ticket-table align-middle">
-        <thead>
-          <tr>
-            <th>Folio</th>
-            <th>Asunto</th>
-            <th>Estado</th>
-            <th>Prioridad</th>
-            <th>Responsable</th>
-            <th>Actualización</th>
-            <th class="text-end">Acción</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in rows %}
-          {% set meta = status_meta[row.estado] %}
-          <tr class="ticket-row-{{ meta.color }}">
-            <td><a href="{{ url_for('soporte_ticket_detalle', ticket_id=row.id) }}" class="fw-bold text-decoration-none">{{ row.folio }}</a></td>
-            <td>
-              <a href="{{ url_for('soporte_ticket_detalle', ticket_id=row.id) }}" class="ticket-subject">{{ row.asunto }}</a>
-              <div class="small text-muted mt-1">{{ row.solicitante }} · {{ row.categoria }}</div>
-            </td>
-            <td><span class="ticket-state-badge ticket-state-badge-{{ meta.color }}">{{ meta.icon }} {{ meta.label }}</span></td>
-            <td><span class="ticket-priority-badge {{ row.prioridad }}">{{ row.prioridad }}</span></td>
-            <td>{{ row.responsable or "Sin asignar" }}</td>
-            <td>
-              <div>{{ row.actualizado_en.strftime('%d/%m/%Y') if row.actualizado_en else "Sin fecha" }}</div>
-              <div class="small text-muted">{{ row.comentarios_count }} respuesta(s) · {{ row.adjuntos_count }} adjunto(s)</div>
-            </td>
-            <td class="text-end"><a href="{{ url_for('soporte_ticket_detalle', ticket_id=row.id) }}" class="btn btn-primary btn-sm">Abrir</a></td>
-          </tr>
-          {% else %}
-          <tr>
-            <td colspan="7" class="text-center text-muted py-5">
-              <div class="fw-semibold">No hay tickets con estos filtros.</div>
-              <div class="small mt-1">Prueba otra búsqueda o limpia los filtros.</div>
-            </td>
-          </tr>
+      </div>
+      <div class="col-6 col-md-4 col-xl-2">
+        <label for="ticketPriority" class="visually-hidden">Prioridad</label>
+        <select id="ticketPriority" class="form-select">
+          <option value="">Cualquier prioridad</option>
+          {% for prioridad in priority_options %}
+          <option value="{{ prioridad }}" {% if filters.prioridad == prioridad %}selected{% endif %}>{{ prioridad|capitalize }}</option>
           {% endfor %}
-        </tbody>
-      </table>
+        </select>
+      </div>
+      <div class="col-6 col-md-4 col-xl-2">
+        <label for="ticketOwner" class="visually-hidden">Responsable</label>
+        <select id="ticketOwner" class="form-select">
+          <option value="">Todo el equipo</option>
+          <option value="__unassigned__">Sin asignar</option>
+          {% for responsable in responsables %}
+          <option value="{{ responsable|lower }}" {% if filters.responsable == (responsable|lower) %}selected{% endif %}>{{ responsable }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-4 col-xl-3 d-flex justify-content-md-end gap-2">
+        <div class="ticket-view-toggle" aria-label="Cambiar vista">
+          <button type="button" class="btn btn-sm is-active" data-set-view="board" aria-pressed="true">▦ Tablero</button>
+          <button type="button" class="btn btn-sm" data-set-view="list" aria-pressed="false">☷ Lista</button>
+        </div>
+        <button type="button" id="clearTicketFilters" class="btn btn-outline-secondary btn-sm">Limpiar</button>
+      </div>
     </div>
+  </section>
+
+  <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-3">
+    <div class="ticket-status-tabs" role="tablist" aria-label="Filtrar por estado">
+      <button type="button" class="ticket-status-tab" data-status-filter=""><span>Todos</span><span class="count" data-tab-count="">{{ rows|length }}</span></button>
+      {% for estado in status_options %}
+      <button type="button" class="ticket-status-tab" data-status-filter="{{ estado }}"><span>{{ status_meta[estado].icon }} {{ status_meta[estado].label }}</span><span class="count" data-tab-count="{{ estado }}">{{ ticket_columns[estado]|length }}</span></button>
+      {% endfor %}
+    </div>
+    <div class="small text-muted text-md-end">
+      <span class="d-none d-lg-inline me-3">Arrastra una tarjeta para cambiar su estado.</span>
+      <span class="text-nowrap"><strong id="visibleTicketCount">{{ rows|length }}</strong> ticket(s) visibles</span>
+    </div>
+  </div>
+
+  <div class="overflow-auto pb-2" data-ticket-view="board">
+    <div class="ticket-board" id="ticketBoard">
+      {% for estado in status_options %}
+      {% set meta = status_meta[estado] %}
+      <section class="ticket-column ticket-column-{{ meta.color }}" data-ticket-column="{{ estado }}">
+        <header class="ticket-column-head">
+          <div>
+            <div>{{ meta.icon }} {{ meta.label }}</div>
+            <div class="small fw-normal opacity-75 mt-1">{{ meta.description }}</div>
+          </div>
+          <span class="ticket-column-count" data-column-count="{{ estado }}">{{ ticket_columns[estado]|length }}</span>
+        </header>
+        <div class="ticket-dropzone" data-drop-state="{{ estado }}">
+          {% for row in ticket_columns[estado] %}
+          <article
+            class="ticket-card ticket-card-{{ meta.color }}"
+            draggable="true"
+            tabindex="0"
+            data-ticket-card
+            data-ticket-id="{{ row.id }}"
+            data-ticket-url="{{ url_for('soporte_ticket_detalle', ticket_id=row.id) }}"
+            data-state-url="{{ url_for('api_soporte_ticket_estado', ticket_id=row.id) }}"
+            data-state="{{ row.estado }}"
+            data-priority="{{ row.prioridad }}"
+            data-owner="{{ (row.responsable or '')|lower }}"
+            data-search="{{ (row.folio ~ ' ' ~ row.asunto ~ ' ' ~ row.solicitante ~ ' ' ~ row.categoria ~ ' ' ~ (row.responsable or ''))|lower }}">
+            <div class="d-flex justify-content-between align-items-center gap-2">
+              <span class="ticket-card-folio">{{ row.folio }}</span>
+              <span class="ticket-chip ticket-priority-{{ row.prioridad|lower }}">{{ row.prioridad }}</span>
+            </div>
+            <div class="ticket-card-title">{{ row.asunto }}</div>
+            <div class="ticket-card-meta">{{ row.solicitante }} · {{ row.categoria }}</div>
+            <div class="d-flex flex-wrap gap-2 mt-3">
+              <span class="ticket-chip">💬 {{ row.comentarios_count }}</span>
+              <span class="ticket-chip">📎 {{ row.adjuntos_count }}</span>
+              <span class="ticket-chip" data-updated-date>{{ row.actualizado_en.strftime('%d/%m/%Y') if row.actualizado_en else 'Sin fecha' }}</span>
+            </div>
+            <div class="d-flex align-items-center justify-content-between gap-2 mt-3 pt-3 border-top">
+              <span class="ticket-owner">
+                <span class="ticket-avatar">{{ (row.responsable or '?')[:1]|upper }}</span>
+                <span class="text-truncate">{{ row.responsable or 'Sin asignar' }}</span>
+              </span>
+              <label class="visually-hidden" for="state-{{ row.id }}">Mover ticket</label>
+              <select id="state-{{ row.id }}" class="form-select form-select-sm ticket-quick-state" data-quick-state>
+                {% for option in status_options %}
+                <option value="{{ option }}" {% if option == row.estado %}selected{% endif %}>{{ status_meta[option].label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </article>
+          {% endfor %}
+          <div class="ticket-empty-column" data-column-empty>Sin tickets con estos filtros.</div>
+        </div>
+      </section>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div data-ticket-view="list" hidden>
+    <div class="ticket-list-card shadow-sm">
+      <div class="table-responsive">
+        <table class="table table-hover ticket-list-table align-middle">
+          <thead><tr><th>Folio</th><th>Asunto</th><th>Estado</th><th>Prioridad</th><th>Responsable</th><th>Actividad</th><th></th></tr></thead>
+          <tbody>
+            {% for row in rows %}
+            {% set meta = status_meta[row.estado] %}
+            <tr
+              class="ticket-list-row"
+              data-ticket-list-row
+              data-ticket-id="{{ row.id }}"
+              data-state="{{ row.estado }}"
+              data-priority="{{ row.prioridad }}"
+              data-owner="{{ (row.responsable or '')|lower }}"
+              data-search="{{ (row.folio ~ ' ' ~ row.asunto ~ ' ' ~ row.solicitante ~ ' ' ~ row.categoria ~ ' ' ~ (row.responsable or ''))|lower }}">
+              <td class="fw-bold">{{ row.folio }}</td>
+              <td><div class="fw-bold">{{ row.asunto }}</div><div class="small text-muted">{{ row.solicitante }} · {{ row.categoria }}</div></td>
+              <td><span class="ticket-state-badge ticket-state-badge-{{ meta.color }}" data-state-badge>{{ meta.icon }} {{ meta.label }}</span></td>
+              <td><span class="ticket-chip ticket-priority-{{ row.prioridad|lower }}">{{ row.prioridad }}</span></td>
+              <td>{{ row.responsable or 'Sin asignar' }}</td>
+              <td><div data-updated-date>{{ row.actualizado_en.strftime('%d/%m/%Y') if row.actualizado_en else 'Sin fecha' }}</div><div class="small text-muted">{{ row.comentarios_count }} respuesta(s)</div></td>
+              <td class="text-end"><a href="{{ url_for('soporte_ticket_detalle', ticket_id=row.id) }}" class="btn btn-sm btn-primary">Abrir</a></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="ticket-global-empty" id="ticketGlobalEmpty">
+    <div class="fs-2 mb-2">⌕</div>
+    <div class="fw-bold">No encontramos tickets con esos filtros.</div>
+    <div class="small mt-1">Cambia la búsqueda o limpia los filtros para verlos todos.</div>
   </div>
 </div>
+
+<div class="ticket-toast" id="ticketToast" role="status" aria-live="polite"></div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const statusMeta = {{ status_meta|tojson }};
+  const searchInput = document.getElementById("ticketSearch");
+  const prioritySelect = document.getElementById("ticketPriority");
+  const ownerSelect = document.getElementById("ticketOwner");
+  const board = document.getElementById("ticketBoard");
+  const emptyGlobal = document.getElementById("ticketGlobalEmpty");
+  const visibleCount = document.getElementById("visibleTicketCount");
+  const toast = document.getElementById("ticketToast");
+  const filters = {
+    query: (searchInput?.value || "").trim().toLowerCase(),
+    status: {{ filters.estado|tojson }},
+    priority: prioritySelect?.value || "",
+    owner: ownerSelect?.value || ""
+  };
+  let activeView = localStorage.getItem("support-ticket-view") === "list" ? "list" : "board";
+  let toastTimer = null;
+  let draggedCard = null;
+  let dragOrigin = null;
+
+  const cardNodes = () => [...document.querySelectorAll("[data-ticket-card]")];
+  const listRows = () => [...document.querySelectorAll("[data-ticket-list-row]")];
+
+  function matchesFilters(node) {
+    const haystack = (node.dataset.search || "").toLowerCase();
+    const owner = (node.dataset.owner || "").toLowerCase();
+    const ownerMatches = !filters.owner ||
+      (filters.owner === "__unassigned__" ? !owner : owner === filters.owner.toLowerCase());
+    return (!filters.query || haystack.includes(filters.query)) &&
+      (!filters.status || node.dataset.state === filters.status) &&
+      (!filters.priority || node.dataset.priority === filters.priority) &&
+      ownerMatches;
+  }
+
+  function syncUrl() {
+    const params = new URLSearchParams();
+    if (filters.query) params.set("q", filters.query);
+    if (filters.status) params.set("estado", filters.status);
+    if (filters.priority) params.set("prioridad", filters.priority);
+    if (filters.owner && filters.owner !== "__unassigned__") params.set("responsable", filters.owner);
+    const query = params.toString();
+    history.replaceState({}, "", `${location.pathname}${query ? `?${query}` : ""}`);
+  }
+
+  function updatePermanentCounts() {
+    const cards = cardNodes();
+    document.getElementById("metricTotal").textContent = cards.length;
+    document.getElementById("heroUrgentCount").textContent = cards.filter(card => card.dataset.priority === "URGENTE").length;
+    document.querySelectorAll("[data-metric-state]").forEach(metric => {
+      metric.textContent = cards.filter(card => card.dataset.state === metric.dataset.metricState).length;
+    });
+  }
+
+  function applyFilters() {
+    let visible = 0;
+    cardNodes().forEach(card => {
+      const show = matchesFilters(card);
+      card.hidden = !show;
+      if (show) visible += 1;
+    });
+    listRows().forEach(row => { row.hidden = !matchesFilters(row); });
+
+    document.querySelectorAll("[data-ticket-column]").forEach(column => {
+      const state = column.dataset.ticketColumn;
+      column.hidden = Boolean(filters.status && filters.status !== state);
+      const count = [...column.querySelectorAll("[data-ticket-card]")].filter(card => !card.hidden).length;
+      column.querySelector("[data-column-count]").textContent = count;
+      column.querySelector("[data-column-empty]").classList.toggle("is-visible", count === 0);
+    });
+    board.classList.toggle("is-focused", Boolean(filters.status));
+
+    document.querySelectorAll("[data-status-filter]").forEach(tab => {
+      const active = tab.dataset.statusFilter === filters.status;
+      tab.classList.toggle("is-active", active);
+      tab.setAttribute("aria-selected", active ? "true" : "false");
+    });
+
+    const baseMatches = cardNodes().filter(card => {
+      const currentStatus = filters.status;
+      filters.status = "";
+      const match = matchesFilters(card);
+      filters.status = currentStatus;
+      return match;
+    });
+    document.querySelectorAll("[data-tab-count]").forEach(counter => {
+      const state = counter.dataset.tabCount;
+      counter.textContent = state ? baseMatches.filter(card => card.dataset.state === state).length : baseMatches.length;
+    });
+
+    visibleCount.textContent = visible;
+    emptyGlobal.classList.toggle("is-visible", visible === 0);
+    document.querySelectorAll("[data-ticket-view]").forEach(view => {
+      if (view.dataset.ticketView === activeView && visible === 0) view.hidden = true;
+      else view.hidden = view.dataset.ticketView !== activeView;
+    });
+    syncUrl();
+  }
+
+  function setView(view) {
+    activeView = view === "list" ? "list" : "board";
+    localStorage.setItem("support-ticket-view", activeView);
+    document.querySelectorAll("[data-set-view]").forEach(button => {
+      const active = button.dataset.setView === activeView;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+    applyFilters();
+  }
+
+  function showToast(message, type = "success") {
+    window.clearTimeout(toastTimer);
+    toast.textContent = message;
+    toast.className = `ticket-toast is-visible${type === "warning" ? " is-warning" : type === "danger" ? " is-danger" : ""}`;
+    toastTimer = window.setTimeout(() => toast.classList.remove("is-visible"), 3800);
+  }
+
+  function setStateVisual(ticketId, newState, updatedAt) {
+    const meta = statusMeta[newState];
+    const colorClasses = ["ticket-card-primary", "ticket-card-warning", "ticket-card-success"];
+    document.querySelectorAll(`[data-ticket-id="${ticketId}"]`).forEach(node => {
+      node.dataset.state = newState;
+      if (node.matches("[data-ticket-card]")) {
+        node.classList.remove(...colorClasses);
+        node.classList.add(`ticket-card-${meta.color}`);
+        const selector = node.querySelector("[data-quick-state]");
+        if (selector) selector.value = newState;
+      }
+      const badge = node.querySelector("[data-state-badge]");
+      if (badge) {
+        badge.className = `ticket-state-badge ticket-state-badge-${meta.color}`;
+        badge.textContent = `${meta.icon} ${meta.label}`;
+      }
+      if (updatedAt) node.querySelectorAll("[data-updated-date]").forEach(el => { el.textContent = updatedAt; });
+    });
+  }
+
+  async function moveTicket(card, newState) {
+    const previousState = card.dataset.state;
+    if (!newState || previousState === newState) return true;
+    const previousZone = card.closest("[data-drop-state]");
+    const previousDate = card.querySelector("[data-updated-date]")?.textContent || "";
+    const targetZone = document.querySelector(`[data-drop-state="${newState}"]`);
+    if (!targetZone) return false;
+
+    card.classList.add("is-updating");
+    targetZone.insertBefore(card, targetZone.querySelector("[data-column-empty]"));
+    setStateVisual(card.dataset.ticketId, newState, "Actualizando…");
+    applyFilters();
+
+    try {
+      const response = await fetch(card.dataset.stateUrl, {
+        method: "POST",
+        headers: {"Content-Type": "application/json", "Accept": "application/json"},
+        body: JSON.stringify({estado: newState})
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) throw new Error(data.error || "No se pudo cambiar el estado.");
+      setStateVisual(card.dataset.ticketId, newState, data.updated_at || "Hoy");
+      updatePermanentCounts();
+      applyFilters();
+      if (data.email_warning) showToast(`Estado actualizado. El correo no pudo enviarse: ${data.email_warning}`, "warning");
+      else showToast(`Ticket movido a ${data.label}.`);
+      return true;
+    } catch (error) {
+      if (previousZone) previousZone.insertBefore(card, previousZone.querySelector("[data-column-empty]"));
+      setStateVisual(card.dataset.ticketId, previousState, previousDate);
+      applyFilters();
+      showToast(error.message || "No se pudo actualizar el ticket.", "danger");
+      return false;
+    } finally {
+      card.classList.remove("is-updating");
+    }
+  }
+
+  searchInput?.addEventListener("input", () => {
+    filters.query = searchInput.value.trim().toLowerCase();
+    applyFilters();
+  });
+  prioritySelect?.addEventListener("change", () => { filters.priority = prioritySelect.value; applyFilters(); });
+  ownerSelect?.addEventListener("change", () => { filters.owner = ownerSelect.value; applyFilters(); });
+  document.querySelectorAll("[data-status-filter]").forEach(tab => {
+    tab.addEventListener("click", () => { filters.status = tab.dataset.statusFilter || ""; applyFilters(); });
+  });
+  document.querySelectorAll("[data-set-view]").forEach(button => button.addEventListener("click", () => setView(button.dataset.setView)));
+  document.getElementById("clearTicketFilters")?.addEventListener("click", () => {
+    filters.query = filters.status = filters.priority = filters.owner = "";
+    searchInput.value = "";
+    prioritySelect.value = "";
+    ownerSelect.value = "";
+    applyFilters();
+    searchInput.focus();
+  });
+
+  document.addEventListener("keydown", event => {
+    const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName);
+    if (event.key === "/" && !typing) {
+      event.preventDefault();
+      searchInput?.focus();
+    }
+  });
+
+  cardNodes().forEach(card => {
+    card.addEventListener("click", event => {
+      if (!event.target.closest("a, button, select, label")) location.href = card.dataset.ticketUrl;
+    });
+    card.addEventListener("keydown", event => {
+      if ((event.key === "Enter" || event.key === " ") && !event.target.closest("select")) {
+        event.preventDefault();
+        location.href = card.dataset.ticketUrl;
+      }
+    });
+    card.addEventListener("dragstart", event => {
+      draggedCard = card;
+      dragOrigin = card.closest("[data-drop-state]");
+      card.classList.add("is-dragging");
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", card.dataset.ticketId);
+    });
+    card.addEventListener("dragend", () => {
+      card.classList.remove("is-dragging");
+      document.querySelectorAll("[data-drop-state]").forEach(zone => zone.classList.remove("is-over"));
+      draggedCard = dragOrigin = null;
+    });
+    card.querySelector("[data-quick-state]")?.addEventListener("change", event => moveTicket(card, event.target.value));
+    card.querySelector("[data-quick-state]")?.addEventListener("mousedown", event => event.stopPropagation());
+  });
+
+  document.querySelectorAll("[data-drop-state]").forEach(zone => {
+    zone.addEventListener("dragover", event => {
+      if (!draggedCard) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      zone.classList.add("is-over");
+    });
+    zone.addEventListener("dragleave", event => {
+      if (!zone.contains(event.relatedTarget)) zone.classList.remove("is-over");
+    });
+    zone.addEventListener("drop", async event => {
+      event.preventDefault();
+      zone.classList.remove("is-over");
+      if (draggedCard) await moveTicket(draggedCard, zone.dataset.dropState);
+    });
+  });
+
+  updatePermanentCounts();
+  setView(activeView);
+});
+</script>
 {% endblock %}

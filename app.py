@@ -8185,15 +8185,17 @@ def eliminar_prospecto_seguimiento(prospecto_id: int, seg_id: int):
 @login_required
 def soporte_tickets():
     filters = _ticket_filters_from_request()
-    rows = _load_ticket_rows(filters)
-    summary_filters = dict(filters)
-    summary_filters["estado"] = ""
-    summary_rows = _load_ticket_rows(summary_filters)
+    rows = _load_ticket_rows({"q": "", "estado": "", "prioridad": "", "responsable": ""})
     ticket_columns = {
-        estado: [row for row in summary_rows if row["estado"] == estado]
+        estado: [row for row in rows if row["estado"] == estado]
         for estado in TICKET_STATUS_OPTIONS
     }
     total_urgentes = sum(1 for row in rows if row["prioridad"] == "URGENTE")
+    responsables = sorted({
+        row["responsable"].strip()
+        for row in rows
+        if (row.get("responsable") or "").strip()
+    }, key=str.lower)
     return render_template(
         "soporte_tickets.html",
         title="Soporte - Tickets",
@@ -8205,6 +8207,7 @@ def soporte_tickets():
         priority_options=TICKET_PRIORITY_OPTIONS,
         category_options=TICKET_CATEGORY_OPTIONS,
         total_urgentes=total_urgentes,
+        responsables=responsables,
         default_responsable=responsable_actual() or "",
     )
 
@@ -8274,6 +8277,53 @@ def soporte_ticket_nuevo():
         category_options=TICKET_CATEGORY_OPTIONS,
         default_responsable=responsable_actual() or "",
     )
+
+
+@app.route("/api/soporte/<int:ticket_id>/estado", methods=["POST"])
+@login_required
+def api_soporte_ticket_estado(ticket_id: int):
+    ticket = TicketSoporte.query.get_or_404(ticket_id)
+    require_ticket_owner_or_admin(ticket)
+
+    payload = request.get_json(silent=True) or {}
+    requested_status = str(payload.get("estado") or "").strip().upper()
+    if requested_status not in TICKET_STATUS_OPTIONS:
+        return jsonify({"ok": False, "error": "Estado de ticket no válido."}), 400
+
+    previous_status = _normalize_ticket_status(ticket.estado)
+    if previous_status == requested_status:
+        return jsonify({
+            "ok": True,
+            "estado": requested_status,
+            "label": TICKET_STATUS_META[requested_status]["label"],
+            "unchanged": True,
+        })
+
+    ticket.estado = requested_status
+    ticket.actualizado_en = now_cdmx_naive()
+    ticket.cerrado_en = ticket.actualizado_en if _ticket_is_closed(requested_status) else None
+    db.session.commit()
+
+    previous_label = TICKET_STATUS_META[previous_status]["label"]
+    current_label = TICKET_STATUS_META[requested_status]["label"]
+    email_warning = ""
+    try:
+        _send_support_ticket_update_email(
+            ticket,
+            author=(responsable_actual() or "Sistema").strip(),
+            changes=[f"Estado: {previous_label} → {current_label}"],
+        )
+    except Exception as exc:
+        logger.exception("No se pudo enviar aviso de cambio rápido del ticket %s", ticket.id)
+        email_warning = str(exc)
+
+    return jsonify({
+        "ok": True,
+        "estado": requested_status,
+        "label": current_label,
+        "updated_at": ticket.actualizado_en.strftime("%d/%m/%Y"),
+        "email_warning": email_warning,
+    })
 
 
 @app.route("/soporte/<int:ticket_id>", methods=["GET", "POST"])
