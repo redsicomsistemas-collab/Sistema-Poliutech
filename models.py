@@ -467,6 +467,31 @@ class NotificationSubscription(db.Model):
         return f"<NotificationSubscription recipient={self.destinatario_id} {self.evento}/{self.canal}>"
 
 
+class InAppNotification(db.Model):
+    __tablename__ = "in_app_notification"
+
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=False, index=True)
+    tipo = db.Column(db.String(80), default="general", nullable=False, index=True)
+    titulo = db.Column(db.String(180), nullable=False)
+    mensaje = db.Column(db.Text, nullable=False)
+    destino_url = db.Column(db.String(1200))
+    leida_en = db.Column(db.DateTime, index=True)
+    creada_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    usuario = db.relationship(
+        "Usuario",
+        backref=db.backref("notificaciones_internas", lazy=True, cascade="all, delete-orphan"),
+    )
+
+    @property
+    def leida(self) -> bool:
+        return self.leida_en is not None
+
+    def __repr__(self):
+        return f"<InAppNotification user={self.usuario_id} type={self.tipo}>"
+
+
 class MessengerNotificationOutbox(db.Model):
     __tablename__ = "messenger_notification_outbox"
 

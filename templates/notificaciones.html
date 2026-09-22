@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid px-0 notifications-page">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+      <div class="text-primary small mb-1">Centro personal</div>
+      <h1 class="h2 fw-bold mb-1">🔔 Mis notificaciones</h1>
+      <p class="text-muted mb-0">Abre una notificación para ir directamente al asunto pendiente.</p>
+    </div>
+    {% if total_count %}
+    <div class="d-flex flex-wrap gap-2">
+      {% if unread_count %}
+      <form method="post" action="{{ url_for('notificaciones_marcar_leidas') }}">
+        <button class="btn btn-outline-primary" type="submit">✓ Marcar todas como leídas</button>
+      </form>
+      {% endif %}
+      <form method="post" action="{{ url_for('notificaciones_eliminar_todas') }}" onsubmit="return confirm('¿Eliminar todas tus notificaciones? Esta acción no se puede deshacer.');">
+        <button class="btn btn-outline-danger" type="submit">🗑️ Borrar todas</button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+    <div class="d-flex gap-2" role="group" aria-label="Filtrar notificaciones">
+      <a class="btn btn-sm {{ 'btn-primary' if estado == 'todas' else 'btn-outline-primary' }}" href="{{ url_for('notificaciones', estado='todas') }}">Todas <span class="badge text-bg-light ms-1">{{ total_count }}</span></a>
+      <a class="btn btn-sm {{ 'btn-primary' if estado == 'no-leidas' else 'btn-outline-primary' }}" href="{{ url_for('notificaciones', estado='no-leidas') }}">No leídas <span class="badge text-bg-danger ms-1">{{ unread_count }}</span></a>
+      <a class="btn btn-sm {{ 'btn-primary' if estado == 'leidas' else 'btn-outline-primary' }}" href="{{ url_for('notificaciones', estado='leidas') }}">Leídas</a>
+    </div>
+    <span class="text-muted small">Se muestran hasta 300 avisos recientes.</span>
+  </div>
+
+  {% if notifications %}
+  <div class="notification-list">
+    {% for notification in notifications %}
+    {% set icon = '💬' if notification.tipo == 'seguimiento_etiqueta' else ('🧾' if 'quote' in notification.tipo or 'cotizacion' in notification.tipo else ('💵' if 'solicitud_recurso' in notification.tipo else ('💸' if 'gasto' in notification.tipo else ('👥' if 'rrhh' in notification.tipo else ('🎫' if 'ticket' in notification.tipo else ('🗓️' if 'reporte' in notification.tipo else '🔔')))))) %}
+    <article class="notification-card {{ 'is-unread' if not notification.leida else 'is-read' }}">
+      <a class="notification-main" href="{{ url_for('notificacion_abrir', notification_id=notification.id) }}">
+        <span class="notification-icon" aria-hidden="true">{{ icon }}</span>
+        <span class="notification-copy">
+          <span class="d-flex flex-wrap align-items-center gap-2 mb-1">
+            <strong>{{ notification.titulo }}</strong>
+            {% if not notification.leida %}<span class="badge text-bg-primary">Nueva</span>{% endif %}
+          </span>
+          <span class="notification-message">{{ notification.mensaje }}</span>
+          <time class="notification-time" datetime="{{ notification.creada_en.isoformat() }}">{{ notification.creada_en.strftime('%d/%m/%Y · %H:%M') }}</time>
+        </span>
+        <span class="notification-open" aria-hidden="true">Abrir →</span>
+      </a>
+      <form method="post" action="{{ url_for('notificacion_eliminar', notification_id=notification.id) }}" onsubmit="return confirm('¿Borrar esta notificación?');">
+        <button class="btn btn-sm btn-outline-danger notification-delete" type="submit" aria-label="Borrar {{ notification.titulo }}" title="Borrar notificación">🗑️</button>
+      </form>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card border-0 shadow-sm">
+    <div class="card-body text-center py-5">
+      <div class="display-5 mb-3">🔕</div>
+      <h2 class="h5">No hay notificaciones en esta vista</h2>
+      <p class="text-muted mb-0">Los nuevos pendientes y avisos aparecerán aquí.</p>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<style>
+  .notification-list { display: grid; gap: .75rem; }
+  .notification-card { display: flex; align-items: stretch; border: 1px solid #dbe4ef; border-radius: 12px; background: #fff; box-shadow: 0 5px 16px rgba(15, 23, 42, .06); overflow: hidden; }
+  .notification-card.is-unread { border-left: 5px solid var(--mar-blue); background: #f7fbff; }
+  .notification-main { flex: 1 1 auto; min-width: 0; display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: .85rem; padding: 1rem 1.1rem; color: inherit; text-decoration: none; }
+  .notification-main:hover { color: inherit; background: rgba(12, 60, 120, .045); }
+  .notification-icon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: rgba(12, 60, 120, .1); font-size: 1.35rem; }
+  .notification-copy { min-width: 0; display: block; }
+  .notification-message { display: block; color: #475569; line-height: 1.4; }
+  .notification-time { display: block; margin-top: .45rem; color: #7b8798; font-size: .82rem; }
+  .notification-open { color: var(--mar-blue); font-weight: 800; white-space: nowrap; }
+  .notification-card form { display: flex; align-items: center; padding: .75rem .75rem .75rem 0; }
+  .notification-delete { width: 40px; height: 40px; }
+  html[data-bs-theme="dark"] .notification-card,
+  html[data-bs-theme="dark"] .notification-card.is-unread { background: #111b2c; border-color: #334155; }
+  html[data-bs-theme="dark"] .notification-main:hover { background: rgba(96, 165, 250, .09); }
+  html[data-bs-theme="dark"] .notification-message { color: #c4cedd; }
+  html[data-bs-theme="dark"] .notification-time { color: #94a3b8; }
+  html[data-bs-theme="dark"] .notification-open { color: #80b9ff; }
+  @media (max-width: 575.98px) {
+    .notification-main { grid-template-columns: 40px minmax(0, 1fr); padding: .85rem; }
+    .notification-icon { width: 40px; height: 40px; }
+    .notification-open { display: none; }
+    .notification-card form { padding-right: .5rem; }
+  }
+</style>
+{% endblock %}

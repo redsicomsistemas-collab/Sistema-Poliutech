@@ -1922,6 +1922,7 @@ def _send_quote_status_push(cot: Cotizacion, previous_status: str, new_status: s
             "pdf_url": pdf_url,
             "target_user_id": str(owner_ids[0]) if len(owner_ids) == 1 else "",
         },
+        recipient_user_ids=owner_ids,
     )
 
 
@@ -1957,6 +1958,7 @@ def _send_quote_review_result_push(cot: Cotizacion, selected_status: str, reason
             "pdf_url": _mobile_quote_pdf_url(cot.id),
             "target_user_id": str(target_ids[0]) if len(target_ids) == 1 else "",
         },
+        recipient_user_ids=target_ids,
     )
 
 
@@ -1998,6 +2000,7 @@ def _send_quote_updated_push(cot: Cotizacion) -> dict[str, int]:
             "source": "quote_updated",
             "target_user_id": str(target_ids[0]) if len(target_ids) == 1 else "",
         },
+        recipient_user_ids=target_ids,
     )
 
 
@@ -2034,6 +2037,7 @@ def _send_quote_approval_request_push(cot: Cotizacion) -> dict[str, int]:
             "approval_reviewer": "Hansel/Mescalera",
             "requires_decision": "true",
         },
+        recipient_user_ids=reviewer_ids,
     )
     logger.info(
         "Push aprobación %s: hansel_ids=%s reviewers=%s tokens=%s fallback=%s sent=%s failed=%s",
@@ -2090,6 +2094,7 @@ def _send_quote_followup_push(cot: Cotizacion, seg: CotizacionSeguimiento) -> di
             "autor": str(seg.autor or ""),
             "pdf_url": _mobile_quote_pdf_url(cot.id),
         },
+        recipient_user_ids=user_ids,
     )
 
 
@@ -2142,6 +2147,7 @@ def _send_due_quote_followup_reminders() -> None:
                 "cotizacion_id": str(cot.id),
                 "folio": str(cot.folio or ""),
             },
+            recipient_user_ids=[cot.responsable_usuario_id],
         )
         cot.recordatorio_seguimiento_en = ahora
     if pendientes:
@@ -2249,6 +2255,7 @@ def _send_quote_assignment_notifications(
                 "cotizacion_id": str(cotizaciones[0].id if len(cotizaciones) == 1 else ""),
                 "folios": shown_folios,
             },
+            recipient_user_ids=user_ids,
         )
     except Exception:
         results["push"]["failed"] = len(tokens)
@@ -2256,10 +2263,137 @@ def _send_quote_assignment_notifications(
     return results
 
 
-def _send_push_notification(tokens: list[str], title: str, body: str, data: Optional[dict[str, str]] = None) -> dict[str, int]:
+def _internal_notification_url(data: Optional[dict[str, str]]) -> str:
+    """Convierte el destino de un aviso en una ruta interna segura para el buzón."""
+    payload = data or {}
+    raw_url = str(payload.get("url") or "").strip()
+    if raw_url:
+        parsed = urlparse(raw_url)
+        if parsed.path.startswith("/"):
+            result = parsed.path
+            if parsed.query:
+                result += f"?{parsed.query}"
+            if parsed.fragment:
+                result += f"#{parsed.fragment}"
+            return result[:1200]
+
+    try:
+        if payload.get("cotizacion_id"):
+            return f"/cotizaciones/{int(payload['cotizacion_id'])}/ver"
+        if payload.get("gasto_id"):
+            return f"/gastos-viaticos/{int(payload['gasto_id'])}/detalle"
+        if payload.get("solicitud_id"):
+            return f"/solicitudes-recursos/{int(payload['solicitud_id'])}"
+        if payload.get("reporte_id"):
+            return f"/reportes-semanales/{int(payload['reporte_id'])}"
+        if payload.get("ticket_id"):
+            return f"/soporte/{int(payload['ticket_id'])}"
+        if payload.get("rrhh_id"):
+            return f"/recursos-humanos/{int(payload['rrhh_id'])}"
+    except (TypeError, ValueError):
+        pass
+    return "/notificaciones"
+
+
+def _admin_user_ids() -> list[int]:
+    return [
+        int(row.id)
+        for row in Usuario.query.filter(
+            or_(
+                db.func.lower(db.func.trim(Usuario.nombre)) == "admin",
+                db.func.upper(db.func.trim(Usuario.rol)) == "ADMIN",
+            )
+        ).all()
+        if row.id
+    ]
+
+
+def _create_in_app_notifications(
+    user_ids: Iterable[int],
+    *,
+    title: str,
+    body: str,
+    data: Optional[dict[str, str]] = None,
+    include_admin: bool = False,
+) -> int:
+    """Guarda un aviso por usuario; un fallo del buzón no bloquea el proceso origen."""
+    normalized_ids: set[int] = set()
+    for value in user_ids or []:
+        try:
+            if int(value) > 0:
+                normalized_ids.add(int(value))
+        except (TypeError, ValueError):
+            continue
+    if include_admin:
+        normalized_ids.update(_admin_user_ids())
+    if not normalized_ids:
+        return 0
+
+    payload = {str(key): str(value) for key, value in (data or {}).items()}
+    destination = _internal_notification_url(payload)
+    created_at = now_cdmx_naive()
+    try:
+        valid_ids = {
+            int(row[0])
+            for row in db.session.query(Usuario.id).filter(Usuario.id.in_(normalized_ids)).all()
+        }
+        for user_id in valid_ids:
+            db.session.add(InAppNotification(
+                usuario_id=user_id,
+                tipo=(payload.get("type") or "general")[:80],
+                titulo=(str(title or "Notificación").strip() or "Notificación")[:180],
+                mensaje=(str(body or "Tienes una actualización pendiente.").strip() or "Tienes una actualización pendiente."),
+                destino_url=destination,
+                creada_en=created_at,
+            ))
+        db.session.commit()
+        return len(valid_ids)
+    except Exception as exc:
+        db.session.rollback()
+        logger.warning("No se pudo guardar la notificación interna '%s': %s", title, exc)
+        return 0
+
+
+def _user_ids_for_emails(emails: Iterable[str]) -> list[int]:
+    normalized = {str(email or "").strip().lower() for email in emails or [] if str(email or "").strip()}
+    if not normalized:
+        return []
+    return [
+        int(user.id)
+        for user in Usuario.query.filter(db.func.lower(db.func.trim(Usuario.correo)).in_(normalized)).all()
+        if user.id
+    ]
+
+
+def _send_push_notification(
+    tokens: list[str],
+    title: str,
+    body: str,
+    data: Optional[dict[str, str]] = None,
+    recipient_user_ids: Optional[Iterable[int]] = None,
+) -> dict[str, int]:
+    requested_tokens = list(dict.fromkeys(
+        (token or "").strip() for token in (tokens or []) if (token or "").strip()
+    ))
+    inbox_user_ids: set[int] = set()
+    for value in recipient_user_ids or []:
+        try:
+            if int(value) > 0:
+                inbox_user_ids.add(int(value))
+        except (TypeError, ValueError):
+            continue
+    if requested_tokens:
+        inbox_user_ids.update(
+            int(row.usuario_id)
+            for row in MobileDevice.query.filter(MobileDevice.token.in_(requested_tokens)).all()
+            if row.usuario_id
+        )
+    _create_in_app_notifications(inbox_user_ids, title=title, body=body, data=data)
+
     if is_demo_user():
         logger.info("Push simulado en cuenta demo: %s", title)
         return {"sent": 0, "failed": 0}
+    tokens = requested_tokens
     if not tokens:
         return {"sent": 0, "failed": 0}
     app_instance = _get_firebase_app()
@@ -2615,6 +2749,13 @@ def _send_support_ticket_email(ticket: "TicketSoporte") -> None:
     if not recipients:
         raise ValueError("No hay correo configurado para soporte.")
     detail_url = url_for("soporte_ticket_detalle", ticket_id=ticket.id, _external=True)
+    _create_in_app_notifications(
+        _user_ids_for_emails(recipients),
+        title=f"Nuevo ticket de soporte {ticket.folio or ticket.id}",
+        body=f"{ticket.asunto or 'Sin asunto'} · Prioridad {ticket.prioridad or 'MEDIA'}",
+        data={"type": "ticket_soporte", "ticket_id": str(ticket.id), "url": detail_url},
+        include_admin=True,
+    )
     msg = EmailMessage()
     msg["Subject"] = f"Nuevo ticket de soporte {ticket.folio or ticket.id}"
     msg["From"] = f"SISTEMA MAR DE TICKETS <{SMTP_FROM or SMTP_USERNAME}>"
@@ -3318,6 +3459,7 @@ from models import (
     MobileDevice,
     NotificationRecipient,
     NotificationSubscription,
+    InAppNotification,
     MessengerNotificationOutbox,
     CompanyBranding,
     DemoEnvironment,
@@ -3411,6 +3553,98 @@ def load_user(user_id):
     except Exception:
         return None
 
+
+@app.context_processor
+def inject_in_app_notification_count():
+    unread_count = 0
+    if getattr(current_user, "is_authenticated", False):
+        try:
+            unread_count = InAppNotification.query.filter_by(
+                usuario_id=current_user.id,
+                leida_en=None,
+            ).count()
+        except Exception:
+            db.session.rollback()
+    return {
+        "notification_unread_count": unread_count,
+        "notification_unread_label": "99+" if unread_count > 99 else str(unread_count),
+    }
+
+
+@app.get("/notificaciones")
+@login_required
+def notificaciones():
+    estado = (request.args.get("estado") or "todas").strip().lower()
+    query = InAppNotification.query.filter_by(usuario_id=current_user.id)
+    if estado == "no-leidas":
+        query = query.filter(InAppNotification.leida_en.is_(None))
+    elif estado == "leidas":
+        query = query.filter(InAppNotification.leida_en.is_not(None))
+    else:
+        estado = "todas"
+
+    rows = query.order_by(InAppNotification.creada_en.desc(), InAppNotification.id.desc()).limit(300).all()
+    unread_count = InAppNotification.query.filter_by(usuario_id=current_user.id, leida_en=None).count()
+    total_count = InAppNotification.query.filter_by(usuario_id=current_user.id).count()
+    return render_template(
+        "notificaciones.html",
+        title="Mis notificaciones",
+        notifications=rows,
+        estado=estado,
+        unread_count=unread_count,
+        total_count=total_count,
+    )
+
+
+@app.get("/notificaciones/<int:notification_id>/abrir")
+@login_required
+def notificacion_abrir(notification_id: int):
+    notification = InAppNotification.query.filter_by(
+        id=notification_id,
+        usuario_id=current_user.id,
+    ).first_or_404()
+    if notification.leida_en is None:
+        notification.leida_en = now_cdmx_naive()
+        db.session.commit()
+    destination = (notification.destino_url or "").strip()
+    if not destination.startswith("/") or destination.startswith("//"):
+        destination = url_for("notificaciones")
+    return redirect(destination)
+
+
+@app.post("/notificaciones/marcar-leidas")
+@login_required
+def notificaciones_marcar_leidas():
+    updated = InAppNotification.query.filter_by(
+        usuario_id=current_user.id,
+        leida_en=None,
+    ).update({InAppNotification.leida_en: now_cdmx_naive()}, synchronize_session=False)
+    db.session.commit()
+    flash(f"Se marcaron {updated} notificación(es) como leídas.", "success")
+    return redirect(url_for("notificaciones"))
+
+
+@app.post("/notificaciones/<int:notification_id>/eliminar")
+@login_required
+def notificacion_eliminar(notification_id: int):
+    notification = InAppNotification.query.filter_by(
+        id=notification_id,
+        usuario_id=current_user.id,
+    ).first_or_404()
+    db.session.delete(notification)
+    db.session.commit()
+    flash("Notificación eliminada.", "success")
+    return redirect(url_for("notificaciones"))
+
+
+@app.post("/notificaciones/eliminar-todas")
+@login_required
+def notificaciones_eliminar_todas():
+    deleted = InAppNotification.query.filter_by(usuario_id=current_user.id).delete(synchronize_session=False)
+    db.session.commit()
+    flash(f"Se eliminaron {deleted} notificación(es).", "success")
+    return redirect(url_for("notificaciones"))
+
 # ---------------------------------------------------------
 # 🔒 Enforce login for ALL pages (except /login + static)
 # ---------------------------------------------------------
@@ -3462,7 +3696,7 @@ DEMO_MODULE_META = {
     "fondos": {"label": "Fondos", "icon": "💵", "endpoint": "solicitudes_recursos_index", "group": "Finanzas", "description": "Pide dinero, sigue la autorización y comprueba gastos."},
     "finanzas": {"label": "Panel financiero", "icon": "🏦", "endpoint": "finanzas_index", "group": "Finanzas", "description": "Visualiza movimientos y estado financiero."},
     "facturacion": {"label": "Facturación", "icon": "🧾", "endpoint": "facturacion.index", "group": "Finanzas", "description": "Administra facturas y configuración fiscal."},
-    "contabilidad": {"label": "Contabilidad", "icon": "📒", "endpoint": "contabilidad.index", "group": "Finanzas", "description": "Controla saldos, abonos, expedientes, personal y activos."},
+    "contabilidad": {"label": "Contabilidad", "icon": "📒", "endpoint": "contabilidad.index", "group": "Contabilidad", "description": "Controla saldos, abonos, expedientes, personal y activos."},
     "gastos": {"label": "Gastos y viáticos", "icon": "💸", "endpoint": "gastos_viaticos_index", "group": "Finanzas", "description": "Registra comprobantes, viáticos y revisiones."},
     "reportes": {"label": "Reportes semanales", "icon": "🗓️", "endpoint": "reportes_diarios_index", "group": "Gestión", "description": "Documenta actividades y avance semanal."},
     "rrhh": {"label": "Recursos Humanos", "icon": "👥", "endpoint": "rrhh_index", "group": "Gestión", "description": "Gestiona solicitudes y justificantes del personal."},
@@ -5121,6 +5355,14 @@ def _send_user_created_email(usuario: Usuario, created_by: Usuario | None = None
     msg.set_content(text_body)
     msg.add_alternative(html_body, subtype="html")
 
+    _create_in_app_notifications(
+        [usuario.id, *_user_ids_for_emails(recipients)],
+        title="Tu usuario de M.A.R. fue creado",
+        body=f"La cuenta {usuario.nombre or usuario.id} ya está disponible.",
+        data={"type": "usuario_alta_cambio", "url": url_for("index")},
+        include_admin=True,
+    )
+
     _send_smtp_message(msg, to_addrs=recipients)
 
 def _send_user_updated_email(
@@ -5226,6 +5468,14 @@ def _send_user_updated_email(
     msg["To"] = ", ".join(recipients)
     msg.set_content(text_body)
     msg.add_alternative(html_body, subtype="html")
+
+    _create_in_app_notifications(
+        [usuario.id, *_user_ids_for_emails(recipients)],
+        title="Tu usuario de M.A.R. fue actualizado",
+        body=f"Se modificó la cuenta {current_nombre or usuario.id}. Revisa tus datos de acceso.",
+        data={"type": "usuario_alta_cambio", "url": url_for("index")},
+        include_admin=True,
+    )
 
     _send_smtp_message(msg, to_addrs=recipients)
 
@@ -11649,6 +11899,15 @@ def _notify_tagged_followup(
     if not tagged_users:
         return 0
     view_url = url_for(view_endpoint, _external=True, **view_params)
+    preview = " ".join((comentario or "").split())
+    if len(preview) > 220:
+        preview = preview[:217].rstrip() + "..."
+    _create_in_app_notifications(
+        [user.id for user in tagged_users if user.id],
+        title=f"Te etiquetaron en {module_label}",
+        body=f"{autor or 'Sistema'} · {item_label}: {preview or 'Sin comentario.'}",
+        data={"type": "seguimiento_etiqueta", "url": view_url},
+    )
     return _send_followup_tag_emails(
         tagged_users=tagged_users,
         module_label=module_label,
@@ -14613,6 +14872,7 @@ def _send_reporte_diario_push_hansel(reporte: ReporteDiario) -> dict[str, int]:
             "folio": reporte.folio or "",
             "url": url_for("reporte_diario_detalle", reporte_id=reporte.id, _external=True),
         },
+        recipient_user_ids=user_ids,
     )
 
 
@@ -14778,6 +15038,7 @@ def _send_solicitud_recurso_push_hansel(solicitud: SolicitudRecurso) -> dict[str
             "folio": solicitud.folio or "",
             "url": url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id, _external=True),
         },
+        recipient_user_ids=user_ids,
     )
 
 
@@ -14904,6 +15165,7 @@ def _send_solicitud_recurso_resultado_push(solicitud: SolicitudRecurso) -> dict[
             "url": url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id, _external=True),
             "target_user_id": str(user_ids[0]) if len(user_ids) == 1 else "",
         },
+        recipient_user_ids=user_ids,
     )
 
 
@@ -14971,6 +15233,7 @@ def _send_solicitud_recurso_autorizada_finanzas_push(solicitud: SolicitudRecurso
             "url": url_for("solicitud_recurso_detalle", solicitud_id=solicitud.id, _external=True),
             "target_user_ids": ",".join(str(user_id) for user_id in user_ids),
         },
+        recipient_user_ids=user_ids,
     )
 
 
@@ -15966,6 +16229,7 @@ def _send_gastos_review_push_hansel(gasto: "ComprobacionGasto") -> dict[str, int
             "folio": gasto.folio or "",
             "url": url_for("gastos_viaticos_detalle", gasto_id=gasto.id, _external=True),
         },
+        recipient_user_ids=user_ids,
     )
 
 
@@ -15999,6 +16263,7 @@ def _send_gastos_group_review_push_hansel(gastos: list["ComprobacionGasto"]) -> 
                 _external=True,
             ),
         },
+        recipient_user_ids=user_ids,
     )
 
 
@@ -16193,6 +16458,7 @@ def _send_gastos_authorized_finanzas_push(gastos: list["ComprobacionGasto"]) -> 
             "url": url_for("gastos_viaticos_detalle", gasto_id=first.id, _external=True),
             "target_user_ids": ",".join(str(user_id) for user_id in user_ids),
         },
+        recipient_user_ids=user_ids,
     )
 
 
@@ -16242,6 +16508,7 @@ def _notify_gasto_resultado_solicitante(gasto: "ComprobacionGasto") -> None:
             data={"type": "gasto_resultado", "gasto_id": str(gasto.id), "estatus": estatus,
                   "motivo_rechazo": motivo, "url": detail_url,
                   "target_user_id": str(user_ids[0]) if user_ids else ""},
+            recipient_user_ids=user_ids,
         )
     except Exception as exc:
         logger.warning("Push resultado gasto %s fallo: %s", gasto.folio or gasto.id, exc)
@@ -19760,9 +20027,26 @@ def _rrhh_email(item: SolicitudRH, *, resultado: bool = False) -> None:
     if resultado:
         recipients = _unique_emails(_parse_email_list(item.empleado_correo), _parse_email_list(RH_AUDIT_EMAIL))
         msg["Subject"] = f"{item.estatus}: {tipo_label} {item.folio}"
+        notification_user_ids = [item.empleado_id] if item.empleado_id else []
+        notification_title = f"Tu solicitud quedó {item.estatus.lower()}"
+        notification_body = f"{item.folio} · {tipo_label}"
     else:
         recipients = _unique_emails(_parse_email_list(RH_APPROVAL_EMAILS), _parse_email_list(RH_AUDIT_EMAIL))
         msg["Subject"] = f"RR. HH. - {tipo_label} {item.folio} pendiente de revisión"
+        notification_user_ids = _user_ids_for_emails(recipients)
+        notification_title = "Solicitud de RR. HH. pendiente"
+        notification_body = f"{item.folio} · {item.empleado_nombre} · {tipo_label}"
+    _create_in_app_notifications(
+        notification_user_ids,
+        title=notification_title,
+        body=notification_body,
+        data={
+            "type": "rrhh_resultado" if resultado else "rrhh_solicitud",
+            "rrhh_id": str(item.id),
+            "url": detail_url,
+        },
+        include_admin=True,
+    )
     if not recipients:
         return
     msg["To"] = ", ".join(recipients)
