@@ -3106,6 +3106,7 @@ except Exception:
     get_column_letter = None
 
 # WhatsApp Cloud API (Meta)
+from apscheduler.schedulers.background import BackgroundScheduler
 
 # Auth (Flask-Login)
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
@@ -3261,6 +3262,14 @@ def _send_smtp_message(
 FIREBASE_CREDENTIALS_FILE = os.getenv("FIREBASE_CREDENTIALS_FILE", "").strip()
 FIREBASE_CREDENTIALS_JSON = os.getenv("FIREBASE_CREDENTIALS_JSON", "").strip()
 PUSH_NOTIFICATIONS_ENABLED = os.getenv("PUSH_NOTIFICATIONS_ENABLED", "1").strip().lower() not in {"0", "false", "no"}
+POLIUTECH_MESSENGER_URL = (
+    os.getenv("POLIUTECH_MESSENGER_URL", "https://poliutech-connect.onrender.com").strip().rstrip("/")
+)
+MAR_MESSENGER_SHARED_SECRET = os.getenv("MAR_MESSENGER_SHARED_SECRET", "").strip()
+MESSENGER_REQUEST_TIMEOUT_SECONDS = max(
+    2.0,
+    min(30.0, float(os.getenv("MESSENGER_REQUEST_TIMEOUT_SECONDS", "8"))),
+)
 
 NOTIFICATION_EVENT_CATALOG = {
     "rrhh_solicitud": ("Recursos Humanos", "Nueva solicitud o justificante"),
@@ -3309,6 +3318,7 @@ from models import (
     MobileDevice,
     NotificationRecipient,
     NotificationSubscription,
+    MessengerNotificationOutbox,
     CompanyBranding,
     DemoEnvironment,
     DemoInvitation,
@@ -8455,6 +8465,18 @@ def crear_prospecto_seguimiento(prospecto_id: int):
         fecha_seguimiento=now_cdmx_naive(),
     )
     db.session.add(seg)
+    db.session.flush()
+    _queue_followup_messenger_reminder(
+        usuario=current_user,
+        module_key="prospecto",
+        module_label="Prospectos",
+        item_id=prospecto.id,
+        item_label=prospecto.titulo or f"Prospecto #{prospecto.id}",
+        seguimiento_id=seg.id,
+        comentario=comentario,
+        view_endpoint="prospecto_seguimiento",
+        view_params={"prospecto_id": prospecto.id, "_anchor": f"seguimiento-{seg.id}"},
+    )
     db.session.commit()
     try:
         _notify_tagged_followup(
@@ -9168,6 +9190,18 @@ def crear_registro_obra_seguimiento(registro_id: int):
         actualizado_en=now_cdmx_naive(),
     )
     db.session.add(seg)
+    db.session.flush()
+    _queue_followup_messenger_reminder(
+        usuario=current_user,
+        module_key="registro-obra",
+        module_label="Registro de obras",
+        item_id=registro.id,
+        item_label=registro.obra or f"Obra #{registro.id}",
+        seguimiento_id=seg.id,
+        comentario=comentario,
+        view_endpoint="registro_obra_seguimiento",
+        view_params={"registro_id": registro.id, "_anchor": f"seguimiento-{seg.id}"},
+    )
     db.session.commit()
     try:
         _notify_tagged_followup(
@@ -11031,6 +11065,18 @@ def crear_cotizacion_seguimiento(cot_id: int):
             actualizado_en=now_cdmx_naive(),
         )
         db.session.add(seg)
+        db.session.flush()
+        _queue_followup_messenger_reminder(
+            usuario=current_user,
+            module_key="cotizacion",
+            module_label="Cotizaciones",
+            item_id=c.id,
+            item_label=c.folio or f"Cotización #{c.id}",
+            seguimiento_id=seg.id,
+            comentario=comentario,
+            view_endpoint="cotizacion_seguimiento",
+            view_params={"cot_id": c.id, "_anchor": f"seguimiento-{seg.id}"},
+        )
         c.ultimo_contacto = now_cdmx_naive()
 
     db.session.commit()
@@ -11611,6 +11657,130 @@ def _notify_tagged_followup(
         comentario=comentario,
         view_url=view_url,
     )
+
+
+def _queue_messenger_notification(
+    *,
+    usuario: Usuario,
+    source_key: str,
+    title: str,
+    body: str,
+    view_url: str,
+    deliver_at: datetime,
+) -> Optional[MessengerNotificationOutbox]:
+    correo = (getattr(usuario, "correo", None) or "").strip().lower()
+    if not correo:
+        logger.warning(
+            "Messenger: el usuario %s no tiene correo; no se encoló %s.",
+            getattr(usuario, "id", None),
+            source_key,
+        )
+        return None
+
+    if deliver_at.tzinfo is None:
+        deliver_at = deliver_at.replace(tzinfo=TZ_CDMX)
+    payload = {
+        "email": correo,
+        "sourceKey": source_key,
+        "title": title[:180],
+        "body": body[:2000],
+        "url": view_url,
+        "deliverAt": deliver_at.isoformat(),
+    }
+    existing = MessengerNotificationOutbox.query.filter_by(source_key=source_key).first()
+    if existing is not None:
+        return existing
+
+    entry = MessengerNotificationOutbox(
+        source_key=source_key,
+        usuario_id=getattr(usuario, "id", None),
+        correo=correo,
+        payload_json=json.dumps(payload, ensure_ascii=False),
+        siguiente_intento_en=now_cdmx_naive(),
+    )
+    db.session.add(entry)
+    return entry
+
+
+def _queue_followup_messenger_reminder(
+    *,
+    usuario: Usuario,
+    module_key: str,
+    module_label: str,
+    item_id: int,
+    item_label: str,
+    seguimiento_id: int,
+    comentario: str,
+    view_endpoint: str,
+    view_params: dict,
+) -> Optional[MessengerNotificationOutbox]:
+    preview = " ".join((comentario or "").split())
+    if len(preview) > 360:
+        preview = preview[:357].rstrip() + "..."
+    return _queue_messenger_notification(
+        usuario=usuario,
+        source_key=f"{module_key}:{item_id}:seguimiento:{seguimiento_id}:dia-siguiente",
+        title=f"Recordatorio de seguimiento · {item_label}",
+        body=(
+            f"Ayer registraste un seguimiento en {module_label}. "
+            f"Revísalo hoy: {preview or 'Sin comentario.'}"
+        ),
+        view_url=url_for(view_endpoint, _external=True, **view_params),
+        deliver_at=datetime.now(TZ_CDMX) + timedelta(days=1),
+    )
+
+
+def procesar_messenger_notification_outbox(limit: int = 50) -> dict[str, int]:
+    result = {"checked": 0, "sent": 0, "failed": 0}
+    if not POLIUTECH_MESSENGER_URL or not MAR_MESSENGER_SHARED_SECRET:
+        return result
+
+    with app.app_context():
+        ahora = now_cdmx_naive()
+        rows = (
+            MessengerNotificationOutbox.query
+            .filter(
+                MessengerNotificationOutbox.enviado_en.is_(None),
+                MessengerNotificationOutbox.siguiente_intento_en <= ahora,
+            )
+            .order_by(MessengerNotificationOutbox.siguiente_intento_en.asc())
+            .limit(max(1, min(int(limit), 200)))
+            .all()
+        )
+        result["checked"] = len(rows)
+
+        for entry in rows:
+            try:
+                payload = json.loads(entry.payload_json)
+                response = requests.post(
+                    f"{POLIUTECH_MESSENGER_URL}/api/integrations/mar/notifications",
+                    headers={
+                        "Authorization": f"Bearer {MAR_MESSENGER_SHARED_SECRET}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                    timeout=(3.05, MESSENGER_REQUEST_TIMEOUT_SECONDS),
+                )
+                response.raise_for_status()
+                entry.enviado_en = now_cdmx_naive()
+                entry.ultimo_error = None
+                result["sent"] += 1
+            except Exception as exc:
+                entry.intentos = int(entry.intentos or 0) + 1
+                espera_minutos = min(360, 2 ** min(entry.intentos, 8))
+                entry.siguiente_intento_en = now_cdmx_naive() + timedelta(minutes=espera_minutos)
+                entry.ultimo_error = f"{type(exc).__name__}: {exc}"[:1000]
+                result["failed"] += 1
+                logger.warning(
+                    "Messenger: fallo al despachar %s (intento %s): %s",
+                    entry.source_key,
+                    entry.intentos,
+                    exc,
+                )
+            finally:
+                entry.actualizado_en = now_cdmx_naive()
+                db.session.commit()
+    return result
 
 
 def _send_cotizacion_email(c: Cotizacion, recipients: list[str], cc: list[str] | None = None, bcc: list[str] | None = None) -> None:
@@ -19781,6 +19951,28 @@ try:
     app.register_blueprint(contabilidad_bp)
 except Exception as e:
     print(f"[WARN] No se pudo cargar blueprint contabilidad_routes: {e}", file=sys.stderr)
+
+# ---------------------------------------------------------
+# Entrega de notificaciones a Poliutech Messenger
+# ---------------------------------------------------------
+scheduler: Optional[BackgroundScheduler] = None
+try:
+    flask_debug_enabled = os.getenv("FLASK_DEBUG", "0").strip().lower() in {"1", "true", "yes"}
+    if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not flask_debug_enabled:
+        scheduler = BackgroundScheduler(timezone=TZ_CDMX, daemon=True)
+        scheduler.add_job(
+            procesar_messenger_notification_outbox,
+            "interval",
+            minutes=1,
+            id="messenger_notification_outbox",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+        )
+        scheduler.start()
+        print("[Scheduler] Messenger iniciado (cada minuto).")
+except Exception as exc:
+    print(f"[Scheduler] Messenger no pudo iniciar: {exc}", file=sys.stderr)
 
 # ---------------------------------------------------------
 # Main

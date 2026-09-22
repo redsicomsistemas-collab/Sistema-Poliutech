@@ -467,6 +467,27 @@ class NotificationSubscription(db.Model):
         return f"<NotificationSubscription recipient={self.destinatario_id} {self.evento}/{self.canal}>"
 
 
+class MessengerNotificationOutbox(db.Model):
+    __tablename__ = "messenger_notification_outbox"
+
+    id = db.Column(db.Integer, primary_key=True)
+    source_key = db.Column(db.String(240), nullable=False, unique=True, index=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True, index=True)
+    correo = db.Column(db.String(160), nullable=False, index=True)
+    payload_json = db.Column(db.Text, nullable=False)
+    intentos = db.Column(db.Integer, default=0, nullable=False)
+    siguiente_intento_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    enviado_en = db.Column(db.DateTime, index=True)
+    ultimo_error = db.Column(db.Text)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    usuario = db.relationship("Usuario", backref=db.backref("messenger_notification_outbox", lazy=True))
+
+    def __repr__(self):
+        return f"<MessengerNotificationOutbox {self.source_key}>"
+
+
 class CompanyBranding(db.Model):
     __tablename__ = "company_branding"
 
