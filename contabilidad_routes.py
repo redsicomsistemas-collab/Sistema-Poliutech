@@ -419,6 +419,59 @@ def _files_from_initial_form(category: dict) -> list[tuple[object, str, str]]:
     return uploads
 
 
+def _labor_obligations_from_initial_form(record: ContabilidadRegistro) -> list[ContabilidadObligacionLaboral]:
+    row_markers = request.form.getlist("obligacion_incluir")
+    if not row_markers:
+        return []
+
+    values = {
+        field: request.form.getlist(f"obligacion_{field}")
+        for field in (
+            "tipo",
+            "periodo",
+            "concepto",
+            "importe",
+            "fecha_pago",
+            "estatus",
+            "referencia",
+            "notas",
+        )
+    }
+
+    def _value(field: str, index: int) -> str:
+        items = values[field]
+        return (items[index] if index < len(items) else "").strip()
+
+    lines: list[ContabilidadObligacionLaboral] = []
+    for index, _ in enumerate(row_markers):
+        obligation_type = _value("tipo", index).upper()
+        status = (_value("estatus", index) or "PENDIENTE").upper()
+        if obligation_type not in LABOR_OBLIGATION_TYPES or status not in LABOR_OBLIGATION_STATUSES:
+            raise ValueError(f"La línea {index + 1} de IMSS/ISR/INFONAVIT tiene un tipo o estatus no válido.")
+        try:
+            period = _period(_value("periodo", index))
+            amount = _money(_value("importe", index))
+            payment_date = _date(_value("fecha_pago", index), required=False)
+        except ValueError as exc:
+            raise ValueError(f"Línea {index + 1} de IMSS/ISR/INFONAVIT: {exc}") from exc
+        lines.append(
+            ContabilidadObligacionLaboral(
+                registro_id=record.id,
+                tipo=obligation_type,
+                periodo=period,
+                concepto=_value("concepto", index)[:180] or None,
+                referencia=_value("referencia", index)[:120] or None,
+                importe=amount,
+                fecha_pago=payment_date,
+                estatus=status,
+                notas=_value("notas", index) or None,
+                usuario_id=getattr(current_user, "id", None),
+                usuario_nombre=_current_user_name(),
+            )
+        )
+    return lines
+
+
 def _apply_form(record: ContabilidadRegistro, category: dict) -> None:
     source_record = None
     source_id = request.form.get("registro_origen_id", type=int)
@@ -734,6 +787,9 @@ def registros(slug: str):
             _apply_form(record, category)
             db.session.add(record)
             db.session.flush()
+            if category["tipo"] == "TRABAJADOR":
+                for line in _labor_obligations_from_initial_form(record):
+                    db.session.add(line)
             for upload, document_type, description in _files_from_initial_form(category):
                 document = _save_pdf(upload, record, document_type, description)
                 if document:
@@ -775,7 +831,10 @@ def registros(slug: str):
         status=status,
         legal_entity=legal_entity,
         worker_legal_entities=_worker_legal_entities() if category["tipo"] == "TRABAJADOR" else [],
+        labor_obligation_types=LABOR_OBLIGATION_TYPES,
+        labor_obligation_statuses=LABOR_OBLIGATION_STATUSES,
         today=datetime.now().date().isoformat(),
+        current_period=datetime.now().strftime("%Y-%m"),
     )
 
 

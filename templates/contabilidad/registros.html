@@ -211,6 +211,43 @@
             <div class="input-group"><span class="input-group-text">$</span><input class="form-control" name="monto_total" type="number" min="0" step="0.01" value="{{ selected_alta.monto_credito if selected_alta and selected_alta.credito else '' }}" {% if category.financial %}required{% endif %}><select class="form-select" name="moneda" style="max-width: 95px"><option>MXN</option><option>USD</option></select></div>
           </div>
 
+          {% if category.tipo == 'TRABAJADOR' %}
+          <div class="col-12">
+            <section class="border rounded-3 overflow-hidden bg-light-subtle" id="newWorkerObligations">
+              <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 p-3 border-bottom bg-white">
+                <div>
+                  <h3 class="h6 fw-bold mb-1" tabindex="0" data-bs-toggle="tooltip" data-bs-placement="top" title="Agrega una línea por cada obligación que corresponda al trabajador. Puedes capturar varias líneas de IMSS, ISR o INFONAVIT antes de guardar el alta.">🧾 IMSS / ISR / INFONAVIT ⓘ</h3>
+                  <div class="small text-muted">Agrega aquí las líneas aplicables. Si aún no corresponde ninguna, puedes guardar el alta sin líneas y capturarlas después desde el expediente.</div>
+                </div>
+                <button class="btn btn-outline-primary flex-shrink-0" type="button" id="addInitialLaborObligation">＋ Agregar línea</button>
+              </div>
+              <div class="p-3">
+                <div id="initialLaborObligationEmpty" class="text-center text-muted py-3">No se han agregado líneas.</div>
+                <div id="initialLaborObligationRows" class="d-grid gap-3"></div>
+              </div>
+            </section>
+            <template id="initialLaborObligationTemplate">
+              <div class="border rounded-3 bg-white p-3" data-labor-obligation-row>
+                <input type="hidden" name="obligacion_incluir" value="1">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                  <strong>Línea <span data-labor-line-number></span></strong>
+                  <button class="btn btn-sm btn-outline-danger" type="button" data-remove-labor-line>Quitar línea</button>
+                </div>
+                <div class="row g-3">
+                  <div class="col-md-2"><label class="form-label small fw-semibold">Tipo *</label><select class="form-select" name="obligacion_tipo" required>{% for key, label in labor_obligation_types.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
+                  <div class="col-md-2"><label class="form-label small fw-semibold">Periodo *</label><input class="form-control" name="obligacion_periodo" type="month" value="{{ current_period }}" required></div>
+                  <div class="col-md-3"><label class="form-label small fw-semibold">Concepto</label><input class="form-control" name="obligacion_concepto" maxlength="180" placeholder="Ej. Cuota patronal"></div>
+                  <div class="col-md-2"><label class="form-label small fw-semibold">Importe</label><div class="input-group"><span class="input-group-text">$</span><input class="form-control" name="obligacion_importe" type="number" min="0" step="0.01"></div></div>
+                  <div class="col-md-3"><label class="form-label small fw-semibold">Estatus *</label><select class="form-select" name="obligacion_estatus" required>{% for key, label in labor_obligation_statuses.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
+                  <div class="col-md-3"><label class="form-label small fw-semibold">Fecha de pago</label><input class="form-control" name="obligacion_fecha_pago" type="date"></div>
+                  <div class="col-md-3"><label class="form-label small fw-semibold">Referencia</label><input class="form-control" name="obligacion_referencia" maxlength="120"></div>
+                  <div class="col-md-6"><label class="form-label small fw-semibold">Notas</label><input class="form-control" name="obligacion_notas"></div>
+                </div>
+              </div>
+            </template>
+          </div>
+          {% endif %}
+
           {% if category.tipo in ['CLIENTE', 'PROVEEDOR'] %}
           <div class="col-md-6">
             <label class="form-label fw-semibold">PDF de registro / alta</label>
@@ -295,6 +332,36 @@
 </div>
 {% if category.tipo == 'TRABAJADOR' %}
 <datalist id="workerLegalEntities">{% for name in worker_legal_entities %}<option value="{{ name }}"></option>{% endfor %}</datalist>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const addButton = document.getElementById("addInitialLaborObligation");
+  const rows = document.getElementById("initialLaborObligationRows");
+  const emptyState = document.getElementById("initialLaborObligationEmpty");
+  const template = document.getElementById("initialLaborObligationTemplate");
+  if (!addButton || !rows || !emptyState || !template) return;
+
+  const renumber = () => {
+    const currentRows = [...rows.querySelectorAll("[data-labor-obligation-row]")];
+    currentRows.forEach((row, index) => {
+      const number = row.querySelector("[data-labor-line-number]");
+      if (number) number.textContent = String(index + 1);
+    });
+    emptyState.classList.toggle("d-none", currentRows.length > 0);
+  };
+
+  addButton.addEventListener("click", () => {
+    const fragment = template.content.cloneNode(true);
+    const row = fragment.querySelector("[data-labor-obligation-row]");
+    row?.querySelector("[data-remove-labor-line]")?.addEventListener("click", () => {
+      row.remove();
+      renumber();
+    });
+    rows.appendChild(fragment);
+    renumber();
+    row?.querySelector("select")?.focus();
+  });
+});
+</script>
 {% endif %}
 {% if category.financial %}
 <script>
