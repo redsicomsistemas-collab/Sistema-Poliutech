@@ -28,7 +28,15 @@ from sqlalchemy import or_
 from werkzeug.utils import secure_filename
 
 from contabilidad_access import can_access_contabilidad, can_manage_contabilidad
-from models import ContabilidadAbono, ContabilidadDocumento, ContabilidadRegistro, db
+from models import (
+    ContabilidadAbono,
+    ContabilidadBancoCuenta,
+    ContabilidadBancoMovimiento,
+    ContabilidadDocumento,
+    ContabilidadObligacionLaboral,
+    ContabilidadRegistro,
+    db,
+)
 
 
 contabilidad_bp = Blueprint("contabilidad", __name__, url_prefix="/contabilidad")
@@ -97,6 +105,29 @@ DOCUMENT_TYPES = {
     "TARJETA_CIRCULACION": "Tarjeta de circulación",
 }
 
+LABOR_OBLIGATION_TYPES = {
+    "IMSS": "IMSS",
+    "ISR": "ISR",
+    "INFONAVIT": "INFONAVIT",
+}
+
+LABOR_OBLIGATION_STATUSES = {
+    "PENDIENTE": "Pendiente",
+    "PAGADO": "Pagado",
+    "NO_APLICA": "No aplica",
+}
+
+BANK_MOVEMENT_TYPES = (
+    "Depósito",
+    "Transferencia",
+    "Cheque",
+    "Retiro",
+    "Comisión bancaria",
+    "Interés",
+    "Impuesto",
+    "Otro",
+)
+
 
 @contabilidad_bp.before_request
 def _restrict_accounting_module():
@@ -142,6 +173,16 @@ def _money(raw: str | None, *, required: bool = False) -> float:
     return float(value)
 
 
+def _signed_money(raw: str | None) -> float:
+    normalized = (raw or "").strip().replace(",", "")
+    if not normalized:
+        return 0.0
+    try:
+        return float(Decimal(normalized).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP))
+    except InvalidOperation as exc:
+        raise ValueError("Captura un saldo inicial válido.") from exc
+
+
 def _date(raw: str | None, *, required: bool = True):
     value = (raw or "").strip()
     if not value and not required:
@@ -150,6 +191,22 @@ def _date(raw: str | None, *, required: bool = True):
         return datetime.strptime(value, "%Y-%m-%d").date()
     except ValueError as exc:
         raise ValueError("Captura una fecha válida.") from exc
+
+
+def _filter_date(raw: str | None):
+    try:
+        return _date(raw, required=False)
+    except ValueError:
+        return None
+
+
+def _period(raw: str | None) -> str:
+    value = (raw or "").strip()
+    try:
+        datetime.strptime(value, "%Y-%m")
+    except ValueError as exc:
+        raise ValueError("Selecciona un periodo válido para la línea IMSS/ISR/INFONAVIT.") from exc
+    return value
 
 
 def _optional_year(raw: str | None) -> int | None:
@@ -390,6 +447,8 @@ def _apply_form(record: ContabilidadRegistro, category: dict) -> None:
     start_date = _date(request.form.get("fecha_inicio"))
     record.nombre = name[:180]
     record.razon_social = _form_value("razon_social")[:200] or None
+    if category["tipo"] == "TRABAJADOR" and not record.razon_social:
+        raise ValueError("La Razón social de alta es obligatoria para clasificar al trabajador.")
     record.rfc = _form_value("rfc").upper()[:20] or None
     record.regimen_fiscal = _form_value("regimen_fiscal")[:10] or None
     record.codigo_postal_fiscal = _form_value("codigo_postal_fiscal")[:10] or None
@@ -433,6 +492,7 @@ def _filtered_query(category: dict | None = None):
         query = query.filter(ContabilidadRegistro.tipo == category["tipo"])
     q = (request.args.get("q") or "").strip()
     status = (request.args.get("estatus") or "").strip().upper()
+    legal_entity = (request.args.get("razon_social_alta") or "").strip()
     if q:
         like = f"%{q}%"
         query = query.filter(
@@ -448,13 +508,80 @@ def _filtered_query(category: dict | None = None):
         )
     if status in {"PENDIENTE", "LIQUIDADO", "ACTIVO", "INACTIVO"}:
         query = query.filter(ContabilidadRegistro.estatus == status)
-    return query, q, status
+    if category and category["tipo"] == "TRABAJADOR" and legal_entity:
+        query = query.filter(ContabilidadRegistro.razon_social == legal_entity)
+    return query, q, status, legal_entity
+
+
+def _worker_legal_entities() -> list[str]:
+    rows = (
+        db.session.query(ContabilidadRegistro.razon_social)
+        .filter(
+            ContabilidadRegistro.tipo == "TRABAJADOR",
+            ContabilidadRegistro.razon_social.isnot(None),
+            ContabilidadRegistro.razon_social != "",
+        )
+        .distinct()
+        .order_by(ContabilidadRegistro.razon_social.asc())
+        .all()
+    )
+    return [str(row[0]).strip() for row in rows if row[0] and str(row[0]).strip()]
+
+
+def _bank_filtered_query():
+    query = ContabilidadBancoMovimiento.query.join(ContabilidadBancoCuenta)
+    account_id = request.args.get("cuenta", type=int)
+    q = (request.args.get("q") or "").strip()
+    reconciliation = (request.args.get("conciliado") or "").strip().lower()
+    start_date = _filter_date(request.args.get("desde"))
+    end_date = _filter_date(request.args.get("hasta"))
+    if account_id:
+        query = query.filter(ContabilidadBancoMovimiento.cuenta_id == account_id)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            or_(
+                ContabilidadBancoCuenta.razon_social.ilike(like),
+                ContabilidadBancoCuenta.banco.ilike(like),
+                ContabilidadBancoCuenta.numero_cuenta.ilike(like),
+                ContabilidadBancoMovimiento.referencia.ilike(like),
+                ContabilidadBancoMovimiento.beneficiario.ilike(like),
+                ContabilidadBancoMovimiento.concepto.ilike(like),
+                ContabilidadBancoMovimiento.proyecto.ilike(like),
+            )
+        )
+    if reconciliation == "si":
+        query = query.filter(ContabilidadBancoMovimiento.conciliado.is_(True))
+    elif reconciliation == "no":
+        query = query.filter(ContabilidadBancoMovimiento.conciliado.is_(False))
+    if start_date:
+        query = query.filter(ContabilidadBancoMovimiento.fecha >= start_date)
+    if end_date:
+        query = query.filter(ContabilidadBancoMovimiento.fecha <= end_date)
+    return query, {
+        "account_id": account_id,
+        "q": q,
+        "reconciliation": reconciliation,
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+
+
+def _bank_running_balances(accounts: list[ContabilidadBancoCuenta]) -> dict[int, float]:
+    balances: dict[int, float] = {}
+    for account in accounts:
+        current = float(account.saldo_inicial or 0)
+        for movement in sorted(account.movimientos or [], key=lambda item: (item.fecha, item.id)):
+            current += float(movement.abono or 0) - float(movement.cargo or 0)
+            balances[movement.id] = round(current, 2)
+    return balances
 
 
 @contabilidad_bp.get("/")
 @login_required
 def index():
     records = ContabilidadRegistro.query.order_by(ContabilidadRegistro.actualizado_en.desc()).all()
+    bank_accounts = ContabilidadBancoCuenta.query.order_by(ContabilidadBancoCuenta.id.asc()).all()
     cards = []
     for slug, data in CATEGORIES.items():
         category_records = [item for item in records if item.tipo == data["tipo"]]
@@ -476,8 +603,118 @@ def index():
         total_monto=sum(float(item.monto_total or 0) for item in financial),
         total_abonado=sum(float(item.total_abonado or 0) for item in financial),
         total_saldo=sum(float(item.saldo_pendiente or 0) for item in financial),
+        bank_account_count=len(bank_accounts),
+        bank_movement_count=sum(len(item.movimientos or []) for item in bank_accounts),
+        bank_total_balance=sum(float(item.saldo_actual or 0) for item in bank_accounts),
         category_by_type=CATEGORY_BY_TYPE,
     )
+
+
+@contabilidad_bp.get("/bancos")
+@login_required
+def bancos():
+    accounts = ContabilidadBancoCuenta.query.order_by(
+        ContabilidadBancoCuenta.razon_social.asc(),
+        ContabilidadBancoCuenta.banco.asc(),
+        ContabilidadBancoCuenta.numero_cuenta.asc(),
+    ).all()
+    query, filters = _bank_filtered_query()
+    movements = query.order_by(
+        ContabilidadBancoMovimiento.fecha.desc(),
+        ContabilidadBancoMovimiento.id.desc(),
+    ).all()
+    return render_template(
+        "contabilidad/bancos.html",
+        accounts=accounts,
+        movements=movements,
+        running_balances=_bank_running_balances(accounts),
+        filters=filters,
+        movement_types=BANK_MOVEMENT_TYPES,
+        can_manage=_can_manage_records(),
+        today=datetime.now().date().isoformat(),
+        total_cargos=sum(float(item.cargo or 0) for item in movements),
+        total_abonos=sum(float(item.abono or 0) for item in movements),
+        total_balance=sum(float(item.saldo_actual or 0) for item in accounts),
+    )
+
+
+@contabilidad_bp.post("/bancos/cuentas")
+@login_required
+def agregar_cuenta_bancaria():
+    _require_manage()
+    legal_name = (request.form.get("razon_social") or "").strip()
+    bank_name = (request.form.get("banco") or "").strip()
+    account_number = (request.form.get("numero_cuenta") or "").strip()
+    if not legal_name or not bank_name or not account_number:
+        flash("Razón social, banco y número de cuenta son obligatorios.", "warning")
+        return redirect(url_for("contabilidad.bancos") + "#cuentas")
+    try:
+        initial_balance = _signed_money(request.form.get("saldo_inicial"))
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for("contabilidad.bancos") + "#cuentas")
+    account = ContabilidadBancoCuenta(
+        razon_social=legal_name[:200],
+        banco=bank_name[:120],
+        nombre_cuenta=(request.form.get("nombre_cuenta") or "").strip()[:160] or None,
+        numero_cuenta=account_number[:80],
+        clabe=(request.form.get("clabe") or "").strip()[:24] or None,
+        moneda=(request.form.get("moneda") or "MXN").strip().upper()[:10] or "MXN",
+        saldo_inicial=initial_balance,
+        notas=(request.form.get("notas") or "").strip() or None,
+        creado_por_id=getattr(current_user, "id", None),
+        creado_por_nombre=_current_user_name(),
+    )
+    db.session.add(account)
+    db.session.commit()
+    flash("Cuenta bancaria agregada al auxiliar.", "success")
+    return redirect(url_for("contabilidad.bancos") + "#cuentas")
+
+
+@contabilidad_bp.post("/bancos/movimientos")
+@login_required
+def agregar_movimiento_bancario():
+    _require_manage()
+    account = db.session.get(ContabilidadBancoCuenta, request.form.get("cuenta_id", type=int))
+    if account is None:
+        flash("Selecciona una cuenta bancaria válida.", "warning")
+        return redirect(url_for("contabilidad.bancos") + "#movimientos")
+    try:
+        movement_date = _date(request.form.get("fecha"))
+        cargo = _money(request.form.get("cargo"))
+        credit = _money(request.form.get("abono"))
+        reconciliation_date = _date(request.form.get("fecha_conciliacion"), required=False)
+        if (cargo > 0) == (credit > 0):
+            raise ValueError("Captura un importe únicamente en Cargo o en Abono.")
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for("contabilidad.bancos") + "#movimientos")
+    concept = (request.form.get("concepto") or "").strip()
+    movement_type = (request.form.get("tipo") or "").strip()
+    if not concept or movement_type not in BANK_MOVEMENT_TYPES:
+        flash("Selecciona el tipo de movimiento y captura el concepto.", "warning")
+        return redirect(url_for("contabilidad.bancos") + "#movimientos")
+    reconciled = request.form.get("conciliado") == "1"
+    movement = ContabilidadBancoMovimiento(
+        cuenta_id=account.id,
+        fecha=movement_date,
+        tipo=movement_type,
+        referencia=(request.form.get("referencia") or "").strip()[:120] or None,
+        beneficiario=(request.form.get("beneficiario") or "").strip()[:180] or None,
+        concepto=concept[:300],
+        proyecto=(request.form.get("proyecto") or "").strip()[:200] or None,
+        cargo=cargo,
+        abono=credit,
+        conciliado=reconciled,
+        fecha_conciliacion=(reconciliation_date or movement_date) if reconciled else None,
+        notas=(request.form.get("notas") or "").strip() or None,
+        usuario_id=getattr(current_user, "id", None),
+        usuario_nombre=_current_user_name(),
+    )
+    db.session.add(movement)
+    db.session.commit()
+    flash("Movimiento agregado al auxiliar de bancos.", "success")
+    return redirect(url_for("contabilidad.bancos", cuenta=account.id) + "#reporte")
 
 
 @contabilidad_bp.route("/<slug>", methods=["GET", "POST"])
@@ -516,7 +753,7 @@ def registros(slug: str):
         flash(f"{success_label} de {category['singular']} registrado correctamente.", "success")
         return redirect(url_for("contabilidad.detalle", slug=slug, record_id=record.id))
 
-    query, q, status = _filtered_query(category)
+    query, q, status, legal_entity = _filtered_query(category)
     records = query.order_by(ContabilidadRegistro.fecha_inicio.desc(), ContabilidadRegistro.id.desc()).all()
     altas = _load_altas(category) if category["financial"] else []
     selected_alta = None
@@ -536,6 +773,8 @@ def registros(slug: str):
         can_manage=_can_manage_records(),
         q=q,
         status=status,
+        legal_entity=legal_entity,
+        worker_legal_entities=_worker_legal_entities() if category["tipo"] == "TRABAJADOR" else [],
         today=datetime.now().date().isoformat(),
     )
 
@@ -555,8 +794,11 @@ def detalle(slug: str, record_id: int):
         document_types=DOCUMENT_TYPES,
         documents_by_type=documents_by_type,
         registered_records=_load_registered_records(category, exclude_id=record.id),
+        labor_obligation_types=LABOR_OBLIGATION_TYPES,
+        labor_obligation_statuses=LABOR_OBLIGATION_STATUSES,
         can_manage=_can_manage_records(),
         today=datetime.now().date().isoformat(),
+        current_period=datetime.now().strftime("%Y-%m"),
     )
 
 
@@ -574,6 +816,42 @@ def editar(slug: str, record_id: int):
         return redirect(url_for("contabilidad.detalle", slug=slug, record_id=record.id) + "#datos")
     flash("Los datos del expediente se actualizaron.", "success")
     return redirect(url_for("contabilidad.detalle", slug=slug, record_id=record.id))
+
+
+@contabilidad_bp.post("/trabajadores/<int:record_id>/obligaciones-laborales")
+@login_required
+def agregar_obligacion_laboral(record_id: int):
+    category, record = _record_or_404("trabajadores", record_id)
+    _require_manage()
+    obligation_type = (request.form.get("tipo") or "").strip().upper()
+    status = (request.form.get("estatus") or "PENDIENTE").strip().upper()
+    if obligation_type not in LABOR_OBLIGATION_TYPES or status not in LABOR_OBLIGATION_STATUSES:
+        flash("Selecciona un tipo y un estatus válidos para la línea.", "warning")
+        return redirect(url_for("contabilidad.detalle", slug=category["slug"], record_id=record.id) + "#obligaciones-laborales")
+    try:
+        period = _period(request.form.get("periodo"))
+        amount = _money(request.form.get("importe"))
+        payment_date = _date(request.form.get("fecha_pago"), required=False)
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for("contabilidad.detalle", slug=category["slug"], record_id=record.id) + "#obligaciones-laborales")
+    line = ContabilidadObligacionLaboral(
+        registro_id=record.id,
+        tipo=obligation_type,
+        periodo=period,
+        concepto=(request.form.get("concepto") or "").strip()[:180] or None,
+        referencia=(request.form.get("referencia") or "").strip()[:120] or None,
+        importe=amount,
+        fecha_pago=payment_date,
+        estatus=status,
+        notas=(request.form.get("notas") or "").strip() or None,
+        usuario_id=getattr(current_user, "id", None),
+        usuario_nombre=_current_user_name(),
+    )
+    db.session.add(line)
+    db.session.commit()
+    flash(f"Línea de {LABOR_OBLIGATION_TYPES[obligation_type]} agregada al trabajador.", "success")
+    return redirect(url_for("contabilidad.detalle", slug=category["slug"], record_id=record.id) + "#obligaciones-laborales")
 
 
 @contabilidad_bp.post("/<slug>/<int:record_id>/eliminar")
@@ -972,20 +1250,255 @@ def _financial_excel_response(records: list[ContabilidadRegistro], filename_pref
     )
 
 
+def _worker_excel_response(records: list[ContabilidadRegistro]) -> Response:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Trabajadores"
+    headers = [
+        "Folio",
+        "Nombre del trabajador",
+        "Número de empleado",
+        "Razón social de alta",
+        "Puesto / especialidad",
+        "Proyecto / obra",
+        "Teléfono",
+        "Correo",
+        "Fecha de alta",
+        "Sueldo de referencia",
+        "Moneda",
+        "Estatus",
+        "Líneas IMSS/ISR/INFONAVIT",
+        "Notas",
+    ]
+    ws.append(headers)
+    for record in records:
+        ws.append([
+            record.folio,
+            record.nombre,
+            record.identificador or "",
+            record.razon_social or "Sin clasificar",
+            record.descripcion or "",
+            record.proyecto or "",
+            record.telefono or "",
+            record.correo or "",
+            record.fecha_inicio,
+            float(record.monto_total or 0),
+            record.moneda or "MXN",
+            record.estatus,
+            len(record.obligaciones_laborales or []),
+            record.notas or "",
+        ])
+
+    detail = wb.create_sheet("IMSS ISR INFONAVIT")
+    detail.append([
+        "Trabajador",
+        "Número de empleado",
+        "Razón social de alta",
+        "Tipo",
+        "Periodo",
+        "Concepto",
+        "Referencia",
+        "Importe",
+        "Fecha de pago",
+        "Estatus",
+        "Notas",
+    ])
+    for record in records:
+        for line in record.obligaciones_laborales or []:
+            detail.append([
+                record.nombre,
+                record.identificador or "",
+                record.razon_social or "Sin clasificar",
+                line.tipo,
+                line.periodo,
+                line.concepto or "",
+                line.referencia or "",
+                float(line.importe or 0),
+                line.fecha_pago,
+                LABOR_OBLIGATION_STATUSES.get(line.estatus, line.estatus),
+                line.notas or "",
+            ])
+
+    header_fill = PatternFill("solid", fgColor="0C3C78")
+    for sheet, widths in (
+        (ws, [22, 30, 20, 30, 26, 26, 18, 28, 16, 20, 12, 15, 25, 38]),
+        (detail, [30, 20, 30, 15, 14, 28, 20, 18, 18, 15, 38]),
+    ):
+        for cell in sheet[1]:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        for index, width in enumerate(widths, start=1):
+            sheet.column_dimensions[get_column_letter(index)].width = width
+        sheet.freeze_panes = "A2"
+        sheet.auto_filter.ref = sheet.dimensions
+        sheet.sheet_view.showGridLines = False
+        sheet.row_dimensions[1].height = 32
+    for row in ws.iter_rows(min_row=2):
+        row[8].number_format = "dd/mm/yyyy"
+        row[9].number_format = '"$"#,##0.00'
+    for row in detail.iter_rows(min_row=2):
+        row[7].number_format = '"$"#,##0.00'
+        row[8].number_format = "dd/mm/yyyy"
+
+    output = io.BytesIO()
+    wb.save(output)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return Response(
+        output.getvalue(),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="trabajadores_{stamp}.xlsx"'},
+    )
+
+
+def _bank_excel_response(accounts: list[ContabilidadBancoCuenta], movements: list[ContabilidadBancoMovimiento]) -> Response:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Auxiliar de bancos"
+    balances = _bank_running_balances(accounts)
+    ws.append([
+        "Razón social",
+        "Banco",
+        "Cuenta",
+        "CLABE",
+        "Moneda",
+        "Fecha",
+        "Tipo de movimiento",
+        "Referencia",
+        "Beneficiario / origen",
+        "Concepto",
+        "Proyecto / obra",
+        "Cargo",
+        "Abono",
+        "Saldo",
+        "Conciliado",
+        "Fecha de conciliación",
+        "Notas",
+    ])
+    for movement in movements:
+        account = movement.cuenta
+        ws.append([
+            account.razon_social,
+            account.banco,
+            account.numero_cuenta,
+            account.clabe or "",
+            account.moneda,
+            movement.fecha,
+            movement.tipo,
+            movement.referencia or "",
+            movement.beneficiario or "",
+            movement.concepto,
+            movement.proyecto or "",
+            float(movement.cargo or 0),
+            float(movement.abono or 0),
+            float(balances.get(movement.id, 0)),
+            "Sí" if movement.conciliado else "No",
+            movement.fecha_conciliacion,
+            movement.notas or "",
+        ])
+
+    account_sheet = wb.create_sheet("Cuentas")
+    account_sheet.append([
+        "Razón social",
+        "Banco",
+        "Nombre de la cuenta",
+        "Número de cuenta",
+        "CLABE",
+        "Moneda",
+        "Saldo inicial",
+        "Total cargos",
+        "Total abonos",
+        "Saldo actual",
+        "Movimientos",
+        "Notas",
+    ])
+    for account in accounts:
+        account_sheet.append([
+            account.razon_social,
+            account.banco,
+            account.nombre_cuenta or "",
+            account.numero_cuenta,
+            account.clabe or "",
+            account.moneda,
+            float(account.saldo_inicial or 0),
+            float(account.total_cargos or 0),
+            float(account.total_abonos or 0),
+            float(account.saldo_actual or 0),
+            len(account.movimientos or []),
+            account.notas or "",
+        ])
+
+    header_fill = PatternFill("solid", fgColor="0C3C78")
+    for sheet, widths in (
+        (ws, [30, 22, 20, 22, 10, 14, 22, 20, 28, 38, 26, 17, 17, 18, 14, 21, 38]),
+        (account_sheet, [30, 22, 26, 20, 22, 10, 18, 18, 18, 18, 15, 38]),
+    ):
+        for cell in sheet[1]:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        for index, width in enumerate(widths, start=1):
+            sheet.column_dimensions[get_column_letter(index)].width = width
+        sheet.freeze_panes = "A2"
+        sheet.auto_filter.ref = sheet.dimensions
+        sheet.sheet_view.showGridLines = False
+        sheet.row_dimensions[1].height = 32
+        sheet.page_setup.orientation = "landscape"
+        sheet.page_setup.fitToWidth = 1
+        sheet.sheet_properties.pageSetUpPr.fitToPage = True
+    for row in ws.iter_rows(min_row=2):
+        row[5].number_format = "dd/mm/yyyy"
+        for index in (11, 12, 13):
+            row[index].number_format = '"$"#,##0.00'
+        row[15].number_format = "dd/mm/yyyy"
+    for row in account_sheet.iter_rows(min_row=2):
+        for index in (6, 7, 8, 9):
+            row[index].number_format = '"$"#,##0.00'
+
+    output = io.BytesIO()
+    wb.save(output)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return Response(
+        output.getvalue(),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="auxiliar_bancos_{stamp}.xlsx"'},
+    )
+
+
 @contabilidad_bp.get("/exportar.xlsx")
 @login_required
 def exportar_todo():
-    query, _, _ = _filtered_query()
+    query, _, _, _ = _filtered_query()
     records = query.order_by(ContabilidadRegistro.tipo.asc(), ContabilidadRegistro.fecha_inicio.desc()).all()
     return _excel_response(records, "contabilidad_general")
+
+
+@contabilidad_bp.get("/bancos/exportar.xlsx")
+@login_required
+def exportar_bancos():
+    accounts = ContabilidadBancoCuenta.query.order_by(
+        ContabilidadBancoCuenta.razon_social.asc(),
+        ContabilidadBancoCuenta.banco.asc(),
+        ContabilidadBancoCuenta.numero_cuenta.asc(),
+    ).all()
+    query, _ = _bank_filtered_query()
+    movements = query.order_by(
+        ContabilidadBancoCuenta.razon_social.asc(),
+        ContabilidadBancoCuenta.banco.asc(),
+        ContabilidadBancoMovimiento.fecha.asc(),
+        ContabilidadBancoMovimiento.id.asc(),
+    ).all()
+    return _bank_excel_response(accounts, movements)
 
 
 @contabilidad_bp.get("/<slug>/exportar.xlsx")
 @login_required
 def exportar(slug: str):
     category = _category_or_404(slug)
-    query, _, _ = _filtered_query(category)
+    query, _, _, _ = _filtered_query(category)
     records = query.order_by(ContabilidadRegistro.fecha_inicio.desc(), ContabilidadRegistro.id.desc()).all()
     if category["financial"]:
         return _financial_excel_response(records, f"reporte_{slug}", category["label"])
+    if category["tipo"] == "TRABAJADOR":
+        return _worker_excel_response(records)
     return _excel_response(records, f"contabilidad_{slug}")

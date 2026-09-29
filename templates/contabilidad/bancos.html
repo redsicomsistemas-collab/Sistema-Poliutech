@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}Contabilidad · Auxiliar de bancos{% endblock %}
+
+{% block content %}
+<style>
+  .bank-hero { background: linear-gradient(135deg, #0c3c78 0%, #1767a5 62%, #2a89c8 100%); color: #fff; border-radius: 1rem; }
+  .bank-stat, .bank-block { border: 0; border-radius: .95rem; box-shadow: 0 .35rem 1.25rem rgba(15, 23, 42, .08); }
+  .block-help { cursor: help; text-decoration: underline dotted; text-underline-offset: .25rem; }
+  .bank-account { border-left: .3rem solid #1767a5; }
+  .bank-table th { white-space: nowrap; }
+  .section-anchor { scroll-margin-top: 95px; }
+</style>
+
+<div class="py-4">
+  <section class="bank-hero p-4 p-lg-5 mb-4 shadow-sm">
+    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
+      <div>
+        <div class="small mb-2"><a class="link-light text-decoration-none" href="{{ url_for('contabilidad.index') }}">Contabilidad</a> / Bancos</div>
+        <h1 class="h2 fw-bold mb-2">🏦 Auxiliar de bancos</h1>
+        <p class="mb-0 opacity-75">Registra las cuentas y concentra cargos, abonos, saldos y conciliación bancaria.</p>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-outline-light" href="{{ url_for('contabilidad.index') }}">← Resumen</a>
+        <a class="btn btn-light fw-semibold" href="{{ url_for('contabilidad.exportar_bancos', cuenta=filters.account_id or '', q=filters.q, conciliado=filters.reconciliation, desde=filters.start_date.isoformat() if filters.start_date else '', hasta=filters.end_date.isoformat() if filters.end_date else '') }}">📊 Exportar Excel</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="nav nav-pills flex-nowrap overflow-auto gap-2 mb-4 pb-1">
+    <a class="nav-link" href="{{ url_for('altas_proveedores') }}">Altas</a>
+    <a class="nav-link active" href="{{ url_for('contabilidad.bancos') }}">Bancos</a>
+    {% for nav_slug, nav in [('clientes', 'Clientes'), ('proveedores', 'Proveedores'), ('trabajadores', 'Trabajadores'), ('maquinaria', 'Maquinaria'), ('transporte', 'Transporte')] %}
+    <a class="nav-link" href="{{ url_for('contabilidad.registros', slug=nav_slug) }}">{{ nav }}</a>
+    {% endfor %}
+  </div>
+
+  <div class="alert alert-info border-0 shadow-sm mb-4">
+    <strong>Leyendas de llenado:</strong> coloca el cursor sobre el nombre subrayado de cada bloque para consultar su instrucción.
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-4"><div class="card bank-stat h-100"><div class="card-body">
+      <div class="small text-muted text-uppercase fw-semibold">Saldo actual en cuentas</div>
+      <div class="h3 fw-bold text-primary mb-0">${{ '{:,.2f}'.format(total_balance) }}</div>
+    </div></div></div>
+    <div class="col-md-4"><div class="card bank-stat h-100"><div class="card-body">
+      <div class="small text-muted text-uppercase fw-semibold">Abonos del reporte</div>
+      <div class="h3 fw-bold text-success mb-0">${{ '{:,.2f}'.format(total_abonos) }}</div>
+    </div></div></div>
+    <div class="col-md-4"><div class="card bank-stat h-100"><div class="card-body">
+      <div class="small text-muted text-uppercase fw-semibold">Cargos del reporte</div>
+      <div class="h3 fw-bold text-danger mb-0">${{ '{:,.2f}'.format(total_cargos) }}</div>
+    </div></div></div>
+  </div>
+
+  <section class="card bank-block mb-4 section-anchor" id="cuentas">
+    <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <h2 class="h5 fw-bold mb-0 block-help" tabindex="0" data-bs-toggle="tooltip" data-bs-placement="top" title="Registra una vez cada cuenta bancaria e indica la razón social propietaria, el banco, los números de cuenta y el saldo con el que iniciará el auxiliar.">Catálogo de cuentas bancarias ⓘ</h2>
+      {% if can_manage %}<button class="btn btn-sm btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#newBankAccount">＋ Agregar cuenta</button>{% endif %}
+    </div>
+    {% if can_manage %}
+    <div class="collapse {{ 'show' if not accounts else '' }}" id="newBankAccount">
+      <div class="card-body border-bottom bg-light-subtle">
+        <h3 class="h6 fw-bold block-help" tabindex="0" data-bs-toggle="tooltip" title="Llena los datos de identificación exactamente como aparecen en el estado de cuenta. El saldo inicial puede ser positivo, cero o negativo.">Nueva cuenta bancaria ⓘ</h3>
+        <form method="post" action="{{ url_for('contabilidad.agregar_cuenta_bancaria') }}" class="row g-3">
+          <div class="col-md-4"><label class="form-label fw-semibold">Razón social *</label><input class="form-control" name="razon_social" maxlength="200" required></div>
+          <div class="col-md-4"><label class="form-label fw-semibold">Banco *</label><input class="form-control" name="banco" maxlength="120" required></div>
+          <div class="col-md-4"><label class="form-label fw-semibold">Nombre / alias de la cuenta</label><input class="form-control" name="nombre_cuenta" maxlength="160" placeholder="Ej. Cuenta operativa"></div>
+          <div class="col-md-3"><label class="form-label fw-semibold">Número de cuenta *</label><input class="form-control" name="numero_cuenta" maxlength="80" required></div>
+          <div class="col-md-3"><label class="form-label fw-semibold">CLABE</label><input class="form-control" name="clabe" inputmode="numeric" maxlength="24"></div>
+          <div class="col-md-2"><label class="form-label fw-semibold">Moneda</label><select class="form-select" name="moneda"><option>MXN</option><option>USD</option></select></div>
+          <div class="col-md-4"><label class="form-label fw-semibold">Saldo inicial</label><div class="input-group"><span class="input-group-text">$</span><input class="form-control" name="saldo_inicial" type="number" step="0.01" value="0.00"></div></div>
+          <div class="col-md-9"><label class="form-label fw-semibold">Notas</label><input class="form-control" name="notas" placeholder="Información complementaria de la cuenta"></div>
+          <div class="col-md-3 d-grid align-items-end"><button class="btn btn-primary mt-auto">Guardar cuenta</button></div>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+    <div class="card-body">
+      <div class="row g-3">
+        {% for account in accounts %}
+        <div class="col-md-6 col-xl-4">
+          <div class="bank-account rounded border p-3 h-100">
+            <div class="d-flex justify-content-between gap-3"><strong>{{ account.banco }}</strong><span class="badge text-bg-light border">{{ account.moneda }}</span></div>
+            <div>{{ account.nombre_cuenta or account.razon_social }}</div>
+            <div class="small text-muted">{{ account.razon_social }} · Cuenta {{ account.numero_cuenta }}</div>
+            {% if account.clabe %}<div class="small text-muted">CLABE {{ account.clabe }}</div>{% endif %}
+            <div class="d-flex justify-content-between border-top mt-3 pt-2"><span>Saldo actual</span><strong class="{{ 'text-success' if account.saldo_actual >= 0 else 'text-danger' }}">${{ '{:,.2f}'.format(account.saldo_actual) }}</strong></div>
+            <div class="small text-muted">{{ account.movimientos|length }} movimiento{{ '' if account.movimientos|length == 1 else 's' }}</div>
+          </div>
+        </div>
+        {% else %}
+        <div class="col-12 text-center text-muted py-4">Agrega la primera cuenta para comenzar el auxiliar de bancos.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <section class="card bank-block mb-4 section-anchor" id="movimientos">
+    <div class="card-header bg-white py-3">
+      <h2 class="h5 fw-bold mb-0 block-help" tabindex="0" data-bs-toggle="tooltip" data-bs-placement="top" title="Agrega una línea por cada movimiento del estado de cuenta. Usa Cargo para salidas y Abono para entradas; sólo uno de los dos importes debe tener valor.">Capturar movimiento bancario ⓘ</h2>
+    </div>
+    <div class="card-body">
+      {% if can_manage and accounts %}
+      <form method="post" action="{{ url_for('contabilidad.agregar_movimiento_bancario') }}" class="row g-3">
+        <div class="col-md-5"><label class="form-label fw-semibold">Cuenta *</label><select class="form-select" name="cuenta_id" required><option value="">Seleccionar cuenta...</option>{% for account in accounts %}<option value="{{ account.id }}" {{ 'selected' if filters.account_id == account.id }}>{{ account.razon_social }} · {{ account.banco }} · {{ account.numero_cuenta }}</option>{% endfor %}</select></div>
+        <div class="col-md-3"><label class="form-label fw-semibold">Fecha *</label><input class="form-control" name="fecha" type="date" value="{{ today }}" required></div>
+        <div class="col-md-4"><label class="form-label fw-semibold">Tipo de movimiento *</label><select class="form-select" name="tipo" required><option value="">Seleccionar...</option>{% for movement_type in movement_types %}<option>{{ movement_type }}</option>{% endfor %}</select></div>
+        <div class="col-md-3"><label class="form-label fw-semibold">Referencia / folio</label><input class="form-control" name="referencia" maxlength="120"></div>
+        <div class="col-md-4"><label class="form-label fw-semibold">Beneficiario / origen</label><input class="form-control" name="beneficiario" maxlength="180"></div>
+        <div class="col-md-5"><label class="form-label fw-semibold">Concepto *</label><input class="form-control" name="concepto" maxlength="300" required></div>
+        <div class="col-md-4"><label class="form-label fw-semibold">Proyecto / obra</label><input class="form-control" name="proyecto" maxlength="200"></div>
+        <div class="col-md-4"><label class="form-label fw-semibold">Cargo</label><div class="input-group"><span class="input-group-text">$</span><input class="form-control bank-amount" name="cargo" type="number" min="0" step="0.01"></div><div class="form-text">Salida de dinero.</div></div>
+        <div class="col-md-4"><label class="form-label fw-semibold">Abono</label><div class="input-group"><span class="input-group-text">$</span><input class="form-control bank-amount" name="abono" type="number" min="0" step="0.01"></div><div class="form-text">Entrada de dinero.</div></div>
+        <div class="col-md-4"><label class="form-label fw-semibold">Fecha de conciliación</label><input class="form-control" name="fecha_conciliacion" type="date"><div class="form-check mt-2"><input class="form-check-input" type="checkbox" value="1" name="conciliado" id="newMovementReconciled"><label class="form-check-label" for="newMovementReconciled">Movimiento conciliado</label></div></div>
+        <div class="col-md-9"><label class="form-label fw-semibold">Notas</label><textarea class="form-control" name="notas" rows="2"></textarea></div>
+        <div class="col-md-3 d-grid align-items-end"><button class="btn btn-primary mt-auto">Agregar línea</button></div>
+      </form>
+      {% elif not accounts %}
+      <div class="alert alert-warning mb-0">Primero registra una cuenta bancaria en el bloque anterior.</div>
+      {% else %}
+      <div class="text-muted">Tu cuenta tiene acceso de consulta. Un responsable autorizado puede capturar movimientos.</div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="card bank-block section-anchor" id="reporte">
+    <div class="card-header bg-white py-3"><h2 class="h5 fw-bold mb-0 block-help" tabindex="0" data-bs-toggle="tooltip" data-bs-placement="top" title="Consulta el auxiliar por cuenta, texto, conciliación o periodo. El saldo se calcula cronológicamente desde el saldo inicial de cada cuenta y la exportación respeta los filtros aplicados.">Reporte del auxiliar de bancos ⓘ</h2></div>
+    <div class="card-body border-bottom">
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-4"><label class="form-label small fw-semibold">Cuenta</label><select class="form-select" name="cuenta"><option value="">Todas las cuentas</option>{% for account in accounts %}<option value="{{ account.id }}" {{ 'selected' if filters.account_id == account.id }}>{{ account.razon_social }} · {{ account.banco }} · {{ account.numero_cuenta }}</option>{% endfor %}</select></div>
+        <div class="col-md-3"><label class="form-label small fw-semibold">Buscar</label><input class="form-control" name="q" value="{{ filters.q }}" placeholder="Referencia, concepto, beneficiario..."></div>
+        <div class="col-md-2"><label class="form-label small fw-semibold">Conciliación</label><select class="form-select" name="conciliado"><option value="">Todos</option><option value="si" {{ 'selected' if filters.reconciliation == 'si' }}>Conciliados</option><option value="no" {{ 'selected' if filters.reconciliation == 'no' }}>Pendientes</option></select></div>
+        <div class="col-md-3"><label class="form-label small fw-semibold">Desde</label><input class="form-control" name="desde" type="date" value="{{ filters.start_date.isoformat() if filters.start_date else '' }}"></div>
+        <div class="col-md-3"><label class="form-label small fw-semibold">Hasta</label><input class="form-control" name="hasta" type="date" value="{{ filters.end_date.isoformat() if filters.end_date else '' }}"></div>
+        <div class="col-md-3 d-grid"><button class="btn btn-outline-primary">Aplicar filtros</button></div>
+        <div class="col-md-3 d-grid"><a class="btn btn-outline-secondary" href="{{ url_for('contabilidad.bancos') }}#reporte">Limpiar</a></div>
+        <div class="col-md-3 d-grid"><a class="btn btn-success" href="{{ url_for('contabilidad.exportar_bancos', cuenta=filters.account_id or '', q=filters.q, conciliado=filters.reconciliation, desde=filters.start_date.isoformat() if filters.start_date else '', hasta=filters.end_date.isoformat() if filters.end_date else '') }}">📊 Exportar reporte</a></div>
+      </form>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0 bank-table">
+        <thead><tr><th>Fecha</th><th>Cuenta</th><th>Tipo / referencia</th><th>Beneficiario / concepto</th><th>Proyecto</th><th class="text-end">Cargo</th><th class="text-end">Abono</th><th class="text-end">Saldo</th><th>Conciliación</th></tr></thead>
+        <tbody>
+          {% for movement in movements %}
+          <tr>
+            <td>{{ movement.fecha.strftime('%d/%m/%Y') }}</td>
+            <td><div class="fw-semibold">{{ movement.cuenta.banco }}</div><div class="small text-muted">{{ movement.cuenta.razon_social }} · {{ movement.cuenta.numero_cuenta }}</div></td>
+            <td><div>{{ movement.tipo }}</div><div class="small text-muted">{{ movement.referencia or 'Sin referencia' }}</div></td>
+            <td><div>{{ movement.beneficiario or '—' }}</div><div class="small text-muted">{{ movement.concepto }}</div>{% if movement.notas %}<div class="small">{{ movement.notas }}</div>{% endif %}</td>
+            <td>{{ movement.proyecto or '—' }}</td>
+            <td class="text-end text-danger">{{ '$' ~ '{:,.2f}'.format(movement.cargo) if movement.cargo else '—' }}</td>
+            <td class="text-end text-success">{{ '$' ~ '{:,.2f}'.format(movement.abono) if movement.abono else '—' }}</td>
+            <td class="text-end fw-bold">${{ '{:,.2f}'.format(running_balances.get(movement.id, 0)) }}</td>
+            <td>{% if movement.conciliado %}<span class="badge text-bg-success">Conciliado</span><div class="small text-muted">{{ movement.fecha_conciliacion.strftime('%d/%m/%Y') if movement.fecha_conciliacion else '' }}</div>{% else %}<span class="badge text-bg-warning">Pendiente</span>{% endif %}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="9" class="text-center text-muted py-5">No hay movimientos que coincidan con los filtros.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const cargo = document.querySelector('input[name="cargo"]');
+  const abono = document.querySelector('input[name="abono"]');
+  cargo?.addEventListener("input", () => { if (Number(cargo.value) > 0 && abono) abono.value = ""; });
+  abono?.addEventListener("input", () => { if (Number(abono.value) > 0 && cargo) cargo.value = ""; });
+});
+</script>
+{% endblock %}

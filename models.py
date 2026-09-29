@@ -1136,7 +1136,7 @@ class ComprobacionAdjunto(db.Model):
 
 
 # ---------------------------------------------------------
-# CONTABILIDAD: expedientes, abonos y documentos
+# CONTABILIDAD: expedientes, bancos, obligaciones, abonos y documentos
 # ---------------------------------------------------------
 class ContabilidadRegistro(db.Model):
     __tablename__ = "contabilidad_registro"
@@ -1187,6 +1187,12 @@ class ContabilidadRegistro(db.Model):
         backref="registro",
         cascade="all, delete-orphan",
         order_by="ContabilidadDocumento.creado_en.desc()",
+    )
+    obligaciones_laborales = db.relationship(
+        "ContabilidadObligacionLaboral",
+        backref="registro",
+        cascade="all, delete-orphan",
+        order_by="ContabilidadObligacionLaboral.periodo.desc(), ContabilidadObligacionLaboral.id.desc()",
     )
 
     @property
@@ -1245,6 +1251,98 @@ class ContabilidadDocumento(db.Model):
 
     def __repr__(self):
         return f"<ContabilidadDocumento registro={self.registro_id} {self.nombre_original}>"
+
+
+class ContabilidadObligacionLaboral(db.Model):
+    __tablename__ = "contabilidad_obligacion_laboral"
+
+    id = db.Column(db.Integer, primary_key=True)
+    registro_id = db.Column(db.Integer, db.ForeignKey("contabilidad_registro.id"), nullable=False, index=True)
+    tipo = db.Column(db.String(20), nullable=False, index=True)
+    periodo = db.Column(db.String(20), nullable=False, index=True)
+    concepto = db.Column(db.String(180))
+    referencia = db.Column(db.String(120))
+    importe = db.Column(db.Float, default=0.0, nullable=False)
+    fecha_pago = db.Column(db.Date, index=True)
+    estatus = db.Column(db.String(20), default="PENDIENTE", nullable=False, index=True)
+    notas = db.Column(db.Text)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True, index=True)
+    usuario_nombre = db.Column(db.String(120))
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    usuario = db.relationship("Usuario", foreign_keys=[usuario_id])
+
+    def __repr__(self):
+        return f"<ContabilidadObligacionLaboral registro={self.registro_id} {self.tipo} {self.periodo}>"
+
+
+class ContabilidadBancoCuenta(db.Model):
+    __tablename__ = "contabilidad_banco_cuenta"
+
+    id = db.Column(db.Integer, primary_key=True)
+    razon_social = db.Column(db.String(200), nullable=False, index=True)
+    banco = db.Column(db.String(120), nullable=False, index=True)
+    nombre_cuenta = db.Column(db.String(160))
+    numero_cuenta = db.Column(db.String(80), nullable=False, index=True)
+    clabe = db.Column(db.String(24), index=True)
+    moneda = db.Column(db.String(10), default="MXN", nullable=False)
+    saldo_inicial = db.Column(db.Float, default=0.0, nullable=False)
+    notas = db.Column(db.Text)
+    activa = db.Column(db.Boolean, default=True, nullable=False, index=True)
+    creado_por_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True, index=True)
+    creado_por_nombre = db.Column(db.String(120))
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    creado_por = db.relationship("Usuario", foreign_keys=[creado_por_id])
+    movimientos = db.relationship(
+        "ContabilidadBancoMovimiento",
+        backref="cuenta",
+        cascade="all, delete-orphan",
+        order_by="ContabilidadBancoMovimiento.fecha.asc(), ContabilidadBancoMovimiento.id.asc()",
+    )
+
+    @property
+    def total_cargos(self):
+        return round(sum(max(float(item.cargo or 0), 0.0) for item in (self.movimientos or [])), 2)
+
+    @property
+    def total_abonos(self):
+        return round(sum(max(float(item.abono or 0), 0.0) for item in (self.movimientos or [])), 2)
+
+    @property
+    def saldo_actual(self):
+        return round(float(self.saldo_inicial or 0) + self.total_abonos - self.total_cargos, 2)
+
+    def __repr__(self):
+        return f"<ContabilidadBancoCuenta {self.banco} {self.numero_cuenta}>"
+
+
+class ContabilidadBancoMovimiento(db.Model):
+    __tablename__ = "contabilidad_banco_movimiento"
+
+    id = db.Column(db.Integer, primary_key=True)
+    cuenta_id = db.Column(db.Integer, db.ForeignKey("contabilidad_banco_cuenta.id"), nullable=False, index=True)
+    fecha = db.Column(db.Date, nullable=False, index=True)
+    tipo = db.Column(db.String(40), nullable=False, index=True)
+    referencia = db.Column(db.String(120), index=True)
+    beneficiario = db.Column(db.String(180), index=True)
+    concepto = db.Column(db.String(300), nullable=False)
+    proyecto = db.Column(db.String(200), index=True)
+    cargo = db.Column(db.Float, default=0.0, nullable=False)
+    abono = db.Column(db.Float, default=0.0, nullable=False)
+    conciliado = db.Column(db.Boolean, default=False, nullable=False, index=True)
+    fecha_conciliacion = db.Column(db.Date, index=True)
+    notas = db.Column(db.Text)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True, index=True)
+    usuario_nombre = db.Column(db.String(120))
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    usuario = db.relationship("Usuario", foreign_keys=[usuario_id])
+
+    def __repr__(self):
+        return f"<ContabilidadBancoMovimiento cuenta={self.cuenta_id} fecha={self.fecha}>"
 
 
 class APUSheet(db.Model):

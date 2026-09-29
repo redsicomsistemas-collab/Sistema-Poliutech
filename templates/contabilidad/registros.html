@@ -21,7 +21,7 @@
     </div>
     <div class="d-flex flex-wrap gap-2">
       <a class="btn btn-outline-secondary" href="{{ url_for('contabilidad.index') }}">Resumen</a>
-      <a class="btn btn-success" href="{{ url_for('contabilidad.exportar', slug=category.slug, q=q, estatus=status) }}">📊 Exportar Excel</a>
+      <a class="btn btn-success" href="{{ url_for('contabilidad.exportar', slug=category.slug, q=q, estatus=status, razon_social_alta=legal_entity) }}">📊 Exportar Excel</a>
       {% if category.financial %}<a class="btn btn-outline-primary" href="{{ url_for('altas_proveedores', relacion=category.tipo) }}">🗂️ Abrir Altas</a>{% endif %}
       {% if category.tipo == 'CLIENTE' %}
       <button class="btn btn-primary record-mode-trigger" type="button" data-record-mode="new" data-bs-toggle="collapse" data-bs-target="#newRecord" aria-expanded="{{ 'true' if not records or selected_alta else 'false' }}">＋ Registrar cliente nuevo</button>
@@ -34,6 +34,7 @@
 
   <div class="nav nav-pills accounting-tabs flex-nowrap overflow-auto gap-2 mb-4 pb-1">
     <a class="nav-link" href="{{ url_for('altas_proveedores') }}">Altas</a>
+    <a class="nav-link" href="{{ url_for('contabilidad.bancos') }}">Bancos</a>
     {% for nav_slug, nav in [('clientes', 'Clientes'), ('proveedores', 'Proveedores'), ('trabajadores', 'Trabajadores'), ('maquinaria', 'Maquinaria'), ('transporte', 'Transporte')] %}
     <a class="nav-link {{ 'active' if nav_slug == category.slug }}" href="{{ url_for('contabilidad.registros', slug=nav_slug) }}">{{ nav }}</a>
     {% endfor %}
@@ -138,6 +139,11 @@
           {% endif %}
           {% elif category.tipo == 'TRABAJADOR' %}
           <div class="col-md-6">
+            <label class="form-label fw-semibold">Razón social de alta *</label>
+            <input class="form-control" name="razon_social" maxlength="200" list="workerLegalEntities" required>
+            <div class="form-text">Clasifica al trabajador en la razón social que le corresponde.</div>
+          </div>
+          <div class="col-md-6">
             <label class="form-label fw-semibold">Puesto / especialidad</label>
             <input class="form-control" name="descripcion">
           </div>
@@ -240,7 +246,7 @@
   <div class="card border-0 shadow-sm">
     <div class="card-body border-bottom">
       <form method="get" class="row g-2 align-items-end">
-        <div class="col-md-7">
+        <div class="{{ 'col-md-4' if category.tipo == 'TRABAJADOR' else 'col-md-7' }}">
           <label class="form-label small fw-semibold">Buscar</label>
           <input class="form-control" name="q" value="{{ q }}" placeholder="Nombre, folio, RFC, factura, proyecto o identificador">
         </div>
@@ -251,6 +257,12 @@
             {% if category.financial %}<option value="PENDIENTE" {{ 'selected' if status == 'PENDIENTE' }}>Pendiente</option><option value="LIQUIDADO" {{ 'selected' if status == 'LIQUIDADO' }}>Liquidado</option>{% else %}<option value="ACTIVO" {{ 'selected' if status == 'ACTIVO' }}>Activo</option>{% endif %}
           </select>
         </div>
+        {% if category.tipo == 'TRABAJADOR' %}
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">Razón social de alta</label>
+          <select class="form-select" name="razon_social_alta"><option value="">Todas</option>{% for name in worker_legal_entities %}<option value="{{ name }}" {{ 'selected' if legal_entity == name }}>{{ name }}</option>{% endfor %}</select>
+        </div>
+        {% endif %}
         <div class="col-md-2 d-grid"><button class="btn btn-outline-primary">Aplicar filtros</button></div>
       </form>
     </div>
@@ -261,7 +273,7 @@
           {% for item in records %}
           <tr>
             <td><div class="fw-semibold">{{ item.nombre }}</div><div class="small text-muted">{{ item.folio }}{% if item.rfc %} · {{ item.rfc }}{% endif %}</div></td>
-            <td><div>{{ item.proyecto or 'Sin proyecto' }}</div><div class="small text-muted">{% if item.folio_factura %}Factura {{ item.folio_factura }}{% endif %}{% if item.folio_factura and item.identificador %} · {% endif %}{% if item.identificador %}Alta {{ item.identificador }}{% elif not item.folio_factura %}{{ item.razon_social or '' }}{% endif %}</div></td>
+            <td><div>{{ item.proyecto or 'Sin proyecto' }}</div><div class="small text-muted">{% if category.tipo == 'TRABAJADOR' %}{{ item.razon_social or 'Sin razón social de alta' }}{% if item.identificador %} · Empleado {{ item.identificador }}{% endif %}{% else %}{% if item.folio_factura %}Factura {{ item.folio_factura }}{% endif %}{% if item.folio_factura and item.identificador %} · {% endif %}{% if item.identificador %}Alta {{ item.identificador }}{% elif not item.folio_factura %}{{ item.razon_social or '' }}{% endif %}{% endif %}</div></td>
             <td>{{ item.fecha_inicio.strftime('%d/%m/%Y') }}</td>
             {% if category.financial %}<td><div class="fw-semibold">{{ item.tiempo_credito_dias ~ ' días' if item.tiempo_credito_dias is not none else 'Sin plazo registrado' }}</div><div class="small text-muted">{{ 'Vence ' ~ item.fecha_vencimiento.strftime('%d/%m/%Y') if item.fecha_vencimiento else 'Sin fecha de vencimiento' }}</div></td>{% endif %}
             <td>${{ '{:,.2f}'.format(item.monto_total or 0) }} <span class="small text-muted">{{ item.moneda }}</span></td>
@@ -281,6 +293,9 @@
     </div>
   </div>
 </div>
+{% if category.tipo == 'TRABAJADOR' %}
+<datalist id="workerLegalEntities">{% for name in worker_legal_entities %}<option value="{{ name }}"></option>{% endfor %}</datalist>
+{% endif %}
 {% if category.financial %}
 <script>
 document.addEventListener("DOMContentLoaded", () => {

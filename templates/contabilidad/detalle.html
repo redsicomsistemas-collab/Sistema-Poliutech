@@ -90,6 +90,7 @@
           {% endif %}
           <div class="col-md-6"><label class="form-label fw-semibold">Folio de factura</label><input class="form-control" name="folio_factura" value="{{ record.folio_factura or '' }}"></div>
           {% elif category.tipo == 'TRABAJADOR' %}
+          <div class="col-md-6"><label class="form-label fw-semibold">Razón social de alta *</label><input class="form-control" name="razon_social" maxlength="200" value="{{ record.razon_social or '' }}" required><div class="form-text">Clasifica al trabajador en la razón social que le corresponde.</div></div>
           <div class="col-md-6"><label class="form-label fw-semibold">Puesto / especialidad</label><input class="form-control" name="descripcion" value="{{ record.descripcion or '' }}"></div>
           <div class="col-md-4"><label class="form-label fw-semibold">Número de empleado</label><input class="form-control" name="identificador" value="{{ record.identificador or '' }}"></div>
           <div class="col-md-4"><label class="form-label fw-semibold">Teléfono</label><input class="form-control" name="telefono" value="{{ record.telefono or '' }}"></div>
@@ -114,6 +115,50 @@
       </div>
     </div>
   </div>{% endif %}
+
+  {% if category.tipo == 'TRABAJADOR' %}
+  <section class="card border-0 shadow-sm mb-4 section-anchor" id="obligaciones-laborales">
+    <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <h2 class="h5 fw-bold mb-0" tabindex="0" data-bs-toggle="tooltip" data-bs-placement="top" title="Agrega una línea por cada obligación que corresponda al trabajador. Selecciona IMSS, ISR o INFONAVIT, el periodo, importe y estatus; las líneas anteriores se conservan como historial.">🧾 IMSS / ISR / INFONAVIT ⓘ</h2>
+      <span class="badge text-bg-primary">{{ record.obligaciones_laborales|length }} línea{{ '' if record.obligaciones_laborales|length == 1 else 's' }}</span>
+    </div>
+    {% if can_manage %}
+    <div class="card-body border-bottom">
+      <form method="post" action="{{ url_for('contabilidad.agregar_obligacion_laboral', record_id=record.id) }}" class="row g-3 align-items-end">
+        <div class="col-md-2"><label class="form-label small fw-semibold">Tipo *</label><select class="form-select" name="tipo" required>{% for key, label in labor_obligation_types.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
+        <div class="col-md-2"><label class="form-label small fw-semibold">Periodo *</label><input class="form-control" name="periodo" type="month" value="{{ current_period }}" required></div>
+        <div class="col-md-3"><label class="form-label small fw-semibold">Concepto</label><input class="form-control" name="concepto" maxlength="180" placeholder="Ej. Cuota patronal"></div>
+        <div class="col-md-2"><label class="form-label small fw-semibold">Importe</label><div class="input-group"><span class="input-group-text">$</span><input class="form-control" name="importe" type="number" min="0" step="0.01"></div></div>
+        <div class="col-md-3"><label class="form-label small fw-semibold">Estatus *</label><select class="form-select" name="estatus" required>{% for key, label in labor_obligation_statuses.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
+        <div class="col-md-3"><label class="form-label small fw-semibold">Fecha de pago</label><input class="form-control" name="fecha_pago" type="date"></div>
+        <div class="col-md-3"><label class="form-label small fw-semibold">Referencia</label><input class="form-control" name="referencia" maxlength="120"></div>
+        <div class="col-md-4"><label class="form-label small fw-semibold">Notas</label><input class="form-control" name="notas"></div>
+        <div class="col-md-2 d-grid"><button class="btn btn-primary">Agregar línea</button></div>
+      </form>
+    </div>
+    {% endif %}
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead><tr><th>Tipo</th><th>Periodo</th><th>Concepto / referencia</th><th class="text-end">Importe</th><th>Fecha de pago</th><th>Estatus</th><th>Notas</th></tr></thead>
+        <tbody>
+          {% for line in record.obligaciones_laborales %}
+          <tr>
+            <td><span class="badge text-bg-primary">{{ line.tipo }}</span></td>
+            <td>{{ line.periodo }}</td>
+            <td><div>{{ line.concepto or '—' }}</div><div class="small text-muted">{{ line.referencia or '' }}</div></td>
+            <td class="text-end fw-semibold">${{ '{:,.2f}'.format(line.importe or 0) }}</td>
+            <td>{{ line.fecha_pago.strftime('%d/%m/%Y') if line.fecha_pago else '—' }}</td>
+            <td><span class="badge {{ 'text-bg-success' if line.estatus == 'PAGADO' else ('text-bg-secondary' if line.estatus == 'NO_APLICA' else 'text-bg-warning') }}">{{ labor_obligation_statuses.get(line.estatus, line.estatus) }}</span></td>
+            <td>{{ line.notas or '—' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center text-muted py-4">Todavía no se han agregado líneas de IMSS, ISR o INFONAVIT.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
 
   <div class="row g-4">
     <div class="{{ 'col-xl-7' if category.financial else 'col-12' }}">
@@ -208,7 +253,7 @@
       <div class="col-md-3"><span class="text-muted d-block">Proyecto / obra</span><strong>{{ record.proyecto or 'Sin asignar' }}</strong></div>
       <div class="col-md-3"><span class="text-muted d-block">Identificador</span><strong>{{ record.identificador or '—' }}</strong></div>
       <div class="col-md-3"><span class="text-muted d-block">Registró</span><strong>{{ record.creado_por_nombre or '—' }}</strong></div>
-      {% if record.razon_social %}<div class="col-md-3"><span class="text-muted d-block">Razón social</span><strong>{{ record.razon_social }}</strong></div>{% endif %}
+      {% if record.razon_social %}<div class="col-md-3"><span class="text-muted d-block">{{ 'Razón social de alta' if category.tipo == 'TRABAJADOR' else 'Razón social' }}</span><strong>{{ record.razon_social }}</strong></div>{% endif %}
       {% if record.rfc %}<div class="col-md-3"><span class="text-muted d-block">RFC</span><strong>{{ record.rfc }}</strong></div>{% endif %}
       {% if record.regimen_fiscal %}<div class="col-md-3"><span class="text-muted d-block">Régimen fiscal</span><strong>{{ record.regimen_fiscal }}</strong></div>{% endif %}
       {% if record.codigo_postal_fiscal %}<div class="col-md-3"><span class="text-muted d-block">C.P. fiscal</span><strong>{{ record.codigo_postal_fiscal }}</strong></div>{% endif %}

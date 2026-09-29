@@ -16,7 +16,7 @@
       <div>
         <div class="text-uppercase small fw-bold opacity-75 mb-2">Administración financiera</div>
         <h1 class="h2 fw-bold mb-2">Módulo de Contabilidad</h1>
-        <p class="mb-0 opacity-75">Controla cuentas, expedientes, abonos, personal y activos desde un solo lugar.</p>
+        <p class="mb-0 opacity-75">Controla bancos, cuentas, expedientes, abonos, personal y activos desde un solo lugar.</p>
       </div>
       <a class="btn btn-light fw-semibold" href="{{ url_for('contabilidad.exportar_todo') }}">📊 Exportar reporte general</a>
     </div>
@@ -44,6 +44,21 @@
   </div>
 
   <div class="row g-4 mb-4">
+    <div class="col-md-6 col-xl-4">
+      <a class="text-decoration-none text-body" href="{{ url_for('contabilidad.bancos') }}">
+        <div class="card accounting-module shadow-sm">
+          <div class="card-body p-4">
+            <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+              <span class="accounting-icon">🏦</span>
+              <span class="badge rounded-pill text-bg-primary">{{ bank_account_count }} cuenta{{ '' if bank_account_count == 1 else 's' }}</span>
+            </div>
+            <h2 class="h5 fw-bold">Bancos</h2>
+            <p class="text-muted mb-3">Auxiliar de cargos, abonos, saldos y conciliación por cuenta bancaria.</p>
+            <div class="d-flex justify-content-between border-top pt-3 small"><span>{{ bank_movement_count }} movimiento{{ '' if bank_movement_count == 1 else 's' }}</span><strong class="{{ 'text-success' if bank_total_balance >= 0 else 'text-danger' }}">${{ '{:,.2f}'.format(bank_total_balance) }}</strong></div>
+          </div>
+        </div>
+      </a>
+    </div>
     <div class="col-md-6 col-xl-4">
       <a class="text-decoration-none text-body" href="{{ url_for('altas_proveedores') }}">
         <div class="card accounting-module shadow-sm">
