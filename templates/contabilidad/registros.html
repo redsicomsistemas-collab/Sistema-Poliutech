@@ -10,6 +10,10 @@
   .record-picker { background: linear-gradient(135deg, rgba(12, 60, 120, .08), rgba(23, 103, 165, .03)); border: 1px solid rgba(12, 60, 120, .18); border-radius: .85rem; }
   .record-picker-summary { background: rgba(255, 255, 255, .72); border-radius: .65rem; }
   .record-mode-label { min-width: 220px; }
+  .provider-summary-row > td { background: var(--bs-tertiary-bg); }
+  .provider-summary-row:hover > td { background: rgba(var(--bs-primary-rgb), .08); }
+  .provider-detail { background: rgba(var(--bs-primary-rgb), .025); }
+  .provider-total { white-space: nowrap; }
 </style>
 
 <div class="py-4">
@@ -304,6 +308,56 @@
       </form>
     </div>
     <div class="table-responsive">
+      {% if category.tipo == 'PROVEEDOR' %}
+      <table class="table table-hover align-middle mb-0">
+        <thead><tr><th>Proveedor</th><th>Movimientos</th><th>Monto registrado</th><th>Abonado</th><th class="balance-cell">Deuda total</th><th>Estatus</th><th></th></tr></thead>
+        <tbody>
+          {% for group in provider_groups %}
+          {% set group_id = 'provider-' ~ loop.index %}
+          <tr class="provider-summary-row">
+            <td><div class="fw-bold">{{ group.nombre }}</div><div class="small text-muted">{{ group.documentos }} PDF{{ '' if group.documentos == 1 else 's' }} adjunto{{ '' if group.documentos == 1 else 's' }}</div></td>
+            <td><span class="badge rounded-pill text-bg-primary">{{ group.movimientos }}</span></td>
+            <td>{% for total in group.totals %}<div class="provider-total">${{ '{:,.2f}'.format(total.monto) }} <span class="small text-muted">{{ total.moneda }}</span></div>{% endfor %}</td>
+            <td class="text-success">{% for total in group.totals %}<div class="provider-total">${{ '{:,.2f}'.format(total.abonado) }} <span class="small">{{ total.moneda }}</span></div>{% endfor %}</td>
+            <td class="balance-cell">{% for total in group.totals %}<div class="provider-total"><strong class="{{ 'text-danger' if total.saldo > 0.005 else 'text-success' }}">${{ '{:,.2f}'.format(total.saldo) }}</strong> <span class="small text-muted">{{ total.moneda }}</span></div>{% endfor %}</td>
+            <td><span class="badge {{ 'text-bg-warning' if group.tiene_deuda else 'text-bg-success' }}">{{ 'CON DEUDA' if group.tiene_deuda else 'LIQUIDADO' }}</span></td>
+            <td class="text-end"><button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#{{ group_id }}" aria-expanded="false" aria-controls="{{ group_id }}">Ver movimientos</button></td>
+          </tr>
+          <tr>
+            <td colspan="7" class="p-0 border-0">
+              <div class="collapse provider-detail" id="{{ group_id }}">
+                <div class="p-3">
+                  <div class="table-responsive border rounded">
+                    <table class="table table-sm table-hover align-middle mb-0 bg-white">
+                      <thead class="table-light"><tr><th>Movimiento</th><th>Proyecto / identificación</th><th>Inicio</th><th>Plazo / vencimiento</th><th>Monto</th><th>Abonado</th><th class="balance-cell">Saldo pendiente</th><th>PDF</th><th>Estatus</th><th></th></tr></thead>
+                      <tbody>
+                        {% for item in group.records %}
+                        <tr>
+                          <td><div class="fw-semibold">{{ item.folio }}</div><div class="small text-muted">{% if item.rfc %}RFC {{ item.rfc }}{% else %}{{ item.razon_social or group.nombre }}{% endif %}</div></td>
+                          <td><div>{{ item.proyecto or 'Sin proyecto' }}</div><div class="small text-muted">{% if item.folio_factura %}Factura {{ item.folio_factura }}{% endif %}{% if item.folio_factura and item.identificador %} · {% endif %}{% if item.identificador %}Alta {{ item.identificador }}{% endif %}</div></td>
+                          <td>{{ item.fecha_inicio.strftime('%d/%m/%Y') }}</td>
+                          <td><div class="fw-semibold">{{ item.tiempo_credito_dias ~ ' días' if item.tiempo_credito_dias is not none else 'Sin plazo registrado' }}</div><div class="small text-muted">{{ 'Vence ' ~ item.fecha_vencimiento.strftime('%d/%m/%Y') if item.fecha_vencimiento else 'Sin fecha de vencimiento' }}</div></td>
+                          <td>${{ '{:,.2f}'.format(item.monto_total or 0) }} <span class="small text-muted">{{ item.moneda }}</span></td>
+                          <td class="text-success">${{ '{:,.2f}'.format(item.total_abonado) }}</td>
+                          <td class="balance-cell"><strong class="{{ 'text-success' if item.esta_liquidado else 'text-danger' }}">${{ '{:,.2f}'.format(item.saldo_pendiente) }}</strong></td>
+                          <td><span class="badge text-bg-light border">{{ item.documentos|length }}</span></td>
+                          <td><span class="badge {{ 'text-bg-success' if item.estatus == 'LIQUIDADO' else 'text-bg-warning' }}">{{ item.estatus }}</span></td>
+                          <td class="text-end"><div class="d-inline-flex gap-1"><a class="btn btn-sm btn-outline-primary" href="{{ url_for('contabilidad.detalle', slug=category.slug, record_id=item.id) }}">Abrir</a>{% if can_manage %}<form method="post" action="{{ url_for('contabilidad.eliminar_registro', slug=category.slug, record_id=item.id) }}" onsubmit="return confirm('¿Eliminar definitivamente este movimiento y todos sus abonos y documentos?');"><button class="btn btn-sm btn-outline-danger" title="Eliminar movimiento" aria-label="Eliminar movimiento">🗑️</button></form>{% endif %}</div></td>
+                        </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center py-5"><div class="fs-2 mb-2">{{ category.icon }}</div><div class="fw-semibold">No hay proveedores</div><div class="text-muted small">Crea el primer movimiento o cambia los filtros.</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
       <table class="table table-hover align-middle mb-0">
         <thead><tr><th>Registro</th><th>Proyecto / identificación</th><th>Inicio</th>{% if category.financial %}<th>Plazo / vencimiento</th>{% endif %}<th>Monto</th>{% if category.financial %}<th>Abonado</th><th class="balance-cell">Saldo pendiente</th>{% endif %}<th>PDF</th><th>Estatus</th><th></th></tr></thead>
         <tbody>
@@ -327,6 +381,7 @@
           {% endfor %}
         </tbody>
       </table>
+      {% endif %}
     </div>
   </div>
 </div>

@@ -566,6 +566,50 @@ def _filtered_query(category: dict | None = None):
     return query, q, status, legal_entity
 
 
+def _group_provider_records(records: list[ContabilidadRegistro]) -> list[dict]:
+    """Agrupa movimientos del mismo proveedor y totaliza cada moneda."""
+    groups_by_name: dict[str, dict] = {}
+    for record in records:
+        display_name = " ".join((record.nombre or "").split()) or "Proveedor sin nombre"
+        key = display_name.casefold()
+        group = groups_by_name.setdefault(
+            key,
+            {
+                "nombre": display_name,
+                "records": [],
+                "documentos": 0,
+                "totals_by_currency": {},
+            },
+        )
+        group["records"].append(record)
+        group["documentos"] += len(record.documentos or [])
+
+        currency = (record.moneda or "MXN").strip().upper() or "MXN"
+        totals = group["totals_by_currency"].setdefault(
+            currency,
+            {"moneda": currency, "monto": 0.0, "abonado": 0.0, "saldo": 0.0},
+        )
+        totals["monto"] += float(record.monto_total or 0)
+        totals["abonado"] += float(record.total_abonado or 0)
+        totals["saldo"] += float(record.saldo_pendiente or 0)
+
+    groups: list[dict] = []
+    for group in groups_by_name.values():
+        totals = sorted(
+            group.pop("totals_by_currency").values(),
+            key=lambda item: (item["moneda"] != "MXN", item["moneda"]),
+        )
+        for item in totals:
+            item["monto"] = round(item["monto"], 2)
+            item["abonado"] = round(item["abonado"], 2)
+            item["saldo"] = round(item["saldo"], 2)
+        group["totals"] = totals
+        group["movimientos"] = len(group["records"])
+        group["tiene_deuda"] = any(item["saldo"] > 0.005 for item in totals)
+        groups.append(group)
+    return sorted(groups, key=lambda item: item["nombre"].casefold())
+
+
 def _worker_legal_entities() -> list[str]:
     rows = (
         db.session.query(ContabilidadRegistro.razon_social)
@@ -823,6 +867,7 @@ def registros(slug: str):
         "contabilidad/registros.html",
         category=category,
         records=records,
+        provider_groups=_group_provider_records(records) if category["tipo"] == "PROVEEDOR" else [],
         altas=altas,
         registered_records=_load_registered_records(category),
         selected_alta=selected_alta,
