@@ -17,6 +17,7 @@
         <thead class="table-light">
           <tr>
             <th>Folio</th>
+            <th>Región</th>
             <th>Cliente</th>
             <th>Proyecto</th>
             <th>Total</th>
@@ -30,6 +31,7 @@
           {% for c in items %}
           <tr>
             <td class="fw-semibold">{{ c.folio }}</td>
+            <td>{{ c.region or 'MÉXICO' }}</td>
             <td>{{ c.cliente.nombre_cliente if c.cliente else '' }}</td>
             <td>{{ c.proyecto or 'Sin proyecto' }}</td>
             <td>${{ "{:,.2f}".format(c.total or 0) }}</td>

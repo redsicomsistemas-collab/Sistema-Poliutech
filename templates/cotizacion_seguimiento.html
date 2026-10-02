@@ -92,7 +92,13 @@
             <div class="fw-semibold">${{ "{:,.2f}".format(c.total or 0) }}</div>
           </div>
         </div>
-        <div class="col-md-6">
+        <div class="col-md-3">
+          <div class="border rounded p-3 h-100">
+            <div class="small text-muted">Región</div>
+            <div class="fw-semibold">{{ c.region or 'MÉXICO' }}</div>
+          </div>
+        </div>
+        <div class="col-md-3">
           <div class="border border-primary rounded p-3 h-100">
             <div class="small text-muted">Seguimiento asignado a</div>
             <div class="fw-semibold text-primary">

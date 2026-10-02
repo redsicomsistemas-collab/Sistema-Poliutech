@@ -157,13 +157,21 @@
 
     <form method="POST" action="{{ url_for('importar_cotizacion_externa') }}" enctype="multipart/form-data">
       <div class="row g-3 align-items-end">
-        <div class="col-lg-7">
+        <div class="col-lg-6">
           <label for="cotizacion_pdf" class="form-label fw-semibold">Archivo PDF</label>
           <input type="file" id="cotizacion_pdf" name="cotizacion_pdf" class="form-control" accept="application/pdf,.pdf" required>
         </div>
-        <div class="col-lg-3">
+        <div class="col-lg-2">
           <label class="form-label fw-semibold">Usuario que realiza la importación</label>
           <input type="text" class="form-control" value="{{ current_user.nombre_representante }}" readonly aria-readonly="true">
+        </div>
+        <div class="col-lg-2">
+          <label for="region" class="form-label fw-semibold">Región</label>
+          <select id="region" name="region" class="form-select" required>
+            {% for region in regiones_cotizacion %}
+            <option value="{{ region }}" {% if region == 'MÉXICO' %}selected{% endif %}>{{ region }}</option>
+            {% endfor %}
+          </select>
         </div>
         <div class="col-lg-2 d-grid">
           <button type="submit" class="btn btn-success fw-bold">Importar PDF</button>
@@ -188,6 +196,10 @@
     <div class="detected-card">
       <div class="detected-label">Empresa</div>
       <div class="detected-value">{{ detected.cliente.empresa or 'Sin empresa' }}</div>
+    </div>
+    <div class="detected-card">
+      <div class="detected-label">Región</div>
+      <div class="detected-value">{{ detected.region or 'MÉXICO' }}</div>
     </div>
     <div class="detected-card">
       <div class="detected-label">Total estimado</div>

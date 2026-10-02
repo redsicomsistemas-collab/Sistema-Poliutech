@@ -608,6 +608,15 @@
             {% endfor %}
           </select>
         </div>
+        <div class="col-xl-2 col-lg-3 col-md-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Región</label>
+          <select id="filtro-region" class="form-select form-select-sm">
+            <option value="">Todas</option>
+            {% for region in regiones_cotizacion %}
+            <option value="{{ region }}" {% if dashboard_filters.region == region %}selected{% endif %}>{{ region }}</option>
+            {% endfor %}
+          </select>
+        </div>
         <div class="col-xl-2 col-12">
           <div class="filter-actions">
             <button id="btn-exportar-excel" type="button" class="btn btn-success btn-sm">Exportar Excel</button>
@@ -661,6 +670,7 @@
                 <input type="checkbox" id="chk-select-all" title="Seleccionar todas las cotizaciones visibles" aria-label="Seleccionar todas las cotizaciones visibles">
               </th>
               <th>Folio</th>
+              <th>Región</th>
               <th>Fecha</th>
               <th>Usuario</th>
               <th>Asignado a</th>
@@ -694,6 +704,7 @@
                 data-cliente="{{ (c.cliente.nombre_cliente if c.cliente else '')|lower }}"
                 data-empresa="{{ (c.cliente.empresa if c.cliente else '')|lower }}"
                 data-proyecto="{{ (c.proyecto or '')|lower }}"
+                data-region="{{ c.region or 'MÉXICO' }}"
                 aria-selected="false">
               <td class="text-center quote-select-cell">
                 {% set estatus_flag = (c.estatus_aprobacion or 'EN REVISIÓN')|upper %}
@@ -714,6 +725,7 @@
                   {{ c.folio }}{% if es_obra %} <span class="badge text-bg-success ms-1">OBRA</span>{% endif %}
                 </a>
               </td>
+              <td><span class="badge text-bg-light border">{{ c.region or 'MÉXICO' }}</span></td>
               <td>{{ c.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
               <td>{{ nombre_visible_usuario(c.responsable) or 'Sin asignar' }}</td>
               {% set ultima_asignacion = (c.historial_asignaciones|sort(attribute='asignado_en')|last) if c.historial_asignaciones else none %}
@@ -749,7 +761,7 @@
               </td>
             </tr>
             <tr id="quote-actions-{{ c.id }}" class="quote-actions-row" data-actions-for="{{ c.id }}" aria-hidden="true" hidden>
-              <td colspan="{{ 19 if can_manage_assignments else 13 }}" class="quote-actions-cell">
+              <td colspan="{{ 20 if can_manage_assignments else 14 }}" class="quote-actions-cell">
                 <div class="quote-actions-window" role="region" aria-label="Acciones para la cotización {{ c.folio }}">
                   <span class="quote-actions-title fw-bold text-primary">Acciones para {{ c.folio }}</span>
                   <a href="{{ url_for('view_cotizacion', cot_id=c.id) }}" class="btn btn-outline-primary btn-sm" title="Ver cotización">👁️ Ver</a>
@@ -789,19 +801,19 @@
         <nav aria-label="Paginacion de cotizaciones">
           <ul class="pagination pagination-sm mb-0 dashboard-pagination">
             <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
-              <a class="page-link" href="{{ url_for('index', page=pagination.prev_num, vista=dashboard_filters.vista, bandeja=dashboard_filters.bandeja, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente, proyecto=dashboard_filters.proyecto, especialidad=dashboard_filters.especialidad, especialidad_descripcion=dashboard_filters.especialidad_descripcion, responsable=dashboard_filters.responsable) if pagination.has_prev else '#' }}">Anterior</a>
+              <a class="page-link" href="{{ url_for('index', page=pagination.prev_num, vista=dashboard_filters.vista, bandeja=dashboard_filters.bandeja, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente, proyecto=dashboard_filters.proyecto, especialidad=dashboard_filters.especialidad, especialidad_descripcion=dashboard_filters.especialidad_descripcion, responsable=dashboard_filters.responsable, region=dashboard_filters.region) if pagination.has_prev else '#' }}">Anterior</a>
             </li>
             {% for p in pagination.iter_pages(left_edge=1, left_current=1, right_current=2, right_edge=1) %}
               {% if p %}
               <li class="page-item {% if p == pagination.page %}active{% endif %}">
-                <a class="page-link" href="{{ url_for('index', page=p, vista=dashboard_filters.vista, bandeja=dashboard_filters.bandeja, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente, proyecto=dashboard_filters.proyecto, especialidad=dashboard_filters.especialidad, especialidad_descripcion=dashboard_filters.especialidad_descripcion, responsable=dashboard_filters.responsable) }}">{{ p }}</a>
+                <a class="page-link" href="{{ url_for('index', page=p, vista=dashboard_filters.vista, bandeja=dashboard_filters.bandeja, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente, proyecto=dashboard_filters.proyecto, especialidad=dashboard_filters.especialidad, especialidad_descripcion=dashboard_filters.especialidad_descripcion, responsable=dashboard_filters.responsable, region=dashboard_filters.region) }}">{{ p }}</a>
               </li>
               {% else %}
               <li class="page-item disabled"><span class="page-link">...</span></li>
               {% endif %}
             {% endfor %}
             <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
-              <a class="page-link" href="{{ url_for('index', page=pagination.next_num, vista=dashboard_filters.vista, bandeja=dashboard_filters.bandeja, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente, proyecto=dashboard_filters.proyecto, especialidad=dashboard_filters.especialidad, especialidad_descripcion=dashboard_filters.especialidad_descripcion, responsable=dashboard_filters.responsable) if pagination.has_next else '#' }}">Siguiente</a>
+              <a class="page-link" href="{{ url_for('index', page=pagination.next_num, vista=dashboard_filters.vista, bandeja=dashboard_filters.bandeja, desde=dashboard_filters.desde, hasta=dashboard_filters.hasta, estatus=dashboard_filters.estatus, cliente=dashboard_filters.cliente, proyecto=dashboard_filters.proyecto, especialidad=dashboard_filters.especialidad, especialidad_descripcion=dashboard_filters.especialidad_descripcion, responsable=dashboard_filters.responsable, region=dashboard_filters.region) if pagination.has_next else '#' }}">Siguiente</a>
             </li>
           </ul>
         </nav>
@@ -834,6 +846,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const especialidadDescripcion = document.getElementById("filtro-especialidad-descripcion");
   const responsable = document.getElementById("filtro-responsable");
   const asignadoA = document.getElementById("filtro-asignado-a");
+  const region = document.getElementById("filtro-region");
   const limpiar = document.getElementById("btn-limpiar-filtros");
   const exportarExcel = document.getElementById("btn-exportar-excel");
   const exportarSeguimientosPdf = document.getElementById("btn-exportar-seguimientos-pdf");
@@ -936,6 +949,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (especialidadDescripcion?.value.trim()) params.set("especialidad_descripcion", especialidadDescripcion.value.trim());
     if (responsable?.value.trim()) params.set("responsable", responsable.value.trim());
     if (asignadoA?.value) params.set("asignado_a", asignadoA.value);
+    if (region?.value) params.set("region", region.value);
     return params;
   }
 
@@ -1423,6 +1437,7 @@ document.addEventListener("DOMContentLoaded", () => {
             especialidad: (especialidad?.value || ""),
             especialidad_descripcion: (especialidadDescripcion?.value || ""),
             responsable: (responsable?.value || ""),
+            region: (region?.value || ""),
             vista: {{ dashboard_filters.vista|tojson }},
           }
         }),
@@ -1529,7 +1544,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   let clienteFilterTimer = null;
-  [desde, hasta, estatus, proyecto, especialidad, responsable, asignadoA].forEach((el) => {
+  [desde, hasta, estatus, proyecto, especialidad, responsable, asignadoA, region].forEach((el) => {
     el?.addEventListener("change", aplicarFiltrosDashboard);
   });
   [folio, cliente, especialidadDescripcion].forEach((el) => el?.addEventListener("input", () => {

@@ -106,6 +106,7 @@
         <thead class="table-light">
           <tr>
             <th>Folio</th>
+            <th>Región</th>
             <th>Fecha</th>
             <th>Cliente</th>
             <th>Empresa</th>
@@ -124,6 +125,7 @@
                 {{ c.folio }}
               </a>
             </td>
+            <td>{{ c.region or 'MÉXICO' }}</td>
             <td>{{ c.fecha.strftime('%Y-%m-%d %H:%M') if c.fecha else '-' }}</td>
             <td>{{ c.cliente.nombre_cliente if c.cliente else '' }}</td>
             <td>{{ c.cliente.empresa if c.cliente else '' }}</td>
@@ -140,7 +142,7 @@
           </tr>
           {% else %}
           <tr>
-            <td colspan="9" class="text-center text-muted py-4">No hay cotizaciones en este proyecto.</td>
+            <td colspan="10" class="text-center text-muted py-4">No hay cotizaciones en este proyecto.</td>
           </tr>
           {% endfor %}
         </tbody>

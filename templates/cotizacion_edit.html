@@ -54,6 +54,14 @@
               <option value="USD" {% if c.moneda == 'USD' %}selected{% endif %}>Dólares (USD)</option>
             </select>
           </div>
+          <div class="col-md-4 mt-3">
+            <label class="form-label">Región</label>
+            <select name="region" class="form-select" required>
+              {% for region in regiones_cotizacion %}
+              <option value="{{ region }}" {% if (c.region or 'MÉXICO') == region %}selected{% endif %}>{{ region }}</option>
+              {% endfor %}
+            </select>
+          </div>
         </div>
 
         <h5 class="fw-bold text-primary mt-4 mb-3">Renglones de cotización</h5>

@@ -75,6 +75,26 @@ ESPECIALIDADES_COTIZACION = [
     "Inyección",
     "Construcción",
 ]
+REGIONES_COTIZACION = ["USA", "MÉXICO", "PANAMÁ"]
+
+
+def normalize_region(value, default="MÉXICO") -> str:
+    raw = unicodedata.normalize("NFKD", str(value or ""))
+    normalized = "".join(ch for ch in raw if not unicodedata.combining(ch)).strip().upper()
+    aliases = {
+        "USA": "USA",
+        "US": "USA",
+        "EEUU": "USA",
+        "EE UU": "USA",
+        "ESTADOS UNIDOS": "USA",
+        "MEXICO": "MÉXICO",
+        "MX": "MÉXICO",
+        "PANAMA": "PANAMÁ",
+        "PA": "PANAMÁ",
+    }
+    if normalized in aliases:
+        return aliases[normalized]
+    return default if default in REGIONES_COTIZACION else ""
 PROSPECT_STATUS_OPTIONS = [
     "PENDIENTE",
     "CONTACTADO",
@@ -1688,6 +1708,7 @@ def _create_mobile_voice_quote(preview: dict, user: Usuario) -> Cotizacion:
         estatus_aprobacion="EN REVISIÓN",
         notas="\n".join(part for part in notes_parts if part).strip() or None,
         responsable=responsible,
+        region=normalize_region(header_data.get("region")),
         proyecto=(header_data.get("proyecto") or preview.get("proyecto") or "").strip() or None,
         ciudad_trabajo=(header_data.get("ciudad") or "").strip().upper() or None,
     )
@@ -4679,6 +4700,7 @@ def ensure_schema():
             ("last_whatsapp_at", "ALTER TABLE cotizacion ADD COLUMN last_whatsapp_at TIMESTAMP NULL"),
             ("proyecto", "ALTER TABLE cotizacion ADD COLUMN proyecto VARCHAR(200)"),
             ("ciudad_trabajo", "ALTER TABLE cotizacion ADD COLUMN ciudad_trabajo VARCHAR(120)"),
+            ("region", "ALTER TABLE cotizacion ADD COLUMN region VARCHAR(20) DEFAULT 'MÉXICO'"),
             ("eliminada_en", "ALTER TABLE cotizacion ADD COLUMN eliminada_en TIMESTAMP NULL"),
             ("eliminada_por", "ALTER TABLE cotizacion ADD COLUMN eliminada_por VARCHAR(120)"),
             ("eliminacion_definitiva_en", "ALTER TABLE cotizacion ADD COLUMN eliminacion_definitiva_en TIMESTAMP NULL"),
@@ -4690,6 +4712,16 @@ def ensure_schema():
                     pass
         db.session.commit()
         cols = _table_columns("cotizacion")
+        if "region" in cols:
+            db.session.execute(text("""
+                UPDATE cotizacion
+                SET region = 'MÉXICO'
+                WHERE region IS NULL OR TRIM(region) = ''
+                   OR UPPER(TRIM(region)) NOT IN ('USA', 'MÉXICO', 'MEXICO', 'PANAMÁ', 'PANAMA')
+            """))
+            db.session.execute(text("UPDATE cotizacion SET region = 'MÉXICO' WHERE UPPER(TRIM(region)) = 'MEXICO'"))
+            db.session.execute(text("UPDATE cotizacion SET region = 'PANAMÁ' WHERE UPPER(TRIM(region)) = 'PANAMA'"))
+            db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_cotizacion_region ON cotizacion (region)"))
         if "estatus_aprobacion" in cols and "estatus" in cols:
             db.session.execute(text("""
                 UPDATE cotizacion
@@ -5697,6 +5729,7 @@ def _build_dashboard_cotizaciones_query(
     especialidad_descripcion: str = "",
     responsable: str = "",
     asignado_a: str = "",
+    region: str = "",
     vista: str = "todos",
 ):
     q = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
@@ -5754,6 +5787,10 @@ def _build_dashboard_cotizaciones_query(
 
     if estatus:
         q = q.filter(Cotizacion.estatus == estatus)
+
+    region = normalize_region(region, default="")
+    if region:
+        q = q.filter(Cotizacion.region == region)
 
     responsable = (responsable or "").strip().lower()
     if responsable:
@@ -5996,7 +6033,7 @@ def _cotizacion_snapshot(cot):
     return {
         "folio": cot.folio, "fecha": cot.fecha.isoformat() if cot.fecha else None,
         "cliente": {key: getattr(cliente, key, None) for key in ("nombre_cliente", "empresa", "correo", "telefono", "direccion", "rfc")},
-        "encabezado": {key: getattr(cot, key, None) for key in ("estatus", "estatus_aprobacion", "especialidad", "especialidad_descripcion", "proyecto", "ciudad_trabajo", "moneda", "notas")},
+        "encabezado": {key: getattr(cot, key, None) for key in ("estatus", "estatus_aprobacion", "region", "especialidad", "especialidad_descripcion", "proyecto", "ciudad_trabajo", "moneda", "notas")},
         "totales": {key: float(getattr(cot, key, 0) or 0) for key in ("subtotal", "descuento_total", "iva_porc", "iva_monto", "total")},
         "detalles": [{
             "concepto_id": d.concepto_id, "nombre_concepto": d.nombre_concepto, "unidad": d.unidad,
@@ -6009,7 +6046,7 @@ def _cotizacion_snapshot(cot):
 
 def _snapshot_changes(previous, current):
     changes = []
-    labels = {"cliente.nombre_cliente": "Cliente", "cliente.empresa": "Empresa", "encabezado.proyecto": "Proyecto",
+    labels = {"cliente.nombre_cliente": "Cliente", "cliente.empresa": "Empresa", "encabezado.region": "Región", "encabezado.proyecto": "Proyecto",
               "encabezado.especialidad": "Especialidad", "encabezado.ciudad_trabajo": "Ciudad", "encabezado.moneda": "Moneda",
               "encabezado.notas": "Condiciones", "encabezado.estatus": "Seguimiento", "encabezado.estatus_aprobacion": "Aprobación",
               "totales.subtotal": "Subtotal", "totales.descuento_total": "Descuento", "totales.iva_monto": "IVA", "totales.total": "Total"}
@@ -6124,6 +6161,7 @@ def sample_import_payload() -> dict:
         "folio": "COT-2026-02-026-2",
         "fecha": "2026-02-26",
         "estatus": "EN REVISIÓN",
+        "region": "MÉXICO",
         "responsable": responsable_actual() or "",
         "cliente": {
             "nombre_cliente": "Ing. Adriana Vazquez / Ing. Karla Reyes",
@@ -6786,6 +6824,7 @@ def build_import_payload_from_pdf(pdf_bytes: bytes, filename: str, responsable_h
         "folio": folio,
         "fecha": fecha.isoformat(sep=" "),
         "estatus": "0%",
+        "region": "MÉXICO",
         "responsable": responsable_hint or "",
         "cliente": {
             "nombre_cliente": cliente_nombre,
@@ -6865,6 +6904,7 @@ def _normalize_import_payload(payload: dict) -> dict:
         "fecha": parse_datetime_flexible(payload.get("fecha")) or now_cdmx_naive(),
         "estatus": raw_estatus if raw_estatus in VALID_ESTATUS_SEGUIMIENTO else "0%",
         "estatus_aprobacion": raw_aprobacion if raw_aprobacion in VALID_ESTATUS_APROBACION else "EN REVISIÓN",
+        "region": normalize_region(payload.get("region")),
         "responsable": (payload.get("responsable") or "").strip() or None,
         "proyecto": (payload.get("proyecto") or payload.get("obra") or "").strip() or None,
         "especialidad": (payload.get("especialidad") or "").strip() or None,
@@ -6963,6 +7003,7 @@ def import_external_quote_payload(payload: dict, source_label: Optional[str] = N
         responsable=responsable_final,
         proyecto=normalized["proyecto"],
         especialidad=normalized.get("especialidad"),
+        region=normalized["region"],
     )
     db.session.add(cot)
     db.session.flush()
@@ -7541,6 +7582,7 @@ def index():
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
     asignado_a = (request.args.get("asignado_a") or "").strip()
+    region = normalize_region(request.args.get("region"), default="")
     vista = (request.args.get("vista") or "todos").strip().lower()
     if vista not in {"todos", "activas", "ganadas", "perdidas"}:
         vista = "todos"
@@ -7558,6 +7600,7 @@ def index():
         "especialidad_descripcion": especialidad_descripcion,
         "responsable": responsable,
         "asignado_a": asignado_a,
+        "region": region,
         "bandeja": bandeja,
         "vista": vista,
     }
@@ -7574,11 +7617,12 @@ def index():
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
             asignado_a=asignado_a,
+            region=region,
             vista=vista,
         )
     except ValueError:
         base_query = _build_dashboard_cotizaciones_query(vista=vista)
-        dashboard_filters = {"folio": "", "desde": "", "hasta": "", "estatus": "", "cliente": "", "proyecto": "", "especialidad": "", "especialidad_descripcion": "", "responsable": "", "asignado_a": "", "bandeja": bandeja, "vista": vista}
+        dashboard_filters = {"folio": "", "desde": "", "hasta": "", "estatus": "", "cliente": "", "proyecto": "", "especialidad": "", "especialidad_descripcion": "", "responsable": "", "asignado_a": "", "region": "", "bandeja": bandeja, "vista": vista}
 
     ahora = now_cdmx_naive()
     inicio_hoy = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -7601,6 +7645,7 @@ def index():
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
             asignado_a=asignado_a,
+            region=region,
             vista="activas",
         ),
         bandeja,
@@ -7716,6 +7761,7 @@ def index():
         ),
         valid_estatus_aprobacion=VALID_ESTATUS_APROBACION,
         especialidades_cotizacion=ESPECIALIDADES_COTIZACION,
+        regiones_cotizacion=REGIONES_COTIZACION,
         responsables_cotizacion=responsables_cotizacion,
         proyectos_cotizacion=_known_project_names(),
         usuarios_asignables=usuarios_asignables,
@@ -7792,7 +7838,7 @@ def download_demo_app():
 @app.route("/cotizador")
 @login_required
 def cotizador():
-    return render_template("cotizador.html", title="Nuevo - Sistema MAR", proyectos=_known_project_names(), especialidades_cotizacion=ESPECIALIDADES_COTIZACION)
+    return render_template("cotizador.html", title="Nuevo - Sistema MAR", proyectos=_known_project_names(), especialidades_cotizacion=ESPECIALIDADES_COTIZACION, regiones_cotizacion=REGIONES_COTIZACION)
 
 
 @app.route("/proyectos")
@@ -9662,6 +9708,7 @@ def api_mobile_pending_quotes():
             "fecha": cot.fecha.isoformat() if cot.fecha else "",
             "estatus": cot.estatus or "",
             "estatus_aprobacion": cot.estatus_aprobacion or "EN REVISIÓN",
+            "region": cot.region or "MÉXICO",
             "especialidad": cot.especialidad or "",
             "total": cot.total or 0,
             "responsable": cot.responsable or "",
@@ -9690,6 +9737,15 @@ def api_mobile_dashboard_summary():
     for status, count in rows:
         by_status[(status or "").strip().upper()] = int(count or 0)
 
+    region_rows = (
+        query.with_entities(Cotizacion.region, db.func.count(Cotizacion.id))
+        .group_by(Cotizacion.region)
+        .all()
+    )
+    by_region = {region: 0 for region in REGIONES_COTIZACION}
+    for region_value, count in region_rows:
+        by_region[normalize_region(region_value)] += int(count or 0)
+
     return jsonify({
         "ok": True,
         "kpis": {
@@ -9697,7 +9753,9 @@ def api_mobile_dashboard_summary():
             "total_importe": total_importe,
         },
         "status_breakdown": by_status,
+        "region_breakdown": by_region,
         "valid_estatus": VALID_ESTATUS,
+        "valid_regiones": REGIONES_COTIZACION,
     })
 
 
@@ -9705,10 +9763,13 @@ def api_mobile_dashboard_summary():
 @require_mobile_auth
 def api_mobile_quotes():
     estatus = (request.args.get("estatus") or "").strip().upper()
+    region = normalize_region(request.args.get("region"), default="")
     query = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
     query = query.filter(Cotizacion.eliminada_en.is_(None))
     if estatus:
         query = query.filter(Cotizacion.estatus == estatus)
+    if region:
+        query = query.filter(Cotizacion.region == region)
 
     items = []
     for cot in query.order_by(Cotizacion.fecha.desc()).all():
@@ -9718,6 +9779,7 @@ def api_mobile_quotes():
             "fecha": cot.fecha.isoformat() if cot.fecha else "",
             "estatus": cot.estatus or "",
             "estatus_aprobacion": cot.estatus_aprobacion or "EN REVISIÓN",
+            "region": cot.region or "MÉXICO",
             "especialidad": cot.especialidad or "",
             "total": cot.total or 0,
             "responsable": cot.responsable or "",
@@ -9725,7 +9787,7 @@ def api_mobile_quotes():
             "cliente": cot.cliente.nombre_cliente if cot.cliente else "",
             "pdf_url": _mobile_quote_pdf_url(cot.id),
         })
-    return jsonify({"ok": True, "items": items, "valid_estatus": VALID_ESTATUS})
+    return jsonify({"ok": True, "items": items, "valid_estatus": VALID_ESTATUS, "valid_regiones": REGIONES_COTIZACION})
 
 
 @app.route("/api/mobile/cotizaciones/voz", methods=["POST"])
@@ -9748,6 +9810,8 @@ def api_mobile_voice_quote():
             notes=notes,
             conditions_raw=conditions_raw,
         )
+        header_data = preview.setdefault("datos_encabezado", {})
+        header_data["region"] = normalize_region(payload.get("region"))
     except ValueError as exc:
         return _mobile_json_error(str(exc), 400)
     except Exception as exc:
@@ -9774,6 +9838,7 @@ def api_mobile_voice_quote():
             "folio": cot.folio or "",
             "estatus": cot.estatus or "",
             "estatus_aprobacion": cot.estatus_aprobacion or "EN REVISIÓN",
+            "region": cot.region or "MÉXICO",
             "especialidad": cot.especialidad or "",
             "total": float(cot.total or 0),
             "cliente": cot.cliente.nombre_cliente if cot.cliente else "",
@@ -9925,6 +9990,7 @@ def api_mobile_quote_followup_detail(cot_id: int, seg_id: int):
             "folio": cot.folio or "",
             "estatus": cot.estatus or "",
             "estatus_aprobacion": cot.estatus_aprobacion or "EN REVISIÓN",
+            "region": cot.region or "MÉXICO",
             "especialidad": cot.especialidad or "",
             "responsable": cot.responsable or "",
             "cliente": cot.cliente.nombre_cliente if cot.cliente else "",
@@ -10099,6 +10165,10 @@ def importar_cotizacion_externa():
                     uploaded.filename or "cotizacion.pdf",
                     responsable_hint=responsable_destino,
                 )
+                region_form = normalize_region(request.form.get("region"), default="")
+                if not region_form:
+                    raise ValueError("Selecciona una región válida para la cotización.")
+                payload["region"] = region_form
                 detected = _normalize_import_payload(payload)
                 subtotal_detectado = sum((it.get("cantidad") or 0) * (it.get("precio_unitario") or 0) for it in detected["items"])
                 total_detectado = subtotal_detectado * (1 + ((detected.get("iva_porc") or 0) / 100.0))
@@ -10118,6 +10188,7 @@ def importar_cotizacion_externa():
         "cotizacion_import.html",
         title="Importar cotizacion - Sistema MAR",
         detected=detected,
+        regiones_cotizacion=REGIONES_COTIZACION,
     )
 @app.route("/admin/catalogos")
 @login_required
@@ -10307,6 +10378,10 @@ def crear_cotizacion():
     if especialidad_form not in ESPECIALIDADES_COTIZACION:
         flash("Selecciona una especialidad válida.", "danger")
         return redirect(url_for("cotizador"))
+    region_form = normalize_region(f.get("region"), default="")
+    if not region_form:
+        flash("Selecciona una región válida.", "danger")
+        return redirect(url_for("cotizador"))
 
     nombre_cliente = (f.get("cliente") or f.get("cliente_nombre") or "").strip()
     empresa = (f.get("empresa") or "").strip()
@@ -10371,6 +10446,7 @@ def crear_cotizacion():
         responsable_usuario_id=current_user.id,
         proyecto=proyecto,
         ciudad_trabajo=ciudad_trabajo,
+        region=region_form,
         moneda=moneda,
     )
     db.session.add(cot)
@@ -10510,7 +10586,7 @@ def editar_cotizacion(cot_id: int):
     descuento_porc_actual = 0.0
     if float(c.subtotal or 0) > 0:
         descuento_porc_actual = (float(c.descuento_total or 0) / float(c.subtotal or 0)) * 100.0
-    return render_template("cotizacion_edit.html", c=c, zona_actual=zona_actual, notas_adicionales=notas_adicionales, descuento_porc_actual=descuento_porc_actual, proyectos=_known_project_names(), especialidades_cotizacion=ESPECIALIDADES_COTIZACION, valid_estatus=VALID_ESTATUS_SEGUIMIENTO, valid_estatus_aprobacion=VALID_ESTATUS_APROBACION, title=f"Editar {c.folio}")
+    return render_template("cotizacion_edit.html", c=c, zona_actual=zona_actual, notas_adicionales=notas_adicionales, descuento_porc_actual=descuento_porc_actual, proyectos=_known_project_names(), especialidades_cotizacion=ESPECIALIDADES_COTIZACION, regiones_cotizacion=REGIONES_COTIZACION, valid_estatus=VALID_ESTATUS_SEGUIMIENTO, valid_estatus_aprobacion=VALID_ESTATUS_APROBACION, title=f"Editar {c.folio}")
 
 @app.route("/cotizaciones/<int:cot_id>/actualizar", methods=["POST"])
 @login_required
@@ -10530,6 +10606,10 @@ def actualizar_cotizacion(cot_id: int):
     especialidad_form = (f.get("especialidad") or "").strip()
     if especialidad_form not in ESPECIALIDADES_COTIZACION:
         flash("Selecciona una especialidad válida.", "danger")
+        return redirect(url_for("editar_cotizacion", cot_id=c.id))
+    region_form = normalize_region(f.get("region"), default="")
+    if not region_form:
+        flash("Selecciona una región válida.", "danger")
         return redirect(url_for("editar_cotizacion", cot_id=c.id))
     _ensure_initial_cotizacion_version(c)
 
@@ -10590,6 +10670,7 @@ def actualizar_cotizacion(cot_id: int):
     aprobacion_anterior = (c.estatus_aprobacion or "EN REVISIÓN").strip().upper()
     c.estatus_aprobacion = "APROBADA" if aprobacion_anterior in {"APROBADA", "APROBADO", "AUTORIZADO"} else "EN REVISIÓN"
     c.especialidad = especialidad_form
+    c.region = region_form
     c.especialidad_descripcion = (f.get("especialidad_descripcion") or "").strip()[:500] or None
     c.notas = (f.get("notas") or "").strip()
     c.proyecto = (f.get("proyecto") or "").strip() or None
@@ -10768,7 +10849,7 @@ def restaurar_cotizacion_version(cot_id, version_id):
         flash("Una cotización aprobada o facturada no puede restaurarse.", "danger"); return redirect(url_for("cotizacion_versiones", cot_id=cot.id))
     version = CotizacionVersion.query.filter_by(id=version_id, cotizacion_id=cot.id).first_or_404()
     data = _version_payload(version); header, totals = data.get("encabezado", {}), data.get("totales", {})
-    for field in ("estatus", "estatus_aprobacion", "especialidad", "especialidad_descripcion", "proyecto", "ciudad_trabajo", "moneda", "notas"):
+    for field in ("estatus", "estatus_aprobacion", "region", "especialidad", "especialidad_descripcion", "proyecto", "ciudad_trabajo", "moneda", "notas"):
         if field in header: setattr(cot, field, header.get(field))
     for field in ("subtotal", "descuento_total", "iva_porc", "iva_monto", "total"): setattr(cot, field, float(totals.get(field) or 0))
     for detail in list(cot.detalles): db.session.delete(detail)
@@ -10963,6 +11044,7 @@ def bulk_eliminar_filtradas():
     especialidad_s = (filters.get("especialidad") or "").strip()
     especialidad_descripcion_s = (filters.get("especialidad_descripcion") or "").strip()
     responsable_s = (filters.get("responsable") or "").strip()
+    region_s = normalize_region(filters.get("region"), default="")
     vista_s = (filters.get("vista") or "todos").strip().lower()
 
     try:
@@ -10976,6 +11058,7 @@ def bulk_eliminar_filtradas():
             especialidad=especialidad_s,
             especialidad_descripcion=especialidad_descripcion_s,
             responsable=responsable_s,
+            region=region_s,
             vista=vista_s,
         )
     except ValueError as exc:
@@ -11051,12 +11134,15 @@ def restaurar_cotizacion(cot_id: int):
 def list_cotizaciones():
     page = int(request.args.get("p", 1) or 1)
     per_page = 25
+    region = normalize_region(request.args.get("region"), default="")
 
     q = _cotizaciones_activas_query()
     if is_demo_user():
         q = q.filter(Cotizacion.responsable_usuario_id == current_user.id)
     elif not is_admin():
         q = q.filter(Cotizacion.responsable == responsable_actual())
+    if region:
+        q = q.filter(Cotizacion.region == region)
 
     q = q.order_by(Cotizacion.fecha.desc())
 
@@ -11068,6 +11154,7 @@ def list_cotizaciones():
     return render_template(
         "cotizaciones_list.html",
         items=items, page=page, pages=pages, total=total,
+        region=region, regiones_cotizacion=REGIONES_COTIZACION,
         title="Cotizaciones · Sistema MAR"
     )
 
@@ -11142,6 +11229,7 @@ def cotizacion_seguimiento(cot_id: int):
             cliente=c.cliente,
             responsable=c.responsable,
             extras=[
+                {"label": "Región", "value": c.region or "MÉXICO"},
                 {"label": "Proyecto", "value": c.proyecto},
                 {"label": "Ciudad de trabajo", "value": c.ciudad_trabajo},
             ],
@@ -11553,9 +11641,9 @@ def export_cotizacion_csv(cot_id: int):
     output = io.StringIO()
     w = csv.writer(output)
 
-    w.writerow(["Folio","Fecha","Estatus","Representante","Cliente","Empresa","Subtotal","IVA %","IVA $","Total","Notas"])
+    w.writerow(["Folio","Región","Fecha","Estatus","Representante","Cliente","Empresa","Subtotal","IVA %","IVA $","Total","Notas"])
     w.writerow([
-        c.folio, c.fecha.strftime("%Y-%m-%d %H:%M"), c.estatus, (c.responsable or ""),
+        c.folio, c.region or "MÉXICO", c.fecha.strftime("%Y-%m-%d %H:%M"), c.estatus, (c.responsable or ""),
         c.cliente.nombre_cliente if c.cliente else "",
         c.cliente.empresa if c.cliente else "",
         f"{c.subtotal:.2f}",
@@ -11602,6 +11690,7 @@ def export_cotizacion_xlsx(cot_id: int):
     ws.append(["Folio", c.folio, "", "Fecha", c.fecha.strftime("%d/%m/%Y %H:%M"), ""])
     ws.append(["Cliente", (c.cliente.nombre_cliente if c.cliente else ""), "", "Empresa", (c.cliente.empresa if c.cliente else ""), ""])
     ws.append(["Representante", c.responsable or "", "", "Estatus", c.estatus, ""])
+    ws.append(["Región", c.region or "MÉXICO", "", "Moneda", moneda_label(normalize_moneda(c.moneda)), ""])
     ws.append([])
 
     headers = ["Capitulo", "Cant", "Unidad", "Concepto", "Sistema", "Precio Unit.", "Subtotal"]
@@ -12661,6 +12750,7 @@ def export_dashboard_cotizaciones_xlsx():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
+    region = normalize_region(request.args.get("region"), default="")
     vista = (request.args.get("vista") or "todos").strip().lower()
 
     try:
@@ -12674,6 +12764,7 @@ def export_dashboard_cotizaciones_xlsx():
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
+            region=region,
             vista=vista,
         ).order_by(Cotizacion.fecha.desc()).all())
     except ValueError as exc:
@@ -12691,7 +12782,7 @@ def export_dashboard_cotizaciones_xlsx():
     thin = Side(style="thin", color="DDDDDD")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-    ws.merge_cells("A1:N1")
+    ws.merge_cells("A1:O1")
     ws["A1"] = "REPORTE DE COTIZACIONES"
     ws["A1"].font = Font(bold=True, size=14)
     ws["A1"].alignment = center
@@ -12715,14 +12806,16 @@ def export_dashboard_cotizaciones_xlsx():
         filtros_texto.append(f"Descripción: {especialidad_descripcion}")
     if responsable:
         filtros_texto.append(f"Usuario: {responsable}")
+    if region:
+        filtros_texto.append(f"Región: {region}")
     if not filtros_texto:
         filtros_texto.append("Sin filtros")
 
-    ws.merge_cells("A2:M2")
+    ws.merge_cells("A2:O2")
     ws["A2"] = " | ".join(filtros_texto)
     ws["A2"].alignment = left
 
-    headers = ["Folio", "Fecha", "Cliente", "Empresa", "Telefono", "Responsable", "Especialidad", "Descripción", "Aprobacion", "Seguimiento", "Subtotal", "IVA %", "IVA $", "Total"]
+    headers = ["Folio", "Región", "Fecha", "Cliente", "Empresa", "Telefono", "Responsable", "Especialidad", "Descripción", "Aprobacion", "Seguimiento", "Subtotal", "IVA %", "IVA $", "Total"]
     ws.append([])
     ws.append(headers)
 
@@ -12737,6 +12830,7 @@ def export_dashboard_cotizaciones_xlsx():
     for c in cotizaciones:
         ws.append([
             c.folio or "",
+            c.region or "MÉXICO",
             c.fecha.strftime("%Y-%m-%d %H:%M") if c.fecha else "",
             c.cliente.nombre_cliente if c.cliente else "",
             c.cliente.empresa if c.cliente else "",
@@ -12754,9 +12848,9 @@ def export_dashboard_cotizaciones_xlsx():
         row = ws.max_row
         for col in range(1, len(headers) + 1):
             ws.cell(row=row, column=col).border = border
-        for col in (11, 13, 14):
+        for col in (12, 14, 15):
             ws.cell(row=row, column=col).number_format = '"$"#,##0.00'
-        ws.cell(row=row, column=12).number_format = '0.00'
+        ws.cell(row=row, column=13).number_format = '0.00'
         ws.cell(row=row, column=1).alignment = left
         ws.cell(row=row, column=2).alignment = center
         ws.cell(row=row, column=3).alignment = left
@@ -12764,12 +12858,12 @@ def export_dashboard_cotizaciones_xlsx():
         ws.cell(row=row, column=5).alignment = left
 
     total_row = ws.max_row + 2
-    ws.cell(row=total_row, column=13, value="Total exportado:").font = bold
-    ws.cell(row=total_row, column=14, value=f"=SUM(N{header_row + 1}:N{ws.max_row})")
-    ws.cell(row=total_row, column=14).font = bold
-    ws.cell(row=total_row, column=14).number_format = '"$"#,##0.00'
+    ws.cell(row=total_row, column=14, value="Total exportado:").font = bold
+    ws.cell(row=total_row, column=15, value=f"=SUM(O{header_row + 1}:O{ws.max_row})")
+    ws.cell(row=total_row, column=15).font = bold
+    ws.cell(row=total_row, column=15).number_format = '"$"#,##0.00'
 
-    ws.auto_filter.ref = f"A{header_row}:N{max(header_row, ws.max_row)}"
+    ws.auto_filter.ref = f"A{header_row}:O{max(header_row, ws.max_row)}"
     ws.freeze_panes = f"A{header_row + 1}"
     ws.column_dimensions["A"].width = 18
     ws.column_dimensions["B"].width = 18
@@ -12785,6 +12879,7 @@ def export_dashboard_cotizaciones_xlsx():
     ws.column_dimensions["L"].width = 14
     ws.column_dimensions["M"].width = 14
     ws.column_dimensions["N"].width = 14
+    ws.column_dimensions["O"].width = 14
 
     # Las graficas se construyen con la misma lista ya filtrada que alimenta
     # la tabla. De esta forma el archivo siempre representa exactamente lo que
@@ -12933,6 +13028,7 @@ def export_dashboard_followups_pdf():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
+    region = normalize_region(request.args.get("region"), default="")
     vista = (request.args.get("vista") or "todos").strip().lower()
 
     try:
@@ -12947,6 +13043,7 @@ def export_dashboard_followups_pdf():
                 especialidad=especialidad,
                 especialidad_descripcion=especialidad_descripcion,
                 responsable=responsable,
+                region=region,
                 vista=vista,
             )
             .order_by(Cotizacion.fecha.desc())
@@ -13024,6 +13121,8 @@ def export_dashboard_followups_pdf():
         filtros_texto.append(f"Proyecto: {proyecto}")
     if especialidad:
         filtros_texto.append(f"Especialidad: {especialidad}")
+    if region:
+        filtros_texto.append(f"Región: {region}")
     if not filtros_texto:
         filtros_texto.append("Sin filtros")
 
@@ -13064,6 +13163,7 @@ def export_dashboard_followups_pdf():
                 Paragraph(
                     f"<b>Cliente:</b> {escape(cliente_nombre)} &nbsp;&nbsp;&nbsp; "
                     f"<b>Empresa:</b> {escape(empresa_nombre)} &nbsp;&nbsp;&nbsp; "
+                    f"<b>Región:</b> {escape(cot.region or 'MÉXICO')} &nbsp;&nbsp;&nbsp; "
                     f"<b>Estatus:</b> {escape(cot.estatus or '-')}",
                     styles["FollowupBody"],
                 ),
@@ -13122,6 +13222,7 @@ def api_dashboard_filter_summary():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
+    region = normalize_region(request.args.get("region"), default="")
     vista = (request.args.get("vista") or "todos").strip().lower()
     bandeja = (request.args.get("bandeja") or "").strip().lower()
 
@@ -13136,6 +13237,7 @@ def api_dashboard_filter_summary():
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
+            region=region,
             vista=vista,
         )
     except ValueError as exc:
@@ -13152,6 +13254,7 @@ def api_dashboard_filter_summary():
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
+            region=region,
             vista="activas",
         ),
         bandeja,
@@ -13303,6 +13406,7 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
     cliente_correo = cli.correo if cli else ""
     cliente_telefono = cli.telefono if cli else ""
     ciudad_trabajo = (getattr(c, "ciudad_trabajo", "") or "").strip()
+    region = normalize_region(getattr(c, "region", None))
     moneda = normalize_moneda(getattr(c, "moneda", None))
     try:
         correo_lineas = _parse_email_list(cliente_correo)
@@ -13329,7 +13433,7 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
         ],
         [
             Paragraph(f"<b>Moneda:</b> {moneda_label(moneda)}", styles["Encabezado"]),
-            Paragraph("", styles["Encabezado"]),
+            Paragraph(f"<b>Región:</b> {escape(region)}", styles["Encabezado"]),
         ],
     ]
     meta_tbl = Table(meta_data, colWidths=[95*mm, 95*mm], hAlign="LEFT")
@@ -13495,6 +13599,7 @@ def api_cotizaciones_search():
         q = q.filter(Cotizacion.responsable == responsable_actual())
 
     estatus = (request.args.get("estatus") or "").strip()
+    region = normalize_region(request.args.get("region"), default="")
     fi = (request.args.get("fi") or "").strip()
     ff = (request.args.get("ff") or "").strip()
     mmin = (request.args.get("mmin") or "").strip()
@@ -13502,6 +13607,8 @@ def api_cotizaciones_search():
 
     if estatus:
         q = q.filter(Cotizacion.estatus == estatus)
+    if region:
+        q = q.filter(Cotizacion.region == region)
     if fi:
         try: q = q.filter(Cotizacion.fecha >= datetime.fromisoformat(fi))
         except Exception: pass
@@ -13526,6 +13633,7 @@ def api_cotizaciones_search():
             "fecha": c.fecha.strftime("%Y-%m-%d %H:%M"),
             "estatus": c.estatus,
             "estatus_aprobacion": c.estatus_aprobacion or "EN REVISIÓN",
+            "region": c.region or "MÉXICO",
             "especialidad": c.especialidad or "",
             "especialidad_descripcion": c.especialidad_descripcion or "",
             "proyecto": c.proyecto or "",
@@ -13548,6 +13656,7 @@ def api_dashboard_metrics():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
+    region = normalize_region(request.args.get("region"), default="")
     vista = (request.args.get("vista") or "todos").strip().lower()
     bandeja = (request.args.get("bandeja") or "").strip().lower()
 
@@ -13562,6 +13671,7 @@ def api_dashboard_metrics():
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
+            region=region,
             vista=vista,
         )
     except ValueError as exc:
@@ -13603,6 +13713,7 @@ def api_dashboard_status_breakdown():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
+    region = normalize_region(request.args.get("region"), default="")
     vista = (request.args.get("vista") or "todos").strip().lower()
     bandeja = (request.args.get("bandeja") or "").strip().lower()
 
@@ -13617,6 +13728,7 @@ def api_dashboard_status_breakdown():
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
+            region=region,
             vista=vista,
         )
     except ValueError as exc:
@@ -13648,6 +13760,7 @@ def api_dashboard_outcome_breakdown():
         "especialidad": (request.args.get("especialidad") or "").strip(),
         "especialidad_descripcion": (request.args.get("especialidad_descripcion") or "").strip(),
         "responsable": (request.args.get("responsable") or "").strip(),
+        "region": normalize_region(request.args.get("region"), default=""),
     }
 
     try:
@@ -14081,6 +14194,7 @@ def _seed_demo_environment(demo: DemoEnvironment) -> None:
         fecha=now_cdmx_naive(),
         estatus="PENDIENTE",
         estatus_aprobacion="EN REVISIÓN",
+        region="MÉXICO",
         especialidad="Construcción",
         subtotal=25000,
         iva_porc=16,

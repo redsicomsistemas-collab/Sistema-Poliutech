@@ -17,12 +17,13 @@
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-white border-0 pt-3 px-3"><h5 class="fw-bold mb-0">Seguimientos a mi cargo</h5></div>
   <div class="card-body p-0"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
-    <thead><tr><th>Folio</th><th>Cliente / proyecto</th><th>Estatus</th><th>Asignación de seguimiento</th><th>Última actividad</th><th></th></tr></thead>
+    <thead><tr><th>Folio</th><th>Región</th><th>Cliente / proyecto</th><th>Estatus</th><th>Asignación de seguimiento</th><th>Última actividad</th><th></th></tr></thead>
     <tbody>
     {% for c in items %}
       {% set ultimo = c.seguimientos[0] if c.seguimientos else none %}
       <tr>
         <td><div class="fw-bold">{{ c.folio or ('#' ~ c.id) }}</div><small class="text-muted">{{ c.fecha.strftime('%d/%m/%Y') if c.fecha else 'Sin fecha' }}</small></td>
+        <td>{{ c.region or 'MÉXICO' }}</td>
         <td><div class="fw-semibold">{{ c.cliente.nombre_cliente if c.cliente else 'Sin cliente' }}</div><small class="text-muted">{{ c.proyecto or 'Sin proyecto' }}</small></td>
         <td><span class="badge text-bg-primary">{{ c.estatus or 'PENDIENTE' }}</span></td>
         <td>
@@ -38,7 +39,7 @@
         </td>
         <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ url_for('cotizacion_seguimiento', cot_id=c.id) }}">Revisar seguimiento</a></td>
       </tr>
-    {% else %}<tr><td colspan="6" class="text-center text-muted py-5">No tienes seguimientos asignados actualmente.</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="7" class="text-center text-muted py-5">No tienes seguimientos asignados actualmente.</td></tr>{% endfor %}
     </tbody>
   </table></div></div>
 </div>

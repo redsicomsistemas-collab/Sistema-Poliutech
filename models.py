@@ -83,6 +83,7 @@ class Cotizacion(db.Model):
     recordatorio_seguimiento_en = db.Column(db.DateTime, nullable=True)
     proyecto = db.Column(db.String(200))
     ciudad_trabajo = db.Column(db.String(120))
+    region = db.Column(db.String(20), nullable=False, default="MÉXICO", index=True)
     area_total = db.Column(db.Float, default=0.0)
     memoria_tecnica = db.Column(db.Text)
     lista_materiales_json = db.Column(db.Text)

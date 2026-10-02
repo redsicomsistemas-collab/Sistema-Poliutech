@@ -122,6 +122,14 @@
           <option value="USD">Dólares (USD)</option>
         </select>
       </div>
+      <div class="col-md-4">
+        <label for="region" class="form-label fw-semibold">Región</label>
+        <select id="region" name="region" class="form-select" required>
+          {% for region in regiones_cotizacion %}
+          <option value="{{ region }}" {% if region == 'MÉXICO' %}selected{% endif %}>{{ region }}</option>
+          {% endfor %}
+        </select>
+      </div>
       <input type="hidden" name="estatus" value="0%">
       <input type="hidden" name="estatus_aprobacion" value="EN REVISIÓN">
     </div>
