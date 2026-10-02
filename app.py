@@ -3662,6 +3662,14 @@ def _require_login_everywhere():
     # Permitir autenticación y recuperación de acceso
     if request.endpoint in {"login", "forgot_password", "reset_password", "preventa_demo"}:
         return
+    # El portal externo usa una sesión aislada para proveedores. Sus rutas de
+    # Finanzas conservan la autenticación interna de MARWHATS.
+    if (
+        request.endpoint
+        and request.endpoint.startswith("portal_facturas.")
+        and not request.endpoint.startswith("portal_facturas.finanzas")
+    ):
+        return
     if request.path in ("/health", "/ping"):
         return
     if request.path.startswith("/gastos-viaticos/revision/"):
@@ -20236,13 +20244,20 @@ try:
 except Exception as e:
     print(f"[WARN] No se pudo cargar blueprint contabilidad_routes: {e}", file=sys.stderr)
 
+try:
+    from portal_facturas_routes import portal_facturas_bp
+    app.register_blueprint(portal_facturas_bp)
+except Exception as e:
+    print(f"[WARN] No se pudo cargar blueprint portal_facturas_routes: {e}", file=sys.stderr)
+
 # ---------------------------------------------------------
 # Entrega de notificaciones a Poliutech Messenger
 # ---------------------------------------------------------
 scheduler: Optional[BackgroundScheduler] = None
 try:
     flask_debug_enabled = os.getenv("FLASK_DEBUG", "0").strip().lower() in {"1", "true", "yes"}
-    if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not flask_debug_enabled:
+    scheduler_disabled = os.getenv("DISABLE_BACKGROUND_SCHEDULER", "").strip().lower() in {"1", "true", "yes"}
+    if not scheduler_disabled and (os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not flask_debug_enabled):
         scheduler = BackgroundScheduler(timezone=TZ_CDMX, daemon=True)
         scheduler.add_job(
             procesar_messenger_notification_outbox,

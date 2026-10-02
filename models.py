@@ -401,6 +401,118 @@ class Usuario(UserMixin, db.Model):
         return f"<Usuario {self.nombre} ({self.rol})>"
 
 
+class PortalProveedorUsuario(db.Model):
+    """Cuenta externa para proveedores que entregan facturas a Poliutech."""
+
+    __tablename__ = "portal_proveedor_usuario"
+
+    id = db.Column(db.Integer, primary_key=True)
+    razon_social = db.Column(db.String(200), nullable=False, index=True)
+    nombre_comercial = db.Column(db.String(180))
+    rfc = db.Column(db.String(13), nullable=False, unique=True, index=True)
+    contacto = db.Column(db.String(160), nullable=False)
+    correo = db.Column(db.String(180), nullable=False, unique=True, index=True)
+    telefono = db.Column(db.String(40))
+    estatus = db.Column(db.String(20), nullable=False, default="ACTIVO", index=True)
+    password_hash = db.Column(db.String(255), nullable=False)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    ultimo_acceso_en = db.Column(db.DateTime)
+
+    facturas = db.relationship(
+        "FacturaProveedor",
+        backref="proveedor_usuario",
+        cascade="all, delete-orphan",
+        order_by="FacturaProveedor.recibida_en.desc()",
+    )
+
+    def set_password(self, raw: str):
+        self.password_hash = generate_password_hash(raw)
+
+    def check_password(self, raw: str) -> bool:
+        return check_password_hash(self.password_hash, raw)
+
+    @property
+    def nombre_portal(self) -> str:
+        return (self.nombre_comercial or self.razon_social or self.contacto or "Proveedor").strip()
+
+    def __repr__(self):
+        return f"<PortalProveedorUsuario {self.rfc} {self.correo}>"
+
+
+class FacturaProveedor(db.Model):
+    """CFDI recibido; este modelo no timbra ni genera comprobantes fiscales."""
+
+    __tablename__ = "factura_proveedor"
+
+    id = db.Column(db.Integer, primary_key=True)
+    folio_recepcion = db.Column(db.String(40), nullable=False, unique=True, index=True)
+    proveedor_usuario_id = db.Column(
+        db.Integer,
+        db.ForeignKey("portal_proveedor_usuario.id"),
+        nullable=False,
+        index=True,
+    )
+    uuid_cfdi = db.Column(db.String(60), nullable=False, unique=True, index=True)
+    serie = db.Column(db.String(30))
+    folio_cfdi = db.Column(db.String(80), index=True)
+    fecha_emision = db.Column(db.DateTime, nullable=False, index=True)
+    emisor_rfc = db.Column(db.String(13), nullable=False, index=True)
+    emisor_nombre = db.Column(db.String(220))
+    receptor_rfc = db.Column(db.String(13), nullable=False, index=True)
+    receptor_nombre = db.Column(db.String(220))
+    subtotal = db.Column(db.Float, default=0.0, nullable=False)
+    total = db.Column(db.Float, default=0.0, nullable=False, index=True)
+    moneda = db.Column(db.String(10), default="MXN", nullable=False)
+    concepto = db.Column(db.String(300))
+    orden_compra = db.Column(db.String(120), index=True)
+    notas_proveedor = db.Column(db.Text)
+    estatus = db.Column(db.String(30), nullable=False, default="RECIBIDA", index=True)
+    xml_path = db.Column(db.String(420), nullable=False)
+    pdf_path = db.Column(db.String(420), nullable=False)
+    xml_nombre_original = db.Column(db.String(260), nullable=False)
+    pdf_nombre_original = db.Column(db.String(260), nullable=False)
+    xml_tamano = db.Column(db.Integer, default=0, nullable=False)
+    pdf_tamano = db.Column(db.Integer, default=0, nullable=False)
+    comentario_finanzas = db.Column(db.Text)
+    revisada_por_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True, index=True)
+    revisada_en = db.Column(db.DateTime)
+    fecha_programada_pago = db.Column(db.Date)
+    fecha_pago = db.Column(db.Date)
+    referencia_pago = db.Column(db.String(160))
+    recibida_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    actualizada_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    revisada_por = db.relationship("Usuario", foreign_keys=[revisada_por_id])
+    movimientos = db.relationship(
+        "FacturaProveedorMovimiento",
+        backref="factura",
+        cascade="all, delete-orphan",
+        order_by="FacturaProveedorMovimiento.creado_en.desc()",
+    )
+
+    def __repr__(self):
+        return f"<FacturaProveedor {self.folio_recepcion} {self.estatus}>"
+
+
+class FacturaProveedorMovimiento(db.Model):
+    __tablename__ = "factura_proveedor_movimiento"
+
+    id = db.Column(db.Integer, primary_key=True)
+    factura_id = db.Column(db.Integer, db.ForeignKey("factura_proveedor.id"), nullable=False, index=True)
+    estatus_anterior = db.Column(db.String(30))
+    estatus_nuevo = db.Column(db.String(30), nullable=False, index=True)
+    actor_tipo = db.Column(db.String(20), nullable=False)
+    actor_usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True, index=True)
+    actor_nombre = db.Column(db.String(180), nullable=False)
+    comentario = db.Column(db.Text)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    actor_usuario = db.relationship("Usuario", foreign_keys=[actor_usuario_id])
+
+    def __repr__(self):
+        return f"<FacturaProveedorMovimiento factura={self.factura_id} {self.estatus_nuevo}>"
+
+
 class MobileDevice(db.Model):
     __tablename__ = "mobile_device"
 
