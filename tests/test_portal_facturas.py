@@ -32,6 +32,13 @@ class PortalFacturasFlowTest(unittest.TestCase):
     def setUp(self):
         app.config.update(TESTING=True, PORTAL_FACTURAS_DISABLE_EMAIL=False)
 
+    def test_login_destaca_portal_para_proveedores(self):
+        response = app.test_client().get("/login")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("¿Eres proveedor?".encode("utf-8"), response.data)
+        self.assertIn("Sube tu factura aquí".encode("utf-8"), response.data)
+        self.assertIn(b'href="/portal-facturas/ingresar"', response.data)
+
     def test_registro_carga_revision_y_pago(self):
         xml = b'''<?xml version="1.0" encoding="UTF-8"?>
 <cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" Version="4.0" Serie="A" Folio="1001" Fecha="2026-10-02T10:15:00" SubTotal="1000.00" Total="1160.00" Moneda="MXN">
