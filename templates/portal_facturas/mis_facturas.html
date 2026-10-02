@@ -1,0 +1,35 @@
+{% extends "portal_facturas/base.html" %}
+{% block title %}Mis facturas{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div><div class="eyebrow">{{ portal_proveedor.nombre_portal }}</div><h1>Mis facturas</h1><p>Consulta el avance de cada comprobante enviado a Poliutech.</p></div>
+  <div class="page-actions"><a class="button button-orange" href="{{ url_for('portal_facturas.nueva_factura') }}">Subir nueva factura</a></div>
+</div>
+<div class="metrics">
+  <div class="metric metric-accent"><span class="metric-label">Facturas enviadas</span><strong>{{ resumen.total }}</strong></div>
+  <div class="metric"><span class="metric-label">En proceso</span><strong>{{ resumen.en_proceso }}</strong></div>
+  <div class="metric"><span class="metric-label">Pagadas</span><strong>{{ resumen.pagadas }}</strong></div>
+  <div class="metric"><span class="metric-label">Importe enviado</span><strong>${{ '{:,.2f}'.format(resumen.importe) }}</strong></div>
+</div>
+<section class="panel">
+  <div class="panel-header"><h2>Historial de envíos</h2><span class="small muted">{{ facturas|length }} registro{{ '' if facturas|length == 1 else 's' }}</span></div>
+  {% if facturas %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Recepción</th><th>CFDI</th><th>Fecha</th><th>Total</th><th>Estatus</th><th></th></tr></thead>
+    <tbody>{% for factura in facturas %}
+      <tr>
+        <td><a class="table-link" href="{{ url_for('portal_facturas.detalle_factura', factura_id=factura.id) }}">{{ factura.folio_recepcion }}</a><div class="small muted">{{ factura.recibida_en.strftime('%d/%m/%Y %H:%M') }}</div></td>
+        <td><strong>{{ factura.serie or '' }}{{ factura.folio_cfdi or 'Sin folio' }}</strong><div class="small muted">{{ factura.uuid_cfdi }}</div></td>
+        <td>{{ factura.fecha_emision.strftime('%d/%m/%Y') }}</td>
+        <td class="money">${{ '{:,.2f}'.format(factura.total) }} {{ factura.moneda }}</td>
+        <td><span class="status {{ factura_estatus[factura.estatus].class }}">{{ factura_estatus[factura.estatus].label }}</span></td>
+        <td><a href="{{ url_for('portal_facturas.detalle_factura', factura_id=factura.id) }}">Ver detalle</a></td>
+      </tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% else %}
+  <div class="empty-state"><div class="empty-icon">▣</div><h3>Aún no has enviado facturas</h3><p>Adjunta el XML timbrado y su representación en PDF para iniciar la revisión.</p><a class="button" href="{{ url_for('portal_facturas.nueva_factura') }}">Subir primera factura</a></div>
+  {% endif %}
+</section>
+{% endblock %}
+

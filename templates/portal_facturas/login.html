@@ -1,0 +1,39 @@
+{% extends "portal_facturas/base.html" %}
+{% block title %}Iniciar sesión{% endblock %}
+{% block main_class %}auth-main{% endblock %}
+{% block content %}
+<section class="auth-shell">
+  <div class="auth-context">
+    <div>
+      <div class="eyebrow">Recepción de facturas</div>
+      <h1>Tu factura, con seguimiento claro.</h1>
+      <p>Entrega tus documentos fiscales y consulta el avance de la revisión hasta la confirmación del pago.</p>
+    </div>
+    <div class="auth-points">
+      <div class="auth-point">Carga protegida de XML y PDF</div>
+      <div class="auth-point">Estatus actualizado por Finanzas</div>
+      <div class="auth-point">Historial y referencia de pago</div>
+    </div>
+  </div>
+  <div class="auth-form">
+    <h2>Bienvenido</h2>
+    <p>Ingresa con el correo registrado para consultar tus facturas.</p>
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ portal_csrf_token() }}">
+      <div class="form-grid">
+        <div class="field field-full">
+          <label for="correo">Correo electrónico</label>
+          <input id="correo" name="correo" type="email" autocomplete="email" maxlength="180" required autofocus>
+        </div>
+        <div class="field field-full">
+          <label for="password">Contraseña</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+        </div>
+      </div>
+      <div class="form-actions"><button class="button button-block" type="submit">Ingresar al portal</button></div>
+    </form>
+    <div class="form-note">¿Es tu primera factura? <a href="{{ url_for('portal_facturas.registro') }}">Crea tu cuenta</a>.</div>
+  </div>
+</section>
+{% endblock %}
+

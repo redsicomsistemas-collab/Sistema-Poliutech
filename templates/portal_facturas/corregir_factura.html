@@ -1,0 +1,19 @@
+{% extends "portal_facturas/base.html" %}
+{% block title %}Corregir {{ factura.folio_recepcion }}{% endblock %}
+{% block content %}
+<div class="page-heading"><div><div class="eyebrow">Corrección solicitada</div><h1>{{ factura.folio_recepcion }}</h1><p>Reemplaza ambos documentos para conservar un juego consistente.</p></div></div>
+<div class="alert alert-warning"><strong>Observación de Finanzas:</strong> {{ factura.comentario_finanzas }}</div>
+<section class="panel"><div class="panel-body">
+  <form method="post" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ portal_csrf_token() }}">
+    <div class="form-grid">
+      <div class="field"><label for="xml">XML corregido *</label><input id="xml" name="xml" type="file" accept="application/xml,text/xml,.xml" required></div>
+      <div class="field"><label for="pdf">PDF corregido *</label><input id="pdf" name="pdf" type="file" accept="application/pdf,.pdf" required></div>
+      <div class="field"><label for="orden_compra">Orden de compra / referencia</label><input id="orden_compra" name="orden_compra" maxlength="120" value="{{ factura.orden_compra or '' }}"></div>
+      <div class="field"><label for="concepto">Concepto breve</label><input id="concepto" name="concepto" maxlength="300" value="{{ factura.concepto or '' }}"></div>
+      <div class="field field-full"><label for="notas_proveedor">Respuesta para Finanzas</label><textarea id="notas_proveedor" name="notas_proveedor" maxlength="2000">{{ factura.notas_proveedor or '' }}</textarea></div>
+    </div>
+    <div class="form-actions"><a class="button button-secondary" href="{{ url_for('portal_facturas.detalle_factura', factura_id=factura.id) }}">Cancelar</a><button class="button button-orange" type="submit">Enviar documentos corregidos</button></div>
+  </form>
+</div></section>
+{% endblock %}

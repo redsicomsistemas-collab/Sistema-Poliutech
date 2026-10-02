@@ -1,0 +1,28 @@
+{% extends "portal_facturas/base.html" %}
+{% block title %}Subir factura{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div><div class="eyebrow">Nuevo envío</div><h1>Subir factura</h1><p>Este portal recibe facturas; no genera ni timbra CFDI.</p></div>
+  <div class="page-actions"><a class="button button-secondary" href="{{ url_for('portal_facturas.mis_facturas') }}">Volver a mis facturas</a></div>
+</div>
+<section class="upload-card">
+  <aside class="upload-guide">
+    <div class="eyebrow">Antes de enviar</div><h2>Dos archivos, un solo registro.</h2><p>El XML se valida y sus datos fiscales se leen automáticamente.</p>
+    <ol><li>Adjunta el XML timbrado del CFDI.</li><li>Adjunta la representación impresa en PDF.</li><li>Agrega la orden de compra o referencia interna, si aplica.</li></ol>
+  </aside>
+  <div class="upload-form">
+    <form method="post" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ portal_csrf_token() }}">
+      <div class="form-grid">
+        <div class="field"><label for="xml">Archivo XML *</label><input id="xml" name="xml" type="file" accept="application/xml,text/xml,.xml" required><small>Máximo 5 MB.</small></div>
+        <div class="field"><label for="pdf">Archivo PDF *</label><input id="pdf" name="pdf" type="file" accept="application/pdf,.pdf" required><small>Máximo 15 MB.</small></div>
+        <div class="field"><label for="orden_compra">Orden de compra / referencia</label><input id="orden_compra" name="orden_compra" maxlength="120" value="{{ request.form.get('orden_compra','') }}"></div>
+        <div class="field"><label for="concepto">Concepto breve</label><input id="concepto" name="concepto" maxlength="300" value="{{ request.form.get('concepto','') }}" placeholder="Ej. Suministro de material"></div>
+        <div class="field field-full"><label for="notas_proveedor">Notas para Finanzas</label><textarea id="notas_proveedor" name="notas_proveedor" maxlength="2000" placeholder="Información adicional para identificar el servicio o pago">{{ request.form.get('notas_proveedor','') }}</textarea></div>
+      </div>
+      <div class="form-actions"><button class="button button-orange" type="submit">Enviar a Finanzas</button></div>
+    </form>
+  </div>
+</section>
+{% endblock %}
+

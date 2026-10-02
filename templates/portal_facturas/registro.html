@@ -1,0 +1,26 @@
+{% extends "portal_facturas/base.html" %}
+{% block title %}Crear cuenta{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div><div class="eyebrow">Alta de proveedor</div><h1>Crea tu cuenta</h1><p>Los datos deben coincidir con el RFC emisor de las facturas que enviarás.</p></div>
+</div>
+<section class="panel">
+  <div class="panel-body">
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ portal_csrf_token() }}">
+      <div class="form-grid">
+        <div class="field"><label for="razon_social">Razón social *</label><input id="razon_social" name="razon_social" maxlength="200" value="{{ request.form.get('razon_social','') }}" required></div>
+        <div class="field"><label for="nombre_comercial">Nombre comercial</label><input id="nombre_comercial" name="nombre_comercial" maxlength="180" value="{{ request.form.get('nombre_comercial','') }}"></div>
+        <div class="field"><label for="rfc">RFC emisor *</label><input id="rfc" name="rfc" maxlength="13" value="{{ request.form.get('rfc','') }}" autocapitalize="characters" required><small>Sin espacios ni guiones.</small></div>
+        <div class="field"><label for="contacto">Nombre del contacto *</label><input id="contacto" name="contacto" maxlength="160" value="{{ request.form.get('contacto','') }}" autocomplete="name" required></div>
+        <div class="field"><label for="correo">Correo electrónico *</label><input id="correo" name="correo" type="email" maxlength="180" value="{{ request.form.get('correo','') }}" autocomplete="email" required></div>
+        <div class="field"><label for="telefono">Teléfono</label><input id="telefono" name="telefono" type="tel" maxlength="40" value="{{ request.form.get('telefono','') }}" autocomplete="tel"></div>
+        <div class="field"><label for="password">Contraseña *</label><input id="password" name="password" type="password" minlength="8" autocomplete="new-password" required><small>Mínimo 8 caracteres.</small></div>
+        <div class="field"><label for="password_confirmation">Confirmar contraseña *</label><input id="password_confirmation" name="password_confirmation" type="password" minlength="8" autocomplete="new-password" required></div>
+      </div>
+      <div class="form-actions"><a class="button button-secondary" href="{{ url_for('portal_facturas.ingresar') }}">Ya tengo cuenta</a><button class="button button-orange" type="submit">Crear cuenta</button></div>
+    </form>
+  </div>
+</section>
+{% endblock %}
+

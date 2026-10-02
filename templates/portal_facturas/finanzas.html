@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Facturas recibidas{% endblock %}
+{% block content %}
+<style>
+  .pf-card { border: 1px solid rgba(12,60,120,.12); border-radius: 1rem; box-shadow: 0 .5rem 1.7rem rgba(12,60,120,.07); }
+  .pf-kpi { border-top: 3px solid #0c3c78; }
+  .pf-kpi-warning { border-top-color: #f36c21; }
+  .pf-kpi strong { font-size: 1.55rem; letter-spacing: -.025em; }
+  .pf-uuid { max-width: 250px; overflow: hidden; color: var(--bs-secondary-color); font-size: .76rem; text-overflow: ellipsis; white-space: nowrap; }
+  .pf-status { display:inline-flex;align-items:center;gap:.4rem;border-radius:999px;padding:.42rem .66rem;font-size:.78rem;font-weight:800;white-space:nowrap; }
+  .pf-status::before { width:.42rem;height:.42rem;border-radius:50%;background:currentColor;content:""; }
+  .status-blue { color:#075f9e;background:#e7f3fb }.status-amber { color:#7a5600;background:#fff3ce }.status-orange { color:#95410e;background:#fff0e6 }
+  .status-teal { color:#08736f;background:#e3f7f4 }.status-purple { color:#6037a8;background:#f0eaff }.status-green { color:#157149;background:#e5f7ee }.status-red { color:#a52a2a;background:#fdeaea }
+</style>
+<div class="py-4">
+  <div class="d-flex flex-column flex-xl-row justify-content-between align-items-xl-end gap-3 mb-4">
+    <div><div class="text-uppercase small fw-bold text-primary mb-1" style="letter-spacing:.12em">Finanzas</div><h1 class="h2 fw-bold mb-1">Facturas recibidas</h1><p class="text-muted mb-0">Revisa XML y PDF, decide el pago y mantén informado al proveedor.</p></div>
+    <div class="d-flex gap-2"><a class="btn btn-outline-primary" href="{{ url_for('portal_facturas.ingresar') }}" target="_blank" rel="noopener">Abrir portal externo</a><a class="btn btn-primary" href="{{ url_for('portal_facturas.finanzas') }}">Actualizar</a></div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-xl"><div class="card pf-card pf-kpi h-100"><div class="card-body"><div class="small text-muted fw-semibold">Total recibidas</div><strong>{{ counts.TOTAL }}</strong></div></div></div>
+    <div class="col-6 col-xl"><div class="card pf-card pf-kpi-warning h-100"><div class="card-body"><div class="small text-muted fw-semibold">Nuevas</div><strong>{{ counts.RECIBIDA }}</strong></div></div></div>
+    <div class="col-6 col-xl"><div class="card pf-card h-100"><div class="card-body"><div class="small text-muted fw-semibold">En revisión</div><strong>{{ counts.EN_REVISION }}</strong></div></div></div>
+    <div class="col-6 col-xl"><div class="card pf-card h-100"><div class="card-body"><div class="small text-muted fw-semibold">Programadas</div><strong>{{ counts.PROGRAMADA }}</strong></div></div></div>
+    <div class="col-12 col-xl"><div class="card pf-card h-100"><div class="card-body"><div class="small text-muted fw-semibold">Importe pendiente</div><strong>${{ '{:,.2f}'.format(pending_total) }}</strong></div></div></div>
+  </div>
+
+  <section class="card pf-card border-0 overflow-hidden">
+    <div class="card-body border-bottom p-3 p-lg-4">
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-lg-7"><label class="form-label small fw-semibold" for="q">Buscar</label><input class="form-control" id="q" name="q" value="{{ q }}" placeholder="Proveedor, RFC, UUID, folio u orden de compra"></div>
+        <div class="col-lg-3"><label class="form-label small fw-semibold" for="estatus">Estatus</label><select class="form-select" id="estatus" name="estatus"><option value="">Todos los estatus</option>{% for key, data in factura_estatus.items() %}<option value="{{ key }}" {{ 'selected' if selected_status == key }}>{{ data.label }} ({{ counts[key] }})</option>{% endfor %}</select></div>
+        <div class="col-lg-2 d-grid"><button class="btn btn-outline-primary" type="submit">Aplicar filtros</button></div>
+      </form>
+    </div>
+    {% if facturas %}
+    <div class="table-responsive"><table class="table table-hover align-middle mb-0">
+      <thead class="table-light"><tr><th>Recepción</th><th>Proveedor</th><th>CFDI</th><th>Total</th><th>Estatus</th><th></th></tr></thead>
+      <tbody>{% for factura in facturas %}<tr>
+        <td><a class="fw-bold text-decoration-none" href="{{ url_for('portal_facturas.finanzas_detalle', factura_id=factura.id) }}">{{ factura.folio_recepcion }}</a><div class="small text-muted">{{ factura.recibida_en.strftime('%d/%m/%Y %H:%M') }}</div></td>
+        <td><div class="fw-semibold">{{ factura.proveedor_usuario.nombre_portal }}</div><div class="small text-muted">{{ factura.proveedor_usuario.rfc }}</div></td>
+        <td><div class="fw-semibold">{{ factura.serie or '' }}{{ factura.folio_cfdi or 'Sin folio' }}</div><div class="pf-uuid" title="{{ factura.uuid_cfdi }}">{{ factura.uuid_cfdi }}</div>{% if factura.orden_compra %}<div class="small text-muted">OC: {{ factura.orden_compra }}</div>{% endif %}</td>
+        <td class="fw-bold text-nowrap">${{ '{:,.2f}'.format(factura.total) }} {{ factura.moneda }}</td>
+        <td><span class="pf-status {{ factura_estatus[factura.estatus].class }}">{{ factura_estatus[factura.estatus].label }}</span></td>
+        <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ url_for('portal_facturas.finanzas_detalle', factura_id=factura.id) }}">Revisar</a></td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<div class="text-center py-5 px-3"><div class="fs-2 mb-2">🧾</div><h2 class="h5">No hay facturas con estos filtros</h2><p class="text-muted mb-0">Cambia la búsqueda o el estatus seleccionado.</p></div>{% endif %}
+  </section>
+</div>
+{% endblock %}
+

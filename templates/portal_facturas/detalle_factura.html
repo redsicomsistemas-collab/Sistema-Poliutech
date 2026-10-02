@@ -1,0 +1,39 @@
+{% extends "portal_facturas/base.html" %}
+{% block title %}{{ factura.folio_recepcion }}{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div><div class="eyebrow">Factura recibida</div><h1>{{ factura.folio_recepcion }}</h1><p>Enviada el {{ factura.recibida_en.strftime('%d/%m/%Y a las %H:%M') }}.</p></div>
+  <div class="page-actions">{% if factura.estatus == 'CORRECCION_SOLICITADA' %}<a class="button button-orange" href="{{ url_for('portal_facturas.corregir_factura', factura_id=factura.id) }}">Enviar corrección</a>{% endif %}<a class="button button-secondary" href="{{ url_for('portal_facturas.mis_facturas') }}">Mis facturas</a></div>
+</div>
+{% if factura.estatus == 'CORRECCION_SOLICITADA' %}<div class="alert alert-warning"><strong>Finanzas solicita una corrección.</strong> {{ factura.comentario_finanzas }}</div>{% endif %}
+{% if factura.estatus == 'RECHAZADA' %}<div class="alert alert-danger"><strong>Factura rechazada.</strong> {{ factura.comentario_finanzas }}</div>{% endif %}
+{% if factura.estatus == 'PROGRAMADA' and factura.fecha_programada_pago %}<div class="alert alert-info">Pago programado para el <strong>{{ factura.fecha_programada_pago.strftime('%d/%m/%Y') }}</strong>.</div>{% endif %}
+{% if factura.estatus == 'PAGADA' %}<div class="alert alert-success">Pago registrado el <strong>{{ factura.fecha_pago.strftime('%d/%m/%Y') }}</strong>{% if factura.referencia_pago %}, referencia <strong>{{ factura.referencia_pago }}</strong>{% endif %}.</div>{% endif %}
+<div class="detail-grid">
+  <section class="panel">
+    <div class="panel-header"><h2>Datos del CFDI</h2><span class="status {{ factura_estatus[factura.estatus].class }}">{{ factura_estatus[factura.estatus].label }}</span></div>
+    <div class="panel-body"><div class="definition-grid">
+      <div class="definition"><label>UUID</label><div>{{ factura.uuid_cfdi }}</div></div>
+      <div class="definition"><label>Serie y folio</label><div>{{ factura.serie or '—' }} {{ factura.folio_cfdi or '—' }}</div></div>
+      <div class="definition"><label>Emisor</label><div>{{ factura.emisor_nombre or portal_proveedor.razon_social }}<br><span class="small muted">{{ factura.emisor_rfc }}</span></div></div>
+      <div class="definition"><label>Receptor</label><div>{{ factura.receptor_nombre or '—' }}<br><span class="small muted">{{ factura.receptor_rfc }}</span></div></div>
+      <div class="definition"><label>Fecha de emisión</label><div>{{ factura.fecha_emision.strftime('%d/%m/%Y %H:%M') }}</div></div>
+      <div class="definition"><label>Total</label><div class="money">${{ '{:,.2f}'.format(factura.total) }} {{ factura.moneda }}</div></div>
+      <div class="definition"><label>Orden / referencia</label><div>{{ factura.orden_compra or '—' }}</div></div>
+      <div class="definition"><label>Concepto</label><div>{{ factura.concepto or '—' }}</div></div>
+    </div></div>
+  </section>
+  <aside class="panel">
+    <div class="panel-header"><h3>Documentos</h3></div>
+    <div class="panel-body"><div class="document-links">
+      <a class="document-link" href="{{ url_for('portal_facturas.descargar_archivo', factura_id=factura.id, tipo='xml') }}"><span><strong>XML fiscal</strong><br><span class="small muted">{{ factura.xml_nombre_original }}</span></span><span>Descargar</span></a>
+      <a class="document-link" href="{{ url_for('portal_facturas.descargar_archivo', factura_id=factura.id, tipo='pdf') }}"><span><strong>Representación PDF</strong><br><span class="small muted">{{ factura.pdf_nombre_original }}</span></span><span>Descargar</span></a>
+    </div></div>
+  </aside>
+</div>
+<section class="panel" style="margin-top:20px">
+  <div class="panel-header"><h2>Historial</h2></div>
+  <div class="panel-body"><ol class="timeline">{% for item in factura.movimientos %}<li><strong>{{ factura_estatus[item.estatus_nuevo].label }}</strong><span class="small muted">{{ item.creado_en.strftime('%d/%m/%Y %H:%M') }} · {{ item.actor_nombre }}</span>{% if item.comentario %}<p>{{ item.comentario }}</p>{% endif %}</li>{% endfor %}</ol></div>
+</section>
+{% endblock %}
+

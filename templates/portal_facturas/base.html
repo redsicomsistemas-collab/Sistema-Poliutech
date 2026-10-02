@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>{% block title %}Portal de facturas{% endblock %} · Poliutech</title>
+  <link rel="icon" href="{{ url_for('static', filename='logo-light-mark.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/portal_facturas.css', v='1') }}">
+</head>
+<body>
+  <header class="portal-header">
+    <a class="portal-brand" href="{{ url_for('portal_facturas.inicio') }}">
+      <img src="{{ url_for('static', filename='logo-light-mark.png') }}" alt="Poliutech">
+      <span class="portal-brand-copy"><strong>POLIUTECH</strong><span>Portal de recepción de facturas</span></span>
+    </a>
+    <nav class="portal-nav" aria-label="Navegación principal">
+      {% if portal_proveedor %}
+        <a href="{{ url_for('portal_facturas.mis_facturas') }}">Mis facturas</a>
+        <a class="primary" href="{{ url_for('portal_facturas.nueva_factura') }}">Subir factura</a>
+        <form method="post" action="{{ url_for('portal_facturas.salir') }}">
+          <input type="hidden" name="csrf_token" value="{{ portal_csrf_token() }}">
+          <button type="submit">Cerrar sesión</button>
+        </form>
+      {% else %}
+        <a href="{{ url_for('portal_facturas.ingresar') }}">Iniciar sesión</a>
+        <a class="primary" href="{{ url_for('portal_facturas.registro') }}">Crear cuenta</a>
+      {% endif %}
+    </nav>
+  </header>
+
+  <main class="portal-main {% block main_class %}{% endblock %}">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category if category in ['success','danger','warning','info'] else 'info' }}" role="alert">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
+
