@@ -40,6 +40,15 @@
   .auth-submit:hover { color:white; transform:translateY(-1px); box-shadow:0 12px 25px rgba(12,60,120,.32); }
   .auth-submit span { font-size:1.15rem; }
   .auth-submit-link { margin-top:.5rem; }
+  .auth-access-divider { display:flex; align-items:center; gap:.7rem; margin:1.2rem 0 .85rem; color:var(--muted); font-size:.72rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+  .auth-access-divider::before,.auth-access-divider::after { height:1px; flex:1; background:var(--field-border); content:""; }
+  .auth-portal-link { min-height:58px; display:flex; align-items:center; gap:.75rem; padding:.65rem .8rem; border:1px solid rgba(243,108,33,.48); border-radius:11px; color:var(--card-text); background:rgba(243,108,33,.07); text-decoration:none; transition:transform .18s,border-color .18s,background .18s; }
+  .auth-portal-link:hover { color:var(--card-text); border-color:#f36c21; background:rgba(243,108,33,.13); transform:translateY(-1px); }
+  .auth-portal-icon { width:39px; height:39px; flex:0 0 auto; display:grid; place-items:center; border-radius:9px; color:white; background:#f36c21; font-size:.65rem; font-weight:900; letter-spacing:.04em; }
+  .auth-portal-copy { min-width:0; display:grid; gap:.1rem; flex:1; line-height:1.25; }
+  .auth-portal-copy strong { font-size:.91rem; }
+  .auth-portal-copy small { overflow:hidden; color:var(--muted); font-size:.73rem; text-overflow:ellipsis; white-space:nowrap; }
+  .auth-portal-arrow { color:#d95511; font-size:1.15rem; font-weight:800; }
   .auth-help { margin:1.45rem 0 0; padding-top:1.25rem; border-top:1px solid var(--field-border); color:var(--muted); text-align:center; font-size:.78rem; }
   .auth-back { display:block; margin-top:1.4rem; text-align:center; }
   .auth-theme-toggle { position:absolute; top:1.4rem; right:1.7rem; z-index:2; width:43px; height:43px; display:grid; place-items:center; border:1px solid rgba(255,255,255,.32); border-radius:50%; color:white; background:rgba(6,24,42,.4); backdrop-filter:blur(10px); font-size:1.1rem; }

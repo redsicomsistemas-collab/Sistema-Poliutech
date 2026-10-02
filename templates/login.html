@@ -53,6 +53,12 @@
         </label>
         <button class="auth-submit" type="submit">Entrar al sistema <span aria-hidden="true">→</span></button>
       </form>
+      <div class="auth-access-divider"><span>Acceso para proveedores</span></div>
+      <a class="auth-portal-link" href="{{ url_for('portal_facturas.ingresar') }}">
+        <span class="auth-portal-icon" aria-hidden="true">XML</span>
+        <span class="auth-portal-copy"><strong>Portal de facturas</strong><small>Sube tu XML y PDF o consulta el pago</small></span>
+        <span class="auth-portal-arrow" aria-hidden="true">→</span>
+      </a>
       <p class="auth-help">¿Necesitas ayuda? Contacta al administrador del sistema.</p>
     </div>
   </div>
