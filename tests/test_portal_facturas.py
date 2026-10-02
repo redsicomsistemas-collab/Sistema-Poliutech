@@ -10,8 +10,13 @@ os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["UPLOAD_STORAGE_ROOT"] = _upload_dir.name
 os.environ["DISABLE_BACKGROUND_SCHEDULER"] = "1"
 
-from app import app  # noqa: E402
-from models import FacturaProveedor, Usuario, db  # noqa: E402
+try:
+    from app import app  # noqa: E402
+    from models import FacturaProveedor, Usuario, db  # noqa: E402
+    _IMPORT_ERROR = ""
+except ModuleNotFoundError as exc:  # El CI ligero no instala dependencias web.
+    app = None
+    _IMPORT_ERROR = str(exc)
 
 
 def _csrf(response) -> str:
@@ -21,6 +26,7 @@ def _csrf(response) -> str:
     return match.group(1).decode()
 
 
+@unittest.skipIf(app is None, f"Dependencias de integración no disponibles: {_IMPORT_ERROR}")
 class PortalFacturasFlowTest(unittest.TestCase):
     def setUp(self):
         app.config.update(TESTING=True)
