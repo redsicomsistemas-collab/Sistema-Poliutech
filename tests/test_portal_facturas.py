@@ -3,6 +3,7 @@ import os
 import re
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 _upload_dir = tempfile.TemporaryDirectory(prefix="mar_portal_facturas_")
@@ -12,7 +13,7 @@ os.environ["DISABLE_BACKGROUND_SCHEDULER"] = "1"
 
 try:
     from app import app  # noqa: E402
-    from models import FacturaProveedor, Usuario, db  # noqa: E402
+    from models import FacturaProveedor, InAppNotification, Usuario, db  # noqa: E402
     _IMPORT_ERROR = ""
 except ModuleNotFoundError as exc:  # El CI ligero no instala dependencias web.
     app = None
@@ -29,7 +30,7 @@ def _csrf(response) -> str:
 @unittest.skipIf(app is None, f"Dependencias de integración no disponibles: {_IMPORT_ERROR}")
 class PortalFacturasFlowTest(unittest.TestCase):
     def setUp(self):
-        app.config.update(TESTING=True)
+        app.config.update(TESTING=True, PORTAL_FACTURAS_DISABLE_EMAIL=False)
 
     def test_registro_carga_revision_y_pago(self):
         xml = b'''<?xml version="1.0" encoding="UTF-8"?>
@@ -39,6 +40,24 @@ class PortalFacturasFlowTest(unittest.TestCase):
   <cfdi:Complemento><tfd:TimbreFiscalDigital xmlns:tfd="http://www.sat.gob.mx/TimbreFiscalDigital" UUID="123E4567-E89B-12D3-A456-426614174000"/></cfdi:Complemento>
 </cfdi:Comprobante>'''
         pdf = b"%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF"
+
+        with app.app_context():
+            marco = Usuario(
+                nombre="mescalera",
+                nombre_visible="Marco Escalera",
+                correo="mescalera@poliutech.com",
+                rol="USER",
+            )
+            marco.set_password("MarcoTest123")
+            uriel = Usuario(
+                nombre="umorales",
+                nombre_visible="Uriel Morales",
+                correo="umorales@poliutech.com",
+                rol="USER",
+            )
+            uriel.set_password("UrielTest123")
+            db.session.add_all([marco, uriel])
+            db.session.commit()
 
         provider = app.test_client()
         response = provider.get("/portal-facturas/registro")
@@ -61,17 +80,24 @@ class PortalFacturasFlowTest(unittest.TestCase):
         self.assertIn("/facturas/nueva", response.headers["Location"])
 
         response = provider.get("/portal-facturas/facturas/nueva")
-        response = provider.post(
-            "/portal-facturas/facturas/nueva",
-            data={
-                "csrf_token": _csrf(response),
-                "orden_compra": "OC-2026-77",
-                "concepto": "Material de reforzamiento",
-                "xml": (io.BytesIO(xml), "factura.xml"),
-                "pdf": (io.BytesIO(pdf), "factura.pdf"),
-            },
-            content_type="multipart/form-data",
-        )
+        with patch("portal_facturas_routes.smtplib.SMTP") as smtp_class:
+            response = provider.post(
+                "/portal-facturas/facturas/nueva",
+                data={
+                    "csrf_token": _csrf(response),
+                    "orden_compra": "OC-2026-77",
+                    "concepto": "Material de reforzamiento",
+                    "xml": (io.BytesIO(xml), "factura.xml"),
+                    "pdf": (io.BytesIO(pdf), "factura.pdf"),
+                },
+                content_type="multipart/form-data",
+            )
+            smtp = smtp_class.return_value.__enter__.return_value
+            smtp.send_message.assert_called_once()
+            self.assertEqual(
+                smtp.send_message.call_args.kwargs["to_addrs"],
+                ["mescalera@poliutech.com", "umorales@poliutech.com"],
+            )
         self.assertEqual(response.status_code, 302)
         self.assertRegex(response.headers["Location"], r"/facturas/\d+$")
 
@@ -80,6 +106,13 @@ class PortalFacturasFlowTest(unittest.TestCase):
             invoice_id = factura.id
             self.assertEqual(factura.estatus, "RECIBIDA")
             self.assertEqual(factura.total, 1160.0)
+            notices = InAppNotification.query.filter_by(tipo="portal_facturas").all()
+            self.assertEqual(len(notices), 2)
+            self.assertEqual(
+                {notice.usuario.correo for notice in notices},
+                {"mescalera@poliutech.com", "umorales@poliutech.com"},
+            )
+            self.assertTrue(all(notice.destino_url.endswith("/finanzas/1") for notice in notices))
             admin = Usuario(
                 nombre="portal_finanzas_test",
                 nombre_visible="Finanzas Prueba",

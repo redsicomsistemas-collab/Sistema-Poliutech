@@ -3511,6 +3511,13 @@ app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", DEFAULT_SECRET_KEY)
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config.update(
+    SMTP_HOST=SMTP_HOST,
+    SMTP_PORT=SMTP_PORT,
+    SMTP_USERNAME=SMTP_USERNAME,
+    SMTP_PASSWORD=SMTP_PASSWORD,
+    SMTP_FROM=SMTP_FROM,
+)
 
 # Render monta el disco persistente de este servicio en /data. En desarrollo se
 # conserva static/uploads para no exigir una ruta especial en cada equipo.

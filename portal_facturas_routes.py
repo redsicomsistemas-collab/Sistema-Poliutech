@@ -3,9 +3,12 @@ from __future__ import annotations
 import os
 import re
 import secrets
+import smtplib
 import xml.etree.ElementTree as ET
 from datetime import date, datetime
+from email.message import EmailMessage
 from functools import wraps
+from html import escape
 from pathlib import Path
 
 from flask import (
@@ -30,7 +33,9 @@ from contabilidad_access import can_access_contabilidad
 from models import (
     FacturaProveedor,
     FacturaProveedorMovimiento,
+    InAppNotification,
     PortalProveedorUsuario,
+    Usuario,
     db,
 )
 
@@ -46,6 +51,18 @@ CSRF_KEY = "portal_facturas_csrf"
 MAX_XML_BYTES = 5 * 1024 * 1024
 MAX_PDF_BYTES = 15 * 1024 * 1024
 RFC_PATTERN = re.compile(r"^[A-Z&Ñ]{3,4}\d{6}[A-Z0-9]{3}$")
+FINANCE_NOTIFICATION_PROFILES = (
+    {
+        "label": "Marco",
+        "aliases": ("marco", "mescalera", "mesacalera"),
+        "fallback_email": "mescalera@poliutech.com",
+    },
+    {
+        "label": "Uriel",
+        "aliases": ("uriel", "umorales"),
+        "fallback_email": "umorales@poliutech.com",
+    },
+)
 
 ESTATUS = {
     "RECIBIDA": {"label": "Recibida", "class": "status-blue"},
@@ -129,6 +146,182 @@ def _normalize_rfc(raw: str) -> str:
 
 def _normalize_email(raw: str) -> str:
     return (raw or "").strip().casefold()
+
+
+def _finance_notification_targets() -> tuple[list[Usuario], list[str]]:
+    """Resuelve las cuentas de Marco y Uriel y conserva sus correos como respaldo."""
+    users = Usuario.query.order_by(Usuario.id.asc()).all()
+    selected_users: list[Usuario] = []
+    recipient_emails: list[str] = []
+    seen_user_ids: set[int] = set()
+    seen_emails: set[str] = set()
+
+    for profile in FINANCE_NOTIFICATION_PROFILES:
+        fallback_email = _normalize_email(profile["fallback_email"])
+        aliases = tuple(str(value).casefold() for value in profile["aliases"])
+        matched_user = next(
+            (
+                user
+                for user in users
+                if _normalize_email(getattr(user, "correo", "")) == fallback_email
+            ),
+            None,
+        )
+        if matched_user is None:
+            for user in users:
+                identity_values = (
+                    str(getattr(user, "nombre", "") or "").strip().casefold(),
+                    str(getattr(user, "nombre_visible", "") or "").strip().casefold(),
+                )
+                if any(
+                    value == alias or value.startswith(f"{alias} ")
+                    for value in identity_values
+                    if value
+                    for alias in aliases
+                ):
+                    matched_user = user
+                    break
+
+        if matched_user is not None and matched_user.id not in seen_user_ids:
+            selected_users.append(matched_user)
+            seen_user_ids.add(matched_user.id)
+
+        email = _normalize_email(getattr(matched_user, "correo", "")) if matched_user else ""
+        email = email or fallback_email
+        if email and email not in seen_emails:
+            recipient_emails.append(email)
+            seen_emails.add(email)
+
+    return selected_users, recipient_emails
+
+
+def _invoice_notification_copy(factura: FacturaProveedor, *, corrected: bool) -> tuple[str, str]:
+    provider = factura.proveedor_usuario
+    provider_name = (
+        getattr(provider, "nombre_comercial", None)
+        or getattr(provider, "razon_social", None)
+        or factura.emisor_nombre
+        or factura.emisor_rfc
+        or "Proveedor"
+    )
+    action = "Factura corregida" if corrected else "Nueva factura recibida"
+    title = f"{action}: {factura.folio_recepcion}"
+    body = (
+        f"{provider_name} envió {factura.folio_recepcion} por "
+        f"${float(factura.total or 0):,.2f} {factura.moneda or 'MXN'}."
+    )
+    return title, body
+
+
+def _send_finance_invoice_email(
+    factura: FacturaProveedor,
+    recipients: list[str],
+    *,
+    corrected: bool,
+) -> None:
+    if not recipients or current_app.config.get("PORTAL_FACTURAS_DISABLE_EMAIL"):
+        return
+
+    title, body = _invoice_notification_copy(factura, corrected=corrected)
+    detail_url = url_for(
+        "portal_facturas.finanzas_detalle",
+        factura_id=factura.id,
+        _external=True,
+    )
+    provider = factura.proveedor_usuario
+    provider_name = (
+        getattr(provider, "nombre_comercial", None)
+        or getattr(provider, "razon_social", None)
+        or factura.emisor_nombre
+        or "Proveedor"
+    )
+
+    msg = EmailMessage()
+    msg["Subject"] = title
+    smtp_from = str(current_app.config.get("SMTP_FROM") or current_app.config.get("SMTP_USERNAME") or "").strip()
+    msg["From"] = f"PORTAL DE FACTURAS POLIUTECH <{smtp_from}>"
+    msg["To"] = ", ".join(recipients)
+    msg.set_content(
+        f"{body}\n"
+        f"Proveedor: {provider_name}\n"
+        f"RFC: {factura.emisor_rfc}\n"
+        f"UUID: {factura.uuid_cfdi}\n"
+        f"Orden de compra: {factura.orden_compra or 'Sin referencia'}\n\n"
+        f"Revisar factura: {detail_url}\n"
+    )
+    msg.add_alternative(
+        (
+            "<div style='font-family:Arial,sans-serif;max-width:680px;color:#15263b'>"
+            f"<h2 style='margin-bottom:8px'>{escape(title)}</h2>"
+            f"<p>{escape(body)}</p>"
+            "<table style='border-collapse:collapse;margin:18px 0'>"
+            f"<tr><td style='padding:5px 14px 5px 0;color:#607086'>Proveedor</td><td><b>{escape(str(provider_name))}</b></td></tr>"
+            f"<tr><td style='padding:5px 14px 5px 0;color:#607086'>RFC</td><td>{escape(factura.emisor_rfc or '')}</td></tr>"
+            f"<tr><td style='padding:5px 14px 5px 0;color:#607086'>UUID</td><td>{escape(factura.uuid_cfdi or '')}</td></tr>"
+            f"<tr><td style='padding:5px 14px 5px 0;color:#607086'>Orden de compra</td><td>{escape(factura.orden_compra or 'Sin referencia')}</td></tr>"
+            "</table>"
+            f"<p><a href='{escape(detail_url)}' style='display:inline-block;padding:11px 18px;background:#f97316;color:#fff;text-decoration:none;border-radius:7px'>Revisar factura</a></p>"
+            "</div>"
+        ),
+        subtype="html",
+    )
+
+    smtp_host = str(current_app.config.get("SMTP_HOST") or "").strip()
+    smtp_port = int(current_app.config.get("SMTP_PORT") or 26)
+    smtp_username = str(current_app.config.get("SMTP_USERNAME") or "").strip()
+    smtp_password = str(current_app.config.get("SMTP_PASSWORD") or "")
+    if not smtp_host or not smtp_username or not smtp_password:
+        raise RuntimeError("La configuración SMTP del portal está incompleta.")
+    with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as smtp:
+        smtp.ehlo()
+        smtp.login(smtp_username, smtp_password)
+        smtp.send_message(msg, to_addrs=recipients)
+
+
+def _notify_finance_invoice(factura: FacturaProveedor, *, corrected: bool = False) -> None:
+    """Avisa a Marco y Uriel sin impedir que el proveedor termine su envío."""
+    try:
+        users, recipients = _finance_notification_targets()
+        title, body = _invoice_notification_copy(factura, corrected=corrected)
+        detail_url = url_for("portal_facturas.finanzas_detalle", factura_id=factura.id)
+    except Exception as exc:
+        current_app.logger.warning(
+            "No se pudieron resolver los destinatarios de la factura %s: %s",
+            factura.folio_recepcion,
+            exc,
+        )
+        return
+
+    try:
+        for user in users:
+            db.session.add(
+                InAppNotification(
+                    usuario_id=user.id,
+                    tipo="portal_facturas",
+                    titulo=title[:180],
+                    mensaje=body,
+                    destino_url=detail_url,
+                    creada_en=_now(),
+                )
+            )
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.warning(
+            "No se pudieron guardar las notificaciones de la factura %s: %s",
+            factura.folio_recepcion,
+            exc,
+        )
+
+    try:
+        _send_finance_invoice_email(factura, recipients, corrected=corrected)
+    except Exception as exc:
+        current_app.logger.warning(
+            "No se pudo enviar el correo de la factura %s a %s: %s",
+            factura.folio_recepcion,
+            recipients,
+            exc,
+        )
 
 
 def _parse_date(raw: str) -> date | None:
@@ -468,6 +661,7 @@ def nueva_factura():
                 comment="Factura enviada para revisión.",
             )
             db.session.commit()
+            _notify_finance_invoice(factura)
         except (ValueError, OSError, IntegrityError) as exc:
             db.session.rollback()
             if "xml_path" in locals() and "pdf_path" in locals():
@@ -544,6 +738,7 @@ def corregir_factura(factura_id: int):
                 comment="Se enviaron XML y PDF corregidos.",
             )
             db.session.commit()
+            _notify_finance_invoice(factura, corrected=True)
             _delete_paths(old_xml_path, old_pdf_path)
         except (ValueError, OSError, IntegrityError) as exc:
             db.session.rollback()
