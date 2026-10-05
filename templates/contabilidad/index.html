@@ -18,7 +18,10 @@
         <h1 class="h2 fw-bold mb-2">Módulo de Contabilidad</h1>
         <p class="mb-0 opacity-75">Controla bancos, cuentas, expedientes, abonos, personal y activos desde un solo lugar.</p>
       </div>
-      <a class="btn btn-light fw-semibold" href="{{ url_for('contabilidad.exportar_todo') }}">📊 Exportar reporte general</a>
+      <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-light fw-semibold" href="{{ url_for('contabilidad.exportar_todo') }}">📊 Exportar Excel</a>
+        <a class="btn btn-danger fw-semibold" href="{{ url_for('contabilidad.exportar_todo_pdf') }}">📄 Exportar PDF</a>
+      </div>
     </div>
   </section>
 

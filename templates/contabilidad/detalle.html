@@ -20,7 +20,8 @@
     <div class="d-flex flex-wrap gap-2">
       <a class="btn btn-outline-secondary" href="{{ url_for('contabilidad.registros', slug=category.slug) }}">← Volver</a>
       {% if can_manage %}<button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#editRecord">Editar datos</button>{% endif %}
-      <a class="btn btn-success" href="{{ url_for('contabilidad.exportar', slug=category.slug, q=record.folio) }}">📊 Exportar registro</a>
+      <a class="btn btn-success" href="{{ url_for('contabilidad.exportar', slug=category.slug, q=record.folio) }}">📊 Excel</a>
+      <a class="btn btn-danger" href="{{ url_for('contabilidad.exportar_pdf', slug=category.slug, q=record.folio) }}">📄 PDF</a>
       {% if can_manage %}<form method="post" action="{{ url_for('contabilidad.eliminar_registro', slug=category.slug, record_id=record.id) }}" onsubmit="return confirm('¿Eliminar definitivamente este registro y todos sus abonos y documentos?');"><button class="btn btn-outline-danger" title="Eliminar registro">🗑️ Eliminar</button></form>{% endif %}
     </div>
   </div>

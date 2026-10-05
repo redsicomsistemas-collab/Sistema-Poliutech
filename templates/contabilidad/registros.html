@@ -26,6 +26,7 @@
     <div class="d-flex flex-wrap gap-2">
       <a class="btn btn-outline-secondary" href="{{ url_for('contabilidad.index') }}">Resumen</a>
       <a class="btn btn-success" href="{{ url_for('contabilidad.exportar', slug=category.slug, q=q, estatus=status, razon_social_alta=legal_entity) }}">📊 Exportar Excel</a>
+      <a class="btn btn-danger" href="{{ url_for('contabilidad.exportar_pdf', slug=category.slug, q=q, estatus=status, razon_social_alta=legal_entity) }}">📄 Exportar PDF</a>
       {% if category.financial %}<a class="btn btn-outline-primary" href="{{ url_for('altas_proveedores', relacion=category.tipo) }}">🗂️ Abrir Altas</a>{% endif %}
       {% if category.tipo == 'CLIENTE' %}
       <button class="btn btn-primary record-mode-trigger" type="button" data-record-mode="new" data-bs-toggle="collapse" data-bs-target="#newRecord" aria-expanded="{{ 'true' if not records or selected_alta else 'false' }}">＋ Registrar cliente nuevo</button>
@@ -308,19 +309,19 @@
       </form>
     </div>
     <div class="table-responsive">
-      {% if category.tipo == 'PROVEEDOR' %}
+      {% if category.tipo in ['CLIENTE', 'PROVEEDOR'] %}
       <table class="table table-hover align-middle mb-0">
-        <thead><tr><th>Proveedor</th><th>Movimientos</th><th>Monto registrado</th><th>Abonado</th><th class="balance-cell">Deuda total</th><th>Estatus</th><th></th></tr></thead>
+        <thead><tr><th>{{ 'Cliente' if category.tipo == 'CLIENTE' else 'Proveedor' }}</th><th>Movimientos</th><th>Monto registrado</th><th>Abonado</th><th class="balance-cell">{{ 'Saldo por cobrar' if category.tipo == 'CLIENTE' else 'Deuda total' }}</th><th>Estatus</th><th></th></tr></thead>
         <tbody>
-          {% for group in provider_groups %}
-          {% set group_id = 'provider-' ~ loop.index %}
+          {% for group in party_groups %}
+          {% set group_id = 'party-' ~ loop.index %}
           <tr class="provider-summary-row">
             <td><div class="fw-bold">{{ group.nombre }}</div><div class="small text-muted">{{ group.documentos }} PDF{{ '' if group.documentos == 1 else 's' }} adjunto{{ '' if group.documentos == 1 else 's' }}</div></td>
             <td><span class="badge rounded-pill text-bg-primary">{{ group.movimientos }}</span></td>
             <td>{% for total in group.totals %}<div class="provider-total">${{ '{:,.2f}'.format(total.monto) }} <span class="small text-muted">{{ total.moneda }}</span></div>{% endfor %}</td>
             <td class="text-success">{% for total in group.totals %}<div class="provider-total">${{ '{:,.2f}'.format(total.abonado) }} <span class="small">{{ total.moneda }}</span></div>{% endfor %}</td>
             <td class="balance-cell">{% for total in group.totals %}<div class="provider-total"><strong class="{{ 'text-danger' if total.saldo > 0.005 else 'text-success' }}">${{ '{:,.2f}'.format(total.saldo) }}</strong> <span class="small text-muted">{{ total.moneda }}</span></div>{% endfor %}</td>
-            <td><span class="badge {{ 'text-bg-warning' if group.tiene_deuda else 'text-bg-success' }}">{{ 'CON DEUDA' if group.tiene_deuda else 'LIQUIDADO' }}</span></td>
+            <td><span class="badge {{ 'text-bg-warning' if group.tiene_deuda else 'text-bg-success' }}">{{ ('POR COBRAR' if category.tipo == 'CLIENTE' else 'CON DEUDA') if group.tiene_deuda else 'LIQUIDADO' }}</span></td>
             <td class="text-end"><button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#{{ group_id }}" aria-expanded="false" aria-controls="{{ group_id }}">Ver movimientos</button></td>
           </tr>
           <tr>
@@ -353,7 +354,7 @@
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="7" class="text-center py-5"><div class="fs-2 mb-2">{{ category.icon }}</div><div class="fw-semibold">No hay proveedores</div><div class="text-muted small">Crea el primer movimiento o cambia los filtros.</div></td></tr>
+          <tr><td colspan="7" class="text-center py-5"><div class="fs-2 mb-2">{{ category.icon }}</div><div class="fw-semibold">No hay {{ category.label|lower }}</div><div class="text-muted small">Crea el primer movimiento o cambia los filtros.</div></td></tr>
           {% endfor %}
         </tbody>
       </table>

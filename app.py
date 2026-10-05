@@ -10237,16 +10237,13 @@ def admin_catalogos():
     )
 
 
-@app.get("/clientes")
-@login_required
-def clientes_index():
-    q = (request.args.get("q") or "").strip()
-    page = max(request.args.get("page", 1, type=int), 1)
+def _client_directory_query(search: str = ""):
+    """Aplica una sola vez las reglas de acceso y búsqueda del directorio."""
     query = Cliente.query
     if not is_admin():
         query = query.filter(Cliente.responsable == responsable_actual())
-    if q:
-        like = f"%{q}%"
+    if search:
+        like = f"%{search}%"
         query = query.filter(or_(
             Cliente.nombre_cliente.ilike(like),
             Cliente.empresa.ilike(like),
@@ -10255,7 +10252,181 @@ def clientes_index():
             Cliente.correo.ilike(like),
             Cliente.telefono.ilike(like),
         ))
-    clientes_pag = query.order_by(Cliente.id.desc()).paginate(page=page, per_page=20, error_out=False)
+    return query
+
+
+def _client_name_key(value: str | None) -> str:
+    normalized = unicodedata.normalize("NFKD", " ".join((value or "").split()))
+    return "".join(char for char in normalized if not unicodedata.combining(char)).casefold()
+
+
+def _group_client_records(records: list[Cliente]) -> list[dict]:
+    """Condensa fichas repetidas sin ocultar sus datos fiscales ni su edición."""
+    groups_by_name: dict[str, dict] = {}
+    for record in records:
+        display_name = " ".join((record.nombre_cliente or "").split()) or "Cliente sin nombre"
+        key = _client_name_key(display_name) or f"cliente-{record.id}"
+        group = groups_by_name.setdefault(
+            key,
+            {
+                "nombre": display_name,
+                "records": [],
+                "companies": [],
+                "fiscal": [],
+                "emails": [],
+                "phones": [],
+                "addresses": [],
+                "responsibles": [],
+                "quote_count": 0,
+            },
+        )
+        group["records"].append(record)
+        group["quote_count"] += len(record.cotizaciones or [])
+
+        def append_unique(field: str, value: str | None) -> None:
+            cleaned = " ".join((value or "").split())
+            if cleaned and cleaned.casefold() not in {item.casefold() for item in group[field]}:
+                group[field].append(cleaned)
+
+        append_unique("companies", record.empresa)
+        append_unique("emails", record.correo)
+        append_unique("phones", record.telefono)
+        append_unique("addresses", record.direccion)
+        append_unique("responsibles", record.responsable)
+        fiscal_key = "|".join([
+            (record.razon_social or "").strip().casefold(),
+            (record.rfc or "").strip().casefold(),
+            (record.regimen_fiscal or "").strip().casefold(),
+            (record.codigo_postal_fiscal or "").strip().casefold(),
+            (record.uso_cfdi or "").strip().casefold(),
+        ])
+        if fiscal_key.strip("|") and fiscal_key not in {item["key"] for item in group["fiscal"]}:
+            group["fiscal"].append({
+                "key": fiscal_key,
+                "razon_social": record.razon_social or "Sin razón social",
+                "rfc": record.rfc or "Sin RFC",
+                "regimen": record.regimen_fiscal or "—",
+                "codigo_postal": record.codigo_postal_fiscal or "—",
+                "uso_cfdi": record.uso_cfdi or "—",
+            })
+
+    groups = list(groups_by_name.values())
+    for group in groups:
+        group["record_count"] = len(group["records"])
+    return sorted(groups, key=lambda item: _client_name_key(item["nombre"]))
+
+
+def _client_report_rows(groups: list[dict]) -> list[list[str]]:
+    rows = [[
+        "Cliente",
+        "Empresas / nombres comerciales",
+        "Razones sociales",
+        "RFC",
+        "Régimen fiscal",
+        "C.P. fiscal",
+        "Uso CFDI",
+        "Correos",
+        "Teléfonos",
+        "Domicilios",
+        "Responsables",
+        "Registros",
+        "Cotizaciones",
+    ]]
+    for group in groups:
+        rows.append([
+            group["nombre"],
+            " | ".join(group["companies"]) or "—",
+            " | ".join(item["razon_social"] for item in group["fiscal"]) or "—",
+            " | ".join(item["rfc"] for item in group["fiscal"]) or "—",
+            " | ".join(item["regimen"] for item in group["fiscal"]) or "—",
+            " | ".join(item["codigo_postal"] for item in group["fiscal"]) or "—",
+            " | ".join(item["uso_cfdi"] for item in group["fiscal"]) or "—",
+            " | ".join(group["emails"]) or "—",
+            " | ".join(group["phones"]) or "—",
+            " | ".join(group["addresses"]) or "—",
+            " | ".join(group["responsibles"]) or "—",
+            str(group["record_count"]),
+            str(group["quote_count"]),
+        ])
+    return rows
+
+
+def _client_directory_pdf(groups: list[dict]) -> bytes:
+    output = io.BytesIO()
+    page_size = landscape(A4)
+    doc = SimpleDocTemplate(
+        output,
+        pagesize=page_size,
+        leftMargin=9 * mm,
+        rightMargin=9 * mm,
+        topMargin=11 * mm,
+        bottomMargin=11 * mm,
+        title="Directorio de clientes",
+        author="Sistema MAR",
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("ClientReportTitle", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=16, textColor=colors.HexColor(MAR_BLUE), spaceAfter=3 * mm)
+    meta_style = ParagraphStyle("ClientReportMeta", parent=styles["Normal"], fontSize=8, leading=10, textColor=colors.HexColor("#526174"))
+    cell_style = ParagraphStyle("ClientReportCell", parent=styles["Normal"], fontSize=6.8, leading=8.2, splitLongWords=True)
+    head_style = ParagraphStyle("ClientReportHead", parent=cell_style, fontName="Helvetica-Bold", textColor=colors.white, alignment=1)
+
+    def cell(value, style=cell_style):
+        return Paragraph(escape(str(value or "—")).replace("\n", "<br/>"), style)
+
+    table_rows = [[cell(value, head_style) for value in ["Cliente", "Empresas", "Datos fiscales", "Contacto", "Domicilio", "Registros", "Cotizaciones"]]]
+    for group in groups:
+        fiscal = "\n".join(
+            f"{item['razon_social']} · {item['rfc']} · Rég. {item['regimen']} · CP {item['codigo_postal']}"
+            for item in group["fiscal"]
+        ) or "—"
+        contact = "\n".join(group["emails"] + group["phones"]) or "—"
+        table_rows.append([
+            cell(group["nombre"]),
+            cell("\n".join(group["companies"]) or "—"),
+            cell(fiscal),
+            cell(contact),
+            cell("\n".join(group["addresses"]) or "—"),
+            cell(group["record_count"]),
+            cell(group["quote_count"]),
+        ])
+    if len(table_rows) == 1:
+        table_rows.append([cell("No hay clientes para los filtros actuales."), *[cell("") for _ in range(6)]])
+
+    available = page_size[0] - 18 * mm
+    weights = [1.55, 1.35, 2.65, 1.65, 2.15, .55, .65]
+    widths = [available * weight / sum(weights) for weight in weights]
+    table = Table(table_rows, colWidths=widths, repeatRows=1)
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(MAR_BLUE)),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("GRID", (0, 0), (-1, -1), .35, colors.HexColor("#CFD8E3")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F4F7FA")]),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story = [
+        Paragraph("Directorio de clientes", title_style),
+        Paragraph(f"Información consolidada por nombre · {len(groups)} clientes · Generado {datetime.now().strftime('%d/%m/%Y %H:%M')}", meta_style),
+        Spacer(1, 4 * mm),
+        table,
+    ]
+    doc.build(story)
+    return output.getvalue()
+
+
+@app.get("/clientes")
+@login_required
+def clientes_index():
+    q = (request.args.get("q") or "").strip()
+    page = max(request.args.get("page", 1, type=int), 1)
+    records = _client_directory_query(q).order_by(Cliente.nombre_cliente.asc(), Cliente.id.desc()).all()
+    all_groups = _group_client_records(records)
+    per_page = 20
+    pages = max(math.ceil(len(all_groups) / per_page), 1)
+    page = min(page, pages)
+    groups = all_groups[(page - 1) * per_page:page * per_page]
     editar = None
     editar_id = request.args.get("editar", type=int)
     if editar_id:
@@ -10265,11 +10436,44 @@ def clientes_index():
         require_cliente_owner_or_admin(editar)
     return render_template(
         "clientes.html",
-        clientes=clientes_pag.items,
-        clientes_pag=clientes_pag,
+        client_groups=groups,
+        clients_total=len(all_groups),
+        clients_page=page,
+        clients_pages=pages,
+        clients_has_prev=page > 1,
+        clients_has_next=page < pages,
         editar=editar,
         q=q,
         title="Clientes - Sistema MAR",
+    )
+
+
+@app.get("/clientes/export.xlsx")
+@login_required
+def clientes_export_excel():
+    q = (request.args.get("q") or "").strip()
+    records = _client_directory_query(q).order_by(Cliente.nombre_cliente.asc(), Cliente.id.desc()).all()
+    rows = _client_report_rows(_group_client_records(records))
+    content = _build_matrix_xlsx("Clientes", rows, [28, 28, 34, 20, 14, 14, 13, 28, 20, 38, 24, 12, 14])
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return Response(
+        content,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="reporte_clientes_{stamp}.xlsx"'},
+    )
+
+
+@app.get("/clientes/export.pdf")
+@login_required
+def clientes_export_pdf():
+    q = (request.args.get("q") or "").strip()
+    records = _client_directory_query(q).order_by(Cliente.nombre_cliente.asc(), Cliente.id.desc()).all()
+    content = _client_directory_pdf(_group_client_records(records))
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return Response(
+        content,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="reporte_clientes_{stamp}.pdf"'},
     )
 
 

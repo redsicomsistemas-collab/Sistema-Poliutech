@@ -32,12 +32,12 @@ class PortalFacturasFlowTest(unittest.TestCase):
     def setUp(self):
         app.config.update(TESTING=True, PORTAL_FACTURAS_DISABLE_EMAIL=False)
 
-    def test_login_destaca_portal_para_proveedores(self):
+    def test_login_no_muestra_acceso_al_portal_de_proveedores(self):
         response = app.test_client().get("/login")
         self.assertEqual(response.status_code, 200)
-        self.assertIn("¿Eres proveedor?".encode("utf-8"), response.data)
-        self.assertIn("Sube tu factura aquí".encode("utf-8"), response.data)
-        self.assertIn(b'href="/portal-facturas/ingresar"', response.data)
+        self.assertNotIn("¿Eres proveedor?".encode("utf-8"), response.data)
+        self.assertNotIn("Sube tu factura aquí".encode("utf-8"), response.data)
+        self.assertNotIn(b'href="/portal-facturas/ingresar"', response.data)
 
     def test_registro_carga_revision_y_pago(self):
         xml = b'''<?xml version="1.0" encoding="UTF-8"?>

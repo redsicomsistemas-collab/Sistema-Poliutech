@@ -30,18 +30,6 @@
         <p>Ingresa tus datos para continuar.</p>
       </div>
 
-      <a class="auth-provider-cta" href="{{ url_for('portal_facturas.ingresar') }}">
-        <span class="auth-provider-icon" aria-hidden="true">XML</span>
-        <span class="auth-provider-copy">
-          <span class="auth-provider-eyebrow">¿Eres proveedor?</span>
-          <strong>Sube tu factura aquí</strong>
-          <small>Carga tu XML y PDF, y consulta el avance de tu pago.</small>
-        </span>
-        <span class="auth-provider-action">Ir al portal <span aria-hidden="true">→</span></span>
-      </a>
-
-      <div class="auth-access-divider"><span>Acceso para colaboradores</span></div>
-
       <form method="POST" action="{{ url_for('login', next=request.args.get('next')) }}" class="auth-form">
         <label for="nombre">Usuario</label>
         <div class="auth-input-group">

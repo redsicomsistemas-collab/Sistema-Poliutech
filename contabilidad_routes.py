@@ -24,8 +24,14 @@ from flask_login import current_user, login_required
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy import or_
 from werkzeug.utils import secure_filename
+from xml.sax.saxutils import escape
 
 from contabilidad_access import can_access_contabilidad, can_manage_contabilidad
 from models import (
@@ -566,11 +572,14 @@ def _filtered_query(category: dict | None = None):
     return query, q, status, legal_entity
 
 
-def _group_provider_records(records: list[ContabilidadRegistro]) -> list[dict]:
-    """Agrupa movimientos del mismo proveedor y totaliza cada moneda."""
+def _group_financial_records(
+    records: list[ContabilidadRegistro],
+    empty_name: str = "Registro sin nombre",
+) -> list[dict]:
+    """Agrupa movimientos del mismo cliente/proveedor y totaliza cada moneda."""
     groups_by_name: dict[str, dict] = {}
     for record in records:
-        display_name = " ".join((record.nombre or "").split()) or "Proveedor sin nombre"
+        display_name = " ".join((record.nombre or "").split()) or empty_name
         key = display_name.casefold()
         group = groups_by_name.setdefault(
             key,
@@ -867,7 +876,11 @@ def registros(slug: str):
         "contabilidad/registros.html",
         category=category,
         records=records,
-        provider_groups=_group_provider_records(records) if category["tipo"] == "PROVEEDOR" else [],
+        party_groups=(
+            _group_financial_records(records, f"{category['singular'].capitalize()} sin nombre")
+            if category["financial"]
+            else []
+        ),
         altas=altas,
         registered_records=_load_registered_records(category),
         selected_alta=selected_alta,
@@ -1279,7 +1292,7 @@ def _financial_excel_response(records: list[ContabilidadRegistro], filename_pref
     """Genera el formato solicitado para los reportes de clientes y proveedores."""
     wb = Workbook()
     ws = wb.active
-    ws.title = sheet_name[:31]
+    ws.title = f"Detalle {sheet_name}"[:31]
     headers = [
         "Nombre / razón social",
         "RFC",
@@ -1343,6 +1356,47 @@ def _financial_excel_response(records: list[ContabilidadRegistro], filename_pref
     ws.page_setup.orientation = "landscape"
     ws.page_setup.fitToWidth = 1
     ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+    summary = wb.create_sheet("Resumen por nombre", 0)
+    summary.append([
+        "Nombre",
+        "Movimientos",
+        "Moneda",
+        "Monto registrado",
+        "Total abonado",
+        "Saldo pendiente",
+        "Documentos PDF",
+        "Estatus",
+    ])
+    groups = _group_financial_records(records)
+    for group in groups:
+        for total in group["totals"]:
+            summary.append([
+                group["nombre"],
+                group["movimientos"],
+                total["moneda"],
+                total["monto"],
+                total["abonado"],
+                total["saldo"],
+                group["documentos"],
+                "CON SALDO" if total["saldo"] > 0.005 else "LIQUIDADO",
+            ])
+    for cell in summary[1]:
+        cell.font = Font(name="Arial", size=10, bold=True, color="FFFFFF")
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    for row in summary.iter_rows(min_row=2):
+        for index in (4, 5, 6):
+            row[index - 1].number_format = '"$"#,##0.00'
+    for index, width in enumerate([36, 15, 12, 20, 20, 20, 18, 16], start=1):
+        summary.column_dimensions[get_column_letter(index)].width = width
+    summary.freeze_panes = "A2"
+    summary.auto_filter.ref = summary.dimensions
+    summary.sheet_view.showGridLines = False
+    summary.row_dimensions[1].height = 30
+    summary.page_setup.orientation = "landscape"
+    summary.page_setup.fitToWidth = 1
+    summary.sheet_properties.pageSetUpPr.fitToPage = True
 
     output = io.BytesIO()
     wb.save(output)
@@ -1569,12 +1623,254 @@ def _bank_excel_response(accounts: list[ContabilidadBancoCuenta], movements: lis
     )
 
 
+def _pdf_response(
+    title: str,
+    headers: list[str],
+    rows: list[list[object]],
+    column_weights: list[float],
+    filename_prefix: str,
+    summary: list[str] | None = None,
+) -> Response:
+    """Construye un reporte PDF tabular, repetible y apto para todos los apartados."""
+    output = io.BytesIO()
+    page_size = landscape(A4)
+    document = SimpleDocTemplate(
+        output,
+        pagesize=page_size,
+        leftMargin=9 * mm,
+        rightMargin=9 * mm,
+        topMargin=11 * mm,
+        bottomMargin=11 * mm,
+        title=title,
+        author="Sistema MAR",
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "AccountingTitle",
+        parent=styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=16,
+        leading=19,
+        textColor=colors.HexColor("#0C3C78"),
+        spaceAfter=3 * mm,
+    )
+    meta_style = ParagraphStyle(
+        "AccountingMeta",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=8,
+        leading=10,
+        textColor=colors.HexColor("#526174"),
+    )
+    cell_style = ParagraphStyle(
+        "AccountingCell",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=6.6,
+        leading=8,
+        splitLongWords=True,
+    )
+    header_style = ParagraphStyle(
+        "AccountingHeader",
+        parent=cell_style,
+        fontName="Helvetica-Bold",
+        textColor=colors.white,
+        alignment=1,
+    )
+
+    def paragraph(value: object, style: ParagraphStyle = cell_style) -> Paragraph:
+        text = escape("" if value is None else str(value)).replace("\n", "<br/>")
+        return Paragraph(text or "—", style)
+
+    story = [Paragraph(escape(title), title_style)]
+    metadata = [
+        f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}",
+        f"Registros en el reporte: {len(rows)}",
+    ]
+    metadata.extend(summary or [])
+    story.append(Paragraph(" &nbsp; | &nbsp; ".join(escape(item) for item in metadata), meta_style))
+    story.append(Spacer(1, 4 * mm))
+
+    table_rows = [[paragraph(value, header_style) for value in headers]]
+    if rows:
+        table_rows.extend([[paragraph(value) for value in row] for row in rows])
+    else:
+        empty = [paragraph("No hay registros que coincidan con los filtros actuales.")]
+        empty.extend(paragraph("") for _ in headers[1:])
+        table_rows.append(empty)
+
+    available_width = page_size[0] - 18 * mm
+    total_weight = sum(column_weights) or 1
+    column_widths = [available_width * (weight / total_weight) for weight in column_weights]
+    table = Table(table_rows, colWidths=column_widths, repeatRows=1, hAlign="LEFT")
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0C3C78")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("GRID", (0, 0), (-1, -1), .35, colors.HexColor("#CFD8E3")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F4F7FA")]),
+    ]))
+    story.append(table)
+
+    def draw_footer(canvas, doc):
+        canvas.saveState()
+        canvas.setFont("Helvetica", 7)
+        canvas.setFillColor(colors.HexColor("#687789"))
+        canvas.drawRightString(page_size[0] - 9 * mm, 6 * mm, f"Página {doc.page}")
+        canvas.restoreState()
+
+    document.build(story, onFirstPage=draw_footer, onLaterPages=draw_footer)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return Response(
+        output.getvalue(),
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename_prefix}_{stamp}.pdf"'},
+    )
+
+
+def _records_pdf_response(
+    records: list[ContabilidadRegistro],
+    filename_prefix: str,
+    category: dict | None = None,
+) -> Response:
+    if category and category["financial"]:
+        groups = _group_financial_records(records, f"{category['singular'].capitalize()} sin nombre")
+        rows = []
+        for group in groups:
+            rfcs = sorted({item.rfc for item in group["records"] if item.rfc})
+            projects = sorted({item.proyecto for item in group["records"] if item.proyecto})
+            invoices = sorted({item.folio_factura for item in group["records"] if item.folio_factura})
+            money = lambda key: "\n".join(
+                f"${item[key]:,.2f} {item['moneda']}" for item in group["totals"]
+            )
+            rows.append([
+                group["nombre"],
+                "\n".join(rfcs) or "—",
+                "\n".join(projects) or "—",
+                group["movimientos"],
+                "\n".join(invoices) or "—",
+                money("monto"),
+                money("abonado"),
+                money("saldo"),
+                "CON SALDO" if group["tiene_deuda"] else "LIQUIDADO",
+                group["documentos"],
+            ])
+        return _pdf_response(
+            f"Contabilidad · {category['label']}",
+            ["Nombre", "RFC", "Proyecto / obra", "Mov.", "Facturas", "Monto", "Abonado", "Saldo", "Estatus", "PDF"],
+            rows,
+            [2.0, 1.25, 1.65, .55, 1.2, 1.25, 1.2, 1.25, .9, .45],
+            filename_prefix,
+            ["Información consolidada por nombre"],
+        )
+
+    if category and category["tipo"] == "TRABAJADOR":
+        rows = [[
+            item.folio,
+            item.nombre,
+            item.identificador or "—",
+            item.razon_social or "—",
+            item.descripcion or "—",
+            item.proyecto or "—",
+            item.fecha_inicio.strftime("%d/%m/%Y"),
+            f"${float(item.monto_total or 0):,.2f} {item.moneda or 'MXN'}",
+            item.estatus,
+            len(item.documentos or []),
+        ] for item in records]
+        return _pdf_response(
+            "Contabilidad · Trabajadores y empleados",
+            ["Folio", "Trabajador", "No. empleado", "Razón social", "Puesto", "Proyecto", "Alta", "Sueldo ref.", "Estatus", "PDF"],
+            rows,
+            [1.15, 1.7, 1.05, 1.6, 1.4, 1.45, .8, 1.15, .85, .45],
+            filename_prefix,
+        )
+
+    if category:
+        rows = [[
+            item.folio,
+            item.nombre,
+            item.proyecto or "—",
+            item.identificador or "—",
+            " / ".join(filter(None, [item.marca, item.modelo, str(item.anio or "")])) or "—",
+            item.fecha_inicio.strftime("%d/%m/%Y"),
+            f"${float(item.monto_total or 0):,.2f} {item.moneda or 'MXN'}",
+            item.estatus,
+            len(item.documentos or []),
+            item.notas or "—",
+        ] for item in records]
+        return _pdf_response(
+            f"Contabilidad · {category['label']}",
+            ["Folio", "Nombre", "Proyecto", "Identificador", "Marca / modelo / año", "Fecha", "Valor", "Estatus", "PDF", "Notas"],
+            rows,
+            [1.15, 1.7, 1.5, 1.25, 1.7, .8, 1.1, .8, .4, 1.7],
+            filename_prefix,
+        )
+
+    rows = [[
+        item.folio,
+        CATEGORY_BY_TYPE.get(item.tipo, {}).get("label", item.tipo),
+        item.nombre,
+        item.proyecto or "—",
+        item.fecha_inicio.strftime("%d/%m/%Y"),
+        f"${float(item.monto_total or 0):,.2f} {item.moneda or 'MXN'}",
+        f"${float(item.total_abonado or 0):,.2f}",
+        f"${float(item.saldo_pendiente or 0):,.2f}",
+        item.estatus,
+        len(item.documentos or []),
+    ] for item in records]
+    return _pdf_response(
+        "Contabilidad · Reporte general",
+        ["Folio", "Apartado", "Nombre", "Proyecto", "Fecha", "Monto", "Abonado", "Saldo", "Estatus", "PDF"],
+        rows,
+        [1.15, 1.1, 1.8, 1.6, .8, 1.15, 1.05, 1.05, .8, .4],
+        filename_prefix,
+    )
+
+
+def _bank_pdf_response(
+    accounts: list[ContabilidadBancoCuenta],
+    movements: list[ContabilidadBancoMovimiento],
+) -> Response:
+    balances = _bank_running_balances(accounts)
+    rows = [[
+        item.fecha.strftime("%d/%m/%Y"),
+        item.cuenta.razon_social,
+        f"{item.cuenta.banco}\n{item.cuenta.numero_cuenta}",
+        f"{item.tipo}\n{item.referencia or 'Sin referencia'}",
+        f"{item.beneficiario or '—'}\n{item.concepto}",
+        item.proyecto or "—",
+        f"${float(item.cargo or 0):,.2f}" if item.cargo else "—",
+        f"${float(item.abono or 0):,.2f}" if item.abono else "—",
+        f"${float(balances.get(item.id, 0)):,.2f}",
+        "Sí" if item.conciliado else "No",
+    ] for item in movements]
+    return _pdf_response(
+        "Contabilidad · Auxiliar de bancos",
+        ["Fecha", "Razón social", "Banco / cuenta", "Tipo / referencia", "Beneficiario / concepto", "Proyecto", "Cargo", "Abono", "Saldo", "Conc."],
+        rows,
+        [.8, 1.45, 1.25, 1.45, 2.1, 1.25, .85, .85, .9, .5],
+        "auxiliar_bancos",
+        [f"Cuentas incluidas: {len(accounts)}"],
+    )
+
+
 @contabilidad_bp.get("/exportar.xlsx")
 @login_required
 def exportar_todo():
     query, _, _, _ = _filtered_query()
     records = query.order_by(ContabilidadRegistro.tipo.asc(), ContabilidadRegistro.fecha_inicio.desc()).all()
     return _excel_response(records, "contabilidad_general")
+
+
+@contabilidad_bp.get("/exportar.pdf")
+@login_required
+def exportar_todo_pdf():
+    query, _, _, _ = _filtered_query()
+    records = query.order_by(ContabilidadRegistro.tipo.asc(), ContabilidadRegistro.fecha_inicio.desc()).all()
+    return _records_pdf_response(records, "contabilidad_general")
 
 
 @contabilidad_bp.get("/bancos/exportar.xlsx")
@@ -1595,6 +1891,24 @@ def exportar_bancos():
     return _bank_excel_response(accounts, movements)
 
 
+@contabilidad_bp.get("/bancos/exportar.pdf")
+@login_required
+def exportar_bancos_pdf():
+    accounts = ContabilidadBancoCuenta.query.order_by(
+        ContabilidadBancoCuenta.razon_social.asc(),
+        ContabilidadBancoCuenta.banco.asc(),
+        ContabilidadBancoCuenta.numero_cuenta.asc(),
+    ).all()
+    query, _ = _bank_filtered_query()
+    movements = query.order_by(
+        ContabilidadBancoCuenta.razon_social.asc(),
+        ContabilidadBancoCuenta.banco.asc(),
+        ContabilidadBancoMovimiento.fecha.asc(),
+        ContabilidadBancoMovimiento.id.asc(),
+    ).all()
+    return _bank_pdf_response(accounts, movements)
+
+
 @contabilidad_bp.get("/<slug>/exportar.xlsx")
 @login_required
 def exportar(slug: str):
@@ -1606,3 +1920,16 @@ def exportar(slug: str):
     if category["tipo"] == "TRABAJADOR":
         return _worker_excel_response(records)
     return _excel_response(records, f"contabilidad_{slug}")
+
+
+@contabilidad_bp.get("/<slug>/exportar.pdf")
+@login_required
+def exportar_pdf(slug: str):
+    category = _category_or_404(slug)
+    query, _, _, _ = _filtered_query(category)
+    records = query.order_by(
+        ContabilidadRegistro.nombre.asc(),
+        ContabilidadRegistro.fecha_inicio.desc(),
+        ContabilidadRegistro.id.desc(),
+    ).all()
+    return _records_pdf_response(records, f"reporte_{slug}", category)

@@ -7,10 +7,16 @@
     <h2 class="fw-bold text-primary mb-1">👥 Clientes</h2>
     <div class="text-muted">Directorio comercial y datos fiscales para cotizaciones y facturas.</div>
   </div>
-  <form method="get" class="d-flex gap-2" role="search">
-    <input name="q" class="form-control" value="{{ q }}" placeholder="Buscar nombre, empresa o RFC">
-    <button class="btn btn-outline-primary">Buscar</button>
-  </form>
+  <div class="d-flex flex-column flex-md-row gap-2">
+    <form method="get" class="d-flex gap-2" role="search">
+      <input name="q" class="form-control" value="{{ q }}" placeholder="Buscar nombre, empresa o RFC">
+      <button class="btn btn-outline-primary">Buscar</button>
+    </form>
+    <div class="d-flex gap-2">
+      <a class="btn btn-success" href="{{ url_for('clientes_export_excel', q=q) }}">📊 Excel</a>
+      <a class="btn btn-danger" href="{{ url_for('clientes_export_pdf', q=q) }}">📄 PDF</a>
+    </div>
+  </div>
 </div>
 
 <div class="row g-4">
@@ -71,17 +77,38 @@
 
   <div class="col-xl-8">
     <div class="card border-0 shadow-sm">
-      <div class="card-header bg-light fw-bold">Clientes registrados</div>
+      <div class="card-header bg-light d-flex justify-content-between align-items-center gap-2">
+        <strong>Clientes por nombre</strong>
+        <span class="badge text-bg-primary">{{ clients_total }}</span>
+      </div>
       <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
           <thead><tr><th>Cliente</th><th>Datos fiscales</th><th>Contacto</th><th></th></tr></thead>
           <tbody>
-            {% for cliente in clientes %}
+            {% for group in client_groups %}
             <tr>
-              <td><div class="fw-semibold">{{ cliente.nombre_cliente }}</div><div class="small text-muted">{{ cliente.empresa or '' }}</div></td>
-              <td><div>{{ cliente.razon_social or 'Sin razón social' }}</div><div class="small text-muted">{{ cliente.rfc or 'Sin RFC' }} · Rég. {{ cliente.regimen_fiscal or '—' }} · CP {{ cliente.codigo_postal_fiscal or '—' }}</div></td>
-              <td><div>{{ cliente.correo or '—' }}</div><div class="small text-muted">{{ cliente.telefono or '' }}</div></td>
-              <td class="text-end"><a href="{{ url_for('clientes_index', editar=cliente.id, q=q) }}" class="btn btn-sm btn-outline-primary">Editar</a></td>
+              <td>
+                <div class="d-flex align-items-center gap-2"><span class="fw-semibold">{{ group.nombre }}</span>{% if group.record_count > 1 %}<span class="badge rounded-pill text-bg-light border">{{ group.record_count }} fichas</span>{% endif %}</div>
+                <div class="small text-muted">{{ group.companies|join(' · ') if group.companies else 'Sin empresa registrada' }}</div>
+                <div class="small text-muted">{{ group.quote_count }} {{ 'cotización' if group.quote_count == 1 else 'cotizaciones' }}</div>
+              </td>
+              <td>
+                {% for fiscal in group.fiscal %}
+                <div class="{{ 'mt-2 pt-2 border-top' if not loop.first }}">{{ fiscal.razon_social }}</div>
+                <div class="small text-muted">{{ fiscal.rfc }} · Rég. {{ fiscal.regimen }} · CP {{ fiscal.codigo_postal }} · CFDI {{ fiscal.uso_cfdi }}</div>
+                {% else %}<span class="text-muted">Sin datos fiscales</span>{% endfor %}
+              </td>
+              <td>
+                <div>{{ group.emails|join(' · ') if group.emails else '—' }}</div>
+                <div class="small text-muted">{{ group.phones|join(' · ') }}</div>
+              </td>
+              <td class="text-end">
+                <div class="d-inline-flex flex-column gap-1">
+                  {% for cliente in group.records %}
+                  <a href="{{ url_for('clientes_index', editar=cliente.id, q=q) }}" class="btn btn-sm btn-outline-primary">Editar{% if group.record_count > 1 %} {{ cliente.empresa or cliente.rfc or ('ficha ' ~ loop.index) }}{% endif %}</a>
+                  {% endfor %}
+                </div>
+              </td>
             </tr>
             {% else %}
             <tr><td colspan="4" class="text-center text-muted py-5">Aún no hay clientes registrados.</td></tr>
@@ -89,11 +116,11 @@
           </tbody>
         </table>
       </div>
-      {% if clientes_pag.pages > 1 %}
+      {% if clients_pages > 1 %}
       <div class="card-footer d-flex justify-content-between">
-        <a class="btn btn-sm btn-outline-secondary {{ 'disabled' if not clientes_pag.has_prev }}" href="{{ url_for('clientes_index', page=clientes_pag.prev_num, q=q) }}">Anterior</a>
-        <span class="small text-muted align-self-center">Página {{ clientes_pag.page }} de {{ clientes_pag.pages }}</span>
-        <a class="btn btn-sm btn-outline-secondary {{ 'disabled' if not clientes_pag.has_next }}" href="{{ url_for('clientes_index', page=clientes_pag.next_num, q=q) }}">Siguiente</a>
+        <a class="btn btn-sm btn-outline-secondary {{ 'disabled' if not clients_has_prev }}" href="{{ url_for('clientes_index', page=clients_page - 1, q=q) }}">Anterior</a>
+        <span class="small text-muted align-self-center">Página {{ clients_page }} de {{ clients_pages }}</span>
+        <a class="btn btn-sm btn-outline-secondary {{ 'disabled' if not clients_has_next }}" href="{{ url_for('clientes_index', page=clients_page + 1, q=q) }}">Siguiente</a>
       </div>
       {% endif %}
     </div>
