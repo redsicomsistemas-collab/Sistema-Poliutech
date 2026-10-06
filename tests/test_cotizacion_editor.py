@@ -2,13 +2,11 @@ import os
 import unittest
 from unittest.mock import patch
 
-from werkzeug.datastructures import MultiDict
-
-
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["DISABLE_BACKGROUND_SCHEDULER"] = "1"
 
 try:
+    from werkzeug.datastructures import MultiDict
     from app import app
     from models import Cliente, Cotizacion, CotizacionDetalle, Usuario, db
     _IMPORT_ERROR = ""
