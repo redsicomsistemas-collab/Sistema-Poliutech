@@ -3,13 +3,11 @@ import os
 import unittest
 from datetime import date
 
-from openpyxl import load_workbook
-
-
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["DISABLE_BACKGROUND_SCHEDULER"] = "1"
 
 try:
+    from openpyxl import load_workbook
     from app import _group_client_records, app
     from models import Cliente, ContabilidadRegistro, Usuario, db
     _IMPORT_ERROR = ""
