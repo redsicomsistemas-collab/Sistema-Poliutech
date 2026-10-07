@@ -190,6 +190,24 @@
       color: #041f18;
     }
 
+    .topbar-primary-actions.has-purchase-orders .quote-cta {
+      min-width: auto;
+      padding: 0.72rem 1rem;
+      font-size: clamp(0.9rem, 1.1vw, 1.08rem);
+      white-space: nowrap;
+    }
+
+    .purchase-order-cta {
+      background: #fff;
+      color: var(--mar-blue);
+    }
+
+    .quote-cta.purchase-order-cta:hover,
+    .quote-cta.purchase-order-cta:focus-visible {
+      background: #eaf3ff;
+      color: #082a54;
+    }
+
     .quote-cta:hover {
       background: #ffcd39;
       color: #0f172a;
@@ -879,9 +897,10 @@
         <span class="fw-bold">M.A.R — {{ active_demo.empresa if is_demo_account else (company_branding.nombre_comercial if company_branding else 'Sistema Poliutech') }}</span>
       </a>
 
-      <div class="topbar-primary-actions">
+      <div class="topbar-primary-actions{% if contabilidad_can_view() %} has-purchase-orders{% endif %}">
         {% if not is_demo_account or 'cotizaciones' in demo_modules %}<a class="quote-cta fw-bold" href="{{ url_for('cotizador') }}">💰 COTIZAR</a>{% endif %}
         {% if not is_demo_account or 'facturacion' in demo_modules %}<a class="quote-cta invoice-cta fw-bold" href="{{ url_for('facturacion.nueva') }}">🧾 FACTURAR</a>{% endif %}
+        {% if contabilidad_can_view() %}<a class="quote-cta purchase-order-cta fw-bold" href="{{ url_for('portal_facturas.finanzas_ordenes_compra') }}">📦 ORDEN DE COMPRA</a>{% endif %}
       </div>
 
       {% if current_user.is_authenticated %}
@@ -923,9 +942,10 @@
     <!-- ====== Menu lateral ====== -->
     <aside class="side-menu" id="sideMenu" aria-label="Menu principal">
       <div class="mobile-menu-tools">
-        <div class="topbar-primary-actions">
+        <div class="topbar-primary-actions{% if contabilidad_can_view() %} has-purchase-orders{% endif %}">
           {% if not is_demo_account or 'cotizaciones' in demo_modules %}<a class="quote-cta fw-bold" href="{{ url_for('cotizador') }}">💰 COTIZAR</a>{% endif %}
           {% if not is_demo_account or 'facturacion' in demo_modules %}<a class="quote-cta invoice-cta fw-bold" href="{{ url_for('facturacion.nueva') }}">🧾 FACTURAR</a>{% endif %}
+          {% if contabilidad_can_view() %}<a class="quote-cta purchase-order-cta fw-bold" href="{{ url_for('portal_facturas.finanzas_ordenes_compra') }}">📦 ORDEN DE COMPRA</a>{% endif %}
         </div>
         <div class="mobile-user-card">
           <button class="mobile-user-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#mobileUserActions" aria-expanded="false" aria-controls="mobileUserActions">

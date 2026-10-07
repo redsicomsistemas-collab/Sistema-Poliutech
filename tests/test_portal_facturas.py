@@ -183,6 +183,10 @@ class PortalFacturasFlowTest(unittest.TestCase):
         response = finance.get(f"/portal-facturas/finanzas/proveedores/{provider_id}")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Autorizar alta", response.data)
+        self.assertIn(b"purchase-order-cta", response.data)
+        self.assertIn(
+            b'href="/portal-facturas/finanzas/ordenes-compra"', response.data
+        )
 
         other_admin_finance = app.test_client()
         response = other_admin_finance.post(
