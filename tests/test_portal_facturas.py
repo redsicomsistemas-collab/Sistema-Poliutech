@@ -171,6 +171,8 @@ class PortalFacturasFlowTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn("pendiente de autorización".encode("utf-8"), response.data)
+        self.assertIn(b"nuestro equipo", response.data)
+        self.assertNotIn(b"Marco/Mescalera", response.data)
 
         finance = app.test_client()
         response = finance.post(
@@ -180,8 +182,20 @@ class PortalFacturasFlowTest(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         response = finance.get(f"/portal-facturas/finanzas/proveedores/{provider_id}")
         self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Autorizar alta", response.data)
+
+        other_admin_finance = app.test_client()
+        response = other_admin_finance.post(
+            "/login",
+            data={"nombre": "otro_admin_portal", "password": "OtroAdminTest123"},
+        )
+        self.assertEqual(response.status_code, 302)
+        response = other_admin_finance.get(
+            f"/portal-facturas/finanzas/proveedores/{provider_id}"
+        )
+        self.assertEqual(response.status_code, 200)
         self.assertNotIn(b"Autorizar alta", response.data)
-        response = finance.post(
+        response = other_admin_finance.post(
             f"/portal-facturas/finanzas/proveedores/{provider_id}/revision",
             data={"csrf_token": "forged", "decision": "AUTORIZAR"},
         )
@@ -199,10 +213,14 @@ class PortalFacturasFlowTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Autorizar alta", response.data)
         with patch("portal_facturas_routes.smtplib.SMTP") as review_smtp_class:
-            response = marco_finance.post(
+            response = finance.post(
                 f"/portal-facturas/finanzas/proveedores/{provider_id}/revision",
                 data={
-                    "csrf_token": _csrf(response),
+                    "csrf_token": _csrf(
+                        finance.get(
+                            f"/portal-facturas/finanzas/proveedores/{provider_id}"
+                        )
+                    ),
                     "decision": "AUTORIZAR",
                     "comentario": "Expediente fiscal y bancario validado.",
                 },
@@ -218,7 +236,7 @@ class PortalFacturasFlowTest(unittest.TestCase):
         with app.app_context():
             proveedor_registrado = db.session.get(PortalProveedorUsuario, provider_id)
             self.assertEqual(proveedor_registrado.estatus, "ACTIVO")
-            self.assertEqual(proveedor_registrado.revisado_por.nombre, "mescalera")
+            self.assertEqual(proveedor_registrado.revisado_por.nombre, "admin")
             review_messenger = MessengerNotificationOutbox.query.filter(
                 MessengerNotificationOutbox.source_key.like("portal:proveedor:%:revision:%")
             ).all()

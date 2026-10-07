@@ -194,11 +194,11 @@ def proveedor_login_required(view):
         if proveedor.estatus != "ACTIVO":
             session.pop(SESSION_KEY, None)
             if proveedor.estatus == "PENDIENTE":
-                flash("Tu alta sigue pendiente de autorización por Marco/Mescalera.", "warning")
+                flash("Tu alta sigue pendiente de autorización por nuestro equipo.", "warning")
             elif proveedor.estatus == "RECHAZADO":
-                flash("Tu alta fue rechazada. Contacta a Marco/Mescalera.", "danger")
+                flash("Tu alta fue rechazada. Contacta a nuestro equipo.", "danger")
             else:
-                flash("Tu cuenta no está activa. Contacta a Marco/Mescalera.", "danger")
+                flash("Tu cuenta no está activa. Contacta a nuestro equipo.", "danger")
             return redirect(url_for("portal_facturas.ingresar"))
         return view(*args, **kwargs)
 
@@ -223,13 +223,13 @@ def _can_review_provider(user) -> bool:
     display_name = str(getattr(user, "nombre_visible", "") or "").strip().casefold()
     email = _normalize_email(getattr(user, "correo", ""))
     return (
-        username in {"marco", "mescalera"}
+        username in {"admin", "marco", "mescalera"}
         or display_name in {"marco", "mescalera", "marco escalera"}
         or email == "mescalera@poliutech.com"
     )
 
 
-def marco_mescalera_required(view):
+def provider_reviewer_required(view):
     @wraps(view)
     @login_required
     def wrapped(*args, **kwargs):
@@ -447,7 +447,7 @@ def _send_provider_registration_email(
     msg["From"] = f"PORTAL DE FACTURAS POLIUTECH <{smtp_from}>"
     msg["To"] = ", ".join(recipients)
     msg.set_content(
-        f"Un proveedor solicitó su alta en el portal y requiere autorización de Marco/Mescalera.\n\n"
+        f"Un proveedor solicitó su alta en el portal y requiere autorización del equipo responsable.\n\n"
         f"Razón social: {proveedor.razon_social}\n"
         f"RFC: {proveedor.rfc}\n"
         f"Contacto: {proveedor.contacto}\n"
@@ -461,7 +461,7 @@ def _send_provider_registration_email(
             "<div style='font-family:Arial,sans-serif;max-width:680px;color:#15263b'>"
             "<div style='font-size:12px;font-weight:800;letter-spacing:.08em;color:#0b67b2'>ALTA PENDIENTE DE PROVEEDOR</div>"
             f"<h2 style='margin:8px 0'>{escape(subject)}</h2>"
-            "<p>El proveedor completó su solicitud y adjuntó su expediente fiscal y bancario. Marco/Mescalera debe autorizarla antes de que pueda facturar.</p>"
+            "<p>El proveedor completó su solicitud y adjuntó su expediente fiscal y bancario. El equipo responsable debe autorizarla antes de que pueda facturar.</p>"
             "<table style='border-collapse:collapse;margin:18px 0'>"
             f"<tr><td style='padding:5px 14px 5px 0;color:#607086'>Razón social</td><td><b>{escape(proveedor.razon_social)}</b></td></tr>"
             f"<tr><td style='padding:5px 14px 5px 0;color:#607086'>RFC</td><td>{escape(proveedor.rfc)}</td></tr>"
@@ -562,7 +562,7 @@ def _send_provider_review_email(
     msg["To"] = proveedor.correo
     msg.set_content(
         f"Hola {proveedor.contacto},\n\n"
-        f"Tu solicitud de alta fue {'AUTORIZADA' if approved else 'RECHAZADA'} por Marco/Mescalera.\n"
+        f"Tu solicitud de alta fue {'AUTORIZADA' if approved else 'RECHAZADA'} por nuestro equipo.\n"
         f"Comentario: {reason}\n\n"
         + (f"Ya puedes iniciar sesión y subir facturas:\n{portal_url}\n" if approved else "")
     )
@@ -575,7 +575,7 @@ def _send_provider_review_email(
         (
             "<div style='font-family:Arial,sans-serif;max-width:680px;color:#15263b'>"
             f"<h2>{escape(title)}</h2>"
-            f"<p>Hola <b>{escape(proveedor.contacto)}</b>, tu solicitud fue <b>{'AUTORIZADA' if approved else 'RECHAZADA'}</b> por Marco/Mescalera.</p>"
+            f"<p>Hola <b>{escape(proveedor.contacto)}</b>, tu solicitud fue <b>{'AUTORIZADA' if approved else 'RECHAZADA'}</b> por nuestro equipo.</p>"
             f"<p><b>Comentario:</b> {escape(reason)}</p>"
             f"{action_html}</div>"
         ),
@@ -599,7 +599,7 @@ def _notify_provider_review(proveedor: PortalProveedorUsuario) -> None:
     reviewer_name = (
         getattr(proveedor.revisado_por, "nombre_representante", None)
         or getattr(proveedor.revisado_por, "nombre", None)
-        or "Marco/Mescalera"
+        or "Equipo de revisión"
     )
     title = f"Alta {'autorizada' if approved else 'rechazada'}: {proveedor.nombre_portal}"
     body = f"{reviewer_name} {'autorizó' if approved else 'rechazó'} a {proveedor.razon_social} ({proveedor.rfc})."
@@ -1389,7 +1389,7 @@ def registro():
             else:
                 _notify_provider_registration(proveedor)
                 flash(
-                    "Recibimos tu solicitud. Marco/Mescalera revisará tu información y documentos antes de autorizarte para facturar.",
+                    "Recibimos tu solicitud. Nuestro equipo revisará tu información y documentos antes de autorizarte para facturar.",
                     "success",
                 )
                 return redirect(url_for("portal_facturas.ingresar"))
@@ -1411,12 +1411,12 @@ def ingresar():
         if not proveedor or not proveedor.check_password(password):
             flash("Correo o contraseña incorrectos.", "danger")
         elif proveedor.estatus == "PENDIENTE":
-            flash("Tu alta sigue pendiente de autorización por Marco/Mescalera.", "warning")
+            flash("Tu alta sigue pendiente de autorización por nuestro equipo.", "warning")
         elif proveedor.estatus == "RECHAZADO":
-            reason = (proveedor.revision_comentario or "Contacta a Marco/Mescalera para conocer el motivo.").strip()
+            reason = (proveedor.revision_comentario or "Contacta a nuestro equipo para conocer el motivo.").strip()
             flash(f"Tu alta fue rechazada: {reason}", "danger")
         elif proveedor.estatus != "ACTIVO":
-            flash("Tu cuenta no está activa. Contacta a Marco/Mescalera.", "danger")
+            flash("Tu cuenta no está activa. Contacta a nuestro equipo.", "danger")
         else:
             proveedor.ultimo_acceso_en = _now()
             db.session.commit()
@@ -1922,7 +1922,7 @@ def finanzas_proveedor_detalle(proveedor_id: int):
 
 
 @portal_facturas_bp.post("/finanzas/proveedores/<int:proveedor_id>/revision")
-@marco_mescalera_required
+@provider_reviewer_required
 def finanzas_proveedor_revision(proveedor_id: int):
     _require_csrf()
     proveedor = db.session.get(PortalProveedorUsuario, proveedor_id)
@@ -1938,7 +1938,7 @@ def finanzas_proveedor_revision(proveedor_id: int):
         return redirect(url_for("portal_facturas.finanzas_proveedor_detalle", proveedor_id=proveedor.id))
 
     proveedor.estatus = "ACTIVO" if decision == "AUTORIZAR" else "RECHAZADO"
-    proveedor.revision_comentario = comment or "Alta autorizada por Marco/Mescalera."
+    proveedor.revision_comentario = comment or "Alta autorizada por el equipo responsable."
     proveedor.revisado_por_id = current_user.id
     proveedor.revisado_en = _now()
     try:
