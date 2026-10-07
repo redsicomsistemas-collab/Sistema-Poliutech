@@ -1120,6 +1120,7 @@ def _notify_invoice_status_change(
     *,
     event_key: str,
     notify_internal: bool,
+    provider_email_already_sent: bool = False,
 ) -> dict[str, object]:
     title, provider_body = _invoice_status_notification_copy(factura)
     provider = factura.proveedor_usuario
@@ -1182,19 +1183,20 @@ def _notify_invoice_status_change(
             exc,
         )
 
-    email_sent = False
-    try:
-        email_sent = _send_provider_invoice_status_email(
-            factura,
-            [_normalize_email(provider.correo)],
-        )
-    except Exception as exc:
-        current_app.logger.exception(
-            "No se envió el cambio de estatus de %s a %s: %s",
-            factura.folio_recepcion,
-            provider.correo,
-            exc,
-        )
+    email_sent = provider_email_already_sent
+    if not provider_email_already_sent:
+        try:
+            email_sent = _send_provider_invoice_status_email(
+                factura,
+                [_normalize_email(provider.correo)],
+            )
+        except Exception as exc:
+            current_app.logger.exception(
+                "No se envió el cambio de estatus de %s a %s: %s",
+                factura.folio_recepcion,
+                provider.correo,
+                exc,
+            )
     if notify_internal:
         try:
             _send_internal_invoice_status_email(factura, internal_emails)
@@ -2460,47 +2462,51 @@ def finanzas_actualizar_estatus(factura_id: int):
         actor_user_id=current_user.id,
         comment=comment,
     )
+    db.session.flush()
+    try:
+        email_sent = _send_provider_invoice_status_email(
+            factura,
+            [_normalize_email(factura.proveedor_usuario.correo)],
+        )
+        if not email_sent:
+            raise RuntimeError("El envío de correo está deshabilitado.")
+    except Exception as exc:
+        db.session.rollback()
+        error_text = str(exc).casefold()
+        if "user unknown" in error_text or "5.1.1" in error_text:
+            reason = (
+                f"el correo registrado {factura.proveedor_usuario.correo} no existe "
+                "en el servidor de correo"
+            )
+        else:
+            reason = (
+                f"el servidor no aceptó el correo para "
+                f"{factura.proveedor_usuario.correo}"
+            )
+        current_app.logger.exception(
+            "No se cambió el estatus de %s porque falló el correo automático a %s: %s",
+            factura.folio_recepcion,
+            factura.proveedor_usuario.correo,
+            exc,
+        )
+        flash(
+            f"No se cambió el estatus de {factura.folio_recepcion}: {reason}. "
+            "Corrige el correo del proveedor e intenta guardar la decisión nuevamente.",
+            "danger",
+        )
+        return redirect(url_for("portal_facturas.finanzas_detalle", factura_id=factura.id))
+
     db.session.commit()
-    delivery = _notify_invoice_status_change(
+    _notify_invoice_status_change(
         factura,
         event_key=f"movimiento-{event.id}",
         notify_internal=True,
+        provider_email_already_sent=True,
     )
-    if delivery["email_sent"]:
-        flash(
-            f"{factura.folio_recepcion} cambió a {ESTATUS[new_status]['label']} y se notificó a {factura.proveedor_usuario.correo}.",
-            "success",
-        )
-    else:
-        flash(
-            f"{factura.folio_recepcion} cambió a {ESTATUS[new_status]['label']}, pero no se pudo enviar el correo a {factura.proveedor_usuario.correo}. Usa 'Reenviar notificación al proveedor'.",
-            "warning",
-        )
-    return redirect(url_for("portal_facturas.finanzas_detalle", factura_id=factura.id))
-
-
-@portal_facturas_bp.post("/finanzas/<int:factura_id>/estatus/notificar")
-@finanzas_required
-def finanzas_reenviar_estatus(factura_id: int):
-    _require_csrf()
-    factura = db.session.get(FacturaProveedor, factura_id)
-    if not factura:
-        abort(404)
-    delivery = _notify_invoice_status_change(
-        factura,
-        event_key=f"reenvio-{secrets.token_hex(6)}",
-        notify_internal=False,
+    flash(
+        f"{factura.folio_recepcion} cambió a {ESTATUS[new_status]['label']} y se notificó automáticamente a {factura.proveedor_usuario.correo}.",
+        "success",
     )
-    if delivery["email_sent"]:
-        flash(
-            f"Notificación reenviada a {factura.proveedor_usuario.correo}.",
-            "success",
-        )
-    else:
-        flash(
-            f"No se pudo enviar el correo a {factura.proveedor_usuario.correo}. Intenta nuevamente.",
-            "danger",
-        )
     return redirect(url_for("portal_facturas.finanzas_detalle", factura_id=factura.id))
 
 

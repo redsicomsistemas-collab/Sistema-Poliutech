@@ -2,6 +2,7 @@ import io
 import json
 import os
 import re
+import smtplib
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
@@ -549,6 +550,32 @@ class PortalFacturasFlowTest(unittest.TestCase):
         response = finance.get(f"/portal-facturas/finanzas/{invoice_id}")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Eliminar factura definitivamente", response.data)
+        with patch("portal_facturas_routes.smtplib.SMTP") as rejected_status_smtp_class:
+            rejected_status_smtp = (
+                rejected_status_smtp_class.return_value.__enter__.return_value
+            )
+            rejected_status_smtp.send_message.side_effect = smtplib.SMTPRecipientsRefused(
+                {"ana@example.com": (550, b"5.1.1 User unknown")}
+            )
+            response = finance.post(
+                f"/portal-facturas/finanzas/{invoice_id}/estatus",
+                data={
+                    "csrf_token": _csrf(response),
+                    "estatus": "EN_REVISION",
+                    "comentario": "Revisión documental.",
+                },
+                follow_redirects=True,
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("No se cambió el estatus".encode("utf-8"), response.data)
+        self.assertNotIn("Reenviar notificación".encode("utf-8"), response.data)
+        with app.app_context():
+            self.assertEqual(
+                db.session.get(FacturaProveedor, invoice_id).estatus,
+                "RECIBIDA",
+            )
+
+        response = finance.get(f"/portal-facturas/finanzas/{invoice_id}")
         with patch("portal_facturas_routes.smtplib.SMTP") as status_smtp_class:
             response = finance.post(
                 f"/portal-facturas/finanzas/{invoice_id}/estatus",
@@ -605,23 +632,9 @@ class PortalFacturasFlowTest(unittest.TestCase):
         self.assertIn(b"SPEI-7788", response.data)
 
         response = finance.get(f"/portal-facturas/finanzas/{invoice_id}")
-        self.assertIn("Reenviar notificación al proveedor".encode("utf-8"), response.data)
-        with patch("portal_facturas_routes.smtplib.SMTP") as resend_status_smtp_class:
-            response = finance.post(
-                f"/portal-facturas/finanzas/{invoice_id}/estatus/notificar",
-                data={"csrf_token": _csrf(response)},
-            )
-            resend_status_smtp = (
-                resend_status_smtp_class.return_value.__enter__.return_value
-            )
-            resend_status_smtp.send_message.assert_called_once()
-            self.assertEqual(
-                ["ana@example.com"],
-                resend_status_smtp.send_message.call_args.kwargs["to_addrs"],
-            )
-        self.assertEqual(response.status_code, 302)
+        self.assertNotIn("Reenviar notificación".encode("utf-8"), response.data)
+        self.assertIn("se envían automáticamente".encode("utf-8"), response.data)
 
-        response = finance.get(f"/portal-facturas/finanzas/{invoice_id}")
         response = finance.post(
             f"/portal-facturas/finanzas/{invoice_id}/eliminar",
             data={"csrf_token": _csrf(response), "confirmacion": "NO"},
