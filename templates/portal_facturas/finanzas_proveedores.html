@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Proveedores del portal{% endblock %}
+{% block content %}
+<style>
+  .pf-card { border:1px solid rgba(12,60,120,.12);border-radius:1rem;box-shadow:0 .5rem 1.7rem rgba(12,60,120,.07); }
+  .pf-kpi { border-top:3px solid #0c3c78; }
+  .pf-doc-status { display:inline-flex;align-items:center;gap:.42rem;border-radius:999px;padding:.4rem .66rem;font-size:.78rem;font-weight:800;white-space:nowrap; }
+  .pf-doc-status::before { width:.42rem;height:.42rem;border-radius:50%;background:currentColor;content:""; }
+  .pf-doc-ok { color:#157149;background:#e5f7ee; }
+  .pf-doc-pending { color:#7a5600;background:#fff3ce; }
+</style>
+<div class="py-4">
+  <div class="d-flex flex-column flex-xl-row justify-content-between align-items-xl-end gap-3 mb-4">
+    <div>
+      <div class="text-uppercase small fw-bold text-primary mb-1" style="letter-spacing:.12em">Finanzas</div>
+      <h1 class="h2 fw-bold mb-1">Proveedores del portal</h1>
+      <p class="text-muted mb-0">Consulta los datos fiscales, carátulas bancarias y facturas enviadas por cada proveedor.</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-outline-primary" href="{{ url_for('portal_facturas.finanzas') }}">Facturas recibidas</a>
+      <a class="btn btn-primary" href="{{ url_for('portal_facturas.ingresar') }}" target="_blank" rel="noopener">Abrir portal externo</a>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-4"><div class="card pf-card pf-kpi h-100"><div class="card-body"><div class="small text-muted fw-semibold">Proveedores registrados</div><strong class="fs-3">{{ total_proveedores }}</strong></div></div></div>
+    <div class="col-md-4"><div class="card pf-card h-100"><div class="card-body"><div class="small text-muted fw-semibold">Expedientes completos</div><strong class="fs-3 text-success">{{ expedientes_completos }}</strong></div></div></div>
+    <div class="col-md-4"><div class="card pf-card h-100"><div class="card-body"><div class="small text-muted fw-semibold">Documentación pendiente</div><strong class="fs-3 text-warning-emphasis">{{ expedientes_pendientes }}</strong></div></div></div>
+  </div>
+
+  <section class="card pf-card border-0 overflow-hidden">
+    <div class="card-body border-bottom p-3 p-lg-4">
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-lg-10"><label class="form-label small fw-semibold" for="q">Buscar proveedor</label><input class="form-control" id="q" name="q" value="{{ q }}" placeholder="Razón social, nombre comercial, RFC, contacto o correo"></div>
+        <div class="col-lg-2 d-grid"><button class="btn btn-outline-primary" type="submit">Buscar</button></div>
+      </form>
+    </div>
+    {% if proveedores %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light"><tr><th>Alta</th><th>Proveedor</th><th>Contacto</th><th>Expediente</th><th>Facturas</th><th></th></tr></thead>
+          <tbody>
+            {% for proveedor in proveedores %}
+              {% set expediente_completo = proveedor.csf_path and proveedor.caratula_bancaria_path %}
+              <tr>
+                <td class="text-nowrap"><div class="fw-semibold">{{ proveedor.creado_en.strftime('%d/%m/%Y') }}</div><div class="small text-muted">{{ proveedor.creado_en.strftime('%H:%M') }} h</div></td>
+                <td><a class="fw-bold text-decoration-none" href="{{ url_for('portal_facturas.finanzas_proveedor_detalle', proveedor_id=proveedor.id) }}">{{ proveedor.nombre_portal }}</a><div class="small text-muted">{{ proveedor.razon_social }} · {{ proveedor.rfc }}</div></td>
+                <td><div class="fw-semibold">{{ proveedor.contacto }}</div><div class="small text-muted">{{ proveedor.correo }}{% if proveedor.telefono %} · {{ proveedor.telefono }}{% endif %}</div></td>
+                <td><span class="pf-doc-status {{ 'pf-doc-ok' if expediente_completo else 'pf-doc-pending' }}">{{ 'Completo' if expediente_completo else 'Pendiente' }}</span></td>
+                <td><span class="badge text-bg-light border">{{ invoice_counts.get(proveedor.id, 0) }}</span></td>
+                <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ url_for('portal_facturas.finanzas_proveedor_detalle', proveedor_id=proveedor.id) }}">Ver expediente</a></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="text-center py-5 px-3"><div class="fs-2 mb-2">🏭</div><h2 class="h5">No hay proveedores con esta búsqueda</h2><p class="text-muted mb-0">Limpia el filtro o intenta con otro dato.</p></div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 import os
 import re
 import secrets
@@ -51,6 +52,7 @@ SESSION_KEY = "portal_facturas_usuario_id"
 CSRF_KEY = "portal_facturas_csrf"
 MAX_XML_BYTES = 5 * 1024 * 1024
 MAX_PDF_BYTES = 15 * 1024 * 1024
+MAX_PROVIDER_DOCUMENT_BYTES = 10 * 1024 * 1024
 RFC_PATTERN = re.compile(r"^[A-Z&Ñ]{3,4}\d{6}[A-Z0-9]{3}$")
 FINANCE_NOTIFICATION_PROFILES = (
     {
@@ -66,11 +68,11 @@ FINANCE_NOTIFICATION_PROFILES = (
 )
 
 ESTATUS = {
-    "RECIBIDA": {"label": "Recibida", "class": "status-blue"},
+    "RECIBIDA": {"label": "Recibida", "class": "status-amber"},
     "EN_REVISION": {"label": "En revisión", "class": "status-amber"},
-    "CORRECCION_SOLICITADA": {"label": "Requiere corrección", "class": "status-orange"},
-    "APROBADA": {"label": "Aprobada", "class": "status-teal"},
-    "PROGRAMADA": {"label": "Pago programado", "class": "status-purple"},
+    "CORRECCION_SOLICITADA": {"label": "Requiere corrección", "class": "status-amber"},
+    "APROBADA": {"label": "Aprobada", "class": "status-blue"},
+    "PROGRAMADA": {"label": "Pago programado", "class": "status-blue"},
     "PAGADA": {"label": "Pagada", "class": "status-green"},
     "RECHAZADA": {"label": "Rechazada", "class": "status-red"},
 }
@@ -230,6 +232,153 @@ def _sync_provider_registry(proveedor: PortalProveedorUsuario) -> None:
         temp_path.replace(registry_path)
     finally:
         temp_path.unlink(missing_ok=True)
+
+
+def _provider_registration_notification_targets() -> tuple[list[Usuario], list[str]]:
+    """Notifica a todos los administradores internos y a Marco."""
+    users = Usuario.query.order_by(Usuario.id.asc()).all()
+    selected_users: list[Usuario] = []
+    recipient_emails: list[str] = []
+    seen_user_ids: set[int] = set()
+    seen_emails: set[str] = set()
+
+    for user in users:
+        role = str(getattr(user, "rol", "") or "").strip().upper()
+        identities = {
+            str(getattr(user, "nombre", "") or "").strip().casefold(),
+            str(getattr(user, "nombre_visible", "") or "").strip().casefold(),
+            _normalize_email(getattr(user, "correo", "")),
+        }
+        is_marco = bool(
+            identities & {"marco", "mescalera", "mescalera@poliutech.com"}
+        ) or any(
+            identity.startswith("marco ") or identity.startswith("mescalera ")
+            for identity in identities
+            if identity
+        )
+        if role != "ADMIN" and not is_marco:
+            continue
+        if user.id not in seen_user_ids:
+            selected_users.append(user)
+            seen_user_ids.add(user.id)
+        email = _normalize_email(getattr(user, "correo", ""))
+        if email and email not in seen_emails:
+            recipient_emails.append(email)
+            seen_emails.add(email)
+
+    for fallback_email in ("sistemas@poliutech.com", "mescalera@poliutech.com"):
+        if fallback_email not in seen_emails:
+            recipient_emails.append(fallback_email)
+            seen_emails.add(fallback_email)
+
+    return selected_users, recipient_emails
+
+
+def _send_provider_registration_email(
+    proveedor: PortalProveedorUsuario,
+    recipients: list[str],
+) -> None:
+    if not recipients or current_app.config.get("PORTAL_FACTURAS_DISABLE_EMAIL"):
+        return
+
+    detail_url = url_for(
+        "portal_facturas.finanzas_proveedor_detalle",
+        proveedor_id=proveedor.id,
+        _external=True,
+    )
+    provider_name = proveedor.nombre_portal
+    subject = f"Nuevo proveedor registrado: {provider_name}"
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    smtp_from = str(
+        current_app.config.get("SMTP_FROM")
+        or current_app.config.get("SMTP_USERNAME")
+        or ""
+    ).strip()
+    msg["From"] = f"PORTAL DE FACTURAS POLIUTECH <{smtp_from}>"
+    msg["To"] = ", ".join(recipients)
+    msg.set_content(
+        f"Se registró un nuevo proveedor en el portal.\n\n"
+        f"Razón social: {proveedor.razon_social}\n"
+        f"RFC: {proveedor.rfc}\n"
+        f"Contacto: {proveedor.contacto}\n"
+        f"Correo: {proveedor.correo}\n"
+        f"Teléfono: {proveedor.telefono or 'No indicado'}\n\n"
+        f"La Constancia de Situación Fiscal y la carátula bancaria están disponibles aquí:\n"
+        f"{detail_url}\n"
+    )
+    msg.add_alternative(
+        (
+            "<div style='font-family:Arial,sans-serif;max-width:680px;color:#15263b'>"
+            "<div style='font-size:12px;font-weight:800;letter-spacing:.08em;color:#0b67b2'>ALTA DE PROVEEDOR</div>"
+            f"<h2 style='margin:8px 0'>{escape(subject)}</h2>"
+            "<p>El proveedor completó su registro y adjuntó su expediente fiscal y bancario.</p>"
+            "<table style='border-collapse:collapse;margin:18px 0'>"
+            f"<tr><td style='padding:5px 14px 5px 0;color:#607086'>Razón social</td><td><b>{escape(proveedor.razon_social)}</b></td></tr>"
+            f"<tr><td style='padding:5px 14px 5px 0;color:#607086'>RFC</td><td>{escape(proveedor.rfc)}</td></tr>"
+            f"<tr><td style='padding:5px 14px 5px 0;color:#607086'>Contacto</td><td>{escape(proveedor.contacto)}</td></tr>"
+            f"<tr><td style='padding:5px 14px 5px 0;color:#607086'>Correo</td><td>{escape(proveedor.correo)}</td></tr>"
+            "</table>"
+            f"<p><a href='{escape(detail_url)}' style='display:inline-block;padding:11px 18px;background:#0b67b2;color:#fff;text-decoration:none;border-radius:7px'>Revisar expediente</a></p>"
+            "</div>"
+        ),
+        subtype="html",
+    )
+
+    smtp_host = str(current_app.config.get("SMTP_HOST") or "").strip()
+    smtp_port = int(current_app.config.get("SMTP_PORT") or 26)
+    smtp_username = str(current_app.config.get("SMTP_USERNAME") or "").strip()
+    smtp_password = str(current_app.config.get("SMTP_PASSWORD") or "")
+    if not smtp_host or not smtp_username or not smtp_password:
+        raise RuntimeError("La configuración SMTP del portal está incompleta.")
+    with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as smtp:
+        smtp.ehlo()
+        smtp.login(smtp_username, smtp_password)
+        smtp.send_message(msg, to_addrs=recipients)
+
+
+def _notify_provider_registration(proveedor: PortalProveedorUsuario) -> None:
+    title = f"Nuevo proveedor: {proveedor.nombre_portal}"
+    body = (
+        f"{proveedor.razon_social} ({proveedor.rfc}) completó su alta y adjuntó "
+        "su Constancia de Situación Fiscal y carátula bancaria."
+    )
+    detail_url = url_for(
+        "portal_facturas.finanzas_proveedor_detalle",
+        proveedor_id=proveedor.id,
+    )
+    try:
+        users, recipients = _provider_registration_notification_targets()
+        for user in users:
+            db.session.add(
+                InAppNotification(
+                    usuario_id=user.id,
+                    tipo="portal_proveedores",
+                    titulo=title[:180],
+                    mensaje=body,
+                    destino_url=detail_url,
+                    creada_en=_now(),
+                )
+            )
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.warning(
+            "No se pudieron guardar los avisos del alta de proveedor %s: %s",
+            proveedor.id,
+            exc,
+        )
+        recipients = ["sistemas@poliutech.com", "mescalera@poliutech.com"]
+
+    try:
+        _send_provider_registration_email(proveedor, recipients)
+    except Exception as exc:
+        current_app.logger.warning(
+            "No se pudo enviar el correo del alta de proveedor %s a %s: %s",
+            proveedor.id,
+            recipients,
+            exc,
+        )
 
 
 def _finance_notification_targets() -> tuple[list[Usuario], list[str]]:
@@ -433,6 +582,36 @@ def _read_upload(uploaded, *, max_bytes: int, expected_ext: str, label: str) -> 
     return payload
 
 
+def _read_provider_document(
+    uploaded,
+    *,
+    label: str,
+    allowed_extensions: set[str],
+) -> tuple[bytes, str, str]:
+    if not uploaded or not (uploaded.filename or "").strip():
+        raise ValueError(f"Adjunta {label}.")
+    original_name = secure_filename(uploaded.filename or "")[:260]
+    extension = Path(original_name).suffix.lower()
+    if extension not in allowed_extensions:
+        readable = ", ".join(sorted(allowed_extensions))
+        raise ValueError(f"{label} debe tener uno de estos formatos: {readable}.")
+    payload = uploaded.stream.read(MAX_PROVIDER_DOCUMENT_BYTES + 1)
+    if not payload:
+        raise ValueError(f"{label} está vacía.")
+    if len(payload) > MAX_PROVIDER_DOCUMENT_BYTES:
+        raise ValueError(f"{label} supera el límite de 10 MB.")
+
+    signatures_ok = {
+        ".pdf": payload[:1024].lstrip().startswith(b"%PDF-"),
+        ".png": payload.startswith(b"\x89PNG\r\n\x1a\n"),
+        ".jpg": payload.startswith(b"\xff\xd8\xff"),
+        ".jpeg": payload.startswith(b"\xff\xd8\xff"),
+    }
+    if not signatures_ok.get(extension, False):
+        raise ValueError(f"{label} no coincide con el formato indicado.")
+    return payload, original_name, extension
+
+
 def _xml_local_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
 
@@ -517,6 +696,32 @@ def _safe_upload_path(relative_path: str) -> Path:
     if candidate != root and root not in candidate.parents:
         abort(404)
     return candidate
+
+
+def _save_provider_documents(
+    proveedor_id: int,
+    csf_bytes: bytes,
+    csf_extension: str,
+    caratula_bytes: bytes,
+    caratula_extension: str,
+) -> tuple[str, str]:
+    folder = _upload_root() / "portal_facturas" / "proveedores" / str(proveedor_id)
+    folder.mkdir(parents=True, exist_ok=True)
+    nonce = secrets.token_hex(6)
+    csf_name = f"csf_{nonce}{csf_extension}"
+    caratula_name = f"caratula_bancaria_{nonce}{caratula_extension}"
+    csf_path = folder / csf_name
+    caratula_path = folder / caratula_name
+    csf_path.write_bytes(csf_bytes)
+    try:
+        caratula_path.write_bytes(caratula_bytes)
+    except Exception:
+        csf_path.unlink(missing_ok=True)
+        raise
+    return (
+        f"portal_facturas/proveedores/{proveedor_id}/{csf_name}",
+        f"portal_facturas/proveedores/{proveedor_id}/{caratula_name}",
+    )
 
 
 def _save_invoice_files(proveedor_id: int, uuid_cfdi: str, xml_bytes: bytes, pdf_bytes: bytes) -> tuple[str, str]:
@@ -641,14 +846,42 @@ def registro():
             )
             proveedor.set_password(password)
             db.session.add(proveedor)
+            saved_document_paths: tuple[str, ...] = ()
             try:
+                csf_bytes, csf_original, csf_extension = _read_provider_document(
+                    request.files.get("csf"),
+                    label="la Constancia de Situación Fiscal",
+                    allowed_extensions={".pdf"},
+                )
+                caratula_bytes, caratula_original, caratula_extension = _read_provider_document(
+                    request.files.get("caratula_bancaria"),
+                    label="la carátula del estado de cuenta",
+                    allowed_extensions={".pdf", ".png", ".jpg", ".jpeg"},
+                )
                 db.session.flush()
+                csf_path, caratula_path = _save_provider_documents(
+                    proveedor.id,
+                    csf_bytes,
+                    csf_extension,
+                    caratula_bytes,
+                    caratula_extension,
+                )
+                saved_document_paths = (csf_path, caratula_path)
+                proveedor.csf_path = csf_path
+                proveedor.csf_nombre_original = csf_original
+                proveedor.csf_tamano = len(csf_bytes)
+                proveedor.caratula_bancaria_path = caratula_path
+                proveedor.caratula_bancaria_nombre_original = caratula_original
+                proveedor.caratula_bancaria_tamano = len(caratula_bytes)
                 _sync_provider_registry(proveedor)
                 db.session.commit()
             except (IntegrityError, OSError, ValueError) as exc:
                 db.session.rollback()
+                _delete_paths(*saved_document_paths)
                 if isinstance(exc, IntegrityError):
                     flash("Ya existe una cuenta con ese RFC o correo electrónico.", "danger")
+                elif isinstance(exc, ValueError):
+                    flash(str(exc), "danger")
                 else:
                     current_app.logger.exception(
                         "No se pudo registrar al proveedor %s en el padrón maestro.",
@@ -659,6 +892,7 @@ def registro():
                         "danger",
                     )
             else:
+                _notify_provider_registration(proveedor)
                 session[SESSION_KEY] = proveedor.id
                 session[CSRF_KEY] = secrets.token_urlsafe(32)
                 flash("Tu cuenta quedó creada. Ya puedes enviar tu primera factura.", "success")
@@ -907,6 +1141,95 @@ def finanzas():
         pending_total=float(pending_total),
         selected_status=status,
         q=query_text,
+    )
+
+
+@portal_facturas_bp.get("/finanzas/proveedores")
+@finanzas_required
+def finanzas_proveedores():
+    query_text = (request.args.get("q") or "").strip()
+    query = PortalProveedorUsuario.query
+    if query_text:
+        like = f"%{query_text}%"
+        query = query.filter(
+            or_(
+                PortalProveedorUsuario.razon_social.ilike(like),
+                PortalProveedorUsuario.nombre_comercial.ilike(like),
+                PortalProveedorUsuario.rfc.ilike(like),
+                PortalProveedorUsuario.contacto.ilike(like),
+                PortalProveedorUsuario.correo.ilike(like),
+            )
+        )
+    proveedores = query.order_by(PortalProveedorUsuario.creado_en.desc()).limit(500).all()
+    provider_ids = [item.id for item in proveedores]
+    invoice_counts = {}
+    if provider_ids:
+        invoice_counts = dict(
+            db.session.query(
+                FacturaProveedor.proveedor_usuario_id,
+                func.count(FacturaProveedor.id),
+            )
+            .filter(FacturaProveedor.proveedor_usuario_id.in_(provider_ids))
+            .group_by(FacturaProveedor.proveedor_usuario_id)
+            .all()
+        )
+    total_proveedores = PortalProveedorUsuario.query.count()
+    expedientes_completos = PortalProveedorUsuario.query.filter(
+        PortalProveedorUsuario.csf_path.isnot(None),
+        PortalProveedorUsuario.caratula_bancaria_path.isnot(None),
+    ).count()
+    return render_template(
+        "portal_facturas/finanzas_proveedores.html",
+        proveedores=proveedores,
+        invoice_counts=invoice_counts,
+        q=query_text,
+        total_proveedores=total_proveedores,
+        expedientes_completos=expedientes_completos,
+        expedientes_pendientes=max(total_proveedores - expedientes_completos, 0),
+    )
+
+
+@portal_facturas_bp.get("/finanzas/proveedores/<int:proveedor_id>")
+@finanzas_required
+def finanzas_proveedor_detalle(proveedor_id: int):
+    proveedor = db.session.get(PortalProveedorUsuario, proveedor_id)
+    if not proveedor:
+        abort(404)
+    facturas = FacturaProveedor.query.filter_by(
+        proveedor_usuario_id=proveedor.id
+    ).order_by(FacturaProveedor.recibida_en.desc()).all()
+    return render_template(
+        "portal_facturas/finanzas_proveedor_detalle.html",
+        proveedor=proveedor,
+        facturas=facturas,
+    )
+
+
+@portal_facturas_bp.get("/finanzas/proveedores/<int:proveedor_id>/documento/<string:tipo>")
+@finanzas_required
+def finanzas_proveedor_documento(proveedor_id: int, tipo: str):
+    proveedor = db.session.get(PortalProveedorUsuario, proveedor_id)
+    if not proveedor:
+        abort(404)
+    if tipo == "csf":
+        relative_path = proveedor.csf_path
+        original_name = proveedor.csf_nombre_original or "constancia_situacion_fiscal.pdf"
+    elif tipo == "caratula-bancaria":
+        relative_path = proveedor.caratula_bancaria_path
+        original_name = proveedor.caratula_bancaria_nombre_original or "caratula_bancaria.pdf"
+    else:
+        abort(404)
+    if not relative_path:
+        abort(404)
+    path = _safe_upload_path(relative_path)
+    if not path.is_file():
+        abort(404)
+    mimetype = mimetypes.guess_type(original_name)[0] or "application/octet-stream"
+    return send_file(
+        path,
+        mimetype=mimetype,
+        as_attachment=False,
+        download_name=original_name,
     )
 
 

@@ -4389,6 +4389,27 @@ def ensure_schema():
     print("🔍 Verificando estructura de la base de datos...")
     db.create_all()
 
+    # --- PORTAL DE FACTURAS: expediente fiscal y bancario del proveedor ---
+    try:
+        provider_columns = _table_columns("portal_proveedor_usuario")
+        provider_document_columns = {
+            "csf_path": "VARCHAR(420)",
+            "csf_nombre_original": "VARCHAR(260)",
+            "csf_tamano": "INTEGER NOT NULL DEFAULT 0",
+            "caratula_bancaria_path": "VARCHAR(420)",
+            "caratula_bancaria_nombre_original": "VARCHAR(260)",
+            "caratula_bancaria_tamano": "INTEGER NOT NULL DEFAULT 0",
+        }
+        for column_name, column_type in provider_document_columns.items():
+            if column_name not in provider_columns:
+                db.session.execute(text(
+                    f"ALTER TABLE portal_proveedor_usuario ADD COLUMN {column_name} {column_type}"
+                ))
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print("⚠️ ensure_schema(portal_proveedor_usuario.documentos):", e)
+
     # --- TICKETS: flujo unico de tres estados ---
     try:
         db.session.execute(text("""

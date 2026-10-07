@@ -19,7 +19,14 @@ os.environ["DISABLE_BACKGROUND_SCHEDULER"] = "1"
 
 try:
     from app import app  # noqa: E402
-    from models import FacturaProveedor, InAppNotification, Usuario, db  # noqa: E402
+    from models import (  # noqa: E402
+        FacturaProveedor,
+        InAppNotification,
+        PortalProveedorUsuario,
+        Usuario,
+        db,
+    )
+    from portal_facturas_routes import ESTATUS  # noqa: E402
     _IMPORT_ERROR = ""
 except ModuleNotFoundError as exc:  # El CI ligero no instala dependencias web.
     app = None
@@ -53,6 +60,7 @@ class PortalFacturasFlowTest(unittest.TestCase):
   <cfdi:Complemento><tfd:TimbreFiscalDigital xmlns:tfd="http://www.sat.gob.mx/TimbreFiscalDigital" UUID="123E4567-E89B-12D3-A456-426614174000"/></cfdi:Complemento>
 </cfdi:Comprobante>'''
         pdf = b"%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF"
+        bank_cover = b"\xff\xd8\xff\xe0JFIF\x00\x01\xff\xd9"
 
         with app.app_context():
             marco = Usuario(
@@ -69,26 +77,48 @@ class PortalFacturasFlowTest(unittest.TestCase):
                 rol="USER",
             )
             uriel.set_password("UrielTest123")
-            db.session.add_all([marco, uriel])
+            admin = Usuario(
+                nombre="portal_finanzas_test",
+                nombre_visible="Finanzas Prueba",
+                correo="finanzas@example.com",
+                telefono="5511111111",
+                rol="ADMIN",
+            )
+            admin.set_password("AdminTest123")
+            db.session.add_all([marco, uriel, admin])
             db.session.commit()
 
         provider = app.test_client()
         response = provider.get("/portal-facturas/registro")
         self.assertEqual(response.status_code, 200)
-        response = provider.post(
-            "/portal-facturas/registro",
-            data={
-                "csrf_token": _csrf(response),
-                "razon_social": "Proveedor Prueba SA de CV",
-                "nombre_comercial": "Proveedor Prueba",
-                "rfc": "AAA010101AAA",
-                "contacto": "Ana Proveedor",
-                "correo": "ana@example.com",
-                "telefono": "5512345678",
-                "password": "Segura1234",
-                "password_confirmation": "Segura1234",
-            },
-        )
+        self.assertIn(b'name="csf"', response.data)
+        self.assertIn(b'name="caratula_bancaria"', response.data)
+        with patch("portal_facturas_routes.smtplib.SMTP") as registration_smtp_class:
+            response = provider.post(
+                "/portal-facturas/registro",
+                data={
+                    "csrf_token": _csrf(response),
+                    "razon_social": "Proveedor Prueba SA de CV",
+                    "nombre_comercial": "Proveedor Prueba",
+                    "rfc": "AAA010101AAA",
+                    "contacto": "Ana Proveedor",
+                    "correo": "ana@example.com",
+                    "telefono": "5512345678",
+                    "password": "Segura1234",
+                    "password_confirmation": "Segura1234",
+                    "csf": (io.BytesIO(pdf), "constancia_fiscal.pdf"),
+                    "caratula_bancaria": (io.BytesIO(bank_cover), "caratula_bancaria.jpg"),
+                },
+                content_type="multipart/form-data",
+            )
+            registration_smtp = registration_smtp_class.return_value.__enter__.return_value
+            registration_smtp.send_message.assert_called_once()
+            registration_recipients = set(
+                registration_smtp.send_message.call_args.kwargs["to_addrs"]
+            )
+            self.assertIn("finanzas@example.com", registration_recipients)
+            self.assertIn("mescalera@poliutech.com", registration_recipients)
+            self.assertIn("sistemas@poliutech.com", registration_recipients)
         self.assertEqual(response.status_code, 302)
         self.assertIn("/facturas/nueva", response.headers["Location"])
 
@@ -99,6 +129,34 @@ class PortalFacturasFlowTest(unittest.TestCase):
         self.assertEqual(portal_row["relacion"], "PROVEEDOR")
         self.assertEqual(portal_row["contacto"], "Ana Proveedor")
         self.assertEqual(portal_row["correo"], "ana@example.com")
+
+        with app.app_context():
+            proveedor_registrado = PortalProveedorUsuario.query.filter_by(
+                rfc="AAA010101AAA"
+            ).one()
+            provider_id = proveedor_registrado.id
+            self.assertTrue(proveedor_registrado.csf_path)
+            self.assertTrue(proveedor_registrado.caratula_bancaria_path)
+            self.assertEqual(proveedor_registrado.csf_nombre_original, "constancia_fiscal.pdf")
+            self.assertEqual(
+                proveedor_registrado.caratula_bancaria_nombre_original,
+                "caratula_bancaria.jpg",
+            )
+            registration_notices = InAppNotification.query.filter_by(
+                tipo="portal_proveedores"
+            ).all()
+            registration_notice_emails = {
+                notice.usuario.correo for notice in registration_notices
+            }
+            self.assertIn("finanzas@example.com", registration_notice_emails)
+            self.assertIn("mescalera@poliutech.com", registration_notice_emails)
+
+        self.assertEqual(ESTATUS["RECIBIDA"]["class"], "status-amber")
+        self.assertEqual(ESTATUS["CORRECCION_SOLICITADA"]["class"], "status-amber")
+        self.assertEqual(ESTATUS["APROBADA"]["class"], "status-blue")
+        self.assertEqual(ESTATUS["PROGRAMADA"]["class"], "status-blue")
+        self.assertEqual(ESTATUS["RECHAZADA"]["class"], "status-red")
+        self.assertEqual(ESTATUS["PAGADA"]["class"], "status-green")
 
         response = provider.get("/portal-facturas/facturas/nueva")
         with patch("portal_facturas_routes.smtplib.SMTP") as smtp_class:
@@ -134,17 +192,6 @@ class PortalFacturasFlowTest(unittest.TestCase):
                 {"mescalera@poliutech.com", "umorales@poliutech.com"},
             )
             self.assertTrue(all(notice.destino_url.endswith("/finanzas/1") for notice in notices))
-            admin = Usuario(
-                nombre="portal_finanzas_test",
-                nombre_visible="Finanzas Prueba",
-                correo="finanzas@example.com",
-                telefono="5511111111",
-                rol="ADMIN",
-            )
-            admin.set_password("AdminTest123")
-            db.session.add(admin)
-            db.session.commit()
-
         finance = app.test_client()
         response = finance.post(
             "/login",
@@ -154,6 +201,25 @@ class PortalFacturasFlowTest(unittest.TestCase):
         response = finance.get("/portal-facturas/finanzas")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"PF-2026", response.data)
+
+        response = finance.get("/portal-facturas/finanzas/proveedores")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Proveedor Prueba SA de CV".encode("utf-8"), response.data)
+        response = finance.get(f"/portal-facturas/finanzas/proveedores/{provider_id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Constancia de Situación Fiscal".encode("utf-8"), response.data)
+        response = finance.get(
+            f"/portal-facturas/finanzas/proveedores/{provider_id}/documento/csf"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data.startswith(b"%PDF-"))
+        response.close()
+        response = finance.get(
+            f"/portal-facturas/finanzas/proveedores/{provider_id}/documento/caratula-bancaria"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data.startswith(b"\xff\xd8\xff"))
+        response.close()
 
         response = finance.get(f"/portal-facturas/finanzas/{invoice_id}")
         self.assertEqual(response.status_code, 200)

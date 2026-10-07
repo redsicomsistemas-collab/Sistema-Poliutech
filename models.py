@@ -416,6 +416,12 @@ class PortalProveedorUsuario(db.Model):
     telefono = db.Column(db.String(40))
     estatus = db.Column(db.String(20), nullable=False, default="ACTIVO", index=True)
     password_hash = db.Column(db.String(255), nullable=False)
+    csf_path = db.Column(db.String(420))
+    csf_nombre_original = db.Column(db.String(260))
+    csf_tamano = db.Column(db.Integer, default=0, nullable=False)
+    caratula_bancaria_path = db.Column(db.String(420))
+    caratula_bancaria_nombre_original = db.Column(db.String(260))
+    caratula_bancaria_tamano = db.Column(db.Integer, default=0, nullable=False)
     creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
     ultimo_acceso_en = db.Column(db.DateTime)
 

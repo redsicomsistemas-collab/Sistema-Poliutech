@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Proveedor {{ proveedor.nombre_portal }}{% endblock %}
+{% block content %}
+<style>
+  .pf-card { border:1px solid rgba(12,60,120,.12);border-radius:1rem;box-shadow:0 .5rem 1.7rem rgba(12,60,120,.07); }
+  .pf-data { border-bottom:1px solid var(--bs-border-color);padding:.9rem 0; }
+  .pf-data label { display:block;margin-bottom:.25rem;color:var(--bs-secondary-color);font-size:.72rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase; }
+  .pf-data div { overflow-wrap:anywhere;font-weight:650; }
+  .pf-status { display:inline-flex;align-items:center;gap:.4rem;border-radius:999px;padding:.42rem .66rem;font-size:.78rem;font-weight:800;white-space:nowrap; }
+  .pf-status::before { width:.42rem;height:.42rem;border-radius:50%;background:currentColor;content:""; }
+  .status-blue { color:#075f9e;background:#e7f3fb }.status-amber { color:#7a5600;background:#fff3ce }.status-green { color:#157149;background:#e5f7ee }.status-red { color:#a52a2a;background:#fdeaea }
+  .pf-document { border:1px solid var(--bs-border-color);border-radius:.85rem;padding:1rem; }
+</style>
+<div class="py-4">
+  <div class="d-flex flex-column flex-xl-row justify-content-between align-items-xl-center gap-3 mb-4">
+    <div>
+      <div class="small text-muted mb-1"><a class="text-decoration-none" href="{{ url_for('portal_facturas.finanzas_proveedores') }}">Proveedores del portal</a> / {{ proveedor.rfc }}</div>
+      <h1 class="h2 fw-bold mb-1">{{ proveedor.nombre_portal }}</h1>
+      <div class="text-muted">Alta {{ proveedor.creado_en.strftime('%d/%m/%Y a las %H:%M') }} · {{ proveedor.estatus|title }}</div>
+    </div>
+    <a class="btn btn-outline-secondary" href="{{ url_for('portal_facturas.finanzas_proveedores') }}">Volver a proveedores</a>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-xl-7">
+      <section class="card pf-card border-0 mb-4">
+        <div class="card-header bg-transparent py-3 px-4"><h2 class="h5 fw-bold mb-0">Datos del proveedor</h2></div>
+        <div class="card-body px-4 py-2"><div class="row">
+          <div class="col-md-6 pf-data"><label>Razón social</label><div>{{ proveedor.razon_social }}</div></div>
+          <div class="col-md-6 pf-data"><label>Nombre comercial</label><div>{{ proveedor.nombre_comercial or '—' }}</div></div>
+          <div class="col-md-6 pf-data"><label>RFC</label><div>{{ proveedor.rfc }}</div></div>
+          <div class="col-md-6 pf-data"><label>Contacto</label><div>{{ proveedor.contacto }}</div></div>
+          <div class="col-md-6 pf-data"><label>Correo</label><div><a href="mailto:{{ proveedor.correo }}">{{ proveedor.correo }}</a></div></div>
+          <div class="col-md-6 pf-data"><label>Teléfono</label><div>{{ proveedor.telefono or '—' }}</div></div>
+          <div class="col-md-6 pf-data"><label>Fecha y hora de alta</label><div>{{ proveedor.creado_en.strftime('%d/%m/%Y %H:%M') }}</div></div>
+          <div class="col-md-6 pf-data"><label>Último acceso</label><div>{{ proveedor.ultimo_acceso_en.strftime('%d/%m/%Y %H:%M') if proveedor.ultimo_acceso_en else 'Aún no registra acceso' }}</div></div>
+        </div></div>
+      </section>
+
+      <section class="card pf-card border-0 overflow-hidden">
+        <div class="card-header bg-transparent py-3 px-4 d-flex justify-content-between align-items-center"><h2 class="h5 fw-bold mb-0">Facturas enviadas</h2><span class="badge text-bg-light border">{{ facturas|length }}</span></div>
+        {% if facturas %}
+          <div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th>Recepción</th><th>CFDI</th><th>Total</th><th>Estatus</th></tr></thead><tbody>
+            {% for factura in facturas %}<tr>
+              <td><a class="fw-bold text-decoration-none" href="{{ url_for('portal_facturas.finanzas_detalle', factura_id=factura.id) }}">{{ factura.folio_recepcion }}</a><div class="small text-muted">{{ factura.recibida_en.strftime('%d/%m/%Y %H:%M') }}</div></td>
+              <td>{{ factura.serie or '' }}{{ factura.folio_cfdi or 'Sin folio' }}{% if factura.orden_compra %}<div class="small text-muted">OC: {{ factura.orden_compra }}</div>{% endif %}</td>
+              <td class="fw-bold text-nowrap">${{ '{:,.2f}'.format(factura.total) }} {{ factura.moneda }}</td>
+              <td><span class="pf-status {{ factura_estatus[factura.estatus].class }}">{{ factura_estatus[factura.estatus].label }}</span></td>
+            </tr>{% endfor %}
+          </tbody></table></div>
+        {% else %}<div class="text-center py-5 text-muted">Este proveedor aún no ha enviado facturas.</div>{% endif %}
+      </section>
+    </div>
+
+    <div class="col-xl-5">
+      <section class="card pf-card border-0">
+        <div class="card-header bg-primary text-white py-3 px-4"><h2 class="h5 fw-bold mb-0">Expediente fiscal y bancario</h2></div>
+        <div class="card-body p-4 d-grid gap-3">
+          <div class="pf-document">
+            <div class="d-flex justify-content-between gap-3 mb-2"><div><div class="fw-bold">Constancia de Situación Fiscal</div><div class="small text-muted text-break">{{ proveedor.csf_nombre_original or 'No adjuntada' }}</div></div><span class="badge {{ 'text-bg-success' if proveedor.csf_path else 'text-bg-danger' }} align-self-start">{{ 'Recibida' if proveedor.csf_path else 'Faltante' }}</span></div>
+            {% if proveedor.csf_path %}<a class="btn btn-outline-primary w-100" href="{{ url_for('portal_facturas.finanzas_proveedor_documento', proveedor_id=proveedor.id, tipo='csf') }}" target="_blank" rel="noopener">Abrir CSF</a>{% endif %}
+          </div>
+          <div class="pf-document">
+            <div class="d-flex justify-content-between gap-3 mb-2"><div><div class="fw-bold">Carátula del estado de cuenta</div><div class="small text-muted text-break">{{ proveedor.caratula_bancaria_nombre_original or 'No adjuntada' }}</div></div><span class="badge {{ 'text-bg-success' if proveedor.caratula_bancaria_path else 'text-bg-danger' }} align-self-start">{{ 'Recibida' if proveedor.caratula_bancaria_path else 'Faltante' }}</span></div>
+            {% if proveedor.caratula_bancaria_path %}<a class="btn btn-outline-primary w-100" href="{{ url_for('portal_facturas.finanzas_proveedor_documento', proveedor_id=proveedor.id, tipo='caratula-bancaria') }}" target="_blank" rel="noopener">Abrir carátula bancaria</a>{% endif %}
+          </div>
+          <div class="alert alert-warning mb-0 small">Documentación confidencial. Verifica que el titular de la cuenta coincida con la razón social antes de autorizar pagos.</div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+{% endblock %}

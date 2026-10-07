@@ -15,7 +15,7 @@
 <div class="py-4">
   <div class="d-flex flex-column flex-xl-row justify-content-between align-items-xl-end gap-3 mb-4">
     <div><div class="text-uppercase small fw-bold text-primary mb-1" style="letter-spacing:.12em">Finanzas</div><h1 class="h2 fw-bold mb-1">Facturas recibidas</h1><p class="text-muted mb-0">Revisa XML y PDF, decide el pago y mantén informado al proveedor.</p></div>
-    <div class="d-flex gap-2"><a class="btn btn-outline-primary" href="{{ url_for('portal_facturas.ingresar') }}" target="_blank" rel="noopener">Abrir portal externo</a><a class="btn btn-primary" href="{{ url_for('portal_facturas.finanzas') }}">Actualizar</a></div>
+    <div class="d-flex flex-wrap gap-2"><a class="btn btn-outline-primary" href="{{ url_for('portal_facturas.finanzas_proveedores') }}">Proveedores</a><a class="btn btn-outline-primary" href="{{ url_for('portal_facturas.ingresar') }}" target="_blank" rel="noopener">Abrir portal externo</a><a class="btn btn-primary" href="{{ url_for('portal_facturas.finanzas') }}">Actualizar</a></div>
   </div>
 
   <div class="row g-3 mb-4">
