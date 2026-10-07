@@ -4,7 +4,7 @@ import os
 import re
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 
 _upload_dir = tempfile.TemporaryDirectory(prefix="mar_portal_facturas_")
@@ -234,6 +234,34 @@ class PortalFacturasFlowTest(unittest.TestCase):
             self.assertIn(
                 "ana@example.com",
                 set(review_smtp.send_message.call_args.kwargs["to_addrs"]),
+            )
+        self.assertEqual(response.status_code, 302)
+        response = finance.get(response.headers["Location"])
+        self.assertIn(
+            "Correo de autorización enviado a ana@example.com".encode("utf-8"),
+            response.data,
+        )
+        self.assertIn("Reenviar correo al proveedor".encode("utf-8"), response.data)
+
+        primary_connection = MagicMock()
+        primary_connection.__enter__.return_value.send_message.side_effect = RuntimeError(
+            "SMTP principal no disponible"
+        )
+        backup_connection = MagicMock()
+        with patch(
+            "portal_facturas_routes.smtplib.SMTP",
+            side_effect=[primary_connection, backup_connection],
+        ) as resend_smtp_class:
+            response = finance.post(
+                f"/portal-facturas/finanzas/proveedores/{provider_id}/revision/correo",
+                data={"csrf_token": _csrf(response)},
+            )
+            self.assertEqual(resend_smtp_class.call_count, 2)
+            resend_smtp = backup_connection.__enter__.return_value
+            resend_smtp.send_message.assert_called_once()
+            self.assertEqual(
+                ["ana@example.com"],
+                resend_smtp.send_message.call_args.kwargs["to_addrs"],
             )
         self.assertEqual(response.status_code, 302)
 

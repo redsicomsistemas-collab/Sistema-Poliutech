@@ -9,6 +9,7 @@ import smtplib
 import xml.etree.ElementTree as ET
 from datetime import date, datetime
 from email.message import EmailMessage
+from email.utils import formataddr, parseaddr
 from functools import wraps
 from html import escape
 from pathlib import Path
@@ -258,6 +259,74 @@ def _normalize_rfc(raw: str) -> str:
 
 def _normalize_email(raw: str) -> str:
     return (raw or "").strip().casefold()
+
+
+def _send_portal_email(msg: EmailMessage, recipients: list[str]) -> None:
+    envelope = []
+    seen_recipients = set()
+    for value in recipients:
+        email = _normalize_email(value)
+        if email and email not in seen_recipients:
+            envelope.append(email)
+            seen_recipients.add(email)
+    if not envelope:
+        raise RuntimeError("No hay destinatarios válidos para el correo.")
+
+    configured_accounts = [
+        (
+            str(current_app.config.get("SMTP_HOST") or "").strip(),
+            int(current_app.config.get("SMTP_PORT") or 26),
+            str(current_app.config.get("SMTP_USERNAME") or "").strip(),
+            str(current_app.config.get("SMTP_PASSWORD") or ""),
+        ),
+        (
+            str(current_app.config.get("REGISTRO_MAIL_HOST") or "").strip(),
+            int(current_app.config.get("REGISTRO_MAIL_PORT") or 26),
+            str(current_app.config.get("REGISTRO_MAIL_USERNAME") or "").strip(),
+            str(current_app.config.get("REGISTRO_MAIL_PASSWORD") or ""),
+        ),
+    ]
+    accounts = []
+    seen_accounts = set()
+    for account in configured_accounts:
+        host, port, username, password = account
+        key = (host.casefold(), port, username.casefold())
+        if host and username and password and key not in seen_accounts:
+            accounts.append(account)
+            seen_accounts.add(key)
+    if not accounts:
+        raise RuntimeError("La configuración SMTP del portal está incompleta.")
+
+    display_name, _ = parseaddr(str(msg.get("From") or ""))
+    errors = []
+    for index, (host, port, username, password) in enumerate(accounts):
+        if "From" in msg:
+            msg.replace_header(
+                "From",
+                formataddr((display_name or "PORTAL DE PROVEEDORES POLIUTECH", username)),
+            )
+        else:
+            msg["From"] = formataddr(
+                (display_name or "PORTAL DE PROVEEDORES POLIUTECH", username)
+            )
+        try:
+            with smtplib.SMTP(host, port, timeout=30) as smtp:
+                smtp.ehlo()
+                smtp.login(username, password)
+                refused = smtp.send_message(msg, to_addrs=envelope) or {}
+            if isinstance(refused, dict) and refused:
+                rejected = ", ".join(sorted(str(value) for value in refused))
+                raise RuntimeError(f"El servidor rechazó: {rejected}.")
+            return
+        except Exception as exc:
+            errors.append(f"{username}: {exc}")
+            if index + 1 < len(accounts):
+                current_app.logger.warning(
+                    "Falló el correo del portal con %s; se intentará la cuenta de respaldo: %s",
+                    username,
+                    exc,
+                )
+    raise RuntimeError("; ".join(errors))
 
 
 def _provider_registry_path() -> Path:
@@ -544,9 +613,9 @@ def _notify_provider_registration(proveedor: PortalProveedorUsuario) -> None:
 def _send_provider_review_email(
     proveedor: PortalProveedorUsuario,
     recipients: list[str],
-) -> None:
+) -> bool:
     if not recipients or current_app.config.get("PORTAL_FACTURAS_DISABLE_EMAIL"):
-        return
+        return False
     approved = proveedor.estatus == "ACTIVO"
     title = (
         f"Alta autorizada: {proveedor.nombre_portal}"
@@ -581,19 +650,11 @@ def _send_provider_review_email(
         ),
         subtype="html",
     )
-    smtp_host = str(current_app.config.get("SMTP_HOST") or "").strip()
-    smtp_port = int(current_app.config.get("SMTP_PORT") or 26)
-    smtp_username = str(current_app.config.get("SMTP_USERNAME") or "").strip()
-    smtp_password = str(current_app.config.get("SMTP_PASSWORD") or "")
-    if not smtp_host or not smtp_username or not smtp_password:
-        raise RuntimeError("La configuración SMTP del portal está incompleta.")
-    with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as smtp:
-        smtp.ehlo()
-        smtp.login(smtp_username, smtp_password)
-        smtp.send_message(msg, to_addrs=recipients)
+    _send_portal_email(msg, recipients)
+    return True
 
 
-def _notify_provider_review(proveedor: PortalProveedorUsuario) -> None:
+def _notify_provider_review(proveedor: PortalProveedorUsuario) -> bool:
     users, internal_emails = _provider_registration_notification_targets()
     approved = proveedor.estatus == "ACTIVO"
     reviewer_name = (
@@ -644,9 +705,10 @@ def _notify_provider_review(proveedor: PortalProveedorUsuario) -> None:
             recipients.append(normalized)
             seen.add(normalized)
     try:
-        _send_provider_review_email(proveedor, recipients)
+        return _send_provider_review_email(proveedor, recipients)
     except Exception as exc:
-        current_app.logger.warning("No se envió el resultado del alta %s: %s", proveedor.id, exc)
+        current_app.logger.exception("No se envió el resultado del alta %s: %s", proveedor.id, exc)
+        return False
 
 
 def _finance_notification_targets() -> tuple[list[Usuario], list[str]]:
@@ -1951,11 +2013,42 @@ def finanzas_proveedor_revision(proveedor_id: int):
         flash(f"No se pudo guardar la decisión: {exc}", "danger")
         return redirect(url_for("portal_facturas.finanzas_proveedor_detalle", proveedor_id=proveedor.id))
 
-    _notify_provider_review(proveedor)
-    flash(
-        f"{proveedor.nombre_portal} fue {'autorizado para facturar' if decision == 'AUTORIZAR' else 'rechazado'}.",
-        "success" if decision == "AUTORIZAR" else "warning",
-    )
+    email_sent = _notify_provider_review(proveedor)
+    result = "autorizado para facturar" if decision == "AUTORIZAR" else "rechazado"
+    if email_sent:
+        flash(
+            f"{proveedor.nombre_portal} fue {result}. Correo de {'autorización' if decision == 'AUTORIZAR' else 'rechazo'} enviado a {proveedor.correo}.",
+            "success" if decision == "AUTORIZAR" else "warning",
+        )
+    else:
+        flash(
+            f"{proveedor.nombre_portal} fue {result}, pero no se pudo enviar el correo a {proveedor.correo}. Usa 'Reenviar correo al proveedor'.",
+            "warning",
+        )
+    return redirect(url_for("portal_facturas.finanzas_proveedor_detalle", proveedor_id=proveedor.id))
+
+
+@portal_facturas_bp.post("/finanzas/proveedores/<int:proveedor_id>/revision/correo")
+@provider_reviewer_required
+def finanzas_proveedor_revision_correo(proveedor_id: int):
+    _require_csrf()
+    proveedor = db.session.get(PortalProveedorUsuario, proveedor_id)
+    if not proveedor:
+        abort(404)
+    if proveedor.estatus not in {"ACTIVO", "RECHAZADO"}:
+        flash("Primero autoriza o rechaza el alta del proveedor.", "warning")
+        return redirect(url_for("portal_facturas.finanzas_proveedor_detalle", proveedor_id=proveedor.id))
+    try:
+        sent = _send_provider_review_email(proveedor, [proveedor.correo])
+        if not sent:
+            raise RuntimeError("El envío de correos está deshabilitado.")
+    except Exception as exc:
+        current_app.logger.exception(
+            "No se pudo reenviar el resultado del alta %s: %s", proveedor.id, exc
+        )
+        flash(f"No se pudo enviar el correo a {proveedor.correo}. Intenta nuevamente.", "danger")
+    else:
+        flash(f"Correo reenviado correctamente a {proveedor.correo}.", "success")
     return redirect(url_for("portal_facturas.finanzas_proveedor_detalle", proveedor_id=proveedor.id))
 
 
