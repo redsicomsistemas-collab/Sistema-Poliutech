@@ -492,6 +492,45 @@ def _queue_messenger_notifications(
     return queued
 
 
+def _queue_messenger_email_notification(
+    email: str,
+    *,
+    source_key: str,
+    title: str,
+    body: str,
+    view_url: str,
+) -> bool:
+    """Encola un aviso por correo, aunque no exista un Usuario interno asociado."""
+    normalized_email = _normalize_email(email)
+    if not normalized_email:
+        return False
+    outbox_source_key = f"portal:{source_key}:correo:{normalized_email}"[:240]
+    if MessengerNotificationOutbox.query.filter_by(source_key=outbox_source_key).first():
+        return False
+    deliver_at = datetime.now(TZ_CDMX)
+    matched_user = Usuario.query.filter(
+        func.lower(Usuario.correo) == normalized_email
+    ).first()
+    payload = {
+        "email": normalized_email,
+        "sourceKey": outbox_source_key,
+        "title": title[:180],
+        "body": body[:2000],
+        "url": view_url,
+        "deliverAt": deliver_at.isoformat(),
+    }
+    db.session.add(
+        MessengerNotificationOutbox(
+            source_key=outbox_source_key,
+            usuario_id=matched_user.id if matched_user else None,
+            correo=normalized_email,
+            payload_json=json.dumps(payload, ensure_ascii=False),
+            siguiente_intento_en=deliver_at.replace(tzinfo=None),
+        )
+    )
+    return True
+
+
 def _send_provider_registration_email(
     proveedor: PortalProveedorUsuario,
     recipients: list[str],
@@ -543,16 +582,46 @@ def _send_provider_registration_email(
         subtype="html",
     )
 
-    smtp_host = str(current_app.config.get("SMTP_HOST") or "").strip()
-    smtp_port = int(current_app.config.get("SMTP_PORT") or 26)
-    smtp_username = str(current_app.config.get("SMTP_USERNAME") or "").strip()
-    smtp_password = str(current_app.config.get("SMTP_PASSWORD") or "")
-    if not smtp_host or not smtp_username or not smtp_password:
-        raise RuntimeError("La configuración SMTP del portal está incompleta.")
-    with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as smtp:
-        smtp.ehlo()
-        smtp.login(smtp_username, smtp_password)
-        smtp.send_message(msg, to_addrs=recipients)
+    _send_portal_email(msg, recipients)
+
+
+def _send_provider_registration_received_email(
+    proveedor: PortalProveedorUsuario,
+) -> bool:
+    if current_app.config.get("PORTAL_FACTURAS_DISABLE_EMAIL"):
+        return False
+    portal_url = url_for("portal_facturas.ingresar", _external=True)
+    title = "Recibimos tu solicitud de alta"
+    body = (
+        "Tu información, Constancia de Situación Fiscal y carátula bancaria "
+        "quedaron en revisión. Nuestro equipo te avisará cuando tome una decisión."
+    )
+    msg = EmailMessage()
+    msg["Subject"] = title
+    smtp_from = str(
+        current_app.config.get("SMTP_FROM")
+        or current_app.config.get("SMTP_USERNAME")
+        or ""
+    ).strip()
+    msg["From"] = f"PORTAL DE PROVEEDORES POLIUTECH <{smtp_from}>"
+    msg["To"] = proveedor.correo
+    msg.set_content(
+        f"Hola {proveedor.contacto},\n\n{body}\n\n"
+        f"Puedes consultar el portal aquí:\n{portal_url}\n"
+    )
+    msg.add_alternative(
+        (
+            "<div style='font-family:Arial,sans-serif;max-width:680px;color:#15263b'>"
+            f"<h2>{escape(title)}</h2>"
+            f"<p>Hola <b>{escape(proveedor.contacto)}</b>,</p>"
+            f"<p>{escape(body)}</p>"
+            f"<p><a href='{escape(portal_url)}' style='display:inline-block;padding:12px 18px;background:#0b67b2;color:#fff;text-decoration:none;border-radius:7px;font-weight:700'>Consultar solicitud</a></p>"
+            "</div>"
+        ),
+        subtype="html",
+    )
+    _send_portal_email(msg, [proveedor.correo])
+    return True
 
 
 def _notify_provider_registration(proveedor: PortalProveedorUsuario) -> None:
@@ -589,6 +658,16 @@ def _notify_provider_registration(proveedor: PortalProveedorUsuario) -> None:
                 _external=True,
             ),
         )
+        _queue_messenger_email_notification(
+            proveedor.correo,
+            source_key=f"proveedor:{proveedor.id}:alta-pendiente:proveedor",
+            title="Recibimos tu solicitud de alta",
+            body=(
+                "Tu información y documentos están en revisión. "
+                "Nuestro equipo te avisará cuando tome una decisión."
+            ),
+            view_url=url_for("portal_facturas.ingresar", _external=True),
+        )
         db.session.commit()
     except Exception as exc:
         db.session.rollback()
@@ -606,6 +685,15 @@ def _notify_provider_registration(proveedor: PortalProveedorUsuario) -> None:
             "No se pudo enviar el correo del alta de proveedor %s a %s: %s",
             proveedor.id,
             recipients,
+            exc,
+        )
+    try:
+        _send_provider_registration_received_email(proveedor)
+    except Exception as exc:
+        current_app.logger.warning(
+            "No se pudo confirmar por correo el alta del proveedor %s a %s: %s",
+            proveedor.id,
+            proveedor.correo,
             exc,
         )
 
@@ -690,6 +778,19 @@ def _notify_provider_review(proveedor: PortalProveedorUsuario) -> bool:
             proveedor_id=proveedor.id,
             _external=True,
         ),
+    )
+    provider_title = f"Solicitud {'autorizada' if approved else 'rechazada'}"
+    provider_body = (
+        "Tu alta fue autorizada. Ya puedes ingresar y enviar facturas."
+        if approved
+        else f"Tu alta fue rechazada. Motivo: {proveedor.revision_comentario or 'Sin comentario adicional.'}"
+    )
+    _queue_messenger_email_notification(
+        proveedor.correo,
+        source_key=f"proveedor:{proveedor.id}:revision:{proveedor.estatus.lower()}:{review_stamp}:proveedor",
+        title=provider_title,
+        body=provider_body,
+        view_url=url_for("portal_facturas.ingresar", _external=True),
     )
     try:
         db.session.commit()
@@ -899,6 +1000,212 @@ def _notify_finance_invoice(factura: FacturaProveedor, *, corrected: bool = Fals
             recipients,
             exc,
         )
+
+
+def _invoice_status_notification_copy(factura: FacturaProveedor) -> tuple[str, str]:
+    label = ESTATUS[factura.estatus]["label"]
+    status_messages = {
+        "RECIBIDA": "Recibimos tu factura y quedó registrada para revisión.",
+        "EN_REVISION": "Nuestro equipo está revisando la información y los documentos de tu factura.",
+        "CORRECCION_SOLICITADA": "Necesitamos que corrijas la factura antes de continuar.",
+        "APROBADA": "Tu factura fue aprobada y continuará con el proceso de pago.",
+        "PROGRAMADA": "El pago de tu factura ya fue programado.",
+        "PAGADA": "El pago de tu factura fue registrado.",
+        "RECHAZADA": "Tu factura fue rechazada.",
+    }
+    details = [status_messages.get(factura.estatus, f"Tu factura cambió a {label}.")]
+    if factura.estatus == "PROGRAMADA" and factura.fecha_programada_pago:
+        details.append(
+            f"Fecha programada: {factura.fecha_programada_pago.strftime('%d/%m/%Y')}."
+        )
+    if factura.estatus == "PAGADA":
+        if factura.fecha_pago:
+            details.append(f"Fecha de pago: {factura.fecha_pago.strftime('%d/%m/%Y')}.")
+        if factura.referencia_pago:
+            details.append(f"Referencia: {factura.referencia_pago}.")
+    if factura.comentario_finanzas:
+        details.append(f"Comentario: {factura.comentario_finanzas.strip()}")
+    return f"Factura {factura.folio_recepcion}: {label}", " ".join(details)
+
+
+def _send_provider_invoice_status_email(
+    factura: FacturaProveedor,
+    recipients: list[str],
+) -> bool:
+    if not recipients or current_app.config.get("PORTAL_FACTURAS_DISABLE_EMAIL"):
+        return False
+    title, body = _invoice_status_notification_copy(factura)
+    provider = factura.proveedor_usuario
+    portal_url = url_for(
+        "portal_facturas.detalle_factura",
+        factura_id=factura.id,
+        _external=True,
+    )
+    msg = EmailMessage()
+    msg["Subject"] = title
+    smtp_from = str(
+        current_app.config.get("SMTP_FROM")
+        or current_app.config.get("SMTP_USERNAME")
+        or ""
+    ).strip()
+    msg["From"] = f"PORTAL DE FACTURAS POLIUTECH <{smtp_from}>"
+    msg["To"] = provider.correo
+    msg.set_content(
+        f"Hola {provider.contacto},\n\n"
+        f"{body}\n\n"
+        f"Total: ${float(factura.total or 0):,.2f} {factura.moneda or 'MXN'}\n"
+        f"Consulta el detalle y el historial aquí:\n{portal_url}\n"
+    )
+    msg.add_alternative(
+        (
+            "<div style='font-family:Arial,sans-serif;max-width:680px;color:#15263b'>"
+            f"<div style='font-size:12px;font-weight:800;letter-spacing:.08em;color:#0b67b2'>ACTUALIZACIÓN DE FACTURA</div>"
+            f"<h2 style='margin:8px 0'>{escape(title)}</h2>"
+            f"<p>Hola <b>{escape(provider.contacto)}</b>,</p>"
+            f"<p>{escape(body)}</p>"
+            f"<p><b>Total:</b> ${float(factura.total or 0):,.2f} {escape(factura.moneda or 'MXN')}</p>"
+            f"<p><a href='{escape(portal_url)}' style='display:inline-block;padding:12px 18px;background:#0b67b2;color:#fff;text-decoration:none;border-radius:7px;font-weight:700'>Consultar factura</a></p>"
+            "</div>"
+        ),
+        subtype="html",
+    )
+    _send_portal_email(msg, recipients)
+    return True
+
+
+def _send_internal_invoice_status_email(
+    factura: FacturaProveedor,
+    recipients: list[str],
+) -> None:
+    if not recipients or current_app.config.get("PORTAL_FACTURAS_DISABLE_EMAIL"):
+        return
+    title, provider_body = _invoice_status_notification_copy(factura)
+    provider = factura.proveedor_usuario
+    finance_url = url_for(
+        "portal_facturas.finanzas_detalle",
+        factura_id=factura.id,
+        _external=True,
+    )
+    msg = EmailMessage()
+    msg["Subject"] = title
+    smtp_from = str(
+        current_app.config.get("SMTP_FROM")
+        or current_app.config.get("SMTP_USERNAME")
+        or ""
+    ).strip()
+    msg["From"] = f"PORTAL DE FACTURAS POLIUTECH <{smtp_from}>"
+    msg["To"] = ", ".join(recipients)
+    msg.set_content(
+        f"{factura.folio_recepcion} de {provider.razon_social} cambió a "
+        f"{ESTATUS[factura.estatus]['label']}.\n\n"
+        f"Detalle comunicado al proveedor: {provider_body}\n\n"
+        f"Revisar en MAR:\n{finance_url}\n"
+    )
+    msg.add_alternative(
+        (
+            "<div style='font-family:Arial,sans-serif;max-width:680px;color:#15263b'>"
+            f"<h2>{escape(title)}</h2>"
+            f"<p><b>{escape(provider.razon_social)}</b> · {escape(provider.rfc)}</p>"
+            f"<p>{escape(provider_body)}</p>"
+            f"<p><a href='{escape(finance_url)}' style='display:inline-block;padding:12px 18px;background:#0b67b2;color:#fff;text-decoration:none;border-radius:7px;font-weight:700'>Revisar en MAR</a></p>"
+            "</div>"
+        ),
+        subtype="html",
+    )
+    _send_portal_email(msg, recipients)
+
+
+def _notify_invoice_status_change(
+    factura: FacturaProveedor,
+    *,
+    event_key: str,
+    notify_internal: bool,
+) -> dict[str, object]:
+    title, provider_body = _invoice_status_notification_copy(factura)
+    provider = factura.proveedor_usuario
+    provider_url = url_for(
+        "portal_facturas.detalle_factura",
+        factura_id=factura.id,
+        _external=True,
+    )
+    internal_users: list[Usuario] = []
+    internal_emails: list[str] = []
+    queued = 0
+    if notify_internal:
+        internal_users, internal_emails = _provider_registration_notification_targets()
+        internal_url = url_for(
+            "portal_facturas.finanzas_detalle",
+            factura_id=factura.id,
+        )
+        internal_body = (
+            f"{factura.folio_recepcion} de {provider.nombre_portal} cambió a "
+            f"{ESTATUS[factura.estatus]['label']}."
+        )
+        for user in internal_users:
+            db.session.add(
+                InAppNotification(
+                    usuario_id=user.id,
+                    tipo="portal_facturas_estatus",
+                    titulo=title[:180],
+                    mensaje=internal_body,
+                    destino_url=internal_url,
+                    creada_en=_now(),
+                )
+            )
+        queued += _queue_messenger_notifications(
+            internal_users,
+            source_key=f"factura:{factura.id}:estatus:{event_key}",
+            title=title,
+            body=internal_body,
+            view_url=url_for(
+                "portal_facturas.finanzas_detalle",
+                factura_id=factura.id,
+                _external=True,
+            ),
+        )
+    if _queue_messenger_email_notification(
+        provider.correo,
+        source_key=f"factura:{factura.id}:estatus:{event_key}:proveedor",
+        title=title,
+        body=provider_body,
+        view_url=provider_url,
+    ):
+        queued += 1
+    try:
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        queued = 0
+        current_app.logger.exception(
+            "No se guardaron las notificaciones del estatus de %s: %s",
+            factura.folio_recepcion,
+            exc,
+        )
+
+    email_sent = False
+    try:
+        email_sent = _send_provider_invoice_status_email(
+            factura,
+            [_normalize_email(provider.correo)],
+        )
+    except Exception as exc:
+        current_app.logger.exception(
+            "No se envió el cambio de estatus de %s a %s: %s",
+            factura.folio_recepcion,
+            provider.correo,
+            exc,
+        )
+    if notify_internal:
+        try:
+            _send_internal_invoice_status_email(factura, internal_emails)
+        except Exception as exc:
+            current_app.logger.exception(
+                "No se envió la copia interna del estatus de %s a %s: %s",
+                factura.folio_recepcion,
+                internal_emails,
+                exc,
+            )
+    return {"email_sent": email_sent, "messenger_queued": queued}
 
 
 def _parse_date(raw: str) -> date | None:
@@ -1322,18 +1629,18 @@ def _add_event(
     actor_name: str,
     comment: str = "",
     actor_user_id: int | None = None,
-) -> None:
-    db.session.add(
-        FacturaProveedorMovimiento(
-            factura=factura,
-            estatus_anterior=old_status,
-            estatus_nuevo=new_status,
-            actor_tipo=actor_type,
-            actor_usuario_id=actor_user_id,
-            actor_nombre=(actor_name or "Sistema")[:180],
-            comentario=(comment or "").strip() or None,
-        )
+) -> FacturaProveedorMovimiento:
+    event = FacturaProveedorMovimiento(
+        factura=factura,
+        estatus_anterior=old_status,
+        estatus_nuevo=new_status,
+        actor_tipo=actor_type,
+        actor_usuario_id=actor_user_id,
+        actor_nombre=(actor_name or "Sistema")[:180],
+        comentario=(comment or "").strip() or None,
     )
+    db.session.add(event)
+    return event
 
 
 def _prepare_invoice_upload(proveedor: PortalProveedorUsuario) -> tuple[dict, bytes, bytes, str, str]:
@@ -1589,7 +1896,7 @@ def nueva_factura():
                 if orden.estatus not in {"PAGADA", "CANCELADA"}:
                     orden.estatus = "FACTURADA"
                 orden.actualizado_en = _now()
-            _add_event(
+            event = _add_event(
                 factura,
                 old_status=None,
                 new_status="RECIBIDA",
@@ -1599,6 +1906,11 @@ def nueva_factura():
             )
             db.session.commit()
             _notify_finance_invoice(factura)
+            _notify_invoice_status_change(
+                factura,
+                event_key=f"movimiento-{event.id}",
+                notify_internal=False,
+            )
         except (ValueError, OSError, IntegrityError) as exc:
             db.session.rollback()
             if "xml_path" in locals() and "pdf_path" in locals():
@@ -1670,7 +1982,7 @@ def corregir_factura(factura_id: int):
             factura.notas_proveedor = (request.form.get("notas_proveedor") or "").strip() or factura.notas_proveedor
             factura.estatus = "RECIBIDA"
             factura.actualizada_en = _now()
-            _add_event(
+            event = _add_event(
                 factura,
                 old_status=old_status,
                 new_status="RECIBIDA",
@@ -1680,6 +1992,11 @@ def corregir_factura(factura_id: int):
             )
             db.session.commit()
             _notify_finance_invoice(factura, corrected=True)
+            _notify_invoice_status_change(
+                factura,
+                event_key=f"movimiento-{event.id}",
+                notify_internal=False,
+            )
             _delete_paths(old_xml_path, old_pdf_path)
         except (ValueError, OSError, IntegrityError) as exc:
             db.session.rollback()
@@ -2134,7 +2451,7 @@ def finanzas_actualizar_estatus(factura_id: int):
         linked_order.pago_referencia = factura.referencia_pago
         linked_order.pago_monto = factura.total
         linked_order.actualizado_en = _now()
-    _add_event(
+    event = _add_event(
         factura,
         old_status=old_status,
         new_status=new_status,
@@ -2144,7 +2461,46 @@ def finanzas_actualizar_estatus(factura_id: int):
         comment=comment,
     )
     db.session.commit()
-    flash(f"{factura.folio_recepcion} cambió a {ESTATUS[new_status]['label']}.", "success")
+    delivery = _notify_invoice_status_change(
+        factura,
+        event_key=f"movimiento-{event.id}",
+        notify_internal=True,
+    )
+    if delivery["email_sent"]:
+        flash(
+            f"{factura.folio_recepcion} cambió a {ESTATUS[new_status]['label']} y se notificó a {factura.proveedor_usuario.correo}.",
+            "success",
+        )
+    else:
+        flash(
+            f"{factura.folio_recepcion} cambió a {ESTATUS[new_status]['label']}, pero no se pudo enviar el correo a {factura.proveedor_usuario.correo}. Usa 'Reenviar notificación al proveedor'.",
+            "warning",
+        )
+    return redirect(url_for("portal_facturas.finanzas_detalle", factura_id=factura.id))
+
+
+@portal_facturas_bp.post("/finanzas/<int:factura_id>/estatus/notificar")
+@finanzas_required
+def finanzas_reenviar_estatus(factura_id: int):
+    _require_csrf()
+    factura = db.session.get(FacturaProveedor, factura_id)
+    if not factura:
+        abort(404)
+    delivery = _notify_invoice_status_change(
+        factura,
+        event_key=f"reenvio-{secrets.token_hex(6)}",
+        notify_internal=False,
+    )
+    if delivery["email_sent"]:
+        flash(
+            f"Notificación reenviada a {factura.proveedor_usuario.correo}.",
+            "success",
+        )
+    else:
+        flash(
+            f"No se pudo enviar el correo a {factura.proveedor_usuario.correo}. Intenta nuevamente.",
+            "danger",
+        )
     return redirect(url_for("portal_facturas.finanzas_detalle", factura_id=factura.id))
 
 

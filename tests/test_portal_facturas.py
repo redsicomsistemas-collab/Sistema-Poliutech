@@ -121,13 +121,17 @@ class PortalFacturasFlowTest(unittest.TestCase):
                 content_type="multipart/form-data",
             )
             registration_smtp = registration_smtp_class.return_value.__enter__.return_value
-            registration_smtp.send_message.assert_called_once()
+            self.assertEqual(registration_smtp.send_message.call_count, 2)
             registration_recipients = set(
-                registration_smtp.send_message.call_args.kwargs["to_addrs"]
+                registration_smtp.send_message.call_args_list[0].kwargs["to_addrs"]
             )
             self.assertIn("finanzas@example.com", registration_recipients)
             self.assertIn("mescalera@poliutech.com", registration_recipients)
             self.assertIn("sistemas@poliutech.com", registration_recipients)
+            self.assertEqual(
+                ["ana@example.com"],
+                registration_smtp.send_message.call_args_list[1].kwargs["to_addrs"],
+            )
         self.assertEqual(response.status_code, 302)
         self.assertIn("/ingresar", response.headers["Location"])
 
@@ -157,6 +161,10 @@ class PortalFacturasFlowTest(unittest.TestCase):
             ).all()
             self.assertIn(
                 "mescalera@poliutech.com",
+                {notice.correo for notice in registration_messenger},
+            )
+            self.assertIn(
+                "ana@example.com",
                 {notice.correo for notice in registration_messenger},
             )
 
@@ -286,6 +294,10 @@ class PortalFacturasFlowTest(unittest.TestCase):
             ).all()
             self.assertIn(
                 "mescalera@poliutech.com",
+                {notice.correo for notice in review_messenger},
+            )
+            self.assertIn(
+                "ana@example.com",
                 {notice.correo for notice in review_messenger},
             )
 
@@ -439,10 +451,14 @@ class PortalFacturasFlowTest(unittest.TestCase):
                 content_type="multipart/form-data",
             )
             smtp = smtp_class.return_value.__enter__.return_value
-            smtp.send_message.assert_called_once()
+            self.assertEqual(smtp.send_message.call_count, 2)
             self.assertEqual(
-                smtp.send_message.call_args.kwargs["to_addrs"],
+                smtp.send_message.call_args_list[0].kwargs["to_addrs"],
                 ["mescalera@poliutech.com", "umorales@poliutech.com"],
+            )
+            self.assertEqual(
+                smtp.send_message.call_args_list[1].kwargs["to_addrs"],
+                ["ana@example.com"],
             )
         self.assertEqual(response.status_code, 302)
         self.assertRegex(response.headers["Location"], r"/facturas/\d+$")
@@ -471,7 +487,11 @@ class PortalFacturasFlowTest(unittest.TestCase):
             ).all()
             self.assertEqual(
                 {notice.correo for notice in invoice_messenger},
-                {"mescalera@poliutech.com", "umorales@poliutech.com"},
+                {
+                    "ana@example.com",
+                    "mescalera@poliutech.com",
+                    "umorales@poliutech.com",
+                },
             )
 
         response = marco_finance.get(f"/portal-facturas/finanzas/{invoice_id}")
@@ -529,16 +549,31 @@ class PortalFacturasFlowTest(unittest.TestCase):
         response = finance.get(f"/portal-facturas/finanzas/{invoice_id}")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Eliminar factura definitivamente", response.data)
-        response = finance.post(
-            f"/portal-facturas/finanzas/{invoice_id}/estatus",
-            data={
-                "csrf_token": _csrf(response),
-                "estatus": "PAGADA",
-                "comentario": "Pago confirmado.",
-                "fecha_pago": "2026-10-02",
-                "referencia_pago": "SPEI-7788",
-            },
-        )
+        with patch("portal_facturas_routes.smtplib.SMTP") as status_smtp_class:
+            response = finance.post(
+                f"/portal-facturas/finanzas/{invoice_id}/estatus",
+                data={
+                    "csrf_token": _csrf(response),
+                    "estatus": "PAGADA",
+                    "comentario": "Pago confirmado.",
+                    "fecha_pago": "2026-10-02",
+                    "referencia_pago": "SPEI-7788",
+                },
+            )
+            status_smtp = status_smtp_class.return_value.__enter__.return_value
+            self.assertEqual(status_smtp.send_message.call_count, 2)
+            self.assertEqual(
+                ["ana@example.com"],
+                status_smtp.send_message.call_args_list[0].kwargs["to_addrs"],
+            )
+            status_recipients = set(
+                status_smtp.send_message.call_args_list[1].kwargs["to_addrs"]
+            )
+            self.assertIn("finanzas@example.com", status_recipients)
+            self.assertIn("mescalera@poliutech.com", status_recipients)
+            status_message = status_smtp.send_message.call_args_list[0].args[0]
+            self.assertIn("Pagada", status_message["Subject"])
+            self.assertIn("SPEI-7788", status_message.get_body(preferencelist=("plain",)).get_content())
         self.assertEqual(response.status_code, 302)
 
         with app.app_context():
@@ -548,10 +583,43 @@ class PortalFacturasFlowTest(unittest.TestCase):
             purchase_order = db.session.get(OrdenCompra, order_id)
             self.assertEqual(purchase_order.estatus, "PAGADA")
             self.assertEqual(purchase_order.pago_referencia, "SPEI-7788")
+            status_notices = InAppNotification.query.filter_by(
+                tipo="portal_facturas_estatus"
+            ).all()
+            self.assertIn(
+                "finanzas@example.com",
+                {notice.usuario.correo for notice in status_notices},
+            )
+            status_messenger = MessengerNotificationOutbox.query.filter(
+                MessengerNotificationOutbox.source_key.like(
+                    f"portal:factura:{invoice_id}:estatus:%"
+                )
+            ).all()
+            self.assertIn(
+                "ana@example.com",
+                {notice.correo for notice in status_messenger},
+            )
 
         response = provider.get(f"/portal-facturas/facturas/{invoice_id}")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"SPEI-7788", response.data)
+
+        response = finance.get(f"/portal-facturas/finanzas/{invoice_id}")
+        self.assertIn("Reenviar notificación al proveedor".encode("utf-8"), response.data)
+        with patch("portal_facturas_routes.smtplib.SMTP") as resend_status_smtp_class:
+            response = finance.post(
+                f"/portal-facturas/finanzas/{invoice_id}/estatus/notificar",
+                data={"csrf_token": _csrf(response)},
+            )
+            resend_status_smtp = (
+                resend_status_smtp_class.return_value.__enter__.return_value
+            )
+            resend_status_smtp.send_message.assert_called_once()
+            self.assertEqual(
+                ["ana@example.com"],
+                resend_status_smtp.send_message.call_args.kwargs["to_addrs"],
+            )
+        self.assertEqual(response.status_code, 302)
 
         response = finance.get(f"/portal-facturas/finanzas/{invoice_id}")
         response = finance.post(

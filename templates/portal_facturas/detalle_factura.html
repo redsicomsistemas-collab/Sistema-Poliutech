@@ -5,7 +5,10 @@
   <div><div class="eyebrow">Factura recibida</div><h1>{{ factura.folio_recepcion }}</h1><p>Enviada el {{ factura.recibida_en.strftime('%d/%m/%Y a las %H:%M') }}.</p></div>
   <div class="page-actions">{% if factura.estatus == 'CORRECCION_SOLICITADA' %}<a class="button button-orange" href="{{ url_for('portal_facturas.corregir_factura', factura_id=factura.id) }}">Enviar corrección</a>{% endif %}<a class="button button-secondary" href="{{ url_for('portal_facturas.mis_facturas') }}">Mis facturas</a></div>
 </div>
+{% if factura.estatus == 'RECIBIDA' %}<div class="alert alert-warning"><strong>Factura recibida.</strong> Quedó registrada y será revisada por nuestro equipo.</div>{% endif %}
+{% if factura.estatus == 'EN_REVISION' %}<div class="alert alert-info"><strong>Factura en revisión.</strong> Nuestro equipo está validando la información y los documentos.</div>{% endif %}
 {% if factura.estatus == 'CORRECCION_SOLICITADA' %}<div class="alert alert-warning"><strong>Finanzas solicita una corrección.</strong> {{ factura.comentario_finanzas }}</div>{% endif %}
+{% if factura.estatus == 'APROBADA' %}<div class="alert alert-info"><strong>Factura aprobada.</strong> Continuará con el proceso de pago.</div>{% endif %}
 {% if factura.estatus == 'RECHAZADA' %}<div class="alert alert-danger"><strong>Factura rechazada.</strong> {{ factura.comentario_finanzas }}</div>{% endif %}
 {% if factura.estatus == 'PROGRAMADA' and factura.fecha_programada_pago %}<div class="alert alert-info">Pago programado para el <strong>{{ factura.fecha_programada_pago.strftime('%d/%m/%Y') }}</strong>.</div>{% endif %}
 {% if factura.estatus == 'PAGADA' %}<div class="alert alert-success">Pago registrado el <strong>{{ factura.fecha_pago.strftime('%d/%m/%Y') }}</strong>{% if factura.referencia_pago %}, referencia <strong>{{ factura.referencia_pago }}</strong>{% endif %}.</div>{% endif %}
