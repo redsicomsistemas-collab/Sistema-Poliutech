@@ -431,6 +431,11 @@ class PortalProveedorUsuario(db.Model):
         cascade="all, delete-orphan",
         order_by="FacturaProveedor.recibida_en.desc()",
     )
+    ordenes_compra = db.relationship(
+        "OrdenCompra",
+        back_populates="portal_proveedor_usuario",
+        order_by="OrdenCompra.fecha.desc()",
+    )
 
     def set_password(self, raw: str):
         self.password_hash = generate_password_hash(raw)
@@ -1006,6 +1011,12 @@ class OrdenCompra(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     folio = db.Column(db.String(40), unique=True, index=True)
+    portal_proveedor_usuario_id = db.Column(
+        db.Integer,
+        db.ForeignKey("portal_proveedor_usuario.id"),
+        nullable=True,
+        index=True,
+    )
     proveedor = db.Column(db.String(180), nullable=False, index=True)
     numero_cliente_proveedor = db.Column(db.String(80))
     contacto = db.Column(db.String(160))
@@ -1030,6 +1041,7 @@ class OrdenCompra(db.Model):
     notas = db.Column(db.Text)
     responsable = db.Column(db.String(120))
     usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True)
+    enviada_en = db.Column(db.DateTime)
     creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     actualizado_en = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -1040,6 +1052,10 @@ class OrdenCompra(db.Model):
         order_by="OrdenCompraPartida.id.asc()",
     )
     usuario = db.relationship("Usuario", backref=db.backref("ordenes_compra", lazy=True))
+    portal_proveedor_usuario = db.relationship(
+        "PortalProveedorUsuario",
+        back_populates="ordenes_compra",
+    )
 
     def __repr__(self):
         return f"<OrdenCompra {self.folio or self.id} {self.proveedor}>"

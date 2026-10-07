@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Nueva orden de compra{% endblock %}
+{% block content %}
+<style>.oc-card{border:1px solid rgba(12,60,120,.12);border-radius:1rem;box-shadow:0 .5rem 1.7rem rgba(12,60,120,.07)}</style>
+<div class="py-4">
+  <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4"><div><div class="small text-muted"><a class="text-decoration-none" href="{{ url_for('portal_facturas.finanzas_ordenes_compra') }}">Órdenes de compra</a> / Nueva</div><h1 class="h2 fw-bold mb-1">Nueva orden de compra</h1><p class="text-muted mb-0">Selecciona un proveedor registrado y detalla lo que Poliutech le solicita surtir.</p></div><a class="btn btn-outline-secondary" href="{{ url_for('portal_facturas.finanzas_ordenes_compra') }}">Cancelar</a></div>
+  <form method="post" id="purchaseOrderForm">
+    <input type="hidden" name="csrf_token" value="{{ portal_csrf_token() }}">
+    <section class="card oc-card border-0 mb-4"><div class="card-header bg-primary text-white py-3 px-4"><h2 class="h5 fw-bold mb-0">Proveedor y condiciones</h2></div><div class="card-body p-4"><div class="row g-3">
+      <div class="col-lg-6"><label class="form-label fw-semibold" for="proveedor_id">Proveedor registrado *</label><select class="form-select" id="proveedor_id" name="proveedor_id" required><option value="">Selecciona…</option>{% for proveedor in proveedores %}<option value="{{ proveedor.id }}" {{ 'selected' if selected_provider_id == proveedor.id }}>{{ proveedor.razon_social }} · {{ proveedor.rfc }}</option>{% endfor %}</select><div class="form-text">Solo las órdenes ligadas a una cuenta aparecen en el portal del proveedor.</div></div>
+      <div class="col-md-3"><label class="form-label fw-semibold" for="fecha_entrega">Entrega estimada</label><input class="form-control" id="fecha_entrega" name="fecha_entrega" type="date"></div>
+      <div class="col-md-3"><label class="form-label fw-semibold" for="forma_pago">Forma de pago</label><select class="form-select" id="forma_pago" name="forma_pago"><option value="CONTADO">Contado</option><option value="CREDITO">Crédito</option></select></div>
+      <div class="col-md-2"><label class="form-label fw-semibold" for="descuento_total">Descuento %</label><input class="form-control" id="descuento_total" name="descuento_total" type="number" min="0" max="100" step=".01" value="0"></div>
+      <div class="col-md-2"><label class="form-label fw-semibold" for="iva_porc">IVA %</label><input class="form-control" id="iva_porc" name="iva_porc" type="number" min="0" step=".01" value="16"></div>
+      <div class="col-md-4"><label class="form-label fw-semibold" for="condiciones">Condiciones</label><input class="form-control" id="condiciones" name="condiciones" maxlength="1000" placeholder="Crédito, moneda, lugar de entrega…"></div>
+      <div class="col-md-4"><label class="form-label fw-semibold" for="notas">Notas al proveedor</label><input class="form-control" id="notas" name="notas" maxlength="2000" placeholder="Indicaciones especiales"></div>
+    </div></div></section>
+
+    <section class="card oc-card border-0"><div class="card-header bg-transparent py-3 px-4 d-flex justify-content-between align-items-center"><h2 class="h5 fw-bold mb-0">Productos o servicios</h2><button class="btn btn-sm btn-outline-primary" id="addLine" type="button">+ Agregar partida</button></div><div class="card-body p-0"><div class="table-responsive"><table class="table align-middle mb-0" id="lineTable"><thead class="table-light"><tr><th style="min-width:260px">Descripción *</th><th>Unidad</th><th>Cantidad *</th><th>Precio unitario</th><th style="min-width:180px">Observaciones</th><th></th></tr></thead><tbody><tr><td><input class="form-control form-control-sm" name="descripcion[]" maxlength="320" required placeholder="Producto o servicio"></td><td><input class="form-control form-control-sm" name="unidad[]" maxlength="50" value="pieza"></td><td><input class="form-control form-control-sm" name="cantidad[]" type="number" min=".0001" step="any" required></td><td><input class="form-control form-control-sm" name="precio_unitario[]" type="number" min="0" step=".01" value="0"></td><td><input class="form-control form-control-sm" name="observaciones[]" maxlength="1000"></td><td><button class="btn btn-sm btn-outline-danger removeLine" type="button">Quitar</button></td></tr></tbody></table></div><div class="p-4 text-end"><button class="btn btn-success btn-lg" type="submit">Crear borrador de orden</button></div></div></section>
+  </form>
+</div>
+<script>
+(() => {
+  const body = document.querySelector('#lineTable tbody');
+  const wire = row => row.querySelector('.removeLine').addEventListener('click', () => { if (body.rows.length > 1) row.remove(); });
+  [...body.rows].forEach(wire);
+  document.getElementById('addLine').addEventListener('click', () => {
+    const row = body.rows[0].cloneNode(true);
+    row.querySelectorAll('input').forEach(input => input.value = input.name === 'unidad[]' ? 'pieza' : input.name === 'precio_unitario[]' ? '0' : '');
+    body.appendChild(row); wire(row);
+  });
+})();
+</script>
+{% endblock %}

@@ -8,7 +8,7 @@
 <section class="upload-card">
   <aside class="upload-guide">
     <div class="eyebrow">Antes de enviar</div><h2>Dos archivos, un solo registro.</h2><p>El XML se valida y sus datos fiscales se leen automáticamente.</p>
-    <ol><li>Adjunta el XML timbrado del CFDI.</li><li>Adjunta la representación impresa en PDF.</li><li>Agrega la orden de compra o referencia interna, si aplica.</li></ol>
+    <ol><li>Selecciona la orden de compra que estás facturando.</li><li>Adjunta el XML timbrado del CFDI.</li><li>Adjunta la representación impresa en PDF.</li></ol>
   </aside>
   <div class="upload-form">
     <form method="post" enctype="multipart/form-data">
@@ -16,7 +16,7 @@
       <div class="form-grid">
         <div class="field"><label for="xml">Archivo XML *</label><input id="xml" name="xml" type="file" accept="application/xml,text/xml,.xml" required><small>Máximo 5 MB.</small></div>
         <div class="field"><label for="pdf">Archivo PDF *</label><input id="pdf" name="pdf" type="file" accept="application/pdf,.pdf" required><small>Máximo 15 MB.</small></div>
-        <div class="field"><label for="orden_compra">Orden de compra / referencia</label><input id="orden_compra" name="orden_compra" maxlength="120" value="{{ request.form.get('orden_compra','') }}"></div>
+        <div class="field"><label for="orden_compra">Orden de compra</label><select id="orden_compra" name="orden_compra"><option value="">Sin orden de compra</option>{% for orden in ordenes_disponibles %}<option value="{{ orden.folio }}" {{ 'selected' if request.form.get('orden_compra') == orden.folio or (not request.form.get('orden_compra') and selected_order_id == orden.id) }}>{{ orden.folio }} · ${{ '{:,.2f}'.format(orden.total or 0) }} · {{ orden_compra_estatus[orden.estatus].label }}</option>{% endfor %}</select><small>Solo aparecen las órdenes emitidas para tu empresa.</small></div>
         <div class="field"><label for="concepto">Concepto breve</label><input id="concepto" name="concepto" maxlength="300" value="{{ request.form.get('concepto','') }}" placeholder="Ej. Suministro de material"></div>
         <div class="field field-full"><label for="notas_proveedor">Notas para Finanzas</label><textarea id="notas_proveedor" name="notas_proveedor" maxlength="2000" placeholder="Información adicional para identificar el servicio o pago">{{ request.form.get('notas_proveedor','') }}</textarea></div>
       </div>

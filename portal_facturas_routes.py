@@ -27,7 +27,7 @@ from flask import (
     url_for,
 )
 from flask_login import current_user, login_required
-from sqlalchemy import func, or_
+from sqlalchemy import func, inspect, or_, text
 from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
 
@@ -36,6 +36,8 @@ from models import (
     FacturaProveedor,
     FacturaProveedorMovimiento,
     InAppNotification,
+    OrdenCompra,
+    OrdenCompraPartida,
     PortalProveedorUsuario,
     Usuario,
     db,
@@ -47,6 +49,35 @@ portal_facturas_bp = Blueprint(
     __name__,
     url_prefix="/portal-facturas",
 )
+
+
+@portal_facturas_bp.record_once
+def _ensure_purchase_order_portal_schema(state) -> None:
+    """Migra instalaciones existentes al registrar el portal de proveedores."""
+    with state.app.app_context():
+        inspector = inspect(db.engine)
+        if "orden_compra" not in inspector.get_table_names():
+            return
+        columns = {column["name"] for column in inspector.get_columns("orden_compra")}
+        try:
+            if "portal_proveedor_usuario_id" not in columns:
+                db.session.execute(text(
+                    "ALTER TABLE orden_compra ADD COLUMN portal_proveedor_usuario_id INTEGER"
+                ))
+            if "enviada_en" not in columns:
+                db.session.execute(text(
+                    "ALTER TABLE orden_compra ADD COLUMN enviada_en TIMESTAMP"
+                ))
+            db.session.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_orden_compra_portal_proveedor_usuario_id "
+                "ON orden_compra (portal_proveedor_usuario_id)"
+            ))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            state.app.logger.exception(
+                "No se pudo actualizar el esquema de órdenes del portal de proveedores."
+            )
 
 SESSION_KEY = "portal_facturas_usuario_id"
 CSRF_KEY = "portal_facturas_csrf"
@@ -76,6 +107,19 @@ ESTATUS = {
     "PAGADA": {"label": "Pagada", "class": "status-green"},
     "RECHAZADA": {"label": "Rechazada", "class": "status-red"},
 }
+
+ORDEN_COMPRA_ESTADOS = {
+    "BORRADOR": {"label": "Borrador", "class": "status-amber"},
+    "ENVIADA": {"label": "Enviada", "class": "status-blue"},
+    "PARCIALMENTE RECIBIDA": {"label": "Parcialmente recibida", "class": "status-blue"},
+    "RECIBIDA COMPLETA": {"label": "Recibida completa", "class": "status-green"},
+    "FACTURADA": {"label": "Facturada", "class": "status-purple"},
+    "PAGADA": {"label": "Pagada", "class": "status-green"},
+    "CANCELADA": {"label": "Cancelada", "class": "status-red"},
+}
+ORDEN_COMPRA_VISIBLES_PROVEEDOR = tuple(
+    status for status in ORDEN_COMPRA_ESTADOS if status != "BORRADOR"
+)
 
 
 def _now() -> datetime:
@@ -114,6 +158,7 @@ def _portal_template_context():
         "portal_csrf_token": _csrf_token,
         "portal_proveedor": getattr(g, "portal_proveedor", None),
         "factura_estatus": ESTATUS,
+        "orden_compra_estatus": ORDEN_COMPRA_ESTADOS,
     }
 
 
@@ -579,6 +624,206 @@ def _parse_date(raw: str) -> date | None:
         raise ValueError("Captura una fecha válida.")
 
 
+def _parse_nonnegative_float(raw: str, *, label: str, default: float = 0.0) -> float:
+    text = str(raw or "").strip().replace(",", "")
+    if not text:
+        return default
+    try:
+        value = float(text)
+    except ValueError as exc:
+        raise ValueError(f"{label} debe ser un número válido.") from exc
+    if value < 0:
+        raise ValueError(f"{label} no puede ser negativo.")
+    return round(value, 2)
+
+
+def _purchase_order_totals(orden: OrdenCompra) -> None:
+    subtotal = 0.0
+    for partida in orden.partidas:
+        partida.cantidad = round(float(partida.cantidad or 0), 4)
+        partida.precio_unitario = round(float(partida.precio_unitario or 0), 2)
+        partida.subtotal = round(partida.cantidad * partida.precio_unitario, 2)
+        subtotal += partida.subtotal
+    orden.subtotal = round(subtotal, 2)
+    discount_percentage = min(100.0, max(0.0, float(orden.descuento_total or 0)))
+    orden.descuento_total = round(discount_percentage, 2)
+    taxable = max(0.0, orden.subtotal * (1 - discount_percentage / 100.0))
+    orden.iva_porc = round(max(0.0, float(orden.iva_porc or 0)), 2)
+    orden.iva_monto = round(taxable * orden.iva_porc / 100.0, 2)
+    orden.total = round(taxable + orden.iva_monto, 2)
+    orden.actualizado_en = _now()
+
+
+def _purchase_order_lines_from_form() -> list[OrdenCompraPartida]:
+    descriptions = request.form.getlist("descripcion[]")
+    units = request.form.getlist("unidad[]")
+    quantities = request.form.getlist("cantidad[]")
+    prices = request.form.getlist("precio_unitario[]")
+    observations = request.form.getlist("observaciones[]")
+    total_rows = max(len(descriptions), len(units), len(quantities), len(prices), 0)
+    lines: list[OrdenCompraPartida] = []
+    for index in range(total_rows):
+        description = (descriptions[index] if index < len(descriptions) else "").strip()
+        if not description:
+            continue
+        quantity = _parse_nonnegative_float(
+            quantities[index] if index < len(quantities) else "",
+            label=f"La cantidad de la partida {index + 1}",
+        )
+        if quantity <= 0:
+            raise ValueError(f"La cantidad de la partida {index + 1} debe ser mayor a cero.")
+        unit_price = _parse_nonnegative_float(
+            prices[index] if index < len(prices) else "",
+            label=f"El precio de la partida {index + 1}",
+        )
+        lines.append(
+            OrdenCompraPartida(
+                descripcion=description[:320],
+                unidad=(units[index] if index < len(units) else "pieza").strip()[:50] or "pieza",
+                cantidad=quantity,
+                cantidad_recibida=0.0,
+                precio_unitario=unit_price,
+                observaciones=(observations[index] if index < len(observations) else "").strip() or None,
+            )
+        )
+    if not lines:
+        raise ValueError("Agrega al menos un producto o servicio a la orden.")
+    return lines
+
+
+def _provider_purchase_orders(proveedor_id: int, *, invoiceable_only: bool = False):
+    query = OrdenCompra.query.filter(
+        OrdenCompra.portal_proveedor_usuario_id == proveedor_id,
+        OrdenCompra.estatus.in_(ORDEN_COMPRA_VISIBLES_PROVEEDOR),
+    )
+    if invoiceable_only:
+        query = query.filter(
+            OrdenCompra.estatus.in_(("ENVIADA", "PARCIALMENTE RECIBIDA", "RECIBIDA COMPLETA", "FACTURADA"))
+        )
+    return query.order_by(OrdenCompra.fecha.desc(), OrdenCompra.id.desc()).all()
+
+
+def _selected_provider_purchase_order(proveedor_id: int, folio: str) -> OrdenCompra | None:
+    normalized = (folio or "").strip()
+    if not normalized:
+        return None
+    orden = OrdenCompra.query.filter(
+        OrdenCompra.portal_proveedor_usuario_id == proveedor_id,
+        func.upper(OrdenCompra.folio) == normalized.upper(),
+        OrdenCompra.estatus.in_(("ENVIADA", "PARCIALMENTE RECIBIDA", "RECIBIDA COMPLETA", "FACTURADA")),
+    ).first()
+    if not orden:
+        raise ValueError("Selecciona una orden de compra válida de tu cuenta.")
+    return orden
+
+
+def _linked_purchase_order(factura: FacturaProveedor) -> OrdenCompra | None:
+    if not factura.orden_compra:
+        return None
+    return OrdenCompra.query.filter(
+        OrdenCompra.portal_proveedor_usuario_id == factura.proveedor_usuario_id,
+        func.upper(OrdenCompra.folio) == factura.orden_compra.strip().upper(),
+    ).first()
+
+
+def _restore_purchase_order_after_invoice_removal(orden: OrdenCompra) -> None:
+    ordered = sum(float(item.cantidad or 0) for item in orden.partidas)
+    received = sum(float(item.cantidad_recibida or 0) for item in orden.partidas)
+    if ordered > 0 and received + 0.0001 >= ordered:
+        orden.estatus = "RECIBIDA COMPLETA"
+    elif received > 0:
+        orden.estatus = "PARCIALMENTE RECIBIDA"
+    else:
+        orden.estatus = "ENVIADA"
+    orden.factura_folio = None
+    orden.factura_monto = 0.0
+    orden.pago_referencia = None
+    orden.pago_monto = 0.0
+    orden.actualizado_en = _now()
+
+
+def _send_purchase_order_email(orden: OrdenCompra, recipients: list[str]) -> None:
+    if not recipients or current_app.config.get("PORTAL_FACTURAS_DISABLE_EMAIL"):
+        return
+    proveedor = orden.portal_proveedor_usuario
+    detail_url = url_for(
+        "portal_facturas.orden_compra_proveedor_detalle",
+        orden_id=orden.id,
+        _external=True,
+    )
+    subject = f"Orden de compra {orden.folio} · Poliutech"
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    smtp_from = str(current_app.config.get("SMTP_FROM") or current_app.config.get("SMTP_USERNAME") or "").strip()
+    msg["From"] = f"COMPRAS POLIUTECH <{smtp_from}>"
+    msg["To"] = proveedor.correo
+    msg.set_content(
+        f"Hola {proveedor.contacto},\n\n"
+        f"Poliutech emitió la orden de compra {orden.folio} para {proveedor.razon_social}.\n"
+        f"Importe total: ${float(orden.total or 0):,.2f} MXN\n"
+        f"Entrega estimada: {orden.fecha_entrega.strftime('%d/%m/%Y') if orden.fecha_entrega else 'Por acordar'}\n\n"
+        f"Consulta los productos o servicios y las condiciones en tu portal:\n{detail_url}\n"
+    )
+    msg.add_alternative(
+        (
+            "<div style='font-family:Arial,sans-serif;max-width:680px;color:#15263b'>"
+            "<div style='font-size:12px;font-weight:800;letter-spacing:.08em;color:#0b67b2'>ORDEN DE COMPRA POLIUTECH</div>"
+            f"<h2 style='margin:8px 0'>{escape(orden.folio or '')}</h2>"
+            f"<p>Hola <b>{escape(proveedor.contacto)}</b>, Poliutech emitió esta orden para <b>{escape(proveedor.razon_social)}</b>.</p>"
+            f"<p style='font-size:24px;font-weight:800;color:#0b67b2'>${float(orden.total or 0):,.2f} MXN</p>"
+            f"<p>Entrega estimada: {orden.fecha_entrega.strftime('%d/%m/%Y') if orden.fecha_entrega else 'Por acordar'}</p>"
+            f"<p><a href='{escape(detail_url)}' style='display:inline-block;padding:12px 18px;background:#f36c21;color:#fff;text-decoration:none;border-radius:7px;font-weight:700'>Ver orden de compra</a></p>"
+            "</div>"
+        ),
+        subtype="html",
+    )
+    smtp_host = str(current_app.config.get("SMTP_HOST") or "").strip()
+    smtp_port = int(current_app.config.get("SMTP_PORT") or 26)
+    smtp_username = str(current_app.config.get("SMTP_USERNAME") or "").strip()
+    smtp_password = str(current_app.config.get("SMTP_PASSWORD") or "")
+    if not smtp_host or not smtp_username or not smtp_password:
+        raise RuntimeError("La configuración SMTP del portal está incompleta.")
+    with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as smtp:
+        smtp.ehlo()
+        smtp.login(smtp_username, smtp_password)
+        smtp.send_message(msg, to_addrs=recipients)
+
+
+def _notify_purchase_order_sent(orden: OrdenCompra) -> bool:
+    users, internal_emails = _provider_registration_notification_targets()
+    internal_url = url_for("portal_facturas.finanzas_orden_detalle", orden_id=orden.id)
+    for user in users:
+        db.session.add(
+            InAppNotification(
+                usuario_id=user.id,
+                tipo="portal_ordenes_compra",
+                titulo=f"Orden enviada: {orden.folio}"[:180],
+                mensaje=f"{orden.proveedor} · ${float(orden.total or 0):,.2f} MXN",
+                destino_url=internal_url,
+                creada_en=_now(),
+            )
+        )
+    try:
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.warning("No se guardaron los avisos de %s: %s", orden.folio, exc)
+
+    recipients = []
+    seen = set()
+    for email in [orden.portal_proveedor_usuario.correo, *internal_emails]:
+        normalized = _normalize_email(email)
+        if normalized and normalized not in seen:
+            recipients.append(normalized)
+            seen.add(normalized)
+    try:
+        _send_purchase_order_email(orden, recipients)
+        return True
+    except Exception as exc:
+        current_app.logger.warning("No se pudo enviar por correo %s: %s", orden.folio, exc)
+        return False
+
+
 def _read_upload(uploaded, *, max_bytes: int, expected_ext: str, label: str) -> bytes:
     if not uploaded or not (uploaded.filename or "").strip():
         raise ValueError(f"Adjunta el archivo {label}.")
@@ -961,12 +1206,50 @@ def mis_facturas():
     return render_template("portal_facturas/mis_facturas.html", facturas=facturas, resumen=resumen)
 
 
+@portal_facturas_bp.get("/ordenes-compra")
+@proveedor_login_required
+def ordenes_compra_proveedor():
+    ordenes = _provider_purchase_orders(g.portal_proveedor.id)
+    return render_template(
+        "portal_facturas/ordenes_compra_proveedor.html",
+        ordenes=ordenes,
+    )
+
+
+def _owned_purchase_order_or_404(orden_id: int) -> OrdenCompra:
+    orden = db.session.get(OrdenCompra, orden_id)
+    if (
+        not orden
+        or orden.portal_proveedor_usuario_id != g.portal_proveedor.id
+        or orden.estatus == "BORRADOR"
+    ):
+        abort(404)
+    return orden
+
+
+@portal_facturas_bp.get("/ordenes-compra/<int:orden_id>")
+@proveedor_login_required
+def orden_compra_proveedor_detalle(orden_id: int):
+    return render_template(
+        "portal_facturas/orden_compra_proveedor_detalle.html",
+        orden=_owned_purchase_order_or_404(orden_id),
+    )
+
+
 @portal_facturas_bp.route("/facturas/nueva", methods=["GET", "POST"])
 @proveedor_login_required
 def nueva_factura():
+    ordenes_disponibles = _provider_purchase_orders(
+        g.portal_proveedor.id,
+        invoiceable_only=True,
+    )
     if request.method == "POST":
         _require_csrf()
         try:
+            orden = _selected_provider_purchase_order(
+                g.portal_proveedor.id,
+                request.form.get("orden_compra") or "",
+            )
             cfdi, xml_bytes, pdf_bytes, xml_original, pdf_original = _prepare_invoice_upload(g.portal_proveedor)
             if FacturaProveedor.query.filter_by(uuid_cfdi=cfdi["uuid_cfdi"]).first():
                 raise ValueError("Este UUID ya fue recibido anteriormente.")
@@ -980,7 +1263,7 @@ def nueva_factura():
                 folio_recepcion=f"TMP-{secrets.token_hex(10)}",
                 proveedor_usuario_id=g.portal_proveedor.id,
                 concepto=(request.form.get("concepto") or "").strip()[:300] or None,
-                orden_compra=(request.form.get("orden_compra") or "").strip()[:120] or None,
+                orden_compra=orden.folio if orden else None,
                 notas_proveedor=(request.form.get("notas_proveedor") or "").strip() or None,
                 estatus="RECIBIDA",
                 xml_path=xml_path,
@@ -994,6 +1277,12 @@ def nueva_factura():
             db.session.add(factura)
             db.session.flush()
             factura.folio_recepcion = f"PF-{_now().strftime('%Y%m')}-{factura.id:05d}"
+            if orden:
+                orden.factura_folio = factura.folio_recepcion
+                orden.factura_monto = factura.total
+                if orden.estatus not in {"PAGADA", "CANCELADA"}:
+                    orden.estatus = "FACTURADA"
+                orden.actualizado_en = _now()
             _add_event(
                 factura,
                 old_status=None,
@@ -1013,7 +1302,11 @@ def nueva_factura():
         else:
             flash(f"Factura {factura.folio_recepcion} recibida correctamente.", "success")
             return redirect(url_for("portal_facturas.detalle_factura", factura_id=factura.id))
-    return render_template("portal_facturas/nueva_factura.html")
+    return render_template(
+        "portal_facturas/nueva_factura.html",
+        ordenes_disponibles=ordenes_disponibles,
+        selected_order_id=request.args.get("orden_id", type=int),
+    )
 
 
 def _owned_invoice_or_404(factura_id: int) -> FacturaProveedor:
@@ -1201,6 +1494,158 @@ def finanzas_proveedores():
     )
 
 
+@portal_facturas_bp.get("/finanzas/ordenes-compra")
+@finanzas_required
+def finanzas_ordenes_compra():
+    query_text = (request.args.get("q") or "").strip()
+    status = (request.args.get("estatus") or "").strip().upper()
+    query = OrdenCompra.query.filter(OrdenCompra.portal_proveedor_usuario_id.isnot(None))
+    if query_text:
+        like = f"%{query_text}%"
+        query = query.filter(
+            or_(
+                OrdenCompra.folio.ilike(like),
+                OrdenCompra.proveedor.ilike(like),
+                OrdenCompra.notas.ilike(like),
+            )
+        )
+    if status in ORDEN_COMPRA_ESTADOS:
+        query = query.filter(OrdenCompra.estatus == status)
+    else:
+        status = ""
+    ordenes = query.order_by(OrdenCompra.fecha.desc(), OrdenCompra.id.desc()).limit(500).all()
+    counts = {
+        key: OrdenCompra.query.filter(
+            OrdenCompra.portal_proveedor_usuario_id.isnot(None),
+            OrdenCompra.estatus == key,
+        ).count()
+        for key in ORDEN_COMPRA_ESTADOS
+    }
+    counts["TOTAL"] = OrdenCompra.query.filter(
+        OrdenCompra.portal_proveedor_usuario_id.isnot(None)
+    ).count()
+    return render_template(
+        "portal_facturas/finanzas_ordenes.html",
+        ordenes=ordenes,
+        counts=counts,
+        q=query_text,
+        selected_status=status,
+    )
+
+
+@portal_facturas_bp.route("/finanzas/ordenes-compra/nueva", methods=["GET", "POST"])
+@finanzas_required
+def finanzas_orden_nueva():
+    proveedores = PortalProveedorUsuario.query.filter_by(estatus="ACTIVO").order_by(
+        PortalProveedorUsuario.razon_social.asc()
+    ).all()
+    selected_provider_id = request.args.get("proveedor_id", type=int) or request.form.get(
+        "proveedor_id", type=int
+    )
+    if request.method == "POST":
+        _require_csrf()
+        proveedor = db.session.get(PortalProveedorUsuario, selected_provider_id)
+        if not proveedor or proveedor.estatus != "ACTIVO":
+            flash("Selecciona un proveedor activo del portal.", "danger")
+        else:
+            try:
+                delivery_date = _parse_date(request.form.get("fecha_entrega") or "")
+                lines = _purchase_order_lines_from_form()
+                order = OrdenCompra(
+                    folio=f"TMP-{secrets.token_hex(10)}",
+                    portal_proveedor_usuario_id=proveedor.id,
+                    proveedor=proveedor.razon_social,
+                    contacto=proveedor.contacto,
+                    telefono=proveedor.telefono,
+                    correo=proveedor.correo,
+                    fecha=_now(),
+                    fecha_entrega=(
+                        datetime.combine(delivery_date, datetime.min.time())
+                        if delivery_date
+                        else None
+                    ),
+                    forma_pago=(request.form.get("forma_pago") or "CONTADO").strip().upper()[:20],
+                    estatus="BORRADOR",
+                    descuento_total=_parse_nonnegative_float(
+                        request.form.get("descuento_total") or "0",
+                        label="El descuento",
+                    ),
+                    iva_porc=_parse_nonnegative_float(
+                        request.form.get("iva_porc") or "16",
+                        label="El IVA",
+                        default=16.0,
+                    ),
+                    condiciones=(request.form.get("condiciones") or "").strip() or None,
+                    notas=(request.form.get("notas") or "").strip() or None,
+                    responsable=(
+                        getattr(current_user, "nombre_representante", None)
+                        or getattr(current_user, "nombre", "")
+                    )[:120]
+                    or None,
+                    usuario_id=current_user.id,
+                )
+                order.partidas.extend(lines)
+                _purchase_order_totals(order)
+                db.session.add(order)
+                db.session.flush()
+                order.folio = f"OC-{_now().year}-{order.id:04d}"
+                db.session.commit()
+            except (ValueError, IntegrityError) as exc:
+                db.session.rollback()
+                message = str(exc) if isinstance(exc, ValueError) else "No se pudo generar el folio de la orden."
+                flash(message, "danger")
+            else:
+                flash(f"Orden {order.folio} creada como borrador. Revísala y envíala al proveedor.", "success")
+                return redirect(
+                    url_for("portal_facturas.finanzas_orden_detalle", orden_id=order.id)
+                )
+    return render_template(
+        "portal_facturas/finanzas_orden_nueva.html",
+        proveedores=proveedores,
+        selected_provider_id=selected_provider_id,
+    )
+
+
+def _finance_purchase_order_or_404(orden_id: int) -> OrdenCompra:
+    orden = db.session.get(OrdenCompra, orden_id)
+    if not orden or not orden.portal_proveedor_usuario_id:
+        abort(404)
+    return orden
+
+
+@portal_facturas_bp.get("/finanzas/ordenes-compra/<int:orden_id>")
+@finanzas_required
+def finanzas_orden_detalle(orden_id: int):
+    return render_template(
+        "portal_facturas/finanzas_orden_detalle.html",
+        orden=_finance_purchase_order_or_404(orden_id),
+    )
+
+
+@portal_facturas_bp.post("/finanzas/ordenes-compra/<int:orden_id>/enviar")
+@finanzas_required
+def finanzas_orden_enviar(orden_id: int):
+    _require_csrf()
+    orden = _finance_purchase_order_or_404(orden_id)
+    if orden.estatus in {"CANCELADA", "PAGADA"}:
+        flash("Esta orden ya no puede enviarse al proveedor.", "danger")
+        return redirect(url_for("portal_facturas.finanzas_orden_detalle", orden_id=orden.id))
+    if orden.estatus == "BORRADOR":
+        orden.estatus = "ENVIADA"
+    orden.enviada_en = _now()
+    orden.actualizado_en = _now()
+    db.session.commit()
+    email_sent = _notify_purchase_order_sent(orden)
+    if email_sent:
+        flash(f"{orden.folio} fue enviada al proveedor y notificada por correo.", "success")
+    else:
+        flash(
+            f"{orden.folio} ya está visible en el portal, pero el correo no pudo enviarse.",
+            "warning",
+        )
+    return redirect(url_for("portal_facturas.finanzas_orden_detalle", orden_id=orden.id))
+
+
 @portal_facturas_bp.get("/finanzas/proveedores/<int:proveedor_id>")
 @finanzas_required
 def finanzas_proveedor_detalle(proveedor_id: int):
@@ -1210,10 +1655,14 @@ def finanzas_proveedor_detalle(proveedor_id: int):
     facturas = FacturaProveedor.query.filter_by(
         proveedor_usuario_id=proveedor.id
     ).order_by(FacturaProveedor.recibida_en.desc()).all()
+    ordenes = OrdenCompra.query.filter_by(
+        portal_proveedor_usuario_id=proveedor.id
+    ).order_by(OrdenCompra.fecha.desc(), OrdenCompra.id.desc()).all()
     return render_template(
         "portal_facturas/finanzas_proveedor_detalle.html",
         proveedor=proveedor,
         facturas=facturas,
+        ordenes=ordenes,
     )
 
 
@@ -1293,6 +1742,12 @@ def finanzas_actualizar_estatus(factura_id: int):
     factura.fecha_pago = payment_date if new_status == "PAGADA" else None
     factura.referencia_pago = payment_reference[:160] if new_status == "PAGADA" else None
     factura.actualizada_en = _now()
+    linked_order = _linked_purchase_order(factura)
+    if linked_order and new_status == "PAGADA":
+        linked_order.estatus = "PAGADA"
+        linked_order.pago_referencia = factura.referencia_pago
+        linked_order.pago_monto = factura.total
+        linked_order.actualizado_en = _now()
     _add_event(
         factura,
         old_status=old_status,
@@ -1320,6 +1775,9 @@ def finanzas_eliminar_factura(factura_id: int):
 
     folio_recepcion = factura.folio_recepcion
     stored_paths = (factura.xml_path, factura.pdf_path)
+    linked_order = _linked_purchase_order(factura)
+    if linked_order and linked_order.factura_folio == factura.folio_recepcion:
+        _restore_purchase_order_after_invoice_removal(linked_order)
     db.session.delete(factura)
     try:
         db.session.commit()

@@ -22,6 +22,7 @@ try:
     from models import (  # noqa: E402
         FacturaProveedor,
         InAppNotification,
+        OrdenCompra,
         PortalProveedorUsuario,
         Usuario,
         db,
@@ -165,13 +166,121 @@ class PortalFacturasFlowTest(unittest.TestCase):
         self.assertEqual(ESTATUS["RECHAZADA"]["class"], "status-red")
         self.assertEqual(ESTATUS["PAGADA"]["class"], "status-green")
 
+        finance = app.test_client()
+        response = finance.post(
+            "/login",
+            data={"nombre": "admin", "password": "AdminTest123"},
+        )
+        self.assertEqual(response.status_code, 302)
+        response = finance.get(
+            f"/portal-facturas/finanzas/ordenes-compra/nueva?proveedor_id={provider_id}"
+        )
+        self.assertEqual(response.status_code, 200)
+        response = finance.post(
+            "/portal-facturas/finanzas/ordenes-compra/nueva",
+            data={
+                "csrf_token": _csrf(response),
+                "proveedor_id": str(provider_id),
+                "fecha_entrega": "2026-10-20",
+                "forma_pago": "CREDITO",
+                "descuento_total": "0",
+                "iva_porc": "16",
+                "condiciones": "Crédito a 30 días. Entrega en almacén.",
+                "notas": "Presentar esta orden al entregar.",
+                "descripcion[]": ["Material de reforzamiento", "Servicio de instalación"],
+                "unidad[]": ["lote", "servicio"],
+                "cantidad[]": ["1", "1"],
+                "precio_unitario[]": ["800", "200"],
+                "observaciones[]": ["Según especificación", "Incluye herramienta"],
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertRegex(response.headers["Location"], r"/ordenes-compra/\d+$")
+        with app.app_context():
+            purchase_order = OrdenCompra.query.one()
+            order_id = purchase_order.id
+            order_folio = purchase_order.folio
+            self.assertEqual(purchase_order.portal_proveedor_usuario_id, provider_id)
+            self.assertEqual(purchase_order.estatus, "BORRADOR")
+            self.assertEqual(purchase_order.total, 1160.0)
+            self.assertEqual(len(purchase_order.partidas), 2)
+
+        response = finance.get("/portal-facturas/finanzas/ordenes-compra")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(order_folio.encode(), response.data)
+
+        response = provider.get("/portal-facturas/ordenes-compra")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(order_folio.encode(), response.data)
+
+        response = finance.get(f"/portal-facturas/finanzas/ordenes-compra/{order_id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(order_folio.encode(), response.data)
+        with patch("portal_facturas_routes.smtplib.SMTP") as purchase_order_smtp_class:
+            response = finance.post(
+                f"/portal-facturas/finanzas/ordenes-compra/{order_id}/enviar",
+                data={"csrf_token": _csrf(response)},
+            )
+            purchase_order_smtp = purchase_order_smtp_class.return_value.__enter__.return_value
+            purchase_order_smtp.send_message.assert_called_once()
+            order_recipients = set(
+                purchase_order_smtp.send_message.call_args.kwargs["to_addrs"]
+            )
+            self.assertIn("ana@example.com", order_recipients)
+            self.assertIn("finanzas@example.com", order_recipients)
+            self.assertIn("mescalera@poliutech.com", order_recipients)
+        self.assertEqual(response.status_code, 302)
+        with app.app_context():
+            purchase_order = db.session.get(OrdenCompra, order_id)
+            self.assertEqual(purchase_order.estatus, "ENVIADA")
+            self.assertIsNotNone(purchase_order.enviada_en)
+            order_notices = InAppNotification.query.filter_by(
+                tipo="portal_ordenes_compra"
+            ).all()
+            self.assertIn(
+                "mescalera@poliutech.com",
+                {notice.usuario.correo for notice in order_notices},
+            )
+
+        response = provider.get("/portal-facturas/ordenes-compra")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(order_folio.encode(), response.data)
+        response = provider.get(f"/portal-facturas/ordenes-compra/{order_id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Material de reforzamiento", response.data)
+
+        with app.app_context():
+            unrelated_provider = PortalProveedorUsuario(
+                razon_social="Proveedor Ajeno SA de CV",
+                rfc="BBB010101BBB",
+                contacto="Otro Proveedor",
+                correo="otro-proveedor@example.com",
+                estatus="ACTIVO",
+            )
+            unrelated_provider.set_password("Ajena1234")
+            db.session.add(unrelated_provider)
+            db.session.commit()
+            unrelated_provider_id = unrelated_provider.id
+        unrelated_client = app.test_client()
+        with unrelated_client.session_transaction() as unrelated_session:
+            unrelated_session["portal_facturas_usuario_id"] = unrelated_provider_id
+            unrelated_session["portal_facturas_csrf"] = "test-csrf"
+        response = unrelated_client.get(
+            f"/portal-facturas/ordenes-compra/{order_id}"
+        )
+        self.assertEqual(response.status_code, 404)
+
+        response = provider.get(f"/portal-facturas/facturas/nueva?orden_id={order_id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(order_folio.encode(), response.data)
+
         response = provider.get("/portal-facturas/facturas/nueva")
         with patch("portal_facturas_routes.smtplib.SMTP") as smtp_class:
             response = provider.post(
                 "/portal-facturas/facturas/nueva",
                 data={
                     "csrf_token": _csrf(response),
-                    "orden_compra": "OC-2026-77",
+                    "orden_compra": order_folio,
                     "concepto": "Material de reforzamiento",
                     "xml": (io.BytesIO(xml), "factura.xml"),
                     "pdf": (io.BytesIO(pdf), "factura.pdf"),
@@ -194,6 +303,11 @@ class PortalFacturasFlowTest(unittest.TestCase):
             pdf_path = os.path.join(_upload_dir.name, *factura.pdf_path.split("/"))
             self.assertEqual(factura.estatus, "RECIBIDA")
             self.assertEqual(factura.total, 1160.0)
+            self.assertEqual(factura.orden_compra, order_folio)
+            purchase_order = db.session.get(OrdenCompra, order_id)
+            self.assertEqual(purchase_order.estatus, "FACTURADA")
+            self.assertEqual(purchase_order.factura_folio, factura.folio_recepcion)
+            self.assertEqual(purchase_order.factura_monto, 1160.0)
             notices = InAppNotification.query.filter_by(tipo="portal_facturas").all()
             self.assertEqual(len(notices), 2)
             self.assertEqual(
@@ -236,12 +350,6 @@ class PortalFacturasFlowTest(unittest.TestCase):
         with app.app_context():
             self.assertIsNotNone(db.session.get(FacturaProveedor, invoice_id))
 
-        finance = app.test_client()
-        response = finance.post(
-            "/login",
-            data={"nombre": "admin", "password": "AdminTest123"},
-        )
-        self.assertEqual(response.status_code, 302)
         response = finance.get("/portal-facturas/finanzas")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"PF-2026", response.data)
@@ -252,6 +360,7 @@ class PortalFacturasFlowTest(unittest.TestCase):
         response = finance.get(f"/portal-facturas/finanzas/proveedores/{provider_id}")
         self.assertEqual(response.status_code, 200)
         self.assertIn("Constancia de Situación Fiscal".encode("utf-8"), response.data)
+        self.assertIn("Crear orden de compra".encode("utf-8"), response.data)
         response = finance.get(
             f"/portal-facturas/finanzas/proveedores/{provider_id}/documento/csf"
         )
@@ -284,6 +393,9 @@ class PortalFacturasFlowTest(unittest.TestCase):
             factura = db.session.get(FacturaProveedor, invoice_id)
             self.assertEqual(factura.estatus, "PAGADA")
             self.assertEqual(factura.referencia_pago, "SPEI-7788")
+            purchase_order = db.session.get(OrdenCompra, order_id)
+            self.assertEqual(purchase_order.estatus, "PAGADA")
+            self.assertEqual(purchase_order.pago_referencia, "SPEI-7788")
 
         response = provider.get(f"/portal-facturas/facturas/{invoice_id}")
         self.assertEqual(response.status_code, 200)
@@ -308,6 +420,10 @@ class PortalFacturasFlowTest(unittest.TestCase):
         self.assertTrue(response.headers["Location"].endswith("/portal-facturas/finanzas"))
         with app.app_context():
             self.assertIsNone(db.session.get(FacturaProveedor, invoice_id))
+            purchase_order = db.session.get(OrdenCompra, order_id)
+            self.assertEqual(purchase_order.estatus, "ENVIADA")
+            self.assertIsNone(purchase_order.factura_folio)
+            self.assertEqual(purchase_order.factura_monto, 0.0)
         self.assertFalse(os.path.exists(xml_path))
         self.assertFalse(os.path.exists(pdf_path))
 

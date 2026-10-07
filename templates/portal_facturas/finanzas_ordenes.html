@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Órdenes de compra a proveedores{% endblock %}
+{% block content %}
+<style>
+  .oc-card{border:1px solid rgba(12,60,120,.12);border-radius:1rem;box-shadow:0 .5rem 1.7rem rgba(12,60,120,.07)}
+  .oc-status{display:inline-flex;align-items:center;gap:.4rem;border-radius:999px;padding:.42rem .66rem;font-size:.78rem;font-weight:800;white-space:nowrap}
+  .oc-status::before{width:.42rem;height:.42rem;border-radius:50%;background:currentColor;content:""}
+  .status-blue{color:#075f9e;background:#e7f3fb}.status-amber{color:#7a5600;background:#fff3ce}.status-purple{color:#6037a8;background:#f0eaff}.status-green{color:#157149;background:#e5f7ee}.status-red{color:#a52a2a;background:#fdeaea}
+</style>
+<div class="py-4">
+  <div class="d-flex flex-column flex-xl-row justify-content-between align-items-xl-end gap-3 mb-4">
+    <div><div class="text-uppercase small fw-bold text-primary mb-1" style="letter-spacing:.12em">Portal de proveedores</div><h1 class="h2 fw-bold mb-1">Órdenes de compra</h1><p class="text-muted mb-0">Indica a cada proveedor qué debe surtir y da seguimiento hasta su factura.</p></div>
+    <div class="d-flex flex-wrap gap-2"><a class="btn btn-outline-secondary" href="{{ url_for('portal_facturas.finanzas_proveedores') }}">Proveedores</a><a class="btn btn-outline-primary" href="{{ url_for('portal_facturas.finanzas') }}">Facturas</a><a class="btn btn-primary" href="{{ url_for('portal_facturas.finanzas_orden_nueva') }}">+ Nueva orden</a></div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3"><div class="card oc-card h-100"><div class="card-body"><div class="small text-muted fw-semibold">Total</div><strong class="fs-3">{{ counts.TOTAL }}</strong></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card oc-card h-100"><div class="card-body"><div class="small text-muted fw-semibold">Borradores</div><strong class="fs-3">{{ counts.BORRADOR }}</strong></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card oc-card h-100"><div class="card-body"><div class="small text-muted fw-semibold">Enviadas</div><strong class="fs-3">{{ counts.ENVIADA }}</strong></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card oc-card h-100"><div class="card-body"><div class="small text-muted fw-semibold">Facturadas</div><strong class="fs-3">{{ counts.FACTURADA }}</strong></div></div></div>
+  </div>
+
+  <section class="card oc-card border-0 overflow-hidden">
+    <div class="card-body border-bottom p-3 p-lg-4"><form method="get" class="row g-2 align-items-end"><div class="col-lg-7"><label class="form-label small fw-semibold" for="q">Buscar</label><input class="form-control" id="q" name="q" value="{{ q }}" placeholder="Folio, proveedor o notas"></div><div class="col-lg-3"><label class="form-label small fw-semibold" for="estatus">Estatus</label><select class="form-select" id="estatus" name="estatus"><option value="">Todos</option>{% for key, data in orden_compra_estatus.items() %}<option value="{{ key }}" {{ 'selected' if selected_status == key }}>{{ data.label }} ({{ counts[key] }})</option>{% endfor %}</select></div><div class="col-lg-2 d-grid"><button class="btn btn-outline-primary">Filtrar</button></div></form></div>
+    {% if ordenes %}<div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th>Orden</th><th>Proveedor</th><th>Entrega</th><th>Total</th><th>Estatus</th><th></th></tr></thead><tbody>{% for orden in ordenes %}<tr><td><a class="fw-bold text-decoration-none" href="{{ url_for('portal_facturas.finanzas_orden_detalle', orden_id=orden.id) }}">{{ orden.folio }}</a><div class="small text-muted">{{ orden.fecha.strftime('%d/%m/%Y %H:%M') }}</div></td><td><div class="fw-semibold">{{ orden.proveedor }}</div><div class="small text-muted">{{ orden.portal_proveedor_usuario.rfc }}</div></td><td>{{ orden.fecha_entrega.strftime('%d/%m/%Y') if orden.fecha_entrega else 'Por acordar' }}</td><td class="fw-bold text-nowrap">${{ '{:,.2f}'.format(orden.total or 0) }} MXN</td><td><span class="oc-status {{ orden_compra_estatus[orden.estatus].class }}">{{ orden_compra_estatus[orden.estatus].label }}</span></td><td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ url_for('portal_facturas.finanzas_orden_detalle', orden_id=orden.id) }}">Ver</a></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="text-center py-5"><div class="fs-2 mb-2">📦</div><h2 class="h5">No hay órdenes con estos filtros</h2><p class="text-muted">Crea la primera orden desde este portal.</p><a class="btn btn-primary" href="{{ url_for('portal_facturas.finanzas_orden_nueva') }}">Nueva orden</a></div>{% endif %}
+  </section>
+</div>
+{% endblock %}

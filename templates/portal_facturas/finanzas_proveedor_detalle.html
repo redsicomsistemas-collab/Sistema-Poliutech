@@ -18,7 +18,7 @@
       <h1 class="h2 fw-bold mb-1">{{ proveedor.nombre_portal }}</h1>
       <div class="text-muted">Alta {{ proveedor.creado_en.strftime('%d/%m/%Y a las %H:%M') }} · {{ proveedor.estatus|title }}</div>
     </div>
-    <a class="btn btn-outline-secondary" href="{{ url_for('portal_facturas.finanzas_proveedores') }}">Volver a proveedores</a>
+    <div class="d-flex flex-wrap gap-2"><a class="btn btn-primary" href="{{ url_for('portal_facturas.finanzas_orden_nueva', proveedor_id=proveedor.id) }}">+ Crear orden de compra</a><a class="btn btn-outline-secondary" href="{{ url_for('portal_facturas.finanzas_proveedores') }}">Volver a proveedores</a></div>
   </div>
 
   <div class="row g-4">
@@ -35,6 +35,11 @@
           <div class="col-md-6 pf-data"><label>Fecha y hora de alta</label><div>{{ proveedor.creado_en.strftime('%d/%m/%Y %H:%M') }}</div></div>
           <div class="col-md-6 pf-data"><label>Último acceso</label><div>{{ proveedor.ultimo_acceso_en.strftime('%d/%m/%Y %H:%M') if proveedor.ultimo_acceso_en else 'Aún no registra acceso' }}</div></div>
         </div></div>
+      </section>
+
+      <section class="card pf-card border-0 overflow-hidden mb-4">
+        <div class="card-header bg-transparent py-3 px-4 d-flex justify-content-between align-items-center"><h2 class="h5 fw-bold mb-0">Órdenes de compra</h2><span class="badge text-bg-light border">{{ ordenes|length }}</span></div>
+        {% if ordenes %}<div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th>Orden</th><th>Fecha</th><th>Total</th><th>Estatus</th></tr></thead><tbody>{% for orden in ordenes %}<tr><td><a class="fw-bold text-decoration-none" href="{{ url_for('portal_facturas.finanzas_orden_detalle', orden_id=orden.id) }}">{{ orden.folio }}</a></td><td>{{ orden.fecha.strftime('%d/%m/%Y') }}</td><td class="fw-bold">${{ '{:,.2f}'.format(orden.total or 0) }}</td><td><span class="pf-status {{ orden_compra_estatus[orden.estatus].class }}">{{ orden_compra_estatus[orden.estatus].label }}</span></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="text-center py-5 text-muted">Aún no se han emitido órdenes para este proveedor.</div>{% endif %}
       </section>
 
       <section class="card pf-card border-0 overflow-hidden">

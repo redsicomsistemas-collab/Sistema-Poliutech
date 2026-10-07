@@ -16,6 +16,7 @@
     </a>
     <nav class="portal-nav" aria-label="Navegación principal">
       {% if portal_proveedor %}
+        <a href="{{ url_for('portal_facturas.ordenes_compra_proveedor') }}">Órdenes de compra</a>
         <a href="{{ url_for('portal_facturas.mis_facturas') }}">Mis facturas</a>
         <a class="primary" href="{{ url_for('portal_facturas.nueva_factura') }}">Subir factura</a>
         <form method="post" action="{{ url_for('portal_facturas.salir') }}">
