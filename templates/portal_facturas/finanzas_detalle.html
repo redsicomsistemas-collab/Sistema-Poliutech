@@ -14,6 +14,11 @@
   .pf-timeline li { position:relative;padding:0 0 1.2rem 1.8rem; }
   .pf-timeline li:not(:last-child)::before { position:absolute;top:.75rem;bottom:0;left:.45rem;width:2px;background:var(--bs-border-color);content:""; }
   .pf-timeline li::after { position:absolute;top:.35rem;left:.1rem;width:.72rem;height:.72rem;border:2px solid var(--bs-body-bg);border-radius:50%;background:#0c3c78;box-shadow:0 0 0 1px #9fc5e2;content:""; }
+  .pf-wait { position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;padding:1.5rem;background:rgba(5,24,47,.64);backdrop-filter:blur(3px); }
+  .pf-wait[hidden] { display:none; }
+  .pf-wait-card { width:min(100%,28rem);padding:2rem;border-radius:1rem;background:var(--bs-body-bg);box-shadow:0 1.5rem 4rem rgba(0,0,0,.28);text-align:center; }
+  .pf-wait-spinner { width:3rem;height:3rem;margin:0 auto 1rem;border:.35rem solid rgba(11,103,178,.2);border-top-color:#0b67b2;border-radius:50%;animation:pf-spin .8s linear infinite; }
+  @keyframes pf-spin { to { transform:rotate(360deg); } }
 </style>
 <div class="py-4">
   <div class="d-flex flex-column flex-xl-row justify-content-between align-items-xl-center gap-3 mb-4">
@@ -51,7 +56,7 @@
           <input type="hidden" name="csrf_token" value="{{ portal_csrf_token() }}">
           <div class="mb-3"><label class="form-label fw-semibold" for="estatus">Nuevo estatus</label><select class="form-select" id="estatus" name="estatus" required>{% for key, data in factura_estatus.items() %}<option value="{{ key }}" {{ 'selected' if factura.estatus == key }}>{{ data.label }}</option>{% endfor %}</select></div>
           <div class="mb-3"><label class="form-label fw-semibold" for="comentario">Comentario para el proveedor</label><textarea class="form-control" id="comentario" name="comentario" rows="3" maxlength="3000" placeholder="Obligatorio al solicitar corrección o rechazar">{{ factura.comentario_finanzas or '' }}</textarea></div>
-          <div class="mb-3" id="scheduledField"><label class="form-label fw-semibold" for="fecha_programada_pago">Fecha programada</label><input class="form-control" id="fecha_programada_pago" name="fecha_programada_pago" type="date" value="{{ factura.fecha_programada_pago.isoformat() if factura.fecha_programada_pago else '' }}"></div>
+          <div class="mb-3" id="scheduledField"><label class="form-label fw-semibold" for="fecha_programada_pago">Fecha programada <span class="text-muted fw-normal">(opcional)</span></label><input class="form-control" id="fecha_programada_pago" name="fecha_programada_pago" type="date" value="{{ factura.fecha_programada_pago.isoformat() if factura.fecha_programada_pago else '' }}"></div>
           <div id="paidFields">
             <div class="mb-3"><label class="form-label fw-semibold" for="fecha_pago">Fecha de pago</label><input class="form-control" id="fecha_pago" name="fecha_pago" type="date" value="{{ factura.fecha_pago.isoformat() if factura.fecha_pago else '' }}"></div>
             <div class="mb-3"><label class="form-label fw-semibold" for="referencia_pago">Referencia de pago</label><input class="form-control" id="referencia_pago" name="referencia_pago" maxlength="160" value="{{ factura.referencia_pago or '' }}"></div>
@@ -74,16 +79,31 @@
     </div>
   </div>
 </div>
+<div class="pf-wait" id="statusWait" role="dialog" aria-modal="true" aria-labelledby="statusWaitTitle" hidden>
+  <div class="pf-wait-card">
+    <div class="pf-wait-spinner" aria-hidden="true"></div>
+    <h2 class="h5 fw-bold mb-2" id="statusWaitTitle">Guardando el nuevo estatus</h2>
+    <p class="text-muted mb-0">Estamos enviando el correo y las notificaciones al proveedor. Espera un momento y no cierres esta ventana.</p>
+  </div>
+</div>
 <script>
 (() => {
   const status = document.getElementById('estatus');
   const scheduled = document.getElementById('scheduledField');
   const paid = document.getElementById('paidFields');
+  const form = document.getElementById('statusForm');
+  const wait = document.getElementById('statusWait');
   const update = () => {
     scheduled.hidden = !['PROGRAMADA', 'PAGADA'].includes(status.value);
     paid.hidden = status.value !== 'PAGADA';
   };
   status.addEventListener('change', update);
+  form.addEventListener('submit', () => {
+    wait.hidden = false;
+    document.body.style.overflow = 'hidden';
+    const submit = form.querySelector('button[type="submit"]');
+    if (submit) submit.disabled = true;
+  });
   update();
 })();
 </script>

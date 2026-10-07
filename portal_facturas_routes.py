@@ -2431,9 +2431,6 @@ def finanzas_actualizar_estatus(factura_id: int):
         flash(str(exc), "danger")
         return redirect(url_for("portal_facturas.finanzas_detalle", factura_id=factura.id))
     payment_reference = (request.form.get("referencia_pago") or "").strip()
-    if new_status == "PROGRAMADA" and not scheduled_date:
-        flash("Indica la fecha programada de pago.", "danger")
-        return redirect(url_for("portal_facturas.finanzas_detalle", factura_id=factura.id))
     if new_status == "PAGADA" and (not payment_date or not payment_reference):
         flash("Para marcarla como pagada indica fecha y referencia de pago.", "danger")
         return redirect(url_for("portal_facturas.finanzas_detalle", factura_id=factura.id))

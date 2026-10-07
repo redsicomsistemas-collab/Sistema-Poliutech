@@ -576,6 +576,28 @@ class PortalFacturasFlowTest(unittest.TestCase):
             )
 
         response = finance.get(f"/portal-facturas/finanzas/{invoice_id}")
+        self.assertIn("Fecha programada".encode("utf-8"), response.data)
+        self.assertIn(b"(opcional)", response.data)
+        self.assertIn(b'id="statusWait"', response.data)
+        with patch("portal_facturas_routes.smtplib.SMTP") as scheduled_smtp_class:
+            response = finance.post(
+                f"/portal-facturas/finanzas/{invoice_id}/estatus",
+                data={
+                    "csrf_token": _csrf(response),
+                    "estatus": "PROGRAMADA",
+                    "comentario": "Pago programado sin fecha confirmada.",
+                    "fecha_programada_pago": "",
+                },
+            )
+            scheduled_smtp = scheduled_smtp_class.return_value.__enter__.return_value
+            self.assertEqual(scheduled_smtp.send_message.call_count, 2)
+        self.assertEqual(response.status_code, 302)
+        with app.app_context():
+            scheduled_invoice = db.session.get(FacturaProveedor, invoice_id)
+            self.assertEqual(scheduled_invoice.estatus, "PROGRAMADA")
+            self.assertIsNone(scheduled_invoice.fecha_programada_pago)
+
+        response = finance.get(f"/portal-facturas/finanzas/{invoice_id}")
         with patch("portal_facturas_routes.smtplib.SMTP") as status_smtp_class:
             response = finance.post(
                 f"/portal-facturas/finanzas/{invoice_id}/estatus",
