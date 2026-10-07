@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import secrets
@@ -146,6 +147,89 @@ def _normalize_rfc(raw: str) -> str:
 
 def _normalize_email(raw: str) -> str:
     return (raw or "").strip().casefold()
+
+
+def _provider_registry_path() -> Path:
+    """Usa el mismo padrón persistente que Contabilidad > Altas."""
+    configured = (os.getenv("PROVIDER_NUMBERS_JSON_PATH") or "").strip()
+    if configured:
+        return Path(configured).expanduser().resolve()
+    if Path("/data").is_dir():
+        return Path("/data/provider_numbers.json")
+    return (Path(current_app.root_path) / "provider_numbers.json").resolve()
+
+
+def _sync_provider_registry(proveedor: PortalProveedorUsuario) -> None:
+    """Agrega o actualiza el alta maestra al crear una cuenta del portal."""
+    registry_path = _provider_registry_path()
+    seed_path = (Path(current_app.root_path) / "provider_numbers.json").resolve()
+    source_path = registry_path if registry_path.exists() else seed_path
+    rows: list[dict] = []
+    if source_path.exists():
+        raw_rows = json.loads(source_path.read_text(encoding="utf-8"))
+        if not isinstance(raw_rows, list):
+            raise ValueError("El registro de proveedores no tiene un formato válido.")
+        rows = [dict(row) for row in raw_rows if isinstance(row, dict)]
+
+    rfc = _normalize_rfc(proveedor.rfc)
+    correo = _normalize_email(proveedor.correo)
+    razon_social = (proveedor.razon_social or "").strip().casefold()
+    match = None
+    for row in rows:
+        if str(row.get("relacion") or "PROVEEDOR").strip().upper() != "PROVEEDOR":
+            continue
+        row_number = _normalize_rfc(str(row.get("numero") or ""))
+        row_email = _normalize_email(str(row.get("correo") or ""))
+        row_company = str(row.get("empresa") or "").strip().casefold()
+        if (
+            (rfc and row_number == rfc)
+            or (correo and row_email == correo)
+            or (razon_social and row_company == razon_social)
+        ):
+            match = row
+            break
+
+    if match is None:
+        match = {
+            "id": len(rows) + 1,
+            "numero": rfc,
+            "empresa": proveedor.razon_social,
+            "razon_social_poliutech": "",
+            "relacion": "PROVEEDOR",
+            "contacto": proveedor.contacto,
+            "telefono": proveedor.telefono or "",
+            "correo": proveedor.correo,
+            "credito": False,
+            "monto_credito": "",
+            "plazo_credito_dias": "",
+        }
+        rows.append(match)
+    else:
+        # Conserva el número interno y las condiciones de crédito capturadas por
+        # Contabilidad; el portal sólo mantiene actualizados los datos de contacto.
+        if not str(match.get("numero") or "").strip():
+            match["numero"] = rfc
+        match["empresa"] = proveedor.razon_social
+        match["relacion"] = "PROVEEDOR"
+        match["contacto"] = proveedor.contacto
+        match["telefono"] = proveedor.telefono or ""
+        match["correo"] = proveedor.correo
+
+    for index, row in enumerate(rows, start=1):
+        row["id"] = index
+
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = registry_path.with_name(
+        f".{registry_path.name}.{secrets.token_hex(8)}.tmp"
+    )
+    try:
+        temp_path.write_text(
+            json.dumps(rows, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        temp_path.replace(registry_path)
+    finally:
+        temp_path.unlink(missing_ok=True)
 
 
 def _finance_notification_targets() -> tuple[list[Usuario], list[str]]:
@@ -558,10 +642,22 @@ def registro():
             proveedor.set_password(password)
             db.session.add(proveedor)
             try:
+                db.session.flush()
+                _sync_provider_registry(proveedor)
                 db.session.commit()
-            except IntegrityError:
+            except (IntegrityError, OSError, ValueError) as exc:
                 db.session.rollback()
-                flash("Ya existe una cuenta con ese RFC o correo electrónico.", "danger")
+                if isinstance(exc, IntegrityError):
+                    flash("Ya existe una cuenta con ese RFC o correo electrónico.", "danger")
+                else:
+                    current_app.logger.exception(
+                        "No se pudo registrar al proveedor %s en el padrón maestro.",
+                        rfc,
+                    )
+                    flash(
+                        "No se pudo guardar el alta en el registro de proveedores. Inténtalo nuevamente.",
+                        "danger",
+                    )
             else:
                 session[SESSION_KEY] = proveedor.id
                 session[CSRF_KEY] = secrets.token_urlsafe(32)

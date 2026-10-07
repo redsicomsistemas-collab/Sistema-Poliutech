@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import re
 import tempfile
@@ -7,8 +8,13 @@ from unittest.mock import patch
 
 
 _upload_dir = tempfile.TemporaryDirectory(prefix="mar_portal_facturas_")
+_provider_registry_dir = tempfile.TemporaryDirectory(prefix="mar_portal_proveedores_")
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["UPLOAD_STORAGE_ROOT"] = _upload_dir.name
+os.environ["PROVIDER_NUMBERS_JSON_PATH"] = os.path.join(
+    _provider_registry_dir.name,
+    "provider_numbers.json",
+)
 os.environ["DISABLE_BACKGROUND_SCHEDULER"] = "1"
 
 try:
@@ -85,6 +91,14 @@ class PortalFacturasFlowTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 302)
         self.assertIn("/facturas/nueva", response.headers["Location"])
+
+        with open(os.environ["PROVIDER_NUMBERS_JSON_PATH"], encoding="utf-8") as registry_file:
+            provider_rows = json.load(registry_file)
+        portal_row = next(row for row in provider_rows if row.get("numero") == "AAA010101AAA")
+        self.assertEqual(portal_row["empresa"], "Proveedor Prueba SA de CV")
+        self.assertEqual(portal_row["relacion"], "PROVEEDOR")
+        self.assertEqual(portal_row["contacto"], "Ana Proveedor")
+        self.assertEqual(portal_row["correo"], "ana@example.com")
 
         response = provider.get("/portal-facturas/facturas/nueva")
         with patch("portal_facturas_routes.smtplib.SMTP") as smtp_class:
