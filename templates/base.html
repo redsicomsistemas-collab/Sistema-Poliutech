@@ -501,6 +501,16 @@
         font-size: 1rem;
       }
 
+      .mobile-menu-tools .support-ticket-cta {
+        width: 100%;
+        min-height: 48px;
+        padding: 0.75rem 1rem;
+      }
+
+      .mobile-menu-tools .support-ticket-label {
+        display: inline;
+      }
+
       .mobile-menu-tools .topbar-primary-actions {
         display: grid;
         gap: 0.75rem;
@@ -901,15 +911,10 @@
         {% if not is_demo_account or 'cotizaciones' in demo_modules %}<a class="quote-cta fw-bold" href="{{ url_for('cotizador') }}">💰 COTIZAR</a>{% endif %}
         {% if not is_demo_account or 'facturacion' in demo_modules %}<a class="quote-cta invoice-cta fw-bold" href="{{ url_for('facturacion.nueva') }}">🧾 FACTURAR</a>{% endif %}
         {% if contabilidad_can_view() %}<a class="quote-cta purchase-order-cta fw-bold" href="{{ url_for('portal_facturas.finanzas_ordenes_compra') }}">📦 ORDEN DE COMPRA</a>{% endif %}
+        {% if not is_demo_account or 'soporte' in demo_modules %}<a class="support-ticket-cta{% if request.path.startswith('/soporte') %} is-active{% endif %}" href="{{ url_for('soporte_tickets') }}" aria-label="Ticket de soporte" title="Ticket de soporte"{% if request.path.startswith('/soporte') %} aria-current="page"{% endif %}><span class="support-ticket-icon" aria-hidden="true">🎫</span><span class="support-ticket-label">TICKET DE SOPORTE</span></a>{% endif %}
       </div>
 
       {% if current_user.is_authenticated %}
-      {% if not is_demo_account or 'soporte' in demo_modules %}
-      <a class="support-ticket-cta{% if request.path.startswith('/soporte') %} is-active{% endif %}" href="{{ url_for('soporte_tickets') }}" aria-label="Ticket de soporte" title="Ticket de soporte"{% if request.path.startswith('/soporte') %} aria-current="page"{% endif %}>
-        <span class="support-ticket-icon" aria-hidden="true">🎫</span>
-        <span class="support-ticket-label">TICKET DE SOPORTE</span>
-      </a>
-      {% endif %}
       <button class="theme-toggle" type="button" id="themeToggle" aria-label="Activar tema oscuro" aria-pressed="false" title="Activar tema oscuro">
         <span class="theme-toggle-icon" aria-hidden="true">🌙</span>
       </button>
@@ -946,6 +951,7 @@
           {% if not is_demo_account or 'cotizaciones' in demo_modules %}<a class="quote-cta fw-bold" href="{{ url_for('cotizador') }}">💰 COTIZAR</a>{% endif %}
           {% if not is_demo_account or 'facturacion' in demo_modules %}<a class="quote-cta invoice-cta fw-bold" href="{{ url_for('facturacion.nueva') }}">🧾 FACTURAR</a>{% endif %}
           {% if contabilidad_can_view() %}<a class="quote-cta purchase-order-cta fw-bold" href="{{ url_for('portal_facturas.finanzas_ordenes_compra') }}">📦 ORDEN DE COMPRA</a>{% endif %}
+          {% if not is_demo_account or 'soporte' in demo_modules %}<a class="support-ticket-cta{% if request.path.startswith('/soporte') %} is-active{% endif %}" href="{{ url_for('soporte_tickets') }}" aria-label="Ticket de soporte" title="Ticket de soporte"{% if request.path.startswith('/soporte') %} aria-current="page"{% endif %}><span class="support-ticket-icon" aria-hidden="true">🎫</span><span class="support-ticket-label">TICKET DE SOPORTE</span></a>{% endif %}
         </div>
         <div class="mobile-user-card">
           <button class="mobile-user-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#mobileUserActions" aria-expanded="false" aria-controls="mobileUserActions">

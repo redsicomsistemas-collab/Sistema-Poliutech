@@ -187,6 +187,18 @@ class PortalFacturasFlowTest(unittest.TestCase):
         self.assertIn(
             b'href="/portal-facturas/finanzas/ordenes-compra"', response.data
         )
+        primary_actions_start = response.data.index(
+            b'<div class="topbar-primary-actions'
+        )
+        primary_actions_end = response.data.index(b"</div>", primary_actions_start)
+        purchase_order_position = response.data.index(
+            b"purchase-order-cta", primary_actions_start
+        )
+        support_position = response.data.index(
+            b"support-ticket-cta", primary_actions_start
+        )
+        self.assertLess(purchase_order_position, support_position)
+        self.assertLess(support_position, primary_actions_end)
 
         other_admin_finance = app.test_client()
         response = other_admin_finance.post(
