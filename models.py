@@ -422,6 +422,9 @@ class PortalProveedorUsuario(db.Model):
     caratula_bancaria_path = db.Column(db.String(420))
     caratula_bancaria_nombre_original = db.Column(db.String(260))
     caratula_bancaria_tamano = db.Column(db.Integer, default=0, nullable=False)
+    revision_comentario = db.Column(db.Text)
+    revisado_por_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=True, index=True)
+    revisado_en = db.Column(db.DateTime)
     creado_en = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
     ultimo_acceso_en = db.Column(db.DateTime)
 
@@ -436,6 +439,7 @@ class PortalProveedorUsuario(db.Model):
         back_populates="portal_proveedor_usuario",
         order_by="OrdenCompra.fecha.desc()",
     )
+    revisado_por = db.relationship("Usuario", foreign_keys=[revisado_por_id])
 
     def set_password(self, raw: str):
         self.password_hash = generate_password_hash(raw)

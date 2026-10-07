@@ -12,6 +12,7 @@ from email.message import EmailMessage
 from functools import wraps
 from html import escape
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from flask import (
     Blueprint,
@@ -36,6 +37,7 @@ from models import (
     FacturaProveedor,
     FacturaProveedorMovimiento,
     InAppNotification,
+    MessengerNotificationOutbox,
     OrdenCompra,
     OrdenCompraPartida,
     PortalProveedorUsuario,
@@ -56,27 +58,46 @@ def _ensure_purchase_order_portal_schema(state) -> None:
     """Migra instalaciones existentes al registrar el portal de proveedores."""
     with state.app.app_context():
         inspector = inspect(db.engine)
-        if "orden_compra" not in inspector.get_table_names():
-            return
-        columns = {column["name"] for column in inspector.get_columns("orden_compra")}
+        table_names = inspector.get_table_names()
         try:
-            if "portal_proveedor_usuario_id" not in columns:
+            if "orden_compra" in table_names:
+                columns = {column["name"] for column in inspector.get_columns("orden_compra")}
+                if "portal_proveedor_usuario_id" not in columns:
+                    db.session.execute(text(
+                        "ALTER TABLE orden_compra ADD COLUMN portal_proveedor_usuario_id INTEGER"
+                    ))
+                if "enviada_en" not in columns:
+                    db.session.execute(text(
+                        "ALTER TABLE orden_compra ADD COLUMN enviada_en TIMESTAMP"
+                    ))
                 db.session.execute(text(
-                    "ALTER TABLE orden_compra ADD COLUMN portal_proveedor_usuario_id INTEGER"
+                    "CREATE INDEX IF NOT EXISTS ix_orden_compra_portal_proveedor_usuario_id "
+                    "ON orden_compra (portal_proveedor_usuario_id)"
                 ))
-            if "enviada_en" not in columns:
+            if "portal_proveedor_usuario" in table_names:
+                provider_columns = {
+                    column["name"]
+                    for column in inspector.get_columns("portal_proveedor_usuario")
+                }
+                provider_migrations = {
+                    "revision_comentario": "TEXT",
+                    "revisado_por_id": "INTEGER",
+                    "revisado_en": "TIMESTAMP",
+                }
+                for column_name, column_type in provider_migrations.items():
+                    if column_name not in provider_columns:
+                        db.session.execute(text(
+                            f"ALTER TABLE portal_proveedor_usuario ADD COLUMN {column_name} {column_type}"
+                        ))
                 db.session.execute(text(
-                    "ALTER TABLE orden_compra ADD COLUMN enviada_en TIMESTAMP"
+                    "CREATE INDEX IF NOT EXISTS ix_portal_proveedor_usuario_revisado_por_id "
+                    "ON portal_proveedor_usuario (revisado_por_id)"
                 ))
-            db.session.execute(text(
-                "CREATE INDEX IF NOT EXISTS ix_orden_compra_portal_proveedor_usuario_id "
-                "ON orden_compra (portal_proveedor_usuario_id)"
-            ))
             db.session.commit()
         except Exception:
             db.session.rollback()
             state.app.logger.exception(
-                "No se pudo actualizar el esquema de órdenes del portal de proveedores."
+                "No se pudo actualizar el esquema del portal de proveedores."
             )
 
 SESSION_KEY = "portal_facturas_usuario_id"
@@ -84,6 +105,7 @@ CSRF_KEY = "portal_facturas_csrf"
 MAX_XML_BYTES = 5 * 1024 * 1024
 MAX_PDF_BYTES = 15 * 1024 * 1024
 MAX_PROVIDER_DOCUMENT_BYTES = 10 * 1024 * 1024
+TZ_CDMX = ZoneInfo("America/Mexico_City")
 RFC_PATTERN = re.compile(r"^[A-Z&Ñ]{3,4}\d{6}[A-Z0-9]{3}$")
 FINANCE_NOTIFICATION_PROFILES = (
     {
@@ -159,6 +181,7 @@ def _portal_template_context():
         "portal_proveedor": getattr(g, "portal_proveedor", None),
         "factura_estatus": ESTATUS,
         "orden_compra_estatus": ORDEN_COMPRA_ESTADOS,
+        "puede_revisar_proveedores": _can_review_provider(current_user),
     }
 
 
@@ -170,7 +193,12 @@ def proveedor_login_required(view):
             return redirect(url_for("portal_facturas.ingresar", next=request.path))
         if proveedor.estatus != "ACTIVO":
             session.pop(SESSION_KEY, None)
-            flash("Tu cuenta no está activa. Contacta al departamento de Finanzas.", "danger")
+            if proveedor.estatus == "PENDIENTE":
+                flash("Tu alta sigue pendiente de autorización por Marco/Mescalera.", "warning")
+            elif proveedor.estatus == "RECHAZADO":
+                flash("Tu alta fue rechazada. Contacta a Marco/Mescalera.", "danger")
+            else:
+                flash("Tu cuenta no está activa. Contacta a Marco/Mescalera.", "danger")
             return redirect(url_for("portal_facturas.ingresar"))
         return view(*args, **kwargs)
 
@@ -182,6 +210,30 @@ def finanzas_required(view):
     @login_required
     def wrapped(*args, **kwargs):
         if not can_access_contabilidad(current_user):
+            abort(403)
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
+def _can_review_provider(user) -> bool:
+    if not getattr(user, "is_authenticated", False):
+        return False
+    username = str(getattr(user, "nombre", "") or "").strip().casefold()
+    display_name = str(getattr(user, "nombre_visible", "") or "").strip().casefold()
+    email = _normalize_email(getattr(user, "correo", ""))
+    return (
+        username in {"marco", "mescalera"}
+        or display_name in {"marco", "mescalera", "marco escalera"}
+        or email == "mescalera@poliutech.com"
+    )
+
+
+def marco_mescalera_required(view):
+    @wraps(view)
+    @login_required
+    def wrapped(*args, **kwargs):
+        if not _can_review_provider(current_user):
             abort(403)
         return view(*args, **kwargs)
 
@@ -331,6 +383,46 @@ def _provider_registration_notification_targets() -> tuple[list[Usuario], list[s
     return selected_users, recipient_emails
 
 
+def _queue_messenger_notifications(
+    users: list[Usuario],
+    *,
+    source_key: str,
+    title: str,
+    body: str,
+    view_url: str,
+) -> int:
+    """Encola avisos para que Messenger los entregue en web, escritorio y móvil."""
+    queued = 0
+    deliver_at = datetime.now(TZ_CDMX)
+    next_attempt = deliver_at.replace(tzinfo=None)
+    for user in users:
+        email = _normalize_email(getattr(user, "correo", ""))
+        if not email or not getattr(user, "id", None):
+            continue
+        user_source_key = f"portal:{source_key}:usuario:{user.id}"[:240]
+        if MessengerNotificationOutbox.query.filter_by(source_key=user_source_key).first():
+            continue
+        payload = {
+            "email": email,
+            "sourceKey": user_source_key,
+            "title": title[:180],
+            "body": body[:2000],
+            "url": view_url,
+            "deliverAt": deliver_at.isoformat(),
+        }
+        db.session.add(
+            MessengerNotificationOutbox(
+                source_key=user_source_key,
+                usuario_id=user.id,
+                correo=email,
+                payload_json=json.dumps(payload, ensure_ascii=False),
+                siguiente_intento_en=next_attempt,
+            )
+        )
+        queued += 1
+    return queued
+
+
 def _send_provider_registration_email(
     proveedor: PortalProveedorUsuario,
     recipients: list[str],
@@ -344,7 +436,7 @@ def _send_provider_registration_email(
         _external=True,
     )
     provider_name = proveedor.nombre_portal
-    subject = f"Nuevo proveedor registrado: {provider_name}"
+    subject = f"Proveedor pendiente de autorización: {provider_name}"
     msg = EmailMessage()
     msg["Subject"] = subject
     smtp_from = str(
@@ -355,7 +447,7 @@ def _send_provider_registration_email(
     msg["From"] = f"PORTAL DE FACTURAS POLIUTECH <{smtp_from}>"
     msg["To"] = ", ".join(recipients)
     msg.set_content(
-        f"Se registró un nuevo proveedor en el portal.\n\n"
+        f"Un proveedor solicitó su alta en el portal y requiere autorización de Marco/Mescalera.\n\n"
         f"Razón social: {proveedor.razon_social}\n"
         f"RFC: {proveedor.rfc}\n"
         f"Contacto: {proveedor.contacto}\n"
@@ -367,9 +459,9 @@ def _send_provider_registration_email(
     msg.add_alternative(
         (
             "<div style='font-family:Arial,sans-serif;max-width:680px;color:#15263b'>"
-            "<div style='font-size:12px;font-weight:800;letter-spacing:.08em;color:#0b67b2'>ALTA DE PROVEEDOR</div>"
+            "<div style='font-size:12px;font-weight:800;letter-spacing:.08em;color:#0b67b2'>ALTA PENDIENTE DE PROVEEDOR</div>"
             f"<h2 style='margin:8px 0'>{escape(subject)}</h2>"
-            "<p>El proveedor completó su registro y adjuntó su expediente fiscal y bancario.</p>"
+            "<p>El proveedor completó su solicitud y adjuntó su expediente fiscal y bancario. Marco/Mescalera debe autorizarla antes de que pueda facturar.</p>"
             "<table style='border-collapse:collapse;margin:18px 0'>"
             f"<tr><td style='padding:5px 14px 5px 0;color:#607086'>Razón social</td><td><b>{escape(proveedor.razon_social)}</b></td></tr>"
             f"<tr><td style='padding:5px 14px 5px 0;color:#607086'>RFC</td><td>{escape(proveedor.rfc)}</td></tr>"
@@ -395,10 +487,10 @@ def _send_provider_registration_email(
 
 
 def _notify_provider_registration(proveedor: PortalProveedorUsuario) -> None:
-    title = f"Nuevo proveedor: {proveedor.nombre_portal}"
+    title = f"Alta por autorizar: {proveedor.nombre_portal}"
     body = (
-        f"{proveedor.razon_social} ({proveedor.rfc}) completó su alta y adjuntó "
-        "su Constancia de Situación Fiscal y carátula bancaria."
+        f"{proveedor.razon_social} ({proveedor.rfc}) solicita autorización para facturar; "
+        "adjuntó su CSF y carátula bancaria."
     )
     detail_url = url_for(
         "portal_facturas.finanzas_proveedor_detalle",
@@ -417,6 +509,17 @@ def _notify_provider_registration(proveedor: PortalProveedorUsuario) -> None:
                     creada_en=_now(),
                 )
             )
+        _queue_messenger_notifications(
+            users,
+            source_key=f"proveedor:{proveedor.id}:alta-pendiente",
+            title=title,
+            body=body,
+            view_url=url_for(
+                "portal_facturas.finanzas_proveedor_detalle",
+                proveedor_id=proveedor.id,
+                _external=True,
+            ),
+        )
         db.session.commit()
     except Exception as exc:
         db.session.rollback()
@@ -436,6 +539,114 @@ def _notify_provider_registration(proveedor: PortalProveedorUsuario) -> None:
             recipients,
             exc,
         )
+
+
+def _send_provider_review_email(
+    proveedor: PortalProveedorUsuario,
+    recipients: list[str],
+) -> None:
+    if not recipients or current_app.config.get("PORTAL_FACTURAS_DISABLE_EMAIL"):
+        return
+    approved = proveedor.estatus == "ACTIVO"
+    title = (
+        f"Alta autorizada: {proveedor.nombre_portal}"
+        if approved
+        else f"Alta rechazada: {proveedor.nombre_portal}"
+    )
+    portal_url = url_for("portal_facturas.ingresar", _external=True)
+    reason = (proveedor.revision_comentario or "Sin comentarios adicionales.").strip()
+    msg = EmailMessage()
+    msg["Subject"] = title
+    smtp_from = str(current_app.config.get("SMTP_FROM") or current_app.config.get("SMTP_USERNAME") or "").strip()
+    msg["From"] = f"PORTAL DE PROVEEDORES POLIUTECH <{smtp_from}>"
+    msg["To"] = proveedor.correo
+    msg.set_content(
+        f"Hola {proveedor.contacto},\n\n"
+        f"Tu solicitud de alta fue {'AUTORIZADA' if approved else 'RECHAZADA'} por Marco/Mescalera.\n"
+        f"Comentario: {reason}\n\n"
+        + (f"Ya puedes iniciar sesión y subir facturas:\n{portal_url}\n" if approved else "")
+    )
+    action_html = (
+        f"<p><a href='{escape(portal_url)}' style='display:inline-block;padding:12px 18px;background:#0b67b2;color:#fff;text-decoration:none;border-radius:7px;font-weight:700'>Entrar al portal</a></p>"
+        if approved
+        else ""
+    )
+    msg.add_alternative(
+        (
+            "<div style='font-family:Arial,sans-serif;max-width:680px;color:#15263b'>"
+            f"<h2>{escape(title)}</h2>"
+            f"<p>Hola <b>{escape(proveedor.contacto)}</b>, tu solicitud fue <b>{'AUTORIZADA' if approved else 'RECHAZADA'}</b> por Marco/Mescalera.</p>"
+            f"<p><b>Comentario:</b> {escape(reason)}</p>"
+            f"{action_html}</div>"
+        ),
+        subtype="html",
+    )
+    smtp_host = str(current_app.config.get("SMTP_HOST") or "").strip()
+    smtp_port = int(current_app.config.get("SMTP_PORT") or 26)
+    smtp_username = str(current_app.config.get("SMTP_USERNAME") or "").strip()
+    smtp_password = str(current_app.config.get("SMTP_PASSWORD") or "")
+    if not smtp_host or not smtp_username or not smtp_password:
+        raise RuntimeError("La configuración SMTP del portal está incompleta.")
+    with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as smtp:
+        smtp.ehlo()
+        smtp.login(smtp_username, smtp_password)
+        smtp.send_message(msg, to_addrs=recipients)
+
+
+def _notify_provider_review(proveedor: PortalProveedorUsuario) -> None:
+    users, internal_emails = _provider_registration_notification_targets()
+    approved = proveedor.estatus == "ACTIVO"
+    reviewer_name = (
+        getattr(proveedor.revisado_por, "nombre_representante", None)
+        or getattr(proveedor.revisado_por, "nombre", None)
+        or "Marco/Mescalera"
+    )
+    title = f"Alta {'autorizada' if approved else 'rechazada'}: {proveedor.nombre_portal}"
+    body = f"{reviewer_name} {'autorizó' if approved else 'rechazó'} a {proveedor.razon_social} ({proveedor.rfc})."
+    internal_url = url_for(
+        "portal_facturas.finanzas_proveedor_detalle",
+        proveedor_id=proveedor.id,
+    )
+    for user in users:
+        db.session.add(
+            InAppNotification(
+                usuario_id=user.id,
+                tipo="portal_proveedores_revision",
+                titulo=title[:180],
+                mensaje=body,
+                destino_url=internal_url,
+                creada_en=_now(),
+            )
+        )
+    review_stamp = int((proveedor.revisado_en or _now()).timestamp())
+    _queue_messenger_notifications(
+        users,
+        source_key=f"proveedor:{proveedor.id}:revision:{proveedor.estatus.lower()}:{review_stamp}",
+        title=title,
+        body=body,
+        view_url=url_for(
+            "portal_facturas.finanzas_proveedor_detalle",
+            proveedor_id=proveedor.id,
+            _external=True,
+        ),
+    )
+    try:
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.warning("No se guardaron los avisos de revisión de %s: %s", proveedor.id, exc)
+
+    recipients = []
+    seen = set()
+    for email in [proveedor.correo, *internal_emails]:
+        normalized = _normalize_email(email)
+        if normalized and normalized not in seen:
+            recipients.append(normalized)
+            seen.add(normalized)
+    try:
+        _send_provider_review_email(proveedor, recipients)
+    except Exception as exc:
+        current_app.logger.warning("No se envió el resultado del alta %s: %s", proveedor.id, exc)
 
 
 def _finance_notification_targets() -> tuple[list[Usuario], list[str]]:
@@ -594,6 +805,20 @@ def _notify_finance_invoice(factura: FacturaProveedor, *, corrected: bool = Fals
                     creada_en=_now(),
                 )
             )
+        event_suffix = "corregida" if corrected else "recibida"
+        if corrected:
+            event_suffix = f"{event_suffix}:{int(_now().timestamp())}"
+        _queue_messenger_notifications(
+            users,
+            source_key=f"factura:{factura.id}:{event_suffix}",
+            title=title,
+            body=body,
+            view_url=url_for(
+                "portal_facturas.finanzas_detalle",
+                factura_id=factura.id,
+                _external=True,
+            ),
+        )
         db.session.commit()
     except Exception as exc:
         db.session.rollback()
@@ -792,17 +1017,31 @@ def _send_purchase_order_email(orden: OrdenCompra, recipients: list[str]) -> Non
 def _notify_purchase_order_sent(orden: OrdenCompra) -> bool:
     users, internal_emails = _provider_registration_notification_targets()
     internal_url = url_for("portal_facturas.finanzas_orden_detalle", orden_id=orden.id)
+    title = f"Orden enviada: {orden.folio}"
+    body = f"{orden.proveedor} · ${float(orden.total or 0):,.2f} MXN"
     for user in users:
         db.session.add(
             InAppNotification(
                 usuario_id=user.id,
                 tipo="portal_ordenes_compra",
-                titulo=f"Orden enviada: {orden.folio}"[:180],
-                mensaje=f"{orden.proveedor} · ${float(orden.total or 0):,.2f} MXN",
+                titulo=title[:180],
+                mensaje=body,
                 destino_url=internal_url,
                 creada_en=_now(),
             )
         )
+    sent_stamp = int((orden.enviada_en or _now()).timestamp())
+    _queue_messenger_notifications(
+        users,
+        source_key=f"orden-compra:{orden.id}:enviada:{sent_stamp}",
+        title=title,
+        body=body,
+        view_url=url_for(
+            "portal_facturas.finanzas_orden_detalle",
+            orden_id=orden.id,
+            _external=True,
+        ),
+    )
     try:
         db.session.commit()
     except Exception as exc:
@@ -1099,7 +1338,7 @@ def registro():
                 contacto=contacto[:160],
                 correo=correo[:180],
                 telefono=telefono[:40] or None,
-                estatus="ACTIVO",
+                estatus="PENDIENTE",
             )
             proveedor.set_password(password)
             db.session.add(proveedor)
@@ -1130,7 +1369,6 @@ def registro():
                 proveedor.caratula_bancaria_path = caratula_path
                 proveedor.caratula_bancaria_nombre_original = caratula_original
                 proveedor.caratula_bancaria_tamano = len(caratula_bytes)
-                _sync_provider_registry(proveedor)
                 db.session.commit()
             except (IntegrityError, OSError, ValueError) as exc:
                 db.session.rollback()
@@ -1150,10 +1388,11 @@ def registro():
                     )
             else:
                 _notify_provider_registration(proveedor)
-                session[SESSION_KEY] = proveedor.id
-                session[CSRF_KEY] = secrets.token_urlsafe(32)
-                flash("Tu cuenta quedó creada. Ya puedes enviar tu primera factura.", "success")
-                return redirect(url_for("portal_facturas.nueva_factura"))
+                flash(
+                    "Recibimos tu solicitud. Marco/Mescalera revisará tu información y documentos antes de autorizarte para facturar.",
+                    "success",
+                )
+                return redirect(url_for("portal_facturas.ingresar"))
 
     return render_template("portal_facturas/registro.html")
 
@@ -1171,8 +1410,13 @@ def ingresar():
         ).first()
         if not proveedor or not proveedor.check_password(password):
             flash("Correo o contraseña incorrectos.", "danger")
+        elif proveedor.estatus == "PENDIENTE":
+            flash("Tu alta sigue pendiente de autorización por Marco/Mescalera.", "warning")
+        elif proveedor.estatus == "RECHAZADO":
+            reason = (proveedor.revision_comentario or "Contacta a Marco/Mescalera para conocer el motivo.").strip()
+            flash(f"Tu alta fue rechazada: {reason}", "danger")
         elif proveedor.estatus != "ACTIVO":
-            flash("Tu cuenta no está activa. Contacta al departamento de Finanzas.", "danger")
+            flash("Tu cuenta no está activa. Contacta a Marco/Mescalera.", "danger")
         else:
             proveedor.ultimo_acceso_en = _now()
             db.session.commit()
@@ -1453,6 +1697,7 @@ def finanzas():
 @finanzas_required
 def finanzas_proveedores():
     query_text = (request.args.get("q") or "").strip()
+    selected_status = (request.args.get("estatus") or "").strip().upper()
     query = PortalProveedorUsuario.query
     if query_text:
         like = f"%{query_text}%"
@@ -1465,7 +1710,14 @@ def finanzas_proveedores():
                 PortalProveedorUsuario.correo.ilike(like),
             )
         )
-    proveedores = query.order_by(PortalProveedorUsuario.creado_en.desc()).limit(500).all()
+    if selected_status in {"PENDIENTE", "ACTIVO", "RECHAZADO"}:
+        query = query.filter(PortalProveedorUsuario.estatus == selected_status)
+    else:
+        selected_status = ""
+    proveedores = query.order_by(
+        (PortalProveedorUsuario.estatus == "PENDIENTE").desc(),
+        PortalProveedorUsuario.creado_en.desc(),
+    ).limit(500).all()
     provider_ids = [item.id for item in proveedores]
     invoice_counts = {}
     if provider_ids:
@@ -1479,6 +1731,7 @@ def finanzas_proveedores():
             .all()
         )
     total_proveedores = PortalProveedorUsuario.query.count()
+    pendientes_revision = PortalProveedorUsuario.query.filter_by(estatus="PENDIENTE").count()
     expedientes_completos = PortalProveedorUsuario.query.filter(
         PortalProveedorUsuario.csf_path.isnot(None),
         PortalProveedorUsuario.caratula_bancaria_path.isnot(None),
@@ -1491,6 +1744,8 @@ def finanzas_proveedores():
         total_proveedores=total_proveedores,
         expedientes_completos=expedientes_completos,
         expedientes_pendientes=max(total_proveedores - expedientes_completos, 0),
+        pendientes_revision=pendientes_revision,
+        selected_status=selected_status,
     )
 
 
@@ -1664,6 +1919,44 @@ def finanzas_proveedor_detalle(proveedor_id: int):
         facturas=facturas,
         ordenes=ordenes,
     )
+
+
+@portal_facturas_bp.post("/finanzas/proveedores/<int:proveedor_id>/revision")
+@marco_mescalera_required
+def finanzas_proveedor_revision(proveedor_id: int):
+    _require_csrf()
+    proveedor = db.session.get(PortalProveedorUsuario, proveedor_id)
+    if not proveedor:
+        abort(404)
+    decision = (request.form.get("decision") or "").strip().upper()
+    comment = (request.form.get("comentario") or "").strip()
+    if decision not in {"AUTORIZAR", "RECHAZAR"}:
+        flash("Selecciona Autorizar o Rechazar.", "danger")
+        return redirect(url_for("portal_facturas.finanzas_proveedor_detalle", proveedor_id=proveedor.id))
+    if decision == "RECHAZAR" and not comment:
+        flash("Escribe el motivo del rechazo para informar al proveedor.", "danger")
+        return redirect(url_for("portal_facturas.finanzas_proveedor_detalle", proveedor_id=proveedor.id))
+
+    proveedor.estatus = "ACTIVO" if decision == "AUTORIZAR" else "RECHAZADO"
+    proveedor.revision_comentario = comment or "Alta autorizada por Marco/Mescalera."
+    proveedor.revisado_por_id = current_user.id
+    proveedor.revisado_en = _now()
+    try:
+        if decision == "AUTORIZAR":
+            _sync_provider_registry(proveedor)
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.exception("No se pudo revisar el alta %s", proveedor.id)
+        flash(f"No se pudo guardar la decisión: {exc}", "danger")
+        return redirect(url_for("portal_facturas.finanzas_proveedor_detalle", proveedor_id=proveedor.id))
+
+    _notify_provider_review(proveedor)
+    flash(
+        f"{proveedor.nombre_portal} fue {'autorizado para facturar' if decision == 'AUTORIZAR' else 'rechazado'}.",
+        "success" if decision == "AUTORIZAR" else "warning",
+    )
+    return redirect(url_for("portal_facturas.finanzas_proveedor_detalle", proveedor_id=proveedor.id))
 
 
 @portal_facturas_bp.get("/finanzas/proveedores/<int:proveedor_id>/documento/<string:tipo>")

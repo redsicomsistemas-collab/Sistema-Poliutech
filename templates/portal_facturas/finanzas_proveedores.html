@@ -25,22 +25,24 @@
   </div>
 
   <div class="row g-3 mb-4">
-    <div class="col-md-4"><div class="card pf-card pf-kpi h-100"><div class="card-body"><div class="small text-muted fw-semibold">Proveedores registrados</div><strong class="fs-3">{{ total_proveedores }}</strong></div></div></div>
-    <div class="col-md-4"><div class="card pf-card h-100"><div class="card-body"><div class="small text-muted fw-semibold">Expedientes completos</div><strong class="fs-3 text-success">{{ expedientes_completos }}</strong></div></div></div>
-    <div class="col-md-4"><div class="card pf-card h-100"><div class="card-body"><div class="small text-muted fw-semibold">Documentación pendiente</div><strong class="fs-3 text-warning-emphasis">{{ expedientes_pendientes }}</strong></div></div></div>
+    <div class="col-md-3"><div class="card pf-card pf-kpi h-100"><div class="card-body"><div class="small text-muted fw-semibold">Proveedores registrados</div><strong class="fs-3">{{ total_proveedores }}</strong></div></div></div>
+    <div class="col-md-3"><a class="text-decoration-none text-body" href="{{ url_for('portal_facturas.finanzas_proveedores', estatus='PENDIENTE') }}"><div class="card pf-card h-100 border-warning"><div class="card-body"><div class="small text-muted fw-semibold">Pendientes de autorizar</div><strong class="fs-3 text-warning-emphasis">{{ pendientes_revision }}</strong></div></div></a></div>
+    <div class="col-md-3"><div class="card pf-card h-100"><div class="card-body"><div class="small text-muted fw-semibold">Expedientes completos</div><strong class="fs-3 text-success">{{ expedientes_completos }}</strong></div></div></div>
+    <div class="col-md-3"><div class="card pf-card h-100"><div class="card-body"><div class="small text-muted fw-semibold">Documentación pendiente</div><strong class="fs-3 text-warning-emphasis">{{ expedientes_pendientes }}</strong></div></div></div>
   </div>
 
   <section class="card pf-card border-0 overflow-hidden">
     <div class="card-body border-bottom p-3 p-lg-4">
       <form method="get" class="row g-2 align-items-end">
-        <div class="col-lg-10"><label class="form-label small fw-semibold" for="q">Buscar proveedor</label><input class="form-control" id="q" name="q" value="{{ q }}" placeholder="Razón social, nombre comercial, RFC, contacto o correo"></div>
-        <div class="col-lg-2 d-grid"><button class="btn btn-outline-primary" type="submit">Buscar</button></div>
+        <div class="col-lg-7"><label class="form-label small fw-semibold" for="q">Buscar proveedor</label><input class="form-control" id="q" name="q" value="{{ q }}" placeholder="Razón social, RFC, contacto o correo"></div>
+        <div class="col-lg-3"><label class="form-label small fw-semibold" for="estatus">Autorización</label><select class="form-select" id="estatus" name="estatus"><option value="">Todos</option><option value="PENDIENTE" {{ 'selected' if selected_status == 'PENDIENTE' }}>Pendiente</option><option value="ACTIVO" {{ 'selected' if selected_status == 'ACTIVO' }}>Autorizado</option><option value="RECHAZADO" {{ 'selected' if selected_status == 'RECHAZADO' }}>Rechazado</option></select></div>
+        <div class="col-lg-2 d-grid"><button class="btn btn-outline-primary" type="submit">Filtrar</button></div>
       </form>
     </div>
     {% if proveedores %}
       <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
-          <thead class="table-light"><tr><th>Alta</th><th>Proveedor</th><th>Contacto</th><th>Expediente</th><th>Facturas</th><th></th></tr></thead>
+          <thead class="table-light"><tr><th>Alta</th><th>Proveedor</th><th>Contacto</th><th>Autorización</th><th>Expediente</th><th>Facturas</th><th></th></tr></thead>
           <tbody>
             {% for proveedor in proveedores %}
               {% set expediente_completo = proveedor.csf_path and proveedor.caratula_bancaria_path %}
@@ -48,6 +50,7 @@
                 <td class="text-nowrap"><div class="fw-semibold">{{ proveedor.creado_en.strftime('%d/%m/%Y') }}</div><div class="small text-muted">{{ proveedor.creado_en.strftime('%H:%M') }} h</div></td>
                 <td><a class="fw-bold text-decoration-none" href="{{ url_for('portal_facturas.finanzas_proveedor_detalle', proveedor_id=proveedor.id) }}">{{ proveedor.nombre_portal }}</a><div class="small text-muted">{{ proveedor.razon_social }} · {{ proveedor.rfc }}</div></td>
                 <td><div class="fw-semibold">{{ proveedor.contacto }}</div><div class="small text-muted">{{ proveedor.correo }}{% if proveedor.telefono %} · {{ proveedor.telefono }}{% endif %}</div></td>
+                <td><span class="pf-doc-status {{ 'pf-doc-ok' if proveedor.estatus == 'ACTIVO' else 'pf-doc-pending' }}">{{ 'Autorizado' if proveedor.estatus == 'ACTIVO' else ('Rechazado' if proveedor.estatus == 'RECHAZADO' else 'Pendiente') }}</span></td>
                 <td><span class="pf-doc-status {{ 'pf-doc-ok' if expediente_completo else 'pf-doc-pending' }}">{{ 'Completo' if expediente_completo else 'Pendiente' }}</span></td>
                 <td><span class="badge text-bg-light border">{{ invoice_counts.get(proveedor.id, 0) }}</span></td>
                 <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ url_for('portal_facturas.finanzas_proveedor_detalle', proveedor_id=proveedor.id) }}">Ver expediente</a></td>

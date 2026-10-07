@@ -22,6 +22,7 @@ try:
     from models import (  # noqa: E402
         FacturaProveedor,
         InAppNotification,
+        MessengerNotificationOutbox,
         OrdenCompra,
         PortalProveedorUsuario,
         Usuario,
@@ -128,21 +129,14 @@ class PortalFacturasFlowTest(unittest.TestCase):
             self.assertIn("mescalera@poliutech.com", registration_recipients)
             self.assertIn("sistemas@poliutech.com", registration_recipients)
         self.assertEqual(response.status_code, 302)
-        self.assertIn("/facturas/nueva", response.headers["Location"])
-
-        with open(os.environ["PROVIDER_NUMBERS_JSON_PATH"], encoding="utf-8") as registry_file:
-            provider_rows = json.load(registry_file)
-        portal_row = next(row for row in provider_rows if row.get("numero") == "AAA010101AAA")
-        self.assertEqual(portal_row["empresa"], "Proveedor Prueba SA de CV")
-        self.assertEqual(portal_row["relacion"], "PROVEEDOR")
-        self.assertEqual(portal_row["contacto"], "Ana Proveedor")
-        self.assertEqual(portal_row["correo"], "ana@example.com")
+        self.assertIn("/ingresar", response.headers["Location"])
 
         with app.app_context():
             proveedor_registrado = PortalProveedorUsuario.query.filter_by(
                 rfc="AAA010101AAA"
             ).one()
             provider_id = proveedor_registrado.id
+            self.assertEqual(proveedor_registrado.estatus, "PENDIENTE")
             self.assertTrue(proveedor_registrado.csf_path)
             self.assertTrue(proveedor_registrado.caratula_bancaria_path)
             self.assertEqual(proveedor_registrado.csf_nombre_original, "constancia_fiscal.pdf")
@@ -158,6 +152,100 @@ class PortalFacturasFlowTest(unittest.TestCase):
             }
             self.assertIn("finanzas@example.com", registration_notice_emails)
             self.assertIn("mescalera@poliutech.com", registration_notice_emails)
+            registration_messenger = MessengerNotificationOutbox.query.filter(
+                MessengerNotificationOutbox.source_key.like("portal:proveedor:%:alta-pendiente:%")
+            ).all()
+            self.assertIn(
+                "mescalera@poliutech.com",
+                {notice.correo for notice in registration_messenger},
+            )
+
+        response = provider.get("/portal-facturas/ingresar")
+        response = provider.post(
+            "/portal-facturas/ingresar",
+            data={
+                "csrf_token": _csrf(response),
+                "correo": "ana@example.com",
+                "password": "Segura1234",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("pendiente de autorización".encode("utf-8"), response.data)
+
+        finance = app.test_client()
+        response = finance.post(
+            "/login",
+            data={"nombre": "admin", "password": "AdminTest123"},
+        )
+        self.assertEqual(response.status_code, 302)
+        response = finance.get(f"/portal-facturas/finanzas/proveedores/{provider_id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"Autorizar alta", response.data)
+        response = finance.post(
+            f"/portal-facturas/finanzas/proveedores/{provider_id}/revision",
+            data={"csrf_token": "forged", "decision": "AUTORIZAR"},
+        )
+        self.assertEqual(response.status_code, 403)
+
+        marco_finance = app.test_client()
+        response = marco_finance.post(
+            "/login",
+            data={"nombre": "mescalera", "password": "MarcoTest123"},
+        )
+        self.assertEqual(response.status_code, 302)
+        response = marco_finance.get(
+            f"/portal-facturas/finanzas/proveedores/{provider_id}"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Autorizar alta", response.data)
+        with patch("portal_facturas_routes.smtplib.SMTP") as review_smtp_class:
+            response = marco_finance.post(
+                f"/portal-facturas/finanzas/proveedores/{provider_id}/revision",
+                data={
+                    "csrf_token": _csrf(response),
+                    "decision": "AUTORIZAR",
+                    "comentario": "Expediente fiscal y bancario validado.",
+                },
+            )
+            review_smtp = review_smtp_class.return_value.__enter__.return_value
+            review_smtp.send_message.assert_called_once()
+            self.assertIn(
+                "ana@example.com",
+                set(review_smtp.send_message.call_args.kwargs["to_addrs"]),
+            )
+        self.assertEqual(response.status_code, 302)
+
+        with app.app_context():
+            proveedor_registrado = db.session.get(PortalProveedorUsuario, provider_id)
+            self.assertEqual(proveedor_registrado.estatus, "ACTIVO")
+            self.assertEqual(proveedor_registrado.revisado_por.nombre, "mescalera")
+            review_messenger = MessengerNotificationOutbox.query.filter(
+                MessengerNotificationOutbox.source_key.like("portal:proveedor:%:revision:%")
+            ).all()
+            self.assertIn(
+                "mescalera@poliutech.com",
+                {notice.correo for notice in review_messenger},
+            )
+
+        with open(os.environ["PROVIDER_NUMBERS_JSON_PATH"], encoding="utf-8") as registry_file:
+            provider_rows = json.load(registry_file)
+        portal_row = next(row for row in provider_rows if row.get("numero") == "AAA010101AAA")
+        self.assertEqual(portal_row["empresa"], "Proveedor Prueba SA de CV")
+        self.assertEqual(portal_row["relacion"], "PROVEEDOR")
+        self.assertEqual(portal_row["contacto"], "Ana Proveedor")
+        self.assertEqual(portal_row["correo"], "ana@example.com")
+
+        response = provider.get("/portal-facturas/ingresar")
+        response = provider.post(
+            "/portal-facturas/ingresar",
+            data={
+                "csrf_token": _csrf(response),
+                "correo": "ana@example.com",
+                "password": "Segura1234",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/mis-facturas", response.headers["Location"])
 
         self.assertEqual(ESTATUS["RECIBIDA"]["class"], "status-amber")
         self.assertEqual(ESTATUS["CORRECCION_SOLICITADA"]["class"], "status-amber")
@@ -166,12 +254,6 @@ class PortalFacturasFlowTest(unittest.TestCase):
         self.assertEqual(ESTATUS["RECHAZADA"]["class"], "status-red")
         self.assertEqual(ESTATUS["PAGADA"]["class"], "status-green")
 
-        finance = app.test_client()
-        response = finance.post(
-            "/login",
-            data={"nombre": "admin", "password": "AdminTest123"},
-        )
-        self.assertEqual(response.status_code, 302)
         response = finance.get(
             f"/portal-facturas/finanzas/ordenes-compra/nueva?proveedor_id={provider_id}"
         )
@@ -240,6 +322,13 @@ class PortalFacturasFlowTest(unittest.TestCase):
             self.assertIn(
                 "mescalera@poliutech.com",
                 {notice.usuario.correo for notice in order_notices},
+            )
+            order_messenger = MessengerNotificationOutbox.query.filter(
+                MessengerNotificationOutbox.source_key.like("portal:orden-compra:%")
+            ).all()
+            self.assertIn(
+                "mescalera@poliutech.com",
+                {notice.correo for notice in order_messenger},
             )
 
         response = provider.get("/portal-facturas/ordenes-compra")
@@ -315,13 +404,14 @@ class PortalFacturasFlowTest(unittest.TestCase):
                 {"mescalera@poliutech.com", "umorales@poliutech.com"},
             )
             self.assertTrue(all(notice.destino_url.endswith("/finanzas/1") for notice in notices))
+            invoice_messenger = MessengerNotificationOutbox.query.filter(
+                MessengerNotificationOutbox.source_key.like("portal:factura:%")
+            ).all()
+            self.assertEqual(
+                {notice.correo for notice in invoice_messenger},
+                {"mescalera@poliutech.com", "umorales@poliutech.com"},
+            )
 
-        marco_finance = app.test_client()
-        response = marco_finance.post(
-            "/login",
-            data={"nombre": "mescalera", "password": "MarcoTest123"},
-        )
-        self.assertEqual(response.status_code, 302)
         response = marco_finance.get(f"/portal-facturas/finanzas/{invoice_id}")
         self.assertEqual(response.status_code, 200)
         self.assertNotIn(b"Eliminar factura definitivamente", response.data)
