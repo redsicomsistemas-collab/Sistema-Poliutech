@@ -78,14 +78,21 @@ class PortalFacturasFlowTest(unittest.TestCase):
             )
             uriel.set_password("UrielTest123")
             admin = Usuario(
-                nombre="portal_finanzas_test",
-                nombre_visible="Finanzas Prueba",
+                nombre="admin",
+                nombre_visible="Administrador",
                 correo="finanzas@example.com",
                 telefono="5511111111",
                 rol="ADMIN",
             )
             admin.set_password("AdminTest123")
-            db.session.add_all([marco, uriel, admin])
+            other_admin = Usuario(
+                nombre="otro_admin_portal",
+                nombre_visible="Otro administrador",
+                correo="otro-admin@example.com",
+                rol="ADMIN",
+            )
+            other_admin.set_password("OtroAdminTest123")
+            db.session.add_all([marco, uriel, admin, other_admin])
             db.session.commit()
 
         provider = app.test_client()
@@ -183,6 +190,8 @@ class PortalFacturasFlowTest(unittest.TestCase):
         with app.app_context():
             factura = FacturaProveedor.query.one()
             invoice_id = factura.id
+            xml_path = os.path.join(_upload_dir.name, *factura.xml_path.split("/"))
+            pdf_path = os.path.join(_upload_dir.name, *factura.pdf_path.split("/"))
             self.assertEqual(factura.estatus, "RECIBIDA")
             self.assertEqual(factura.total, 1160.0)
             notices = InAppNotification.query.filter_by(tipo="portal_facturas").all()
@@ -192,10 +201,45 @@ class PortalFacturasFlowTest(unittest.TestCase):
                 {"mescalera@poliutech.com", "umorales@poliutech.com"},
             )
             self.assertTrue(all(notice.destino_url.endswith("/finanzas/1") for notice in notices))
+
+        marco_finance = app.test_client()
+        response = marco_finance.post(
+            "/login",
+            data={"nombre": "mescalera", "password": "MarcoTest123"},
+        )
+        self.assertEqual(response.status_code, 302)
+        response = marco_finance.get(f"/portal-facturas/finanzas/{invoice_id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"Eliminar factura definitivamente", response.data)
+        response = marco_finance.post(
+            f"/portal-facturas/finanzas/{invoice_id}/eliminar",
+            data={"csrf_token": _csrf(response), "confirmacion": "ELIMINAR"},
+        )
+        self.assertEqual(response.status_code, 403)
+        with app.app_context():
+            self.assertIsNotNone(db.session.get(FacturaProveedor, invoice_id))
+
+        other_admin_finance = app.test_client()
+        response = other_admin_finance.post(
+            "/login",
+            data={"nombre": "otro_admin_portal", "password": "OtroAdminTest123"},
+        )
+        self.assertEqual(response.status_code, 302)
+        response = other_admin_finance.get(f"/portal-facturas/finanzas/{invoice_id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"Eliminar factura definitivamente", response.data)
+        response = other_admin_finance.post(
+            f"/portal-facturas/finanzas/{invoice_id}/eliminar",
+            data={"csrf_token": _csrf(response), "confirmacion": "ELIMINAR"},
+        )
+        self.assertEqual(response.status_code, 403)
+        with app.app_context():
+            self.assertIsNotNone(db.session.get(FacturaProveedor, invoice_id))
+
         finance = app.test_client()
         response = finance.post(
             "/login",
-            data={"nombre": "portal_finanzas_test", "password": "AdminTest123"},
+            data={"nombre": "admin", "password": "AdminTest123"},
         )
         self.assertEqual(response.status_code, 302)
         response = finance.get("/portal-facturas/finanzas")
@@ -223,6 +267,7 @@ class PortalFacturasFlowTest(unittest.TestCase):
 
         response = finance.get(f"/portal-facturas/finanzas/{invoice_id}")
         self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Eliminar factura definitivamente", response.data)
         response = finance.post(
             f"/portal-facturas/finanzas/{invoice_id}/estatus",
             data={
@@ -243,6 +288,28 @@ class PortalFacturasFlowTest(unittest.TestCase):
         response = provider.get(f"/portal-facturas/facturas/{invoice_id}")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"SPEI-7788", response.data)
+
+        response = finance.get(f"/portal-facturas/finanzas/{invoice_id}")
+        response = finance.post(
+            f"/portal-facturas/finanzas/{invoice_id}/eliminar",
+            data={"csrf_token": _csrf(response), "confirmacion": "NO"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(f"/finanzas/{invoice_id}", response.headers["Location"])
+        with app.app_context():
+            self.assertIsNotNone(db.session.get(FacturaProveedor, invoice_id))
+
+        response = finance.get(f"/portal-facturas/finanzas/{invoice_id}")
+        response = finance.post(
+            f"/portal-facturas/finanzas/{invoice_id}/eliminar",
+            data={"csrf_token": _csrf(response), "confirmacion": "ELIMINAR"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.headers["Location"].endswith("/portal-facturas/finanzas"))
+        with app.app_context():
+            self.assertIsNone(db.session.get(FacturaProveedor, invoice_id))
+        self.assertFalse(os.path.exists(xml_path))
+        self.assertFalse(os.path.exists(pdf_path))
 
 
 if __name__ == "__main__":

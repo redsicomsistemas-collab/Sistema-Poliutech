@@ -143,6 +143,18 @@ def finanzas_required(view):
     return wrapped
 
 
+def administrador_account_required(view):
+    @wraps(view)
+    @login_required
+    def wrapped(*args, **kwargs):
+        username = (getattr(current_user, "nombre", "") or "").strip().casefold()
+        if username != "admin":
+            abort(403)
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
 def _normalize_rfc(raw: str) -> str:
     return re.sub(r"\s+", "", (raw or "").strip().upper())
 
@@ -1293,6 +1305,33 @@ def finanzas_actualizar_estatus(factura_id: int):
     db.session.commit()
     flash(f"{factura.folio_recepcion} cambió a {ESTATUS[new_status]['label']}.", "success")
     return redirect(url_for("portal_facturas.finanzas_detalle", factura_id=factura.id))
+
+
+@portal_facturas_bp.post("/finanzas/<int:factura_id>/eliminar")
+@administrador_account_required
+def finanzas_eliminar_factura(factura_id: int):
+    _require_csrf()
+    factura = db.session.get(FacturaProveedor, factura_id)
+    if not factura:
+        abort(404)
+    if (request.form.get("confirmacion") or "").strip().upper() != "ELIMINAR":
+        flash("Escribe ELIMINAR para confirmar la eliminación definitiva.", "danger")
+        return redirect(url_for("portal_facturas.finanzas_detalle", factura_id=factura.id))
+
+    folio_recepcion = factura.folio_recepcion
+    stored_paths = (factura.xml_path, factura.pdf_path)
+    db.session.delete(factura)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("No se pudo eliminar la factura %s", factura_id)
+        flash("No se pudo eliminar la factura. Inténtalo nuevamente.", "danger")
+        return redirect(url_for("portal_facturas.finanzas_detalle", factura_id=factura_id))
+
+    _delete_paths(*stored_paths)
+    flash(f"{folio_recepcion} fue eliminada definitivamente.", "success")
+    return redirect(url_for("portal_facturas.finanzas"))
 
 
 @portal_facturas_bp.get("/finanzas/<int:factura_id>/archivo/<string:tipo>")

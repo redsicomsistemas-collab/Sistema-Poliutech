@@ -59,6 +59,17 @@
           <button class="btn btn-primary w-100" type="submit">Guardar decisión</button>
         </form>
       </div></section>
+
+      {% if (current_user.nombre or '')|trim|lower == 'admin' %}
+      <section class="card pf-card border-danger mt-4"><div class="card-header bg-danger text-white py-3 px-4"><h2 class="h5 fw-bold mb-0">Zona de administración</h2></div><div class="card-body p-4">
+        <p class="mb-3">Esta acción elimina definitivamente la factura, su historial y los archivos XML y PDF.</p>
+        <form method="post" action="{{ url_for('portal_facturas.finanzas_eliminar_factura', factura_id=factura.id) }}" onsubmit="return window.confirm('¿Eliminar definitivamente esta factura? Esta acción no se puede deshacer.');">
+          <input type="hidden" name="csrf_token" value="{{ portal_csrf_token() }}">
+          <div class="mb-3"><label class="form-label fw-semibold" for="confirmacion">Escribe ELIMINAR para confirmar</label><input class="form-control" id="confirmacion" name="confirmacion" type="text" pattern="ELIMINAR" autocomplete="off" required></div>
+          <button class="btn btn-danger w-100" type="submit">Eliminar factura definitivamente</button>
+        </form>
+      </div></section>
+      {% endif %}
     </div>
   </div>
 </div>
