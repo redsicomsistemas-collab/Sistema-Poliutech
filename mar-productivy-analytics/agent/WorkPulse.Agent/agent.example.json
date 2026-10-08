@@ -1,0 +1,8 @@
+{
+  "serverUrl": "https://TU-SITIO.example.com",
+  "deviceId": "device-id-asignado",
+  "deviceKey": "clave-secreta-asignada",
+  "sampleIntervalSeconds": 15,
+  "syncIntervalSeconds": 60,
+  "collectWindowTitles": true
+}
