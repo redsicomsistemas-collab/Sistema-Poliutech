@@ -208,6 +208,18 @@
       color: #082a54;
     }
 
+    .received-invoices-cta {
+      background: #8ec5ff;
+      color: #062d58;
+    }
+
+    .quote-cta.received-invoices-cta:hover,
+    .quote-cta.received-invoices-cta:focus-visible,
+    .quote-cta.received-invoices-cta.is-active {
+      background: #b6dbff;
+      color: #041f3d;
+    }
+
     .quote-cta:hover {
       background: #ffcd39;
       color: #0f172a;
@@ -907,10 +919,11 @@
         <span class="fw-bold">M.A.R — {{ active_demo.empresa if is_demo_account else (company_branding.nombre_comercial if company_branding else 'Sistema Poliutech') }}</span>
       </a>
 
-      <div class="topbar-primary-actions{% if contabilidad_can_view() %} has-purchase-orders{% endif %}">
+      <div class="topbar-primary-actions{% if contabilidad_can_view() or facturas_recibidas_can_view() %} has-purchase-orders{% endif %}">
         {% if not is_demo_account or 'cotizaciones' in demo_modules %}<a class="quote-cta fw-bold" href="{{ url_for('cotizador') }}">💰 COTIZAR</a>{% endif %}
         {% if not is_demo_account or 'facturacion' in demo_modules %}<a class="quote-cta invoice-cta fw-bold" href="{{ url_for('facturacion.nueva') }}">🧾 FACTURAR</a>{% endif %}
         {% if contabilidad_can_view() %}<a class="quote-cta purchase-order-cta fw-bold" href="{{ url_for('portal_facturas.finanzas_ordenes_compra') }}">📦 ORDEN DE COMPRA</a>{% endif %}
+        {% if facturas_recibidas_can_view() %}<a class="quote-cta received-invoices-cta fw-bold{% if request.endpoint and request.endpoint.startswith('portal_facturas.finanzas') %} is-active{% endif %}" href="{{ url_for('portal_facturas.finanzas') }}">📥 FACTURAS RECIBIDAS</a>{% endif %}
         {% if not is_demo_account or 'soporte' in demo_modules %}<a class="support-ticket-cta{% if request.path.startswith('/soporte') %} is-active{% endif %}" href="{{ url_for('soporte_tickets') }}" aria-label="Ticket de soporte" title="Ticket de soporte"{% if request.path.startswith('/soporte') %} aria-current="page"{% endif %}><span class="support-ticket-icon" aria-hidden="true">🎫</span><span class="support-ticket-label">TICKET DE SOPORTE</span></a>{% endif %}
       </div>
 
@@ -947,10 +960,11 @@
     <!-- ====== Menu lateral ====== -->
     <aside class="side-menu" id="sideMenu" aria-label="Menu principal">
       <div class="mobile-menu-tools">
-        <div class="topbar-primary-actions{% if contabilidad_can_view() %} has-purchase-orders{% endif %}">
+        <div class="topbar-primary-actions{% if contabilidad_can_view() or facturas_recibidas_can_view() %} has-purchase-orders{% endif %}">
           {% if not is_demo_account or 'cotizaciones' in demo_modules %}<a class="quote-cta fw-bold" href="{{ url_for('cotizador') }}">💰 COTIZAR</a>{% endif %}
           {% if not is_demo_account or 'facturacion' in demo_modules %}<a class="quote-cta invoice-cta fw-bold" href="{{ url_for('facturacion.nueva') }}">🧾 FACTURAR</a>{% endif %}
           {% if contabilidad_can_view() %}<a class="quote-cta purchase-order-cta fw-bold" href="{{ url_for('portal_facturas.finanzas_ordenes_compra') }}">📦 ORDEN DE COMPRA</a>{% endif %}
+          {% if facturas_recibidas_can_view() %}<a class="quote-cta received-invoices-cta fw-bold{% if request.endpoint and request.endpoint.startswith('portal_facturas.finanzas') %} is-active{% endif %}" href="{{ url_for('portal_facturas.finanzas') }}">📥 FACTURAS RECIBIDAS</a>{% endif %}
           {% if not is_demo_account or 'soporte' in demo_modules %}<a class="support-ticket-cta{% if request.path.startswith('/soporte') %} is-active{% endif %}" href="{{ url_for('soporte_tickets') }}" aria-label="Ticket de soporte" title="Ticket de soporte"{% if request.path.startswith('/soporte') %} aria-current="page"{% endif %}><span class="support-ticket-icon" aria-hidden="true">🎫</span><span class="support-ticket-label">TICKET DE SOPORTE</span></a>{% endif %}
         </div>
         <div class="mobile-user-card">
@@ -1004,7 +1018,7 @@
         </div>
         <div class="menu-category">
           <button class="nav-link menu-category-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#menuFinanzas" aria-expanded="{{ 'true' if menu_finanzas_open else 'false' }}"><span>💰 Finanzas</span><span class="menu-category-chevron">▼</span></button>
-          <div class="collapse {{ 'show' if menu_finanzas_open }} menu-category-items" id="menuFinanzas"><a class="nav-link" href="{{ url_for('solicitudes_recursos_index') }}">💵 Fondos</a><a class="nav-link" href="{{ url_for('finanzas_index') }}">🏦 Panel financiero</a><a class="nav-link" href="{{ url_for('facturacion.index') }}">🧾 Facturación</a>{% if contabilidad_can_view() %}<a class="nav-link{% if menu_endpoint.startswith('portal_facturas.finanzas') %} active{% endif %}" href="{{ url_for('portal_facturas.finanzas') }}">📥 Facturas recibidas</a>{% endif %}<a class="nav-link" href="{{ url_for('gastos_viaticos_index') }}">💸 Gastos y viáticos</a>{% if estado_cuenta_recursos_can_view() %}<a class="nav-link" href="{{ url_for('estado_cuenta_recursos_panel') }}">💳 Saldos del equipo</a>{% endif %}{% if gastos_admin_can_view() %}<a class="nav-link" href="{{ url_for('gastos_admin_panel') }}">📊 Gastos administrativos</a>{% endif %}</div>
+          <div class="collapse {{ 'show' if menu_finanzas_open }} menu-category-items" id="menuFinanzas"><a class="nav-link" href="{{ url_for('solicitudes_recursos_index') }}">💵 Fondos</a><a class="nav-link" href="{{ url_for('finanzas_index') }}">🏦 Panel financiero</a><a class="nav-link" href="{{ url_for('facturacion.index') }}">🧾 Facturación</a>{% if facturas_recibidas_can_view() %}<a class="nav-link{% if menu_endpoint.startswith('portal_facturas.finanzas') %} active{% endif %}" href="{{ url_for('portal_facturas.finanzas') }}">📥 Facturas recibidas</a>{% endif %}<a class="nav-link" href="{{ url_for('gastos_viaticos_index') }}">💸 Gastos y viáticos</a>{% if estado_cuenta_recursos_can_view() %}<a class="nav-link" href="{{ url_for('estado_cuenta_recursos_panel') }}">💳 Saldos del equipo</a>{% endif %}{% if gastos_admin_can_view() %}<a class="nav-link" href="{{ url_for('gastos_admin_panel') }}">📊 Gastos administrativos</a>{% endif %}</div>
         </div>
         {% if contabilidad_can_view() %}
         <div class="menu-category">

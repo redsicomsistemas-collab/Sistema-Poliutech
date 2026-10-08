@@ -30,3 +30,34 @@ def can_access_contabilidad(user) -> bool:
 def can_manage_contabilidad(user) -> bool:
     """Las cuentas autorizadas pueden crear, editar y eliminar todo el módulo."""
     return can_access_contabilidad(user)
+
+
+def can_access_facturas_recibidas(user) -> bool:
+    """Acceso exclusivo al panel interno de facturas de proveedores."""
+    if not getattr(user, "is_authenticated", False):
+        return False
+    identities = {
+        (getattr(user, "nombre", "") or "").strip().casefold(),
+        (getattr(user, "nombre_visible", "") or "").strip().casefold(),
+        (getattr(user, "correo", "") or "").strip().casefold(),
+    }
+    allowed_names = (
+        "admin",
+        "marco",
+        "mescalera",
+        "mesacalera",
+        "uriel",
+        "umorales",
+        "hansel",
+        "hjaramillo",
+    )
+    allowed_emails = {
+        "mescalera@poliutech.com",
+        "umorales@poliutech.com",
+        "hjaramillo@poliutech.com",
+    }
+    return bool(identities & allowed_emails) or any(
+        identity == allowed or identity.startswith(f"{allowed} ")
+        for identity in identities
+        for allowed in allowed_names
+    )

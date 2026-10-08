@@ -33,7 +33,7 @@ from sqlalchemy import func, inspect, or_, text
 from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
 
-from contabilidad_access import can_access_contabilidad
+from contabilidad_access import can_access_facturas_recibidas
 from models import (
     FacturaProveedor,
     FacturaProveedorMovimiento,
@@ -210,7 +210,7 @@ def finanzas_required(view):
     @wraps(view)
     @login_required
     def wrapped(*args, **kwargs):
-        if not can_access_contabilidad(current_user):
+        if not can_access_facturas_recibidas(current_user):
             abort(403)
         return view(*args, **kwargs)
 
@@ -413,7 +413,7 @@ def _sync_provider_registry(proveedor: PortalProveedorUsuario) -> None:
 
 
 def _provider_registration_notification_targets() -> tuple[list[Usuario], list[str]]:
-    """Notifica a todos los administradores internos y a Marco."""
+    """Notifica solo a las cuentas internas autorizadas para este portal."""
     users = Usuario.query.order_by(Usuario.id.asc()).all()
     selected_users: list[Usuario] = []
     recipient_emails: list[str] = []
@@ -421,20 +421,7 @@ def _provider_registration_notification_targets() -> tuple[list[Usuario], list[s
     seen_emails: set[str] = set()
 
     for user in users:
-        role = str(getattr(user, "rol", "") or "").strip().upper()
-        identities = {
-            str(getattr(user, "nombre", "") or "").strip().casefold(),
-            str(getattr(user, "nombre_visible", "") or "").strip().casefold(),
-            _normalize_email(getattr(user, "correo", "")),
-        }
-        is_marco = bool(
-            identities & {"marco", "mescalera", "mescalera@poliutech.com"}
-        ) or any(
-            identity.startswith("marco ") or identity.startswith("mescalera ")
-            for identity in identities
-            if identity
-        )
-        if role != "ADMIN" and not is_marco:
+        if not can_access_facturas_recibidas(user):
             continue
         if user.id not in seen_user_ids:
             selected_users.append(user)
@@ -444,7 +431,12 @@ def _provider_registration_notification_targets() -> tuple[list[Usuario], list[s
             recipient_emails.append(email)
             seen_emails.add(email)
 
-    for fallback_email in ("sistemas@poliutech.com", "mescalera@poliutech.com"):
+    for fallback_email in (
+        "sistemas@poliutech.com",
+        "mescalera@poliutech.com",
+        "umorales@poliutech.com",
+        "hjaramillo@poliutech.com",
+    ):
         if fallback_email not in seen_emails:
             recipient_emails.append(fallback_email)
             seen_emails.add(fallback_email)

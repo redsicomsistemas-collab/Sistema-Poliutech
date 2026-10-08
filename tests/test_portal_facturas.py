@@ -5,7 +5,10 @@ import re
 import smtplib
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+
+from contabilidad_access import can_access_facturas_recibidas
 
 
 _upload_dir = tempfile.TemporaryDirectory(prefix="mar_portal_facturas_")
@@ -41,6 +44,32 @@ def _csrf(response) -> str:
     if not match:
         raise AssertionError("No se encontró el token CSRF en la respuesta.")
     return match.group(1).decode()
+
+
+class FacturasRecibidasAccessTest(unittest.TestCase):
+    def _user(self, nombre="", nombre_visible="", correo="", rol="USER"):
+        return SimpleNamespace(
+            is_authenticated=True,
+            nombre=nombre,
+            nombre_visible=nombre_visible,
+            correo=correo,
+            rol=rol,
+        )
+
+    def test_acceso_exclusivo_para_cuentas_indicadas(self):
+        allowed = [
+            self._user(nombre="admin", rol="ADMIN"),
+            self._user(nombre="marco"),
+            self._user(nombre="mescalera"),
+            self._user(nombre="umorales", nombre_visible="Uriel Morales"),
+            self._user(nombre="hjaramillo", correo="hjaramillo@poliutech.com"),
+        ]
+        self.assertTrue(all(can_access_facturas_recibidas(user) for user in allowed))
+        self.assertFalse(
+            can_access_facturas_recibidas(
+                self._user(nombre="otro_admin_portal", rol="ADMIN")
+            )
+        )
 
 
 @unittest.skipIf(app is None, f"Dependencias de integración no disponibles: {_IMPORT_ERROR}")
@@ -129,6 +158,9 @@ class PortalFacturasFlowTest(unittest.TestCase):
             self.assertIn("finanzas@example.com", registration_recipients)
             self.assertIn("mescalera@poliutech.com", registration_recipients)
             self.assertIn("sistemas@poliutech.com", registration_recipients)
+            self.assertIn("umorales@poliutech.com", registration_recipients)
+            self.assertIn("hjaramillo@poliutech.com", registration_recipients)
+            self.assertNotIn("otro-admin@example.com", registration_recipients)
             self.assertEqual(
                 ["ana@example.com"],
                 registration_smtp.send_message.call_args_list[1].kwargs["to_addrs"],
@@ -196,6 +228,10 @@ class PortalFacturasFlowTest(unittest.TestCase):
         self.assertIn(
             b'href="/portal-facturas/finanzas/ordenes-compra"', response.data
         )
+        self.assertIn(b'class="quote-cta received-invoices-cta', response.data)
+        self.assertIn(
+            b'href="/portal-facturas/finanzas"', response.data
+        )
         primary_actions_start = response.data.index(
             b'<div class="topbar-primary-actions'
         )
@@ -203,10 +239,14 @@ class PortalFacturasFlowTest(unittest.TestCase):
         purchase_order_position = response.data.index(
             b"purchase-order-cta", primary_actions_start
         )
+        received_invoices_position = response.data.index(
+            b"received-invoices-cta", primary_actions_start
+        )
         support_position = response.data.index(
             b"support-ticket-cta", primary_actions_start
         )
-        self.assertLess(purchase_order_position, support_position)
+        self.assertLess(purchase_order_position, received_invoices_position)
+        self.assertLess(received_invoices_position, support_position)
         self.assertLess(support_position, primary_actions_end)
 
         other_admin_finance = app.test_client()
@@ -218,8 +258,10 @@ class PortalFacturasFlowTest(unittest.TestCase):
         response = other_admin_finance.get(
             f"/portal-facturas/finanzas/proveedores/{provider_id}"
         )
+        self.assertEqual(response.status_code, 403)
+        response = other_admin_finance.get("/")
         self.assertEqual(response.status_code, 200)
-        self.assertNotIn(b"Autorizar alta", response.data)
+        self.assertNotIn(b'class="quote-cta received-invoices-cta', response.data)
         response = other_admin_finance.post(
             f"/portal-facturas/finanzas/proveedores/{provider_id}/revision",
             data={"csrf_token": "forged", "decision": "AUTORIZAR"},
@@ -237,6 +279,17 @@ class PortalFacturasFlowTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Autorizar alta", response.data)
+        self.assertIn(b'class="quote-cta received-invoices-cta', response.data)
+
+        uriel_finance = app.test_client()
+        response = uriel_finance.post(
+            "/login",
+            data={"nombre": "umorales", "password": "UrielTest123"},
+        )
+        self.assertEqual(response.status_code, 302)
+        response = uriel_finance.get("/portal-facturas/finanzas")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'class="quote-cta received-invoices-cta', response.data)
         with patch("portal_facturas_routes.smtplib.SMTP") as review_smtp_class:
             response = finance.post(
                 f"/portal-facturas/finanzas/proveedores/{provider_id}/revision",
@@ -513,11 +566,10 @@ class PortalFacturasFlowTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 302)
         response = other_admin_finance.get(f"/portal-facturas/finanzas/{invoice_id}")
-        self.assertEqual(response.status_code, 200)
-        self.assertNotIn(b"Eliminar factura definitivamente", response.data)
+        self.assertEqual(response.status_code, 403)
         response = other_admin_finance.post(
             f"/portal-facturas/finanzas/{invoice_id}/eliminar",
-            data={"csrf_token": _csrf(response), "confirmacion": "ELIMINAR"},
+            data={"csrf_token": "forged", "confirmacion": "ELIMINAR"},
         )
         self.assertEqual(response.status_code, 403)
         with app.app_context():
@@ -620,6 +672,9 @@ class PortalFacturasFlowTest(unittest.TestCase):
             )
             self.assertIn("finanzas@example.com", status_recipients)
             self.assertIn("mescalera@poliutech.com", status_recipients)
+            self.assertIn("umorales@poliutech.com", status_recipients)
+            self.assertIn("hjaramillo@poliutech.com", status_recipients)
+            self.assertNotIn("otro-admin@example.com", status_recipients)
             status_message = status_smtp.send_message.call_args_list[0].args[0]
             self.assertIn("Pagada", status_message["Subject"])
             self.assertIn("SPEI-7788", status_message.get_body(preferencelist=("plain",)).get_content())

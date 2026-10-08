@@ -17,7 +17,7 @@ from email.message import EmailMessage
 from email.utils import formataddr, getaddresses, parseaddr
 from html import escape
 import xml.etree.ElementTree as ET
-from contabilidad_access import can_access_contabilidad
+from contabilidad_access import can_access_contabilidad, can_access_facturas_recibidas
 from utils.pdf_conditions import format_pdf_condition_lines
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from werkzeug.utils import secure_filename
@@ -3567,6 +3567,7 @@ def inject_endpoint_helpers():
     return {
         "endpoint_exists": endpoint_exists,
         "contabilidad_can_view": lambda: can_access_contabilidad(current_user),
+        "facturas_recibidas_can_view": lambda: can_access_facturas_recibidas(current_user),
         "gastos_admin_can_view": lambda: _gastos_admin_can_view(),
         "estado_cuenta_recursos_can_view": lambda: _estado_cuenta_recursos_can_view(),
         "evaluacion_departamental_can_view": lambda: _evaluacion_departamental_can_view(),
