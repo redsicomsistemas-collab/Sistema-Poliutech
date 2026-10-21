@@ -13694,7 +13694,11 @@ def _build_cotizacion_pdf_response(c: Cotizacion):
         data,
         colWidths=[12*mm, 78*mm, 16*mm, 16*mm, 24*mm, 22*mm, 22*mm],
         repeatRows=1,
-        hAlign="CENTER"
+        hAlign="CENTER",
+        # A concept can be taller than the printable frame. ReportLab cannot
+        # move such a row to another page, so allow the row itself to split.
+        splitByRow=1,
+        splitInRow=1,
     )
     tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(MAR_BLUE)),
