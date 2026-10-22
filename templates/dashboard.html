@@ -423,15 +423,15 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
       <h5 class="mb-0">Seguimiento comercial</h5>
       <div class="btn-group flex-wrap">
-        <a class="btn btn-sm {{ 'btn-primary commercial-filter-active' if dashboard_filters.bandeja == 'mis' else 'btn-outline-primary' }}" href="{{ url_for('index', bandeja='mis', vista=dashboard_filters.vista) }}" aria-current="{{ 'page' if dashboard_filters.bandeja == 'mis' else 'false' }}">Mis cotizaciones</a>
-        <a class="btn btn-sm {{ 'btn-secondary commercial-filter-active' if dashboard_filters.bandeja == 'sin_asignar' else 'btn-outline-secondary' }}" href="{{ url_for('index', bandeja='sin_asignar', vista=dashboard_filters.vista) }}" aria-current="{{ 'page' if dashboard_filters.bandeja == 'sin_asignar' else 'false' }}">Sin asignar</a>
+        <a class="btn btn-sm {{ 'btn-primary commercial-filter-active' if dashboard_filters.bandeja == 'mis' else 'btn-outline-primary' }}" href="{{ url_for('index', bandeja='mis', vista=dashboard_filters.vista, region=dashboard_filters.region) }}" aria-current="{{ 'page' if dashboard_filters.bandeja == 'mis' else 'false' }}">Mis cotizaciones</a>
+        <a class="btn btn-sm {{ 'btn-secondary commercial-filter-active' if dashboard_filters.bandeja == 'sin_asignar' else 'btn-outline-secondary' }}" href="{{ url_for('index', bandeja='sin_asignar', vista=dashboard_filters.vista, region=dashboard_filters.region) }}" aria-current="{{ 'page' if dashboard_filters.bandeja == 'sin_asignar' else 'false' }}">Sin asignar</a>
       </div>
     </div>
     <div class="row g-2 text-center">
-      <div class="col-6 col-lg-3"><a class="card card-body text-decoration-none border-danger {{ 'commercial-filter-active' if dashboard_filters.bandeja == 'vencidas' else '' }}" href="{{ url_for('index', bandeja='vencidas', vista=dashboard_filters.vista) }}"><strong class="fs-3 text-danger">{{ seguimiento_metricas.vencidas or 0 }}</strong><span>Vencidas</span></a></div>
-      <div class="col-6 col-lg-3"><a class="card card-body text-decoration-none border-warning {{ 'commercial-filter-active' if dashboard_filters.bandeja == 'hoy' else '' }}" href="{{ url_for('index', bandeja='hoy', vista=dashboard_filters.vista) }}"><strong class="fs-3 text-warning">{{ seguimiento_metricas.hoy or 0 }}</strong><span>Para hoy</span></a></div>
-      <div class="col-6 col-lg-3"><a class="card card-body text-decoration-none border-success {{ 'commercial-filter-active' if dashboard_filters.bandeja == 'proximas' else '' }}" href="{{ url_for('index', bandeja='proximas', vista=dashboard_filters.vista) }}"><strong class="fs-3 text-success">{{ seguimiento_metricas.proximas or 0 }}</strong><span>Próximas</span></a></div>
-      <div class="col-6 col-lg-3"><a class="card card-body text-decoration-none border-secondary {{ 'commercial-filter-active' if dashboard_filters.bandeja == 'sin_asignar' else '' }}" href="{{ url_for('index', bandeja='sin_asignar', vista=dashboard_filters.vista) }}"><strong class="fs-3 text-secondary">{{ seguimiento_metricas.sin_asignar or 0 }}</strong><span>Sin asignar</span></a></div>
+      <div class="col-6 col-lg-3"><a class="card card-body text-decoration-none border-danger {{ 'commercial-filter-active' if dashboard_filters.bandeja == 'vencidas' else '' }}" href="{{ url_for('index', bandeja='vencidas', vista=dashboard_filters.vista, region=dashboard_filters.region) }}"><strong class="fs-3 text-danger">{{ seguimiento_metricas.vencidas or 0 }}</strong><span>Vencidas</span></a></div>
+      <div class="col-6 col-lg-3"><a class="card card-body text-decoration-none border-warning {{ 'commercial-filter-active' if dashboard_filters.bandeja == 'hoy' else '' }}" href="{{ url_for('index', bandeja='hoy', vista=dashboard_filters.vista, region=dashboard_filters.region) }}"><strong class="fs-3 text-warning">{{ seguimiento_metricas.hoy or 0 }}</strong><span>Para hoy</span></a></div>
+      <div class="col-6 col-lg-3"><a class="card card-body text-decoration-none border-success {{ 'commercial-filter-active' if dashboard_filters.bandeja == 'proximas' else '' }}" href="{{ url_for('index', bandeja='proximas', vista=dashboard_filters.vista, region=dashboard_filters.region) }}"><strong class="fs-3 text-success">{{ seguimiento_metricas.proximas or 0 }}</strong><span>Próximas</span></a></div>
+      <div class="col-6 col-lg-3"><a class="card card-body text-decoration-none border-secondary {{ 'commercial-filter-active' if dashboard_filters.bandeja == 'sin_asignar' else '' }}" href="{{ url_for('index', bandeja='sin_asignar', vista=dashboard_filters.vista, region=dashboard_filters.region) }}"><strong class="fs-3 text-secondary">{{ seguimiento_metricas.sin_asignar or 0 }}</strong><span>Sin asignar</span></a></div>
     </div>
     <details class="mt-3">
       <summary class="fw-semibold">Carga por asesor</summary>
@@ -524,19 +524,19 @@
         <ul class="nav nav-pills quote-tabs" aria-label="Vistas de cotizaciones">
           <li class="nav-item">
             <a class="nav-link {{ 'active' if dashboard_filters.vista == 'todos' else '' }}"
-               href="{{ url_for('index', vista='todos') }}">TODOS</a>
+               href="{{ url_for('index', vista='todos', region=dashboard_filters.region) }}">TODOS</a>
           </li>
           <li class="nav-item">
             <a class="nav-link {{ 'active' if dashboard_filters.vista == 'activas' else '' }}"
-               href="{{ url_for('index', vista='activas') }}">EN PROCESO</a>
+               href="{{ url_for('index', vista='activas', region=dashboard_filters.region) }}">EN PROCESO</a>
           </li>
           <li class="nav-item">
             <a class="nav-link {{ 'active' if dashboard_filters.vista == 'ganadas' else '' }} bg-success-subtle text-success-emphasis"
-               href="{{ url_for('index', vista='ganadas') }}">GANADOS / CONTRATADOS</a>
+               href="{{ url_for('index', vista='ganadas', region=dashboard_filters.region) }}">GANADOS / CONTRATADOS</a>
           </li>
           <li class="nav-item">
             <a class="nav-link {{ 'active' if dashboard_filters.vista == 'perdidas' else '' }} bg-danger-subtle text-danger-emphasis"
-               href="{{ url_for('index', vista='perdidas') }}">PERDIDAS / 0%</a>
+               href="{{ url_for('index', vista='perdidas', region=dashboard_filters.region) }}">PERDIDAS / 0%</a>
           </li>
         </ul>
       </div>
@@ -610,8 +610,7 @@
         </div>
         <div class="col-xl-2 col-lg-3 col-md-6">
           <label class="form-label small fw-bold text-secondary mb-1">Región</label>
-          <select id="filtro-region" class="form-select form-select-sm">
-            <option value="">Todas</option>
+          <select id="filtro-region" class="form-select form-select-sm" required>
             {% for region in regiones_cotizacion %}
             <option value="{{ region }}" {% if dashboard_filters.region == region %}selected{% endif %}>{{ region }}</option>
             {% endfor %}
@@ -1553,7 +1552,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }));
 
   limpiar.addEventListener("click", () => {
-    window.location.href = "{{ url_for('index', vista=dashboard_filters.vista) }}";
+    window.location.href = "{{ url_for('index', vista=dashboard_filters.vista, region='MÉXICO') }}";
   });
 
   if (exportarExcel) {

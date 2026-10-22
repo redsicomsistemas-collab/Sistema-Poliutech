@@ -75,7 +75,7 @@ ESPECIALIDADES_COTIZACION = [
     "Inyección",
     "Construcción",
 ]
-REGIONES_COTIZACION = ["USA", "MÉXICO", "PANAMÁ"]
+REGIONES_COTIZACION = ["USA", "MÉXICO", "LATAM"]
 
 
 def normalize_region(value, default="MÉXICO") -> str:
@@ -89,12 +89,33 @@ def normalize_region(value, default="MÉXICO") -> str:
         "ESTADOS UNIDOS": "USA",
         "MEXICO": "MÉXICO",
         "MX": "MÉXICO",
-        "PANAMA": "PANAMÁ",
-        "PA": "PANAMÁ",
+        "LATAM": "LATAM",
+        "LATAM 8": "LATAM",
+        "LATAM8": "LATAM",
+        # Compatibilidad con cotizaciones creadas antes del cambio de nombre.
+        "PANAMA": "LATAM",
+        "PA": "LATAM",
     }
     if normalized in aliases:
         return aliases[normalized]
     return default if default in REGIONES_COTIZACION else ""
+
+
+def _cotizacion_region_predicate(region: str):
+    """Devuelve el filtro SQL de una sucursal, incluyendo datos históricos."""
+    region = normalize_region(region, default="")
+    normalized = db.func.upper(db.func.trim(db.func.coalesce(Cotizacion.region, "")))
+    if region == "USA":
+        return normalized.in_(("USA", "US", "EEUU", "EE UU", "ESTADOS UNIDOS"))
+    if region == "LATAM":
+        return normalized.in_(("LATAM", "LATAM 8", "LATAM8", "PANAMÁ", "PANAMA", "PA"))
+    if region == "MÉXICO":
+        # Todo registro histórico que no identifica otra sucursal pertenece a México.
+        return ~normalized.in_((
+            "USA", "US", "EEUU", "EE UU", "ESTADOS UNIDOS",
+            "LATAM", "LATAM 8", "LATAM8", "PANAMÁ", "PANAMA", "PA",
+        ))
+    return None
 PROSPECT_STATUS_OPTIONS = [
     "PENDIENTE",
     "CONTACTADO",
@@ -4741,12 +4762,12 @@ def ensure_schema():
         if "region" in cols:
             db.session.execute(text("""
                 UPDATE cotizacion
-                SET region = 'MÉXICO'
-                WHERE region IS NULL OR TRIM(region) = ''
-                   OR UPPER(TRIM(region)) NOT IN ('USA', 'MÉXICO', 'MEXICO', 'PANAMÁ', 'PANAMA')
+                SET region = CASE
+                    WHEN UPPER(TRIM(COALESCE(region, ''))) IN ('USA', 'US', 'EEUU', 'EE UU', 'ESTADOS UNIDOS') THEN 'USA'
+                    WHEN UPPER(TRIM(COALESCE(region, ''))) IN ('LATAM', 'LATAM 8', 'LATAM8', 'PANAMÁ', 'PANAMA', 'PA') THEN 'LATAM'
+                    ELSE 'MÉXICO'
+                END
             """))
-            db.session.execute(text("UPDATE cotizacion SET region = 'MÉXICO' WHERE UPPER(TRIM(region)) = 'MEXICO'"))
-            db.session.execute(text("UPDATE cotizacion SET region = 'PANAMÁ' WHERE UPPER(TRIM(region)) = 'PANAMA'"))
             db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_cotizacion_region ON cotizacion (region)"))
         if "estatus_aprobacion" in cols and "estatus" in cols:
             db.session.execute(text("""
@@ -5816,7 +5837,7 @@ def _build_dashboard_cotizaciones_query(
 
     region = normalize_region(region, default="")
     if region:
-        q = q.filter(Cotizacion.region == region)
+        q = q.filter(_cotizacion_region_predicate(region))
 
     responsable = (responsable or "").strip().lower()
     if responsable:
@@ -7608,7 +7629,7 @@ def index():
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
     asignado_a = (request.args.get("asignado_a") or "").strip()
-    region = normalize_region(request.args.get("region"), default="")
+    region = normalize_region(request.args.get("region"))
     vista = (request.args.get("vista") or "todos").strip().lower()
     if vista not in {"todos", "activas", "ganadas", "perdidas"}:
         vista = "todos"
@@ -7647,8 +7668,8 @@ def index():
             vista=vista,
         )
     except ValueError:
-        base_query = _build_dashboard_cotizaciones_query(vista=vista)
-        dashboard_filters = {"folio": "", "desde": "", "hasta": "", "estatus": "", "cliente": "", "proyecto": "", "especialidad": "", "especialidad_descripcion": "", "responsable": "", "asignado_a": "", "region": "", "bandeja": bandeja, "vista": vista}
+        base_query = _build_dashboard_cotizaciones_query(region="MÉXICO", vista=vista)
+        dashboard_filters = {"folio": "", "desde": "", "hasta": "", "estatus": "", "cliente": "", "proyecto": "", "especialidad": "", "especialidad_descripcion": "", "responsable": "", "asignado_a": "", "region": "MÉXICO", "bandeja": bandeja, "vista": vista}
 
     ahora = now_cdmx_naive()
     inicio_hoy = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -7680,7 +7701,7 @@ def index():
         importe_vivas_query.with_entities(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar()
         or 0
     )
-    historical_query = _build_dashboard_cotizaciones_query(vista="historico")
+    historical_query = _build_dashboard_cotizaciones_query(region=region, vista="historico")
     total_importe_historico = (
         historical_query.with_entities(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar()
         or 0
@@ -7709,7 +7730,7 @@ def index():
     usuarios_asignables = Usuario.query.order_by(
         db.func.lower(db.func.coalesce(Usuario.nombre_visible, Usuario.nombre))
     ).all()
-    seguimiento_base = _build_dashboard_cotizaciones_query(vista="activas")
+    seguimiento_base = _build_dashboard_cotizaciones_query(region=region, vista="activas")
     seguimiento_metricas = {
         "vencidas": seguimiento_base.filter(Cotizacion.proximo_seguimiento < inicio_hoy).count(),
         "hoy": seguimiento_base.filter(
@@ -7730,6 +7751,7 @@ def index():
             db.and_(
                 Cotizacion.responsable_usuario_id == Usuario.id,
                 Cotizacion.eliminada_en.is_(None),
+                _cotizacion_region_predicate(region),
             ),
         )
         .group_by(Usuario.id, Usuario.nombre, Usuario.nombre_visible)
@@ -9725,6 +9747,8 @@ def api_mobile_pending_quotes():
     query = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
     query = query.filter(Cotizacion.eliminada_en.is_(None))
     query = query.filter(db.func.upper(Cotizacion.estatus_aprobacion).in_(["EN REVISIÓN", "EN REVISION"]))
+    region = normalize_region(request.args.get("region"))
+    query = query.filter(_cotizacion_region_predicate(region))
 
     items = []
     for cot in query.order_by(Cotizacion.fecha.desc()).limit(100).all():
@@ -9742,13 +9766,15 @@ def api_mobile_pending_quotes():
             "cliente": cot.cliente.nombre_cliente if cot.cliente else "",
             "pdf_url": _mobile_quote_pdf_url(cot.id),
         })
-    return jsonify({"ok": True, "items": items})
+    return jsonify({"ok": True, "items": items, "valid_regiones": REGIONES_COTIZACION})
 
 
 @app.route("/api/mobile/dashboard/summary", methods=["GET"])
 @require_mobile_auth
 def api_mobile_dashboard_summary():
     query = _cotizaciones_activas_query()
+    region = normalize_region(request.args.get("region"))
+    query = query.filter(_cotizacion_region_predicate(region))
 
     total_cotizaciones = query.count()
     total_importe = float(
@@ -9789,13 +9815,12 @@ def api_mobile_dashboard_summary():
 @require_mobile_auth
 def api_mobile_quotes():
     estatus = (request.args.get("estatus") or "").strip().upper()
-    region = normalize_region(request.args.get("region"), default="")
+    region = normalize_region(request.args.get("region"))
     query = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
     query = query.filter(Cotizacion.eliminada_en.is_(None))
     if estatus:
         query = query.filter(Cotizacion.estatus == estatus)
-    if region:
-        query = query.filter(Cotizacion.region == region)
+    query = query.filter(_cotizacion_region_predicate(region))
 
     items = []
     for cot in query.order_by(Cotizacion.fecha.desc()).all():
@@ -11274,7 +11299,7 @@ def bulk_eliminar_filtradas():
     especialidad_s = (filters.get("especialidad") or "").strip()
     especialidad_descripcion_s = (filters.get("especialidad_descripcion") or "").strip()
     responsable_s = (filters.get("responsable") or "").strip()
-    region_s = normalize_region(filters.get("region"), default="")
+    region_s = normalize_region(filters.get("region"))
     vista_s = (filters.get("vista") or "todos").strip().lower()
 
     try:
@@ -11364,15 +11389,14 @@ def restaurar_cotizacion(cot_id: int):
 def list_cotizaciones():
     page = int(request.args.get("p", 1) or 1)
     per_page = 25
-    region = normalize_region(request.args.get("region"), default="")
+    region = normalize_region(request.args.get("region"))
 
     q = _cotizaciones_activas_query()
     if is_demo_user():
         q = q.filter(Cotizacion.responsable_usuario_id == current_user.id)
     elif not is_admin():
         q = q.filter(Cotizacion.responsable == responsable_actual())
-    if region:
-        q = q.filter(Cotizacion.region == region)
+    q = q.filter(_cotizacion_region_predicate(region))
 
     q = q.order_by(Cotizacion.fecha.desc())
 
@@ -12980,7 +13004,7 @@ def export_dashboard_cotizaciones_xlsx():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
-    region = normalize_region(request.args.get("region"), default="")
+    region = normalize_region(request.args.get("region"))
     vista = (request.args.get("vista") or "todos").strip().lower()
 
     try:
@@ -13258,7 +13282,7 @@ def export_dashboard_followups_pdf():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
-    region = normalize_region(request.args.get("region"), default="")
+    region = normalize_region(request.args.get("region"))
     vista = (request.args.get("vista") or "todos").strip().lower()
 
     try:
@@ -13452,7 +13476,7 @@ def api_dashboard_filter_summary():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
-    region = normalize_region(request.args.get("region"), default="")
+    region = normalize_region(request.args.get("region"))
     vista = (request.args.get("vista") or "todos").strip().lower()
     bandeja = (request.args.get("bandeja") or "").strip().lower()
 
@@ -13833,7 +13857,7 @@ def api_cotizaciones_search():
         q = q.filter(Cotizacion.responsable == responsable_actual())
 
     estatus = (request.args.get("estatus") or "").strip()
-    region = normalize_region(request.args.get("region"), default="")
+    region = normalize_region(request.args.get("region"))
     fi = (request.args.get("fi") or "").strip()
     ff = (request.args.get("ff") or "").strip()
     mmin = (request.args.get("mmin") or "").strip()
@@ -13841,8 +13865,7 @@ def api_cotizaciones_search():
 
     if estatus:
         q = q.filter(Cotizacion.estatus == estatus)
-    if region:
-        q = q.filter(Cotizacion.region == region)
+    q = q.filter(_cotizacion_region_predicate(region))
     if fi:
         try: q = q.filter(Cotizacion.fecha >= datetime.fromisoformat(fi))
         except Exception: pass
@@ -13890,7 +13913,7 @@ def api_dashboard_metrics():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
-    region = normalize_region(request.args.get("region"), default="")
+    region = normalize_region(request.args.get("region"))
     vista = (request.args.get("vista") or "todos").strip().lower()
     bandeja = (request.args.get("bandeja") or "").strip().lower()
 
@@ -13947,7 +13970,7 @@ def api_dashboard_status_breakdown():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
-    region = normalize_region(request.args.get("region"), default="")
+    region = normalize_region(request.args.get("region"))
     vista = (request.args.get("vista") or "todos").strip().lower()
     bandeja = (request.args.get("bandeja") or "").strip().lower()
 
@@ -13994,7 +14017,7 @@ def api_dashboard_outcome_breakdown():
         "especialidad": (request.args.get("especialidad") or "").strip(),
         "especialidad_descripcion": (request.args.get("especialidad_descripcion") or "").strip(),
         "responsable": (request.args.get("responsable") or "").strip(),
-        "region": normalize_region(request.args.get("region"), default=""),
+        "region": normalize_region(request.args.get("region")),
     }
 
     try:

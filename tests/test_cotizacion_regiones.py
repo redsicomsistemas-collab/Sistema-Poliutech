@@ -45,7 +45,7 @@ class CotizacionRegionesTest(unittest.TestCase):
             session["_user_id"] = str(self.user_id)
             session["_fresh"] = True
 
-    def _create_quote(self, region="PANAMÁ"):
+    def _create_quote(self, region="LATAM"):
         payload = {
             "cliente": "Cliente regional",
             "empresa": "Empresa regional",
@@ -75,9 +75,10 @@ class CotizacionRegionesTest(unittest.TestCase):
             return Cotizacion.query.one().id
 
     def test_catalogo_y_normalizacion(self):
-        self.assertEqual(REGIONES_COTIZACION, ["USA", "MÉXICO", "PANAMÁ"])
+        self.assertEqual(REGIONES_COTIZACION, ["USA", "MÉXICO", "LATAM"])
         self.assertEqual(normalize_region("mexico"), "MÉXICO")
-        self.assertEqual(normalize_region("Panama"), "PANAMÁ")
+        self.assertEqual(normalize_region("Panama"), "LATAM")
+        self.assertEqual(normalize_region("latam8"), "LATAM")
         self.assertEqual(normalize_region("Estados Unidos"), "USA")
         self.assertEqual(normalize_region("Europa", default=""), "")
 
@@ -90,7 +91,7 @@ class CotizacionRegionesTest(unittest.TestCase):
         quote_id = self._create_quote()
         with app.app_context():
             quote = db.session.get(Cotizacion, quote_id)
-            self.assertEqual(quote.region, "PANAMÁ")
+            self.assertEqual(quote.region, "LATAM")
             with patch("app.is_admin", return_value=True):
                 self.assertEqual(_build_dashboard_cotizaciones_query(region="PANAMA").count(), 1)
                 self.assertEqual(_build_dashboard_cotizaciones_query(region="USA").count(), 0)
@@ -98,11 +99,11 @@ class CotizacionRegionesTest(unittest.TestCase):
         response = self.client.get("/?region=PANAMA")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"PTCH-", response.data)
-        self.assertIn("PANAMÁ".encode("utf-8"), response.data)
+        self.assertIn(b"LATAM", response.data)
 
         response = self.client.get(f"/cotizaciones/{quote_id}")
         self.assertEqual(response.status_code, 200)
-        self.assertIn("PANAMÁ".encode("utf-8"), response.data)
+        self.assertIn(b"LATAM", response.data)
 
         update_payload = {
             "cliente": "Cliente regional",
@@ -181,6 +182,50 @@ class CotizacionRegionesTest(unittest.TestCase):
                 text("SELECT region FROM cotizacion WHERE folio = 'HIST-001'")
             ).scalar_one()
             self.assertEqual(region, "MÉXICO")
+
+    def test_migracion_renombra_panama_como_latam(self):
+        with app.app_context():
+            db.session.execute(text(
+                "INSERT INTO cotizacion (folio, fecha, estatus, region) "
+                "VALUES ('LEGACY-PA', CURRENT_TIMESTAMP, '0%', 'PANAMÁ')"
+            ))
+            db.session.commit()
+
+            ensure_schema()
+
+            region = db.session.execute(
+                text("SELECT region FROM cotizacion WHERE folio = 'LEGACY-PA'")
+            ).scalar_one()
+            self.assertEqual(region, "LATAM")
+
+    def test_dashboard_separa_importes_y_usa_mexico_por_default(self):
+        with app.app_context():
+            db.session.add_all([
+                Cotizacion(folio="MX-001", region="MÉXICO", total=100),
+                Cotizacion(folio="US-001", region="USA", total=200),
+                Cotizacion(folio="LA-001", region="LATAM", total=300),
+            ])
+            db.session.commit()
+
+        mexico = self.client.get("/api/dashboard/metrics")
+        usa = self.client.get("/api/dashboard/metrics?region=USA")
+        latam = self.client.get("/api/dashboard/metrics?region=LATAM")
+
+        self.assertEqual(mexico.get_json()["kpis"]["total_importe"], 100.0)
+        self.assertEqual(usa.get_json()["kpis"]["total_importe"], 200.0)
+        self.assertEqual(latam.get_json()["kpis"]["total_importe"], 300.0)
+
+        dashboard = self.client.get("/")
+        self.assertIn(b"MX-001", dashboard.data)
+        self.assertNotIn(b"US-001", dashboard.data)
+        self.assertNotIn(b"LA-001", dashboard.data)
+        self.assertIn(b"$100.00", dashboard.data)
+
+        latam_dashboard = self.client.get("/?region=LATAM")
+        self.assertIn(b"LA-001", latam_dashboard.data)
+        self.assertNotIn(b"MX-001", latam_dashboard.data)
+        self.assertNotIn(b"US-001", latam_dashboard.data)
+        self.assertIn(b"$300.00", latam_dashboard.data)
 
 
 if __name__ == "__main__":
