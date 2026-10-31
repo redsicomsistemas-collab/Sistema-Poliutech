@@ -193,6 +193,9 @@
 .quote-create-item-header { display: flex; align-items: center; gap: .65rem; padding: .65rem .8rem; border-bottom: 1px solid #e4eaf0; border-radius: 16px 16px 0 0; background: #f7f9fb; }
 .quote-item-number { display: grid; flex: 0 0 auto; width: 28px; height: 28px; place-items: center; border-radius: 8px; color: #fff; background: var(--quote-navy); font-size: .76rem; font-weight: 800; }
 .quote-item-preview { min-width: 0; flex: 1; overflow: hidden; color: #40536a; font-size: .8rem; text-overflow: ellipsis; white-space: nowrap; }
+.quote-item-edit { padding: .2rem .25rem; border: 0; border-radius: 6px; background: transparent; text-align: left; cursor: text; }
+.quote-item-edit:hover { color: var(--quote-blue); background: #eaf3fb; }
+.quote-item-edit:focus-visible { outline: 2px solid #3d91d5; outline-offset: 2px; }
 .quote-item-header-total { flex: 0 0 auto; color: var(--quote-success); font-size: .88rem; font-weight: 800; }
 .quote-row-actions { display: inline-flex; flex: 0 0 auto; gap: .3rem; }
 .quote-row-actions .btn { width: 30px; height: 30px; padding: 0 !important; display: grid; place-items: center; border-radius: 8px; }
@@ -230,9 +233,7 @@
 .quote-conditions-card .quote-disclosure summary { padding: 1.15rem 3rem 1.15rem 1.35rem; }
 
 .quote-review-bar {
-  position: sticky;
-  z-index: 35;
-  bottom: .75rem;
+  position: static;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -243,7 +244,6 @@
   border-radius: 16px;
   background: rgba(255, 255, 255, .94);
   box-shadow: 0 16px 38px rgba(7, 35, 68, .16);
-  backdrop-filter: blur(14px);
   scroll-margin-top: 1rem;
 }
 
@@ -295,7 +295,7 @@ html[data-bs-theme="dark"] .quote-workspace-shell .form-select { color: #edf3fb;
 }
 
 @media (max-width: 767.98px) {
-  .quote-workspace-shell { padding-bottom: 6.5rem; }
+  .quote-workspace-shell { padding-bottom: 2rem; }
   .quote-workspace-header { display: grid; gap: 1rem; padding: 1.1rem; border-radius: 16px; }
   .quote-header-actions { justify-items: stretch; }
   .quote-context-chips { justify-content: flex-start; }
@@ -317,7 +317,7 @@ html[data-bs-theme="dark"] .quote-workspace-shell .form-select { color: #edf3fb;
   .quote-row-actions { order: 3; width: 100%; justify-content: flex-end; }
   .quote-summary-controls { grid-template-columns: 1fr 1fr; }
   .quote-summary-controls > div:first-child { grid-column: 1 / -1; }
-  .quote-review-bar { bottom: .35rem; flex-wrap: wrap; }
+  .quote-review-bar { flex-wrap: wrap; }
   .quote-review-bar > div { width: 100%; }
   .quote-review-bar .d-flex .btn { flex: 1; }
   .quote-review-grid { grid-template-columns: 1fr; }

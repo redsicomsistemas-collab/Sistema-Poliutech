@@ -20,7 +20,7 @@ function rowTemplate(){
     <article class="quote-create-item" role="listitem">
       <div class="quote-create-item-header">
         <span class="quote-item-number">1</span>
-        <span class="quote-item-preview">Concepto sin nombre</span>
+        <button type="button" class="quote-item-preview quote-item-edit" title="Editar concepto" aria-label="Editar concepto 1">Concepto sin nombre</button>
         <span class="quote-item-header-total item-subtotal">${fmt(0)}</span>
         <div class="quote-row-actions">
           <button type="button" class="btn btn-sm btn-outline-secondary btn-move-up" title="Subir concepto" aria-label="Subir concepto">↑</button>
@@ -66,18 +66,30 @@ function bindRowEvents(tr){
   const sug = tr.querySelector(".item-suggest");
 
   // Autocompletar concepto
+  let suggestionRequest = 0;
   nombre.addEventListener("input", async ()=>{
     const q = nombre.value.trim();
     if(previewEl) previewEl.textContent = q.replace(/\s+/g, " ") || "Concepto sin nombre";
+    const requestId = ++suggestionRequest;
     if(q.length < 1){ sug.innerHTML=""; return; }
-    const res = await fetch("/api/conceptos/suggest?q="+encodeURIComponent(q));
-    const data = await res.json();
+    let data = [];
+    try {
+      const res = await fetch("/api/conceptos/suggest?q="+encodeURIComponent(q));
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      data = await res.json();
+    } catch(error) {
+      if(requestId === suggestionRequest) sug.innerHTML = "";
+      console.warn("No se pudieron cargar las sugerencias de conceptos:", error);
+      return;
+    }
+    if(requestId !== suggestionRequest || nombre.value.trim() !== q) return;
     sug.innerHTML = "";
     data.forEach(it=>{
-      const div = document.createElement("div");
-      div.className = "list-group-item list-group-item-action";
-      div.textContent = it.label;
-      div.onclick = ()=>{
+      const option = document.createElement("button");
+      option.type = "button";
+      option.className = "list-group-item list-group-item-action";
+      option.textContent = it.label;
+      option.addEventListener("click", ()=>{
         nombre.value = it.nombre_concepto || it.label;
         if (capitulo) capitulo.value = "";
         unidad.value = it.unidad || "";
@@ -87,9 +99,18 @@ function bindRowEvents(tr){
         sug.innerHTML="";
         if(previewEl) previewEl.textContent = nombre.value.trim().replace(/\s+/g, " ") || "Concepto sin nombre";
         recalcRow(); recalcTotals();
-      };
-      sug.appendChild(div);
+        // Mantiene el concepto listo para corregir o ampliar después de elegirlo.
+        nombre.focus({ preventScroll: true });
+        nombre.setSelectionRange(nombre.value.length, nombre.value.length);
+      });
+      sug.appendChild(option);
     });
+  });
+
+  tr.querySelector(".quote-item-edit")?.addEventListener("click", ()=>{
+    nombre.focus();
+    nombre.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    nombre.setSelectionRange(nombre.value.length, nombre.value.length);
   });
 
   function recalcRow(){
@@ -129,6 +150,8 @@ function updateMoveButtons(){
     if(down) down.disabled = idx === rows.length - 1;
     const number = tr.querySelector(".quote-item-number");
     if(number) number.textContent = idx + 1;
+    const edit = tr.querySelector(".quote-item-edit");
+    if(edit) edit.setAttribute("aria-label", `Editar concepto ${idx + 1}`);
   });
   const count = document.getElementById("quote-items-count");
   const empty = document.getElementById("quote-items-empty");
@@ -234,17 +257,24 @@ document.addEventListener("DOMContentLoaded", ()=>{
   const tbody = document.getElementById("items-body");
   const btnAdd = document.getElementById("btn-add-row");
   const btnAddBottom = document.getElementById("btn-add-row-bottom");
-  function addRow(){
+  function addRow(options = {}){
     const tmp = document.createElement("div");
     tmp.innerHTML = rowTemplate();
     const tr = tmp.firstElementChild;
     tbody.appendChild(tr);
     bindRowEvents(tr);
     recalcTotals();
+    if(options.focus){
+      window.requestAnimationFrame(()=>{
+        const field = tr.querySelector(".item-nombre");
+        field?.focus();
+        field?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+    }
     return tr;
   }
-  if (btnAdd) btnAdd.addEventListener("click", addRow);
-  if (btnAddBottom) btnAddBottom.addEventListener("click", addRow);
+  if (btnAdd) btnAdd.addEventListener("click", ()=> addRow({ focus: true }));
+  if (btnAddBottom) btnAddBottom.addEventListener("click", ()=> addRow({ focus: true }));
   addRow();
 
   function focusNextQuoteRow(currentRow){
@@ -253,7 +283,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
     const nextField = nextRow?.querySelector(".item-nombre, input, textarea, select");
     if(nextField){
       nextField.focus();
-      nextField.scrollIntoView({ behavior: "smooth", block: "center" });
+      nextField.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
   }
 
@@ -267,6 +297,13 @@ document.addEventListener("DOMContentLoaded", ()=>{
     event.preventDefault();
     event.stopPropagation();
     focusNextQuoteRow(currentRow);
+  });
+
+  document.addEventListener("click", (event)=>{
+    document.querySelectorAll("#items-body .item-suggest").forEach(box => {
+      const row = box.closest(".quote-create-item");
+      if(row && !row.contains(event.target)) box.innerHTML = "";
+    });
   });
 
   frm?.addEventListener("keydown", (event)=>{
