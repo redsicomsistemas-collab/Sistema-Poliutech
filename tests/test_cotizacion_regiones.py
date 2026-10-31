@@ -25,7 +25,7 @@ except ModuleNotFoundError as exc:
 @unittest.skipIf(app is None, f"Dependencias de integración no disponibles: {_IMPORT_ERROR}")
 class CotizacionRegionesTest(unittest.TestCase):
     def setUp(self):
-        app.config.update(TESTING=True)
+        app.config.update(TESTING=True, USD_MXN_RATE_OVERRIDE=20.0)
         with app.app_context():
             db.drop_all()
             db.create_all()
@@ -245,9 +245,11 @@ class CotizacionRegionesTest(unittest.TestCase):
         response = self.client.get("/api/dashboard/filter-summary?region=LATAM")
         self.assertEqual(response.status_code, 200)
         summary = response.get_json()
-        self.assertEqual(summary["general"]["total_importe"], 600.0)
+        self.assertEqual(summary["general"]["total_importe"], 10100.0)
+        self.assertEqual(summary["general"]["total_importe_historico"], 10100.0)
         self.assertEqual(summary["general"]["total_cotizaciones"], 3)
         self.assertEqual(summary["general"]["total_conceptos"], 4)
+        self.assertEqual(summary["exchange_rate"]["rate"], 20.0)
         self.assertEqual(summary["regions"]["MÉXICO"]["total_importe"], 100.0)
         self.assertEqual(summary["regions"]["LATAM"]["total_importe"], 300.0)
         self.assertEqual(summary["regions"]["USA"]["total_importe"], 200.0)
@@ -265,6 +267,10 @@ class CotizacionRegionesTest(unittest.TestCase):
         self.assertGreaterEqual(body.count("Dólares estadounidenses (USD)"), 2)
         self.assertIn("USD $300.00", body)
         self.assertIn("USD $200.00", body)
+        self.assertIn("MXN $10,100.00", body)
+        self.assertIn("20.0000 MXN por USD", body)
+        self.assertEqual(body.count("<details class=\"dashboard-region-block"), 3)
+        self.assertNotIn("<details class=\"dashboard-region-block dashboard-region-mexico\" open", body)
 
 
 if __name__ == "__main__":

@@ -5905,6 +5905,104 @@ def _apply_dashboard_bandeja(q, bandeja: str):
     return q.filter(Cotizacion.proximo_seguimiento >= fin_hoy)
 
 
+USD_MXN_RATE_URL = "https://api.frankfurter.dev/v2/rates?base=USD&quotes=MXN"
+_usd_mxn_rate_cache = {
+    "requested_date": "",
+    "published_date": "",
+    "rate": None,
+    "source": "",
+}
+_usd_mxn_rate_lock = threading.Lock()
+
+
+def _get_usd_mxn_exchange_rate():
+    """Obtiene una tasa USD/MXN diaria y conserva la última respuesta válida."""
+    today = now_cdmx_naive().date().isoformat()
+    override = app.config.get("USD_MXN_RATE_OVERRIDE") or os.getenv("USD_MXN_RATE_OVERRIDE")
+    if override not in (None, ""):
+        try:
+            override_rate = float(override)
+            if override_rate > 0:
+                return {
+                    "rate": override_rate,
+                    "date": today,
+                    "source": "Configuración",
+                    "is_fallback": False,
+                }
+        except (TypeError, ValueError):
+            pass
+
+    if (
+        _usd_mxn_rate_cache["requested_date"] == today
+        and float(_usd_mxn_rate_cache["rate"] or 0) > 0
+    ):
+        return {
+            "rate": float(_usd_mxn_rate_cache["rate"]),
+            "date": _usd_mxn_rate_cache["published_date"],
+            "source": _usd_mxn_rate_cache["source"],
+            "is_fallback": False,
+        }
+
+    with _usd_mxn_rate_lock:
+        if (
+            _usd_mxn_rate_cache["requested_date"] == today
+            and float(_usd_mxn_rate_cache["rate"] or 0) > 0
+        ):
+            return {
+                "rate": float(_usd_mxn_rate_cache["rate"]),
+                "date": _usd_mxn_rate_cache["published_date"],
+                "source": _usd_mxn_rate_cache["source"],
+                "is_fallback": False,
+            }
+
+        try:
+            response = requests.get(USD_MXN_RATE_URL, timeout=5)
+            response.raise_for_status()
+            payload = response.json()
+            item = payload[0] if isinstance(payload, list) and payload else {}
+            rate = float(item.get("rate") or 0)
+            published_date = str(item.get("date") or today)
+            if rate <= 0:
+                raise ValueError("La fuente devolvió una tasa USD/MXN inválida")
+            _usd_mxn_rate_cache.update({
+                "requested_date": today,
+                "published_date": published_date,
+                "rate": rate,
+                "source": "Frankfurter",
+            })
+            return {
+                "rate": rate,
+                "date": published_date,
+                "source": "Frankfurter",
+                "is_fallback": False,
+            }
+        except Exception as exc:
+            logging.getLogger(__name__).warning(
+                "No se pudo actualizar el tipo de cambio USD/MXN: %s",
+                exc,
+            )
+
+        cached_rate = float(_usd_mxn_rate_cache["rate"] or 0)
+        if cached_rate > 0:
+            return {
+                "rate": cached_rate,
+                "date": _usd_mxn_rate_cache["published_date"] or today,
+                "source": f"{_usd_mxn_rate_cache['source'] or 'Caché'} (ultima tasa disponible)",
+                "is_fallback": True,
+            }
+
+        try:
+            fallback_rate = float(os.getenv("USD_MXN_FALLBACK_RATE", "18.00"))
+        except ValueError:
+            fallback_rate = 18.0
+        return {
+            "rate": fallback_rate if fallback_rate > 0 else 18.0,
+            "date": today,
+            "source": "Tasa de respaldo",
+            "is_fallback": True,
+        }
+
+
 def _dashboard_metric_set(*, region="", bandeja="", vista="todos", **filters):
     """Calcula los cuatro indicadores del dashboard para un alcance regional."""
     quote_query = _apply_dashboard_bandeja(
@@ -5946,23 +6044,42 @@ def _dashboard_metric_set(*, region="", bandeja="", vista="todos", **filters):
 
 
 def _build_dashboard_summary(*, bandeja="", vista="todos", **filters):
-    """Devuelve el resumen general y el desglose fijo México, LATAM y USA."""
-    return {
-        "general": _dashboard_metric_set(
-            region="",
+    """Devuelve México en MXN, LATAM/USA en USD y el general convertido a MXN."""
+    regions = {
+        region: _dashboard_metric_set(
+            region=region,
             bandeja=bandeja,
             vista=vista,
             **filters,
+        )
+        for region in REGIONES_COTIZACION
+    }
+    exchange_rate = _get_usd_mxn_exchange_rate()
+    usd_mxn_rate = float(exchange_rate["rate"])
+    mexico = regions["MÉXICO"]
+    usd_regions = (regions["LATAM"], regions["USA"])
+    general = {
+        "total_importe": float(mexico["total_importe"]) + sum(
+            float(metrics["total_importe"]) for metrics in usd_regions
+        ) * usd_mxn_rate,
+        "total_cotizaciones": sum(
+            int(metrics["total_cotizaciones"]) for metrics in regions.values()
         ),
-        "regions": {
-            region: _dashboard_metric_set(
-                region=region,
-                bandeja=bandeja,
-                vista=vista,
-                **filters,
-            )
-            for region in REGIONES_COTIZACION
-        },
+        "total_conceptos": sum(
+            int(metrics["total_conceptos"]) for metrics in regions.values()
+        ),
+        "total_importe_historico": float(mexico["total_importe_historico"]) + sum(
+            float(metrics["total_importe_historico"]) for metrics in usd_regions
+        ) * usd_mxn_rate,
+        "total_cotizaciones_historico": sum(
+            int(metrics["total_cotizaciones_historico"]) for metrics in regions.values()
+        ),
+        "currency": "MXN",
+    }
+    return {
+        "general": general,
+        "regions": regions,
+        "exchange_rate": exchange_rate,
     }
 
 def _cotizaciones_base_query():
@@ -13558,6 +13675,7 @@ def api_dashboard_filter_summary():
         **summary["general"],
         "general": summary["general"],
         "regions": summary["regions"],
+        "exchange_rate": summary["exchange_rate"],
     })
 
 # PDF - Diseño corporativo

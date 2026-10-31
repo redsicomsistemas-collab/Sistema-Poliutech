@@ -41,6 +41,32 @@
     gap: 0.75rem;
   }
 
+  .dashboard-general-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.6rem;
+  }
+
+  .dashboard-exchange-rate {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.48rem 0.75rem;
+    color: var(--bs-body-color);
+    background: rgba(var(--bs-primary-rgb), 0.08);
+    border: 1px solid rgba(var(--bs-primary-rgb), 0.24);
+    border-radius: 999px;
+    font-size: 0.82rem;
+  }
+
+  .dashboard-exchange-rate strong {
+    color: var(--bs-primary);
+    font-size: 0.9rem;
+  }
+
   .dashboard-region-block {
     --region-accent: #6c757d;
     --region-accent-rgb: 108, 117, 125;
@@ -135,7 +161,65 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 0.65rem;
-    margin-bottom: 0.85rem;
+    margin: 0;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .dashboard-region-heading::-webkit-details-marker {
+    display: none;
+  }
+
+  .dashboard-region-heading::marker {
+    content: "";
+  }
+
+  .dashboard-region-heading-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.55rem;
+    margin-left: auto;
+  }
+
+  .dashboard-region-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.62rem;
+    color: var(--bs-body-color);
+    background: rgba(var(--bs-body-bg-rgb), 0.78);
+    border: 1px solid rgba(var(--region-accent-rgb), 0.3);
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    backdrop-filter: blur(7px);
+  }
+
+  .dashboard-region-chevron {
+    display: inline-block;
+    font-size: 1rem;
+    transition: transform 180ms ease;
+  }
+
+  .dashboard-toggle-open {
+    display: none;
+  }
+
+  .dashboard-region-block[open] .dashboard-toggle-closed {
+    display: none;
+  }
+
+  .dashboard-region-block[open] .dashboard-toggle-open {
+    display: inline;
+  }
+
+  .dashboard-region-block[open] .dashboard-region-chevron {
+    transform: rotate(180deg);
+  }
+
+  .dashboard-region-content {
+    margin-top: 0.85rem;
   }
 
   .dashboard-region-heading h3 {
@@ -152,8 +236,21 @@
   }
 
   .dashboard-region-icon {
-    font-size: 1.2rem;
+    display: inline-grid;
+    width: 2rem;
+    height: 2rem;
+    place-items: center;
+    font-size: 1.25rem;
     line-height: 1;
+    background: rgba(var(--bs-body-bg-rgb), 0.72);
+    border: 1px solid rgba(var(--region-accent-rgb), 0.3);
+    border-radius: 50%;
+    box-shadow: 0 0.2rem 0.5rem rgba(var(--region-accent-rgb), 0.18);
+    transition: transform 160ms ease;
+  }
+
+  .dashboard-region-heading:hover .dashboard-region-icon {
+    transform: scale(1.1);
   }
 
   .dashboard-regional-metric-card .card-body {
@@ -509,6 +606,21 @@
   }
 
   @media (max-width: 991.98px) {
+    .dashboard-general-meta,
+    .dashboard-exchange-rate {
+      width: 100%;
+      justify-content: flex-start;
+    }
+
+    .dashboard-exchange-rate {
+      border-radius: 0.8rem;
+    }
+
+    .dashboard-region-heading-actions {
+      width: 100%;
+      margin-left: 0;
+    }
+
     .dashboard-filters .filter-actions {
       flex-direction: column;
       align-items: stretch;
@@ -547,17 +659,34 @@
 
 <!-- 🔢 MÉTRICAS -->
 {% set general_metrics = dashboard_summary['general'] %}
+{% set exchange_rate = dashboard_summary['exchange_rate'] %}
 <section class="mb-4" aria-labelledby="dashboard-general-title">
   <div class="dashboard-summary-heading mb-2">
-    <h2 id="dashboard-general-title" class="h5 mb-0">Resumen general</h2>
-    <span class="badge rounded-pill text-bg-light border">Todas las regiones</span>
+    <div>
+      <h2 id="dashboard-general-title" class="h5 mb-0">Resumen general</h2>
+      <div class="small text-muted">Todas las regiones convertidas a pesos mexicanos</div>
+    </div>
+    <div class="dashboard-general-meta">
+      <span class="badge rounded-pill text-bg-success">Pesos mexicanos (MXN)</span>
+      <div class="dashboard-exchange-rate{{ ' border-warning' if exchange_rate['is_fallback'] else '' }}" title="La conversión del resumen general utiliza esta tasa diaria">
+        <span aria-hidden="true">💱</span>
+        <span>Tipo de cambio diario:</span>
+        <strong data-exchange-rate>{{ "{:,.4f}".format(exchange_rate['rate']) }} MXN por USD</strong>
+        <span class="text-muted" data-exchange-date>Publicado {{ exchange_rate['date'] }}</span>
+        {% if exchange_rate['source'] == 'Frankfurter' %}
+        <a href="https://frankfurter.dev/" target="_blank" rel="noopener noreferrer" class="link-primary">Fuente</a>
+        {% else %}
+        <span class="text-muted">{{ exchange_rate['source'] }}</span>
+        {% endif %}
+      </div>
+    </div>
   </div>
   <div class="row g-3 text-center dashboard-metrics-row">
     <div class="col-md-6 col-xl-3">
       <div class="card border-success shadow-sm dashboard-metric-card h-100">
         <div class="card-body">
-          <h6 class="text-success">Importe Total</h6>
-          <h3 class="fw-bold text-dark" data-summary-scope="general" data-summary-metric="total_importe">${{ "{:,.2f}".format(general_metrics['total_importe']) }}</h3>
+          <h6 class="text-success">Importe Total (MXN)</h6>
+          <h3 class="fw-bold text-dark" data-summary-scope="general" data-summary-metric="total_importe" data-currency="MXN">MXN ${{ "{:,.2f}".format(general_metrics['total_importe']) }}</h3>
         </div>
       </div>
     </div>
@@ -580,8 +709,8 @@
     <div class="col-md-6 col-xl-3">
       <div class="card border-warning shadow-sm dashboard-metric-card h-100">
         <div class="card-body">
-          <h6 class="text-warning-emphasis">Importe histórico</h6>
-          <h3 class="fw-bold text-dark" data-summary-scope="general" data-summary-metric="total_importe_historico">${{ "{:,.2f}".format(general_metrics['total_importe_historico']) }}</h3>
+          <h6 class="text-warning-emphasis">Importe histórico (MXN)</h6>
+          <h3 class="fw-bold text-dark" data-summary-scope="general" data-summary-metric="total_importe_historico" data-currency="MXN">MXN ${{ "{:,.2f}".format(general_metrics['total_importe_historico']) }}</h3>
           <div class="small text-muted">A partir de marzo de 2026 · <span data-summary-scope="general" data-summary-metric="total_cotizaciones_historico">{{ general_metrics['total_cotizaciones_historico'] }}</span> cotizaciones, incluidas rechazadas y perdidas</div>
         </div>
       </div>
@@ -595,22 +724,32 @@
   {% set region_metrics = dashboard_summary['regions'][region_name] %}
   {% set region_uses_usd = region_name in ['LATAM', 'USA'] %}
   {% set region_visual_class = 'mexico' if region_name == 'MÉXICO' else ('latam' if region_name == 'LATAM' else 'usa') %}
-  <div class="dashboard-region-block dashboard-region-{{ region_visual_class }}" data-region-block="{{ region_name }}">
-    <div class="dashboard-region-heading">
+  <details class="dashboard-region-block dashboard-region-{{ region_visual_class }}" data-region-block="{{ region_name }}">
+    <summary class="dashboard-region-heading">
       <h3 class="h6 fw-bold mb-0">
         <span class="dashboard-region-icon" aria-hidden="true">{{ '🇲🇽' if region_name == 'MÉXICO' else ('🌎' if region_name == 'LATAM' else '🇺🇸') }}</span>
         {{ region_name }}
       </h3>
-      {% if region_uses_usd %}
-      <span class="badge rounded-pill text-bg-primary">Dólares estadounidenses (USD)</span>
-      {% endif %}
-    </div>
-    <div class="row g-3 text-center dashboard-metrics-row">
+      <span class="dashboard-region-heading-actions">
+        {% if region_uses_usd %}
+        <span class="badge rounded-pill text-bg-primary">Dólares estadounidenses (USD)</span>
+        {% else %}
+        <span class="badge rounded-pill text-bg-success">Pesos mexicanos (MXN)</span>
+        {% endif %}
+        <span class="dashboard-region-toggle">
+          <span class="dashboard-toggle-closed">Ver indicadores</span>
+          <span class="dashboard-toggle-open">Ocultar indicadores</span>
+          <span class="dashboard-region-chevron" aria-hidden="true">⌄</span>
+        </span>
+      </span>
+    </summary>
+    <div class="dashboard-region-content">
+      <div class="row g-3 text-center dashboard-metrics-row">
       <div class="col-md-6 col-xl-3">
         <div class="card border-success shadow-sm dashboard-metric-card dashboard-regional-metric-card h-100">
           <div class="card-body">
-            <h6 class="text-success">Importe Total{% if region_uses_usd %} (USD){% endif %}</h6>
-            <h4 class="fw-bold text-dark" data-summary-scope="region" data-summary-region="{{ region_name }}" data-summary-metric="total_importe"{% if region_uses_usd %} data-currency="USD"{% endif %}>{% if region_uses_usd %}USD {% endif %}${{ "{:,.2f}".format(region_metrics['total_importe']) }}</h4>
+            <h6 class="text-success">Importe Total ({{ 'USD' if region_uses_usd else 'MXN' }})</h6>
+            <h4 class="fw-bold text-dark" data-summary-scope="region" data-summary-region="{{ region_name }}" data-summary-metric="total_importe" data-currency="{{ 'USD' if region_uses_usd else 'MXN' }}">{{ 'USD' if region_uses_usd else 'MXN' }} ${{ "{:,.2f}".format(region_metrics['total_importe']) }}</h4>
           </div>
         </div>
       </div>
@@ -633,14 +772,15 @@
       <div class="col-md-6 col-xl-3">
         <div class="card border-warning shadow-sm dashboard-metric-card dashboard-regional-metric-card h-100">
           <div class="card-body">
-            <h6 class="text-warning-emphasis">Importe histórico{% if region_uses_usd %} (USD){% endif %}</h6>
-            <h4 class="fw-bold text-dark" data-summary-scope="region" data-summary-region="{{ region_name }}" data-summary-metric="total_importe_historico"{% if region_uses_usd %} data-currency="USD"{% endif %}>{% if region_uses_usd %}USD {% endif %}${{ "{:,.2f}".format(region_metrics['total_importe_historico']) }}</h4>
+            <h6 class="text-warning-emphasis">Importe histórico ({{ 'USD' if region_uses_usd else 'MXN' }})</h6>
+            <h4 class="fw-bold text-dark" data-summary-scope="region" data-summary-region="{{ region_name }}" data-summary-metric="total_importe_historico" data-currency="{{ 'USD' if region_uses_usd else 'MXN' }}">{{ 'USD' if region_uses_usd else 'MXN' }} ${{ "{:,.2f}".format(region_metrics['total_importe_historico']) }}</h4>
             <div class="small text-muted">A partir de marzo de 2026 · <span data-summary-scope="region" data-summary-region="{{ region_name }}" data-summary-metric="total_cotizaciones_historico">{{ region_metrics['total_cotizaciones_historico'] }}</span> cotizaciones, incluidas rechazadas y perdidas</div>
           </div>
         </div>
       </div>
     </div>
-  </div>
+    </div>
+  </details>
   {% endfor %}
 </section>
 
@@ -1077,6 +1217,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const exportarExcel = document.getElementById("btn-exportar-excel");
   const exportarSeguimientosPdf = document.getElementById("btn-exportar-seguimientos-pdf");
   const summaryMetricEls = document.querySelectorAll("[data-summary-metric]");
+  const exchangeRateEl = document.querySelector("[data-exchange-rate]");
+  const exchangeDateEl = document.querySelector("[data-exchange-date]");
   const statuses = {{ valid_estatus|tojson }};
   // Paleta categórica: cada seguimiento conserva un color propio y distante
   // de los estados contiguos para que no se confundan en gráfica o leyenda.
@@ -1168,12 +1310,23 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!metrics || !(metric in metrics)) return;
 
       if (metric === "total_importe" || metric === "total_importe_historico") {
-        const currencyPrefix = el.dataset.currency === "USD" ? "USD $" : "$";
+        const currencyPrefix = el.dataset.currency === "USD"
+          ? "USD $"
+          : el.dataset.currency === "MXN"
+            ? "MXN $"
+            : "$";
         el.textContent = `${currencyPrefix}${moneyFormatter.format(Number(metrics[metric] || 0))}`;
         return;
       }
       el.textContent = String(Number(metrics[metric] || 0));
     });
+
+    if (data.exchange_rate && exchangeRateEl) {
+      exchangeRateEl.textContent = `${Number(data.exchange_rate.rate || 0).toFixed(4)} MXN por USD`;
+    }
+    if (data.exchange_rate && exchangeDateEl) {
+      exchangeDateEl.textContent = `Publicado ${data.exchange_rate.date || ""}`;
+    }
   }
 
   function buildFilterParams() {
