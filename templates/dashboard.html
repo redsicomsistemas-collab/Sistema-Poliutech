@@ -33,6 +33,43 @@
     overflow-wrap: anywhere;
   }
 
+  .dashboard-summary-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .dashboard-region-block {
+    padding: 1rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.85rem;
+    background: var(--bs-tertiary-bg);
+  }
+
+  .dashboard-region-block + .dashboard-region-block {
+    margin-top: 1rem;
+  }
+
+  .dashboard-region-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.65rem;
+    margin-bottom: 0.85rem;
+  }
+
+  .dashboard-regional-metric-card .card-body {
+    min-height: 104px;
+  }
+
+  .dashboard-regional-metric-card h4 {
+    font-size: clamp(1.25rem, 1.7vw, 1.7rem);
+    line-height: 1.1;
+    overflow-wrap: anywhere;
+  }
+
   .dashboard-actions-row .btn {
     min-height: 58px;
     display: inline-flex;
@@ -381,41 +418,99 @@
 </style>
 
 <!-- 🔢 MÉTRICAS -->
-<div class="row g-3 mb-4 text-center dashboard-metrics-row">
-  <div class="col-md-6 col-xl-3">
-    <div class="card border-success shadow-sm dashboard-metric-card h-100">
-      <div class="card-body">
-        <h6 class="text-success">Importe Total</h6>
-        <h3 class="fw-bold text-dark" data-summary="importe-total">${{ "{:,.2f}".format(total_importe) }}</h3>
+{% set general_metrics = dashboard_summary['general'] %}
+<section class="mb-4" aria-labelledby="dashboard-general-title">
+  <div class="dashboard-summary-heading mb-2">
+    <h2 id="dashboard-general-title" class="h5 mb-0">Resumen general</h2>
+    <span class="badge rounded-pill text-bg-light border">Todas las regiones</span>
+  </div>
+  <div class="row g-3 text-center dashboard-metrics-row">
+    <div class="col-md-6 col-xl-3">
+      <div class="card border-success shadow-sm dashboard-metric-card h-100">
+        <div class="card-body">
+          <h6 class="text-success">Importe Total</h6>
+          <h3 class="fw-bold text-dark" data-summary-scope="general" data-summary-metric="total_importe">${{ "{:,.2f}".format(general_metrics['total_importe']) }}</h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+      <div class="card border-primary shadow-sm dashboard-metric-card h-100">
+        <div class="card-body">
+          <h6 class="text-primary">Cotizaciones Totales</h6>
+          <h3 class="fw-bold text-dark" data-summary-scope="general" data-summary-metric="total_cotizaciones">{{ general_metrics['total_cotizaciones'] }}</h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+      <div class="card border-info shadow-sm dashboard-metric-card h-100">
+        <div class="card-body">
+          <h6 class="text-info">Conceptos Registrados</h6>
+          <h3 class="fw-bold text-dark" data-summary-scope="general" data-summary-metric="total_conceptos">{{ general_metrics['total_conceptos'] }}</h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+      <div class="card border-warning shadow-sm dashboard-metric-card h-100">
+        <div class="card-body">
+          <h6 class="text-warning-emphasis">Importe histórico</h6>
+          <h3 class="fw-bold text-dark" data-summary-scope="general" data-summary-metric="total_importe_historico">${{ "{:,.2f}".format(general_metrics['total_importe_historico']) }}</h3>
+          <div class="small text-muted">A partir de marzo de 2026 · <span data-summary-scope="general" data-summary-metric="total_cotizaciones_historico">{{ general_metrics['total_cotizaciones_historico'] }}</span> cotizaciones, incluidas rechazadas y perdidas</div>
+        </div>
       </div>
     </div>
   </div>
-  <div class="col-md-6 col-xl-3">
-    <div class="card border-primary shadow-sm dashboard-metric-card h-100">
-      <div class="card-body">
-        <h6 class="text-primary">Cotizaciones Totales</h6>
-        <h3 class="fw-bold text-dark" data-summary="cotizaciones-total">{{ total_cotizaciones }}</h3>
+</section>
+
+<section class="mb-4" aria-labelledby="dashboard-regions-title">
+  <h2 id="dashboard-regions-title" class="h5 mb-2">Resumen por región</h2>
+  {% for region_name in regiones_cotizacion %}
+  {% set region_metrics = dashboard_summary['regions'][region_name] %}
+  {% set region_uses_usd = region_name in ['LATAM', 'USA'] %}
+  <div class="dashboard-region-block" data-region-block="{{ region_name }}">
+    <div class="dashboard-region-heading">
+      <h3 class="h6 fw-bold mb-0">{{ region_name }}</h3>
+      {% if region_uses_usd %}
+      <span class="badge rounded-pill text-bg-primary">Dólares estadounidenses (USD)</span>
+      {% endif %}
+    </div>
+    <div class="row g-3 text-center dashboard-metrics-row">
+      <div class="col-md-6 col-xl-3">
+        <div class="card border-success shadow-sm dashboard-metric-card dashboard-regional-metric-card h-100">
+          <div class="card-body">
+            <h6 class="text-success">Importe Total{% if region_uses_usd %} (USD){% endif %}</h6>
+            <h4 class="fw-bold text-dark" data-summary-scope="region" data-summary-region="{{ region_name }}" data-summary-metric="total_importe"{% if region_uses_usd %} data-currency="USD"{% endif %}>{% if region_uses_usd %}USD {% endif %}${{ "{:,.2f}".format(region_metrics['total_importe']) }}</h4>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 col-xl-3">
+        <div class="card border-primary shadow-sm dashboard-metric-card dashboard-regional-metric-card h-100">
+          <div class="card-body">
+            <h6 class="text-primary">Cotizaciones Totales</h6>
+            <h4 class="fw-bold text-dark" data-summary-scope="region" data-summary-region="{{ region_name }}" data-summary-metric="total_cotizaciones">{{ region_metrics['total_cotizaciones'] }}</h4>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 col-xl-3">
+        <div class="card border-info shadow-sm dashboard-metric-card dashboard-regional-metric-card h-100">
+          <div class="card-body">
+            <h6 class="text-info">Conceptos Registrados</h6>
+            <h4 class="fw-bold text-dark" data-summary-scope="region" data-summary-region="{{ region_name }}" data-summary-metric="total_conceptos">{{ region_metrics['total_conceptos'] }}</h4>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 col-xl-3">
+        <div class="card border-warning shadow-sm dashboard-metric-card dashboard-regional-metric-card h-100">
+          <div class="card-body">
+            <h6 class="text-warning-emphasis">Importe histórico{% if region_uses_usd %} (USD){% endif %}</h6>
+            <h4 class="fw-bold text-dark" data-summary-scope="region" data-summary-region="{{ region_name }}" data-summary-metric="total_importe_historico"{% if region_uses_usd %} data-currency="USD"{% endif %}>{% if region_uses_usd %}USD {% endif %}${{ "{:,.2f}".format(region_metrics['total_importe_historico']) }}</h4>
+            <div class="small text-muted">A partir de marzo de 2026 · <span data-summary-scope="region" data-summary-region="{{ region_name }}" data-summary-metric="total_cotizaciones_historico">{{ region_metrics['total_cotizaciones_historico'] }}</span> cotizaciones, incluidas rechazadas y perdidas</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
-  <div class="col-md-6 col-xl-3">
-    <div class="card border-info shadow-sm dashboard-metric-card h-100">
-      <div class="card-body">
-        <h6 class="text-info">Conceptos Registrados</h6>
-        <h3 class="fw-bold text-dark" data-summary="conceptos-total">{{ total_catalogo }}</h3>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-6 col-xl-3">
-    <div class="card border-warning shadow-sm dashboard-metric-card h-100">
-      <div class="card-body">
-        <h6 class="text-warning-emphasis">Importe histórico</h6>
-        <h3 class="fw-bold text-dark">${{ "{:,.2f}".format(total_importe_historico) }}</h3>
-        <div class="small text-muted">A partir de marzo de 2026 · {{ total_cotizaciones_historico }} cotizaciones, incluidas rechazadas y perdidas</div>
-      </div>
-    </div>
-  </div>
-</div>
+  {% endfor %}
+</section>
 
 {% if can_manage_assignments %}
 <div class="card border-primary shadow-sm mb-4">
@@ -849,9 +944,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const limpiar = document.getElementById("btn-limpiar-filtros");
   const exportarExcel = document.getElementById("btn-exportar-excel");
   const exportarSeguimientosPdf = document.getElementById("btn-exportar-seguimientos-pdf");
-  const importeSummaryEls = document.querySelectorAll('[data-summary="importe-total"]');
-  const cotizacionesSummaryEls = document.querySelectorAll('[data-summary="cotizaciones-total"]');
-  const conceptosSummaryEls = document.querySelectorAll('[data-summary="conceptos-total"]');
+  const summaryMetricEls = document.querySelectorAll("[data-summary-metric]");
   const statuses = {{ valid_estatus|tojson }};
   // Paleta categórica: cada seguimiento conserva un color propio y distante
   // de los estados contiguos para que no se confundan en gráfica o leyenda.
@@ -927,9 +1020,27 @@ document.addEventListener("DOMContentLoaded", () => {
     if (row) row.remove();
   }
 
-  function setSummaryText(elements, value) {
-    elements.forEach((el) => {
-      el.textContent = value;
+  function refreshSummaryMetricElements(data) {
+    const generalMetrics = data.general || data;
+    const regionMetrics = data.regions || {};
+    const moneyFormatter = new Intl.NumberFormat("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+    summaryMetricEls.forEach((el) => {
+      const metrics = el.dataset.summaryScope === "region"
+        ? regionMetrics[el.dataset.summaryRegion]
+        : generalMetrics;
+      const metric = el.dataset.summaryMetric;
+      if (!metrics || !(metric in metrics)) return;
+
+      if (metric === "total_importe" || metric === "total_importe_historico") {
+        const currencyPrefix = el.dataset.currency === "USD" ? "USD $" : "$";
+        el.textContent = `${currencyPrefix}${moneyFormatter.format(Number(metrics[metric] || 0))}`;
+        return;
+      }
+      el.textContent = String(Number(metrics[metric] || 0));
     });
   }
 
@@ -963,13 +1074,7 @@ document.addEventListener("DOMContentLoaded", () => {
         throw new Error(data?.error || "No se pudo actualizar el resumen.");
       }
 
-      const importe = new Intl.NumberFormat("en-US", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }).format(Number(data.total_importe || 0));
-      setSummaryText(importeSummaryEls, `$${importe}`);
-      setSummaryText(cotizacionesSummaryEls, String(data.total_cotizaciones || 0));
-      setSummaryText(conceptosSummaryEls, String(data.total_conceptos || 0));
+      refreshSummaryMetricElements(data);
     } catch (err) {
       console.error("Error actualizando resumen del dashboard", err);
     }
@@ -1639,7 +1744,6 @@ document.addEventListener("DOMContentLoaded", () => {
   refreshRowStriping();
   updateBulkDeleteState();
   renderFilteredCharts();
-  refreshSummaryCards();
 
   const reviewDone = new URLSearchParams(window.location.search).get("quote_review_done");
   if (reviewDone === "1") {

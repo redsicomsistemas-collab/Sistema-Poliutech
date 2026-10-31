@@ -75,7 +75,7 @@ ESPECIALIDADES_COTIZACION = [
     "Inyección",
     "Construcción",
 ]
-REGIONES_COTIZACION = ["USA", "MÉXICO", "LATAM"]
+REGIONES_COTIZACION = ["MÉXICO", "LATAM", "USA"]
 
 
 def normalize_region(value, default="MÉXICO") -> str:
@@ -5904,6 +5904,67 @@ def _apply_dashboard_bandeja(q, bandeja: str):
         )
     return q.filter(Cotizacion.proximo_seguimiento >= fin_hoy)
 
+
+def _dashboard_metric_set(*, region="", bandeja="", vista="todos", **filters):
+    """Calcula los cuatro indicadores del dashboard para un alcance regional."""
+    quote_query = _apply_dashboard_bandeja(
+        _build_dashboard_cotizaciones_query(region=region, vista=vista, **filters),
+        bandeja,
+    )
+    active_query = _apply_dashboard_bandeja(
+        _build_dashboard_cotizaciones_query(region=region, vista="activas", **filters),
+        bandeja,
+    )
+
+    quote_ids = quote_query.with_entities(Cotizacion.id).subquery()
+    total_conceptos = (
+        db.session.query(db.func.count(CotizacionDetalle.id))
+        .filter(CotizacionDetalle.cotizacion_id.in_(db.select(quote_ids.c.id)))
+        .scalar()
+        or 0
+    )
+    total_importe = (
+        active_query.with_entities(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar()
+        or 0
+    )
+
+    # El histórico conserva su alcance original: no depende de los filtros del
+    # listado e incluye cotizaciones rechazadas y perdidas.
+    historical_query = _build_dashboard_cotizaciones_query(region=region, vista="historico")
+    total_importe_historico = (
+        historical_query.with_entities(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar()
+        or 0
+    )
+
+    return {
+        "total_importe": float(total_importe),
+        "total_cotizaciones": int(quote_query.count()),
+        "total_conceptos": int(total_conceptos),
+        "total_importe_historico": float(total_importe_historico),
+        "total_cotizaciones_historico": int(historical_query.count()),
+    }
+
+
+def _build_dashboard_summary(*, bandeja="", vista="todos", **filters):
+    """Devuelve el resumen general y el desglose fijo México, LATAM y USA."""
+    return {
+        "general": _dashboard_metric_set(
+            region="",
+            bandeja=bandeja,
+            vista=vista,
+            **filters,
+        ),
+        "regions": {
+            region: _dashboard_metric_set(
+                region=region,
+                bandeja=bandeja,
+                vista=vista,
+                **filters,
+            )
+            for region in REGIONES_COTIZACION
+        },
+    }
+
 def _cotizaciones_base_query():
     q = Cotizacion.query.outerjoin(Cliente, Cotizacion.cliente_id == Cliente.id)
     q = q.filter(Cotizacion.eliminada_en.is_(None))
@@ -7676,37 +7737,30 @@ def index():
     fin_hoy = inicio_hoy + timedelta(days=1)
     base_query = _apply_dashboard_bandeja(base_query, bandeja)
 
-    total_cotizaciones = base_query.count()
-    # Esta tarjeta representa únicamente cotizaciones vivas: las que siguen
-    # en proceso. El resto de las tarjetas y el importe histórico mantienen
-    # sus respectivos alcances.
-    importe_vivas_query = _apply_dashboard_bandeja(
-        _build_dashboard_cotizaciones_query(
-            folio=folio,
-            desde=desde,
-            hasta=hasta,
-            estatus=estatus,
-            cliente=cliente,
-            proyecto=proyecto,
-            especialidad=especialidad,
-            especialidad_descripcion=especialidad_descripcion,
-            responsable=responsable,
-            asignado_a=asignado_a,
-            region=region,
-            vista="activas",
-        ),
-        bandeja,
+    summary_filters = {
+        "folio": dashboard_filters["folio"],
+        "desde": dashboard_filters["desde"],
+        "hasta": dashboard_filters["hasta"],
+        "estatus": dashboard_filters["estatus"],
+        "cliente": dashboard_filters["cliente"],
+        "proyecto": dashboard_filters["proyecto"],
+        "especialidad": dashboard_filters["especialidad"],
+        "especialidad_descripcion": dashboard_filters["especialidad_descripcion"],
+        "responsable": dashboard_filters["responsable"],
+        "asignado_a": dashboard_filters["asignado_a"],
+    }
+    dashboard_summary = _build_dashboard_summary(
+        bandeja=bandeja,
+        vista=vista,
+        **summary_filters,
     )
-    total_importe = (
-        importe_vivas_query.with_entities(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar()
-        or 0
-    )
-    historical_query = _build_dashboard_cotizaciones_query(region=region, vista="historico")
-    total_importe_historico = (
-        historical_query.with_entities(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar()
-        or 0
-    )
-    total_cotizaciones_historico = historical_query.count()
+    general_summary = dashboard_summary["general"]
+    total_cotizaciones = general_summary["total_cotizaciones"]
+    total_importe = general_summary["total_importe"]
+    total_importe_historico = general_summary["total_importe_historico"]
+    total_cotizaciones_historico = general_summary["total_cotizaciones_historico"]
+    total_catalogo = general_summary["total_conceptos"]
+
     # Se carga el conjunto completo para que el dashboard no omita folios por
     # paginacion. El id mantiene un orden estable cuando se repite la fecha.
     cotizaciones = base_query.order_by(
@@ -7714,7 +7768,6 @@ def index():
         Cotizacion.id.desc(),
     ).all()
 
-    total_catalogo = 0 if is_demo_user() else Concepto.query.count()
     responsables_cotizacion = [
         value
         for (value,) in (
@@ -7795,6 +7848,7 @@ def index():
         total_importe_historico=float(total_importe_historico),
         total_cotizaciones_historico=total_cotizaciones_historico,
         total_catalogo=total_catalogo,
+        dashboard_summary=dashboard_summary,
         cotizaciones=cotizaciones,
         pagination=None,
         dashboard_filters=dashboard_filters,
@@ -13476,12 +13530,14 @@ def api_dashboard_filter_summary():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
-    region = normalize_region(request.args.get("region"))
+    asignado_a = (request.args.get("asignado_a") or "").strip()
     vista = (request.args.get("vista") or "todos").strip().lower()
     bandeja = (request.args.get("bandeja") or "").strip().lower()
 
     try:
-        q = _build_dashboard_cotizaciones_query(
+        summary = _build_dashboard_summary(
+            bandeja=bandeja,
+            vista=vista,
             folio=folio,
             desde=desde,
             hasta=hasta,
@@ -13491,55 +13547,17 @@ def api_dashboard_filter_summary():
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
-            region=region,
-            vista=vista,
+            asignado_a=asignado_a,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
-    q = _apply_dashboard_bandeja(q, bandeja)
-    importe_vivas_query = _apply_dashboard_bandeja(
-        _build_dashboard_cotizaciones_query(
-            folio=folio,
-            desde=desde,
-            hasta=hasta,
-            estatus=estatus,
-            cliente=cliente,
-            proyecto=proyecto,
-            especialidad=especialidad,
-            especialidad_descripcion=especialidad_descripcion,
-            responsable=responsable,
-            region=region,
-            vista="activas",
-        ),
-        bandeja,
-    )
 
-    cot_subq = q.with_entities(Cotizacion.id).subquery()
-    cot_ids_select = db.select(cot_subq.c.id)
-
-    total_importe = (
-        db.session.query(db.func.coalesce(db.func.sum(Cotizacion.total), 0))
-        .filter(Cotizacion.id.in_(db.select(importe_vivas_query.with_entities(Cotizacion.id).subquery().c.id)))
-        .scalar()
-        or 0
-    )
-    total_cotizaciones = (
-        db.session.query(db.func.count())
-        .select_from(cot_subq)
-        .scalar()
-        or 0
-    )
-    total_conceptos = (
-        db.session.query(db.func.count(CotizacionDetalle.id))
-        .filter(CotizacionDetalle.cotizacion_id.in_(cot_ids_select))
-        .scalar()
-        or 0
-    )
-
+    # Los campos de primer nivel conservan compatibilidad con consumidores
+    # anteriores; ahora siempre representan el total general, sin región.
     return jsonify({
-        "total_importe": float(total_importe),
-        "total_cotizaciones": int(total_cotizaciones),
-        "total_conceptos": int(total_conceptos),
+        **summary["general"],
+        "general": summary["general"],
+        "regions": summary["regions"],
     })
 
 # PDF - Diseño corporativo

@@ -14,7 +14,7 @@ try:
         ensure_schema,
         normalize_region,
     )
-    from models import Cliente, Cotizacion, CotizacionVersion, Usuario, db
+    from models import Cliente, Cotizacion, CotizacionDetalle, CotizacionVersion, Usuario, db
     from sqlalchemy import text
     _IMPORT_ERROR = ""
 except ModuleNotFoundError as exc:
@@ -75,7 +75,7 @@ class CotizacionRegionesTest(unittest.TestCase):
             return Cotizacion.query.one().id
 
     def test_catalogo_y_normalizacion(self):
-        self.assertEqual(REGIONES_COTIZACION, ["USA", "MÉXICO", "LATAM"])
+        self.assertEqual(REGIONES_COTIZACION, ["MÉXICO", "LATAM", "USA"])
         self.assertEqual(normalize_region("mexico"), "MÉXICO")
         self.assertEqual(normalize_region("Panama"), "LATAM")
         self.assertEqual(normalize_region("latam8"), "LATAM")
@@ -201,9 +201,9 @@ class CotizacionRegionesTest(unittest.TestCase):
     def test_dashboard_separa_importes_y_usa_mexico_por_default(self):
         with app.app_context():
             db.session.add_all([
-                Cotizacion(folio="MX-001", region="MÉXICO", total=100),
-                Cotizacion(folio="US-001", region="USA", total=200),
-                Cotizacion(folio="LA-001", region="LATAM", total=300),
+                Cotizacion(folio="MX-001", region="MÉXICO", total=100, estatus="50%"),
+                Cotizacion(folio="US-001", region="USA", total=200, estatus="50%"),
+                Cotizacion(folio="LA-001", region="LATAM", total=300, estatus="50%"),
             ])
             db.session.commit()
 
@@ -226,6 +226,45 @@ class CotizacionRegionesTest(unittest.TestCase):
         self.assertNotIn(b"MX-001", latam_dashboard.data)
         self.assertNotIn(b"US-001", latam_dashboard.data)
         self.assertIn(b"$300.00", latam_dashboard.data)
+
+    def test_dashboard_muestra_general_y_regiones_con_mexico_primero(self):
+        with app.app_context():
+            mexico = Cotizacion(folio="MX-RES", region="MÉXICO", total=100, estatus="50%")
+            latam = Cotizacion(folio="LA-RES", region="LATAM", total=300, estatus="50%")
+            usa = Cotizacion(folio="US-RES", region="USA", total=200, estatus="50%")
+            db.session.add_all([mexico, latam, usa])
+            db.session.flush()
+            db.session.add_all([
+                CotizacionDetalle(cotizacion_id=mexico.id, nombre_concepto="México 1"),
+                CotizacionDetalle(cotizacion_id=latam.id, nombre_concepto="LATAM 1"),
+                CotizacionDetalle(cotizacion_id=latam.id, nombre_concepto="LATAM 2"),
+                CotizacionDetalle(cotizacion_id=usa.id, nombre_concepto="USA 1"),
+            ])
+            db.session.commit()
+
+        response = self.client.get("/api/dashboard/filter-summary?region=LATAM")
+        self.assertEqual(response.status_code, 200)
+        summary = response.get_json()
+        self.assertEqual(summary["general"]["total_importe"], 600.0)
+        self.assertEqual(summary["general"]["total_cotizaciones"], 3)
+        self.assertEqual(summary["general"]["total_conceptos"], 4)
+        self.assertEqual(summary["regions"]["MÉXICO"]["total_importe"], 100.0)
+        self.assertEqual(summary["regions"]["LATAM"]["total_importe"], 300.0)
+        self.assertEqual(summary["regions"]["USA"]["total_importe"], 200.0)
+
+        dashboard = self.client.get("/?region=USA")
+        body = dashboard.get_data(as_text=True)
+        self.assertLess(
+            body.index('data-region-block="MÉXICO"'),
+            body.index('data-region-block="LATAM"'),
+        )
+        self.assertLess(
+            body.index('data-region-block="LATAM"'),
+            body.index('data-region-block="USA"'),
+        )
+        self.assertGreaterEqual(body.count("Dólares estadounidenses (USD)"), 2)
+        self.assertIn("USD $300.00", body)
+        self.assertIn("USD $200.00", body)
 
 
 if __name__ == "__main__":
