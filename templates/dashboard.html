@@ -42,10 +42,88 @@
   }
 
   .dashboard-region-block {
+    --region-accent: #6c757d;
+    --region-accent-rgb: 108, 117, 125;
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
     padding: 1rem;
-    border: 1px solid var(--bs-border-color);
-    border-radius: 0.85rem;
-    background: var(--bs-tertiary-bg);
+    border: 1px solid rgba(var(--region-accent-rgb), 0.45);
+    border-radius: 1rem;
+    box-shadow: 0 0.55rem 1.35rem rgba(var(--region-accent-rgb), 0.12);
+  }
+
+  .dashboard-region-block::before {
+    position: absolute;
+    z-index: 0;
+    right: clamp(-1.5rem, -1vw, -0.5rem);
+    top: 50%;
+    font-size: clamp(8rem, 15vw, 13rem);
+    line-height: 1;
+    opacity: 0.13;
+    filter: blur(2.5px) saturate(0.9);
+    transform: translateY(-50%) rotate(-7deg) scale(1.08);
+    pointer-events: none;
+  }
+
+  .dashboard-region-block::after {
+    content: "";
+    position: absolute;
+    z-index: 2;
+    inset: 0 0 auto;
+    height: 0.28rem;
+    background: var(--region-stripe, var(--region-accent));
+    pointer-events: none;
+  }
+
+  .dashboard-region-block > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .dashboard-region-mexico {
+    --region-accent: #0b7a45;
+    --region-accent-rgb: 11, 122, 69;
+    --region-stripe: linear-gradient(90deg, #087830 0 33.33%, #f8f9fa 33.33% 66.66%, #ce1126 66.66%);
+    background:
+      linear-gradient(110deg, rgba(0, 104, 71, 0.2), rgba(255, 255, 255, 0.5) 49%, rgba(206, 17, 38, 0.19)),
+      var(--bs-tertiary-bg);
+  }
+
+  .dashboard-region-mexico::before {
+    content: "🇲🇽";
+  }
+
+  .dashboard-region-latam {
+    --region-accent: #6f42c1;
+    --region-accent-rgb: 111, 66, 193;
+    --region-stripe: linear-gradient(90deg, #00a8a8, #f4b400, #ef6c57, #7048c8);
+    background:
+      radial-gradient(circle at 9% 20%, rgba(0, 168, 168, 0.26), transparent 29%),
+      radial-gradient(circle at 38% 88%, rgba(244, 180, 0, 0.22), transparent 31%),
+      radial-gradient(circle at 70% 15%, rgba(239, 108, 87, 0.2), transparent 30%),
+      radial-gradient(circle at 94% 82%, rgba(112, 72, 200, 0.25), transparent 33%),
+      var(--bs-tertiary-bg);
+  }
+
+  .dashboard-region-latam::before {
+    content: "🌎";
+    opacity: 0.11;
+    filter: blur(3px) saturate(1.15);
+  }
+
+  .dashboard-region-usa {
+    --region-accent: #2557a7;
+    --region-accent-rgb: 37, 87, 167;
+    --region-stripe: linear-gradient(90deg, #244b8f 0 38%, #f7f7f7 38% 61%, #b31942 61%);
+    background:
+      radial-gradient(circle at 10% 25%, rgba(36, 75, 143, 0.25), transparent 36%),
+      repeating-linear-gradient(170deg, rgba(179, 25, 66, 0.11) 0 12px, rgba(255, 255, 255, 0.08) 12px 24px),
+      var(--bs-tertiary-bg);
+  }
+
+  .dashboard-region-usa::before {
+    content: "🇺🇸";
   }
 
   .dashboard-region-block + .dashboard-region-block {
@@ -60,14 +138,64 @@
     margin-bottom: 0.85rem;
   }
 
+  .dashboard-region-heading h3 {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.38rem 0.7rem;
+    color: var(--bs-body-color);
+    background: rgba(var(--bs-body-bg-rgb), 0.78);
+    border: 1px solid rgba(var(--region-accent-rgb), 0.32);
+    border-radius: 999px;
+    box-shadow: 0 0.25rem 0.65rem rgba(var(--region-accent-rgb), 0.12);
+    backdrop-filter: blur(7px);
+  }
+
+  .dashboard-region-icon {
+    font-size: 1.2rem;
+    line-height: 1;
+  }
+
   .dashboard-regional-metric-card .card-body {
     min-height: 104px;
+  }
+
+  .dashboard-regional-metric-card {
+    background-color: rgba(var(--bs-body-bg-rgb), 0.87);
+    backdrop-filter: blur(8px);
+    transition: transform 160ms ease, box-shadow 160ms ease;
+  }
+
+  .dashboard-regional-metric-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0.65rem 1.2rem rgba(var(--region-accent-rgb), 0.17) !important;
   }
 
   .dashboard-regional-metric-card h4 {
     font-size: clamp(1.25rem, 1.7vw, 1.7rem);
     line-height: 1.1;
     overflow-wrap: anywhere;
+    color: var(--bs-body-color) !important;
+  }
+
+  html[data-bs-theme="dark"] .dashboard-region-mexico {
+    background: linear-gradient(110deg, rgba(0, 104, 71, 0.32), rgba(30, 35, 39, 0.68) 49%, rgba(206, 17, 38, 0.28));
+  }
+
+  html[data-bs-theme="dark"] .dashboard-region-latam {
+    background:
+      radial-gradient(circle at 9% 20%, rgba(0, 168, 168, 0.3), transparent 29%),
+      radial-gradient(circle at 38% 88%, rgba(244, 180, 0, 0.24), transparent 31%),
+      radial-gradient(circle at 70% 15%, rgba(239, 108, 87, 0.24), transparent 30%),
+      radial-gradient(circle at 94% 82%, rgba(112, 72, 200, 0.34), transparent 33%),
+      var(--bs-tertiary-bg);
+  }
+
+  html[data-bs-theme="dark"] .dashboard-region-usa {
+    background:
+      radial-gradient(circle at 10% 25%, rgba(36, 75, 143, 0.4), transparent 36%),
+      repeating-linear-gradient(170deg, rgba(179, 25, 66, 0.17) 0 12px, rgba(255, 255, 255, 0.035) 12px 24px),
+      var(--bs-tertiary-bg);
   }
 
   .dashboard-actions-row .btn {
@@ -466,9 +594,13 @@
   {% for region_name in regiones_cotizacion %}
   {% set region_metrics = dashboard_summary['regions'][region_name] %}
   {% set region_uses_usd = region_name in ['LATAM', 'USA'] %}
-  <div class="dashboard-region-block" data-region-block="{{ region_name }}">
+  {% set region_visual_class = 'mexico' if region_name == 'MÉXICO' else ('latam' if region_name == 'LATAM' else 'usa') %}
+  <div class="dashboard-region-block dashboard-region-{{ region_visual_class }}" data-region-block="{{ region_name }}">
     <div class="dashboard-region-heading">
-      <h3 class="h6 fw-bold mb-0">{{ region_name }}</h3>
+      <h3 class="h6 fw-bold mb-0">
+        <span class="dashboard-region-icon" aria-hidden="true">{{ '🇲🇽' if region_name == 'MÉXICO' else ('🌎' if region_name == 'LATAM' else '🇺🇸') }}</span>
+        {{ region_name }}
+      </h3>
       {% if region_uses_usd %}
       <span class="badge rounded-pill text-bg-primary">Dólares estadounidenses (USD)</span>
       {% endif %}
