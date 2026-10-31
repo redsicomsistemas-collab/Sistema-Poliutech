@@ -666,17 +666,37 @@
 
     #mar-splash .startup-route-glow {
       position: absolute;
-      left: 31%;
-      top: 32%;
       width: min(24vw, 330px);
       aspect-ratio: 1;
       border-radius: 50%;
-      border: 1px solid rgba(200, 255, 226, .58);
-      box-shadow: 0 0 24px rgba(33, 226, 141, .35), inset 0 0 28px rgba(33, 226, 141, .16);
+      border: 1px solid rgba(var(--pulse-rgb), .62);
+      box-shadow: 0 0 24px rgba(var(--pulse-rgb), .42), inset 0 0 28px rgba(var(--pulse-rgb), .18);
       transform: translate(-50%, -50%) scale(.2);
-      animation: marMexicoPulse 6.4s ease-out both;
+      animation: marRegionPulse 2.8s cubic-bezier(.16, .74, .2, 1) both;
+      animation-delay: var(--pulse-delay);
       z-index: 2;
       pointer-events: none;
+    }
+
+    #mar-splash .startup-region-usa {
+      --pulse-rgb: 80, 160, 255;
+      --pulse-delay: .3s;
+      left: 23%;
+      top: 18%;
+    }
+
+    #mar-splash .startup-region-mexico {
+      --pulse-rgb: 53, 238, 142;
+      --pulse-delay: 1.75s;
+      left: 31%;
+      top: 32%;
+    }
+
+    #mar-splash .startup-region-latam {
+      --pulse-rgb: 255, 159, 67;
+      --pulse-delay: 3.2s;
+      left: 52%;
+      top: 67%;
     }
 
     #mar-splash .startup-route-glow::before,
@@ -692,7 +712,7 @@
       inset: 36%;
       background: rgba(240, 255, 247, .78);
       border: 0;
-      box-shadow: 0 0 28px rgba(72, 255, 169, .95);
+      box-shadow: 0 0 28px rgba(var(--pulse-rgb), .95);
     }
 
     #mar-splash .startup-skip {
@@ -729,12 +749,11 @@
       100% { opacity: .72; }
     }
 
-    @keyframes marMexicoPulse {
-      0%, 24% { opacity: 0; transform: translate(-50%, -50%) scale(.18); }
-      39% { opacity: .84; }
-      58% { opacity: .24; transform: translate(-50%, -50%) scale(1); }
-      70% { opacity: .7; transform: translate(-50%, -50%) scale(.48); }
-      100% { opacity: 0; transform: translate(-50%, -50%) scale(1.32); }
+    @keyframes marRegionPulse {
+      0% { opacity: 0; transform: translate(-50%, -50%) scale(.15); }
+      18% { opacity: .95; transform: translate(-50%, -50%) scale(.36); }
+      68% { opacity: .46; transform: translate(-50%, -50%) scale(1); }
+      100% { opacity: 0; transform: translate(-50%, -50%) scale(1.45); }
     }
 
     @keyframes marSkipReveal {
@@ -799,21 +818,25 @@
       }
 
       #mar-splash .startup-route-glow {
-        left: 50%;
-        top: 32%;
         width: min(54vw, 250px);
       }
+
+      #mar-splash .startup-region-usa { left: 42%; top: 18%; }
+      #mar-splash .startup-region-mexico { left: 50%; top: 32%; }
+      #mar-splash .startup-region-latam { left: 63%; top: 68%; }
     }
   </style>
 </head>
 
 <body class="{{ 'auth-page' if request.endpoint == 'login' or not current_user.is_authenticated else '' }}">
-  <!-- ====== Splash solo dashboard ====== -->
+  <!-- ====== Introducción regional ====== -->
   <div id="mar-splash" aria-hidden="true">
     <div class="wrap">
-      <img class="startup-region-visual" src="{{ url_for('static', filename='americas-regional-hero.png', v='1') }}" alt="">
+      <img class="startup-region-visual" src="{{ url_for('static', filename='americas-regional-hero.png', v='2') }}" alt="">
       <div class="startup-atmosphere"></div>
-      <div class="startup-route-glow"></div>
+      <div class="startup-route-glow startup-region-usa"></div>
+      <div class="startup-route-glow startup-region-mexico"></div>
+      <div class="startup-route-glow startup-region-latam"></div>
       <button class="startup-skip" type="button" id="mar-splash-skip">Entrar</button>
       <audio id="mar-splash-audio" preload="auto">
         <source src="{{ url_for('static', filename='sounds/startup.mp3') }}" type="audio/mpeg">
@@ -1257,7 +1280,8 @@
   <script>
   (function() {
     const shouldShow = {{ 'true' if show_splash else 'false' }};
-    const alreadyShown = sessionStorage.getItem('marSplashShown') === '1';
+    const splashStorageKey = 'marSplashAmericasV2';
+    const alreadyShown = sessionStorage.getItem(splashStorageKey) === '1';
     if (!shouldShow || alreadyShown) return;
 
     const splash = document.getElementById('mar-splash');
@@ -1295,7 +1319,7 @@
 
       setTimeout(() => {
         splash.remove();
-        sessionStorage.setItem('marSplashShown', '1');
+        sessionStorage.setItem(splashStorageKey, '1');
       }, 700);
     }
 
