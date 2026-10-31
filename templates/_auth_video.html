@@ -1,5 +1,12 @@
-<img class="auth-bg-visual" src="{{ url_for('static', filename='americas-regional-hero.png', v='2') }}" alt="" aria-hidden="true">
-<div class="auth-region-motion" aria-hidden="true">
+<video class="auth-bg-video" autoplay muted loop playsinline preload="auto" poster="{{ url_for('static', filename='login-roof-hero.png', v='2') }}" aria-hidden="true">
+  <source src="{{ url_for('static', filename='login-roof-motion.mp4', v='3') }}" type="video/mp4">
+</video>
+<div class="auth-world-motion" aria-hidden="true">
+  <div class="auth-world-glow"></div>
+  <img class="auth-world-img" src="{{ url_for('static', filename='poliutech-real-globe.webp', v='1') }}" alt="">
+  <div class="auth-coat-sweep"></div>
+  <div class="auth-orbit auth-orbit-a"></div>
+  <div class="auth-orbit auth-orbit-b"></div>
   <span class="auth-region-pulse auth-region-us"></span>
   <span class="auth-region-pulse auth-region-mx"></span>
   <span class="auth-region-pulse auth-region-latam"></span>

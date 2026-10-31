@@ -17,6 +17,25 @@
   });
   updateButton();
 
+  const backgroundVideo = document.querySelector('.auth-bg-video');
+  if (backgroundVideo) {
+    backgroundVideo.muted = true;
+    backgroundVideo.defaultMuted = true;
+    const playBackgroundVideo = function () {
+      const attempt = backgroundVideo.play();
+      if (attempt && typeof attempt.catch === 'function') {
+        attempt.catch(function () {
+          document.addEventListener('pointerdown', playBackgroundVideo, { once: true });
+          document.addEventListener('keydown', playBackgroundVideo, { once: true });
+        });
+      }
+    };
+    playBackgroundVideo();
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden && backgroundVideo.paused) playBackgroundVideo();
+    });
+  }
+
   document.querySelectorAll('[data-password-toggle]').forEach(function (button) {
     button.addEventListener('click', function () {
       const input = document.getElementById(button.dataset.passwordToggle);

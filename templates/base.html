@@ -638,15 +638,15 @@
       isolation: isolate;
     }
 
-    #mar-splash .startup-region-visual {
+    #mar-splash .startup-roof-video {
       position: absolute;
-      inset: -5%;
-      width: 110%;
-      height: 110%;
+      inset: 0;
+      width: 100%;
+      height: 100%;
       object-fit: cover;
       object-position: center;
-      transform-origin: 48% 48%;
-      animation: marAmericasJourney 6.4s cubic-bezier(.16, .75, .2, 1) both;
+      filter: saturate(.88) brightness(.72);
+      animation: marRoofReveal 7.2s ease both;
       z-index: 0;
     }
 
@@ -654,19 +654,99 @@
       position: absolute;
       inset: 0;
       background:
-        radial-gradient(circle at 37% 38%, rgba(38, 213, 146, .15), transparent 18%),
-        radial-gradient(circle at 29% 20%, rgba(47, 119, 255, .15), transparent 23%),
-        radial-gradient(circle at 55% 68%, rgba(255, 163, 44, .13), transparent 25%),
-        linear-gradient(90deg, rgba(1, 10, 24, .2), transparent 52%, rgba(1, 9, 22, .46)),
-        linear-gradient(180deg, rgba(1, 8, 19, .08), transparent 46%, rgba(1, 8, 19, .58));
-      animation: marAtmosphere 6.4s ease both;
+        radial-gradient(circle at 72% 48%, rgba(35, 150, 255, .22), transparent 28%),
+        linear-gradient(90deg, rgba(0, 12, 31, .08) 0%, rgba(0, 18, 46, .38) 48%, rgba(0, 15, 39, .72) 100%),
+        linear-gradient(180deg, rgba(0, 9, 25, .08), transparent 48%, rgba(0, 8, 22, .52));
       z-index: 1;
       pointer-events: none;
     }
 
+    #mar-splash .startup-world {
+      position: absolute;
+      z-index: 2;
+      right: clamp(1vw, 5vw, 7vw);
+      top: 50%;
+      width: min(49vw, 650px);
+      aspect-ratio: 1;
+      opacity: 0;
+      transform: translate(24%, -46%) scale(.58) rotate(8deg);
+      animation:
+        marWorldArrive 1.25s cubic-bezier(.16, .82, .2, 1) .25s forwards,
+        marWorldFloat 3.2s ease-in-out 1.55s infinite alternate;
+      pointer-events: none;
+    }
+
+    #mar-splash .startup-world-glow {
+      position: absolute;
+      inset: 7%;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(70, 192, 255, .38), rgba(21, 102, 211, .13) 48%, transparent 72%);
+      filter: blur(18px);
+      transform: scale(1.18);
+      animation: marWorldGlow 1.8s ease-in-out infinite alternate;
+    }
+
+    #mar-splash .startup-world-img {
+      position: relative;
+      z-index: 2;
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      filter: drop-shadow(0 28px 40px rgba(0, 0, 0, .38));
+    }
+
+    #mar-splash .startup-coat-sweep {
+      position: absolute;
+      z-index: 5;
+      inset: 7%;
+      border-radius: 50%;
+      overflow: hidden;
+    }
+
+    #mar-splash .startup-coat-sweep::before {
+      content: "";
+      position: absolute;
+      top: -20%;
+      bottom: -20%;
+      left: -55%;
+      width: 42%;
+      transform: skewX(-17deg);
+      background: linear-gradient(90deg, transparent, rgba(104, 232, 244, .4) 24%, rgba(85, 174, 247, .82) 50%, rgba(104, 232, 244, .4) 76%, transparent);
+      box-shadow: 0 0 35px rgba(80, 190, 255, .45);
+      animation: marCoatSweep 1.2s cubic-bezier(.58, .08, .22, .98) 1.25s forwards;
+    }
+
+    #mar-splash .startup-orbit {
+      position: absolute;
+      z-index: 4;
+      left: 50%;
+      top: 50%;
+      border-style: solid;
+      border-radius: 50%;
+      opacity: 0;
+    }
+
+    #mar-splash .startup-orbit-a {
+      width: 108%;
+      height: 52%;
+      border-width: 3px;
+      border-color: rgba(135, 232, 234, .8);
+      animation: marOrbitA 1s ease 1.05s forwards, marOrbitSpinA 6s linear 2.05s infinite;
+    }
+
+    #mar-splash .startup-orbit-b {
+      width: 116%;
+      height: 64%;
+      border-width: 2px;
+      border-color: rgba(70, 149, 238, .68);
+      animation: marOrbitB 1.1s ease 1.15s forwards, marOrbitSpinB 7s linear 2.25s infinite reverse;
+    }
+
     #mar-splash .startup-route-glow {
       position: absolute;
-      width: min(24vw, 330px);
+      z-index: 7;
+      width: clamp(56px, 8vw, 112px);
       aspect-ratio: 1;
       border-radius: 50%;
       border: 1px solid rgba(var(--pulse-rgb), .62);
@@ -680,23 +760,23 @@
 
     #mar-splash .startup-region-usa {
       --pulse-rgb: 80, 160, 255;
-      --pulse-delay: .3s;
-      left: 23%;
-      top: 18%;
+      --pulse-delay: 1.75s;
+      left: 34%;
+      top: 32%;
     }
 
     #mar-splash .startup-region-mexico {
       --pulse-rgb: 53, 238, 142;
-      --pulse-delay: 1.75s;
-      left: 31%;
-      top: 32%;
+      --pulse-delay: 2.8s;
+      left: 35%;
+      top: 47%;
     }
 
     #mar-splash .startup-region-latam {
       --pulse-rgb: 255, 159, 67;
-      --pulse-delay: 3.2s;
-      left: 52%;
-      top: 67%;
+      --pulse-delay: 3.85s;
+      left: 56%;
+      top: 69%;
     }
 
     #mar-splash .startup-route-glow::before,
@@ -734,20 +814,15 @@
       background: rgba(12, 78, 148, 0.86);
     }
 
-    @keyframes marAmericasJourney {
-      0% { opacity: 0; transform: scale(1.16) translate3d(-2.5%, -1.5%, 0); filter: saturate(.7) brightness(.62) blur(3px); }
-      14% { opacity: 1; }
-      48% { transform: scale(1.08) translate3d(1.5%, 1%, 0); filter: saturate(1.05) brightness(.9) blur(0); }
-      84% { opacity: 1; transform: scale(1.015) translate3d(0, 0, 0); filter: saturate(1.14) brightness(1); }
-      100% { opacity: .92; transform: scale(1) translate3d(0, 0, 0); filter: saturate(1.08) brightness(.8); }
-    }
-
-    @keyframes marAtmosphere {
-      0% { opacity: .95; }
-      42% { opacity: .48; }
-      82% { opacity: .24; }
-      100% { opacity: .72; }
-    }
+    @keyframes marRoofReveal { 0% { opacity: 0; transform: scale(1.06); } 12% { opacity: 1; } 100% { opacity: 1; transform: scale(1); } }
+    @keyframes marWorldArrive { to { opacity: 1; transform: translate(0, -50%) scale(1) rotate(0); } }
+    @keyframes marWorldFloat { from { margin-top: -5px; } to { margin-top: 10px; } }
+    @keyframes marWorldGlow { from { opacity: .55; transform: scale(1.08); } to { opacity: 1; transform: scale(1.23); } }
+    @keyframes marCoatSweep { from { left: -55%; } to { left: 115%; } }
+    @keyframes marOrbitA { from { opacity: 0; transform: translate(-50%, -50%) rotate(-26deg) scale(.82); } to { opacity: .74; transform: translate(-50%, -50%) rotate(18deg) scale(1); } }
+    @keyframes marOrbitB { from { opacity: 0; transform: translate(-50%, -50%) rotate(12deg) scale(.86); } to { opacity: .54; transform: translate(-50%, -50%) rotate(-24deg) scale(1); } }
+    @keyframes marOrbitSpinA { from { transform: translate(-50%, -50%) rotate(18deg); } to { transform: translate(-50%, -50%) rotate(378deg); } }
+    @keyframes marOrbitSpinB { from { transform: translate(-50%, -50%) rotate(-24deg); } to { transform: translate(-50%, -50%) rotate(336deg); } }
 
     @keyframes marRegionPulse {
       0% { opacity: 0; transform: translate(-50%, -50%) scale(.15); }
@@ -765,12 +840,6 @@
 
     #mar-splash.fade-in { animation: splashFadeIn .25s ease-out both; }
     #mar-splash.fade-out { animation: splashFadeOut .7s ease-in both; }
-
-    @media (prefers-reduced-motion: reduce) {
-      #mar-splash .startup-region-visual { animation: none; opacity: 1; transform: none; }
-      #mar-splash .startup-atmosphere { animation: none; }
-      #mar-splash .startup-route-glow { display: none; }
-    }
 
     /* ====== FIX SUGERENCIAS DE AUTOCOMPLETAR ====== */
     #frm-cotizacion .table-responsive { overflow: visible !important; }
@@ -810,20 +879,17 @@
         padding: 20px;
       }
 
-      #mar-splash .startup-region-visual {
-        inset: -5%;
-        width: 110%;
-        height: 110%;
-        object-position: 30% center;
+      #mar-splash .startup-roof-video {
+        object-position: 32% center;
       }
 
-      #mar-splash .startup-route-glow {
-        width: min(54vw, 250px);
+      #mar-splash .startup-world {
+        right: -9vw;
+        top: 47%;
+        width: min(84vw, 430px);
       }
 
-      #mar-splash .startup-region-usa { left: 42%; top: 18%; }
-      #mar-splash .startup-region-mexico { left: 50%; top: 32%; }
-      #mar-splash .startup-region-latam { left: 63%; top: 68%; }
+      #mar-splash .startup-route-glow { width: clamp(48px, 18vw, 86px); }
     }
   </style>
 </head>
@@ -832,11 +898,20 @@
   <!-- ====== Introducción regional ====== -->
   <div id="mar-splash" aria-hidden="true">
     <div class="wrap">
-      <img class="startup-region-visual" src="{{ url_for('static', filename='americas-regional-hero.png', v='2') }}" alt="">
+      <video class="startup-roof-video" autoplay muted loop playsinline preload="auto" poster="{{ url_for('static', filename='login-roof-hero.png', v='2') }}" aria-hidden="true">
+        <source src="{{ url_for('static', filename='login-roof-motion.mp4', v='3') }}" type="video/mp4">
+      </video>
       <div class="startup-atmosphere"></div>
-      <div class="startup-route-glow startup-region-usa"></div>
-      <div class="startup-route-glow startup-region-mexico"></div>
-      <div class="startup-route-glow startup-region-latam"></div>
+      <div class="startup-world">
+        <div class="startup-world-glow"></div>
+        <img class="startup-world-img" src="{{ url_for('static', filename='poliutech-real-globe.webp', v='1') }}" alt="">
+        <div class="startup-coat-sweep"></div>
+        <div class="startup-orbit startup-orbit-a"></div>
+        <div class="startup-orbit startup-orbit-b"></div>
+        <div class="startup-route-glow startup-region-usa"></div>
+        <div class="startup-route-glow startup-region-mexico"></div>
+        <div class="startup-route-glow startup-region-latam"></div>
+      </div>
       <button class="startup-skip" type="button" id="mar-splash-skip">Entrar</button>
       <audio id="mar-splash-audio" preload="auto">
         <source src="{{ url_for('static', filename='sounds/startup.mp3') }}" type="audio/mpeg">
@@ -1280,15 +1355,25 @@
   <script>
   (function() {
     const shouldShow = {{ 'true' if show_splash else 'false' }};
-    const splashStorageKey = 'marSplashAmericasV2';
+    const splashStorageKey = 'marSplashPoliutechV3';
     const alreadyShown = sessionStorage.getItem(splashStorageKey) === '1';
     if (!shouldShow || alreadyShown) return;
 
     const splash = document.getElementById('mar-splash');
     const audio  = document.getElementById('mar-splash-audio');
+    const video = splash.querySelector('.startup-roof-video');
 
     splash.style.display = 'block';
     splash.classList.add('fade-in');
+
+    if (video) {
+      video.muted = true;
+      video.defaultMuted = true;
+      video.currentTime = 0;
+      video.play().catch(() => {
+        document.body.addEventListener('pointerdown', () => video.play().catch(() => {}), { once: true });
+      });
+    }
 
     // 🎵 Reproduce el audio inmediatamente (no se detiene al cerrar el splash)
     function playStartupSound() {
@@ -1326,7 +1411,7 @@
     document.getElementById('mar-splash-skip')?.addEventListener('click', closeSplash);
 
     // Cierre del splash visual. El audio existente puede continuar si el navegador lo permite.
-    setTimeout(closeSplash, 6400);
+    setTimeout(closeSplash, 7200);
   })();
   </script>
 <!-- ====== Tooltips globales Bootstrap ====== -->
