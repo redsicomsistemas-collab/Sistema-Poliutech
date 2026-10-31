@@ -87,6 +87,27 @@ class CotizacionRegionesTest(unittest.TestCase):
         for region in REGIONES_COTIZACION:
             self.assertIn(region.encode("utf-8"), response.data)
 
+    def test_cotizador_usa_flujo_por_pasos_y_revision_previa(self):
+        response = self.client.get("/cotizador")
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+
+        for marker in (
+            'id="quote-step-client"',
+            'id="quote-step-items"',
+            'id="quote-step-review"',
+            'id="items-body"',
+            'id="btn-add-row-bottom"',
+            'id="quote-summary-currency"',
+            'id="btn-review-quote"',
+            'id="quoteReviewModal"',
+            'id="btn-generate-quote"',
+        ):
+            self.assertIn(marker, html)
+
+        self.assertIn("cotizador-workspace.css", html)
+        self.assertNotIn("quote-items-table", html)
+
     def test_crear_editar_filtrar_y_exportar_por_region(self):
         quote_id = self._create_quote()
         with app.app_context():

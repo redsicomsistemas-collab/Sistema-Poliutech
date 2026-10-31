@@ -2,32 +2,54 @@
 //  cotizador.js - renglones, autocompletar y totales
 // ============================================================
 
-function fmt(n){ 
-  return (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}); 
+function currentCurrency(){
+  return document.getElementById("moneda")?.value || "MXN";
+}
+
+function fmt(n){
+  return new Intl.NumberFormat("es-MX", {
+    style: "currency",
+    currency: currentCurrency(),
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(n) || 0);
 }
 
 function rowTemplate(){
   return `
-    <tr>
-      <td><input type="text" class="form-control form-control-sm item-capitulo" name="item_capitulo[]" placeholder="Capítulo"></td>
-      <td class="position-relative">
-        <textarea class="form-control form-control-sm item-nombre quote-textarea" name="item_nombre_concepto[]" rows="3" placeholder="Escribe para buscar..." autocomplete="off"></textarea>
-        <div class="list-group position-absolute w-100 item-suggest" style="z-index:1000; max-height:180px; overflow:auto;"></div>
-      </td>
-      <td><input type="text" class="form-control form-control-sm item-unidad" name="item_unidad[]"></td>
-      <td><input type="number" step="0.01" class="form-control form-control-sm item-cantidad" name="item_cantidad[]" value="1"></td>
-      <td><input type="number" step="0.01" class="form-control form-control-sm item-precio" name="item_precio[]" value="0"></td>
-      <td><input type="text" class="form-control form-control-sm item-sistema" name="item_sistema[]" placeholder="Sistema"></td>
-      <td class="text-end"><span class="item-subtotal">$0.00</span></td>
-      <td><textarea class="form-control form-control-sm quote-textarea" name="item_descripcion[]" rows="2"></textarea></td>
-      <td class="text-center">
+    <article class="quote-create-item" role="listitem">
+      <div class="quote-create-item-header">
+        <span class="quote-item-number">1</span>
+        <span class="quote-item-preview">Concepto sin nombre</span>
+        <span class="quote-item-header-total item-subtotal">${fmt(0)}</span>
         <div class="quote-row-actions">
-          <button type="button" class="btn btn-sm btn-outline-secondary btn-move-up" title="Subir">↑</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary btn-move-down" title="Bajar">↓</button>
-          <button type="button" class="btn btn-sm btn-outline-danger btn-del" title="Eliminar">×</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary btn-move-up" title="Subir concepto" aria-label="Subir concepto">↑</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary btn-move-down" title="Bajar concepto" aria-label="Bajar concepto">↓</button>
+          <button type="button" class="btn btn-sm btn-outline-danger btn-del" title="Eliminar concepto" aria-label="Eliminar concepto">×</button>
         </div>
-      </td>
-    </tr>
+      </div>
+      <div class="quote-create-item-body">
+        <div class="quote-item-core">
+          <div class="quote-item-concept position-relative">
+            <label>Concepto</label>
+            <textarea class="form-control item-nombre quote-textarea" name="item_nombre_concepto[]" rows="2" placeholder="Buscar o describir concepto…" autocomplete="off" required></textarea>
+            <div class="list-group position-absolute w-100 item-suggest quote-suggestions"></div>
+          </div>
+          <div><label>Unidad</label><input type="text" class="form-control item-unidad" name="item_unidad[]" placeholder="m²"></div>
+          <div><label>Cantidad</label><input type="number" step="0.01" class="form-control item-cantidad text-end" name="item_cantidad[]" value="1"></div>
+          <div><label>Precio unitario</label><input type="number" step="0.01" class="form-control item-precio text-end" name="item_precio[]" value="0"></div>
+          <div class="quote-item-subtotal-wrap"><label>Importe</label><div class="quote-item-subtotal item-subtotal">${fmt(0)}</div></div>
+        </div>
+        <details class="quote-disclosure quote-item-advanced">
+          <summary><span>Más detalles</span><small>Capítulo, sistema y descripción</small></summary>
+          <div class="quote-disclosure-body"><div class="row g-3">
+            <div class="col-md-4"><label class="form-label">Capítulo</label><input type="text" class="form-control item-capitulo" name="item_capitulo[]" placeholder="Capítulo"></div>
+            <div class="col-md-4"><label class="form-label">Sistema</label><input type="text" class="form-control item-sistema" name="item_sistema[]" placeholder="Sistema"></div>
+            <div class="col-md-4"><label class="form-label">Descripción adicional</label><textarea class="form-control quote-textarea" name="item_descripcion[]" rows="2" placeholder="Información complementaria"></textarea></div>
+          </div></div>
+        </details>
+      </div>
+    </article>
   `;
 }
 
@@ -39,12 +61,14 @@ function bindRowEvents(tr){
   const precio = tr.querySelector(".item-precio");
   const sistema = tr.querySelector(".item-sistema");
   const desc = tr.querySelector('textarea[name="item_descripcion[]"]');
-  const subtotalEl = tr.querySelector(".item-subtotal");
+  const subtotalEls = tr.querySelectorAll(".item-subtotal");
+  const previewEl = tr.querySelector(".quote-item-preview");
   const sug = tr.querySelector(".item-suggest");
 
   // Autocompletar concepto
   nombre.addEventListener("input", async ()=>{
     const q = nombre.value.trim();
+    if(previewEl) previewEl.textContent = q.replace(/\s+/g, " ") || "Concepto sin nombre";
     if(q.length < 1){ sug.innerHTML=""; return; }
     const res = await fetch("/api/conceptos/suggest?q="+encodeURIComponent(q));
     const data = await res.json();
@@ -61,6 +85,7 @@ function bindRowEvents(tr){
         sistema.value = it.sistema || "";     // 👈 ahora “jala” sistema del catálogo
         desc.value = it.descripcion || "";
         sug.innerHTML="";
+        if(previewEl) previewEl.textContent = nombre.value.trim().replace(/\s+/g, " ") || "Concepto sin nombre";
         recalcRow(); recalcTotals();
       };
       sug.appendChild(div);
@@ -71,7 +96,7 @@ function bindRowEvents(tr){
     const c = Number(cantidad.value)||0;
     const p = Number(precio.value)||0;
     const line = c * p;
-    subtotalEl.textContent = "$"+fmt(line);
+    subtotalEls.forEach(el => { el.textContent = fmt(line); });
   }
   [cantidad, precio].forEach(i=> i.addEventListener("input", ()=>{ recalcRow(); recalcTotals(); }));
 
@@ -96,24 +121,32 @@ function bindRowEvents(tr){
 }
 
 function updateMoveButtons(){
-  const rows = Array.from(document.querySelectorAll("#items-body tr"));
+  const rows = Array.from(document.querySelectorAll("#items-body .quote-create-item"));
   rows.forEach((tr, idx)=>{
     const up = tr.querySelector(".btn-move-up");
     const down = tr.querySelector(".btn-move-down");
     if(up) up.disabled = idx === 0;
     if(down) down.disabled = idx === rows.length - 1;
+    const number = tr.querySelector(".quote-item-number");
+    if(number) number.textContent = idx + 1;
   });
+  const count = document.getElementById("quote-items-count");
+  const empty = document.getElementById("quote-items-empty");
+  if(count) count.textContent = rows.length;
+  if(empty) empty.classList.toggle("d-none", rows.length > 0);
 }
 
 let descuentoEditadoManualmente = false;
 
 function recalcTotals(){
-  const rows = document.querySelectorAll("#items-body tr");
+  const rows = document.querySelectorAll("#items-body .quote-create-item");
   let subtotal = 0;
   rows.forEach(tr=>{
     const cantidad = Number(tr.querySelector(".item-cantidad").value)||0;
     const precio = Number(tr.querySelector(".item-precio").value)||0;
-    subtotal += cantidad * precio;
+    const line = cantidad * precio;
+    subtotal += line;
+    tr.querySelectorAll(".item-subtotal").forEach(el => { el.textContent = fmt(line); });
   });
 
   // --- descuento por zona ---
@@ -140,11 +173,18 @@ function recalcTotals(){
   const iva = subtotalDesc * ivaPorc/100;
   const total = subtotalDesc + iva;
 
-  document.getElementById("ui-subtotal").textContent = "$"+fmt(subtotal);
+  document.getElementById("ui-subtotal").textContent = fmt(subtotal);
   const uiSubDesc = document.getElementById("ui-subtotal-desc");
-  if (uiSubDesc) uiSubDesc.textContent = "$"+fmt(subtotalDesc);
-  document.getElementById("ui-iva").textContent = "$"+fmt(iva);
-  document.getElementById("ui-total").textContent = "$"+fmt(total);
+  if (uiSubDesc) uiSubDesc.textContent = fmt(subtotalDesc);
+  document.getElementById("ui-iva").textContent = fmt(iva);
+  document.getElementById("ui-total").textContent = fmt(total);
+  const currency = currentCurrency();
+  ["quote-currency-chip", "quote-summary-currency"].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.textContent = currency;
+  });
+  window.quoteTotals = { subtotal, descuento, subtotalDesc, iva, total, currency };
+  return window.quoteTotals;
 }
 
 document.addEventListener("DOMContentLoaded", ()=>{
@@ -160,6 +200,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
 
     input.addEventListener("input", async ()=>{
       const q = input.value.trim();
+      updateClientSectionState();
       if(q.length<1){ box.innerHTML=""; return; }
       const res = await fetch("/api/clientes/suggest?q="+encodeURIComponent(q));
       const data = await res.json();
@@ -175,8 +216,8 @@ document.addEventListener("DOMContentLoaded", ()=>{
           document.getElementById("correo").value = it.correo || "";
           document.getElementById("telefono").value = it.telefono || "";
           document.getElementById("direccion").value = it.direccion || "";
-          // ❌ sin RFC
           box.innerHTML="";
+          updateClientSectionState();
         };
         box.appendChild(div);
       });
@@ -192,8 +233,9 @@ document.addEventListener("DOMContentLoaded", ()=>{
   // ============================================================
   const tbody = document.getElementById("items-body");
   const btnAdd = document.getElementById("btn-add-row");
+  const btnAddBottom = document.getElementById("btn-add-row-bottom");
   function addRow(){
-    const tmp = document.createElement("tbody");
+    const tmp = document.createElement("div");
     tmp.innerHTML = rowTemplate();
     const tr = tmp.firstElementChild;
     tbody.appendChild(tr);
@@ -202,6 +244,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
     return tr;
   }
   if (btnAdd) btnAdd.addEventListener("click", addRow);
+  if (btnAddBottom) btnAddBottom.addEventListener("click", addRow);
   addRow();
 
   function focusNextQuoteRow(currentRow){
@@ -217,7 +260,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
   tbody.addEventListener("keydown", (event)=>{
     if(event.key !== "Enter" || event.isComposing) return;
     const target = event.target;
-    const currentRow = target.closest("tr");
+    const currentRow = target.closest(".quote-create-item");
     if(!currentRow || target.matches("button")) return;
     // Shift + Enter conserva el salto de línea en Concepto y Descripción.
     if(target.matches("textarea") && event.shiftKey) return;
@@ -255,6 +298,95 @@ document.addEventListener("DOMContentLoaded", ()=>{
       recalcTotals();
     });
   }
+
+  const regionField = document.getElementById("region");
+  const monedaField = document.getElementById("moneda");
+  const especialidadField = document.getElementById("especialidad");
+  const clienteField = document.getElementById("cliente_input");
+  const clientState = document.getElementById("client-section-state");
+
+  function updateClientSectionState(){
+    const complete = Boolean(clienteField?.value.trim() && especialidadField?.value && regionField?.value);
+    if(clientState){
+      clientState.textContent = complete ? "Completo" : "Pendiente";
+      clientState.classList.toggle("is-complete", complete);
+    }
+  }
+
+  function updateQuoteContext(){
+    const regionChip = document.getElementById("quote-region-chip");
+    if(regionChip) regionChip.textContent = regionField?.value || "Sin región";
+    recalcTotals();
+    updateClientSectionState();
+  }
+
+  regionField?.addEventListener("change", updateQuoteContext);
+  monedaField?.addEventListener("change", updateQuoteContext);
+  especialidadField?.addEventListener("change", updateClientSectionState);
+  clienteField?.addEventListener("change", updateClientSectionState);
+  updateQuoteContext();
+
+  function escapeHtml(value){
+    return String(value ?? "").replace(/[&<>'"]/g, char => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
+    })[char]);
+  }
+
+  function openQuoteReview(){
+    if(!frm) return;
+    if(!frm.checkValidity()){
+      frm.reportValidity();
+      const invalid = frm.querySelector(":invalid");
+      invalid?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+
+    const rows = Array.from(document.querySelectorAll("#items-body .quote-create-item"));
+    const items = rows.map(row => ({
+      nombre: row.querySelector(".item-nombre")?.value.trim() || "",
+      unidad: row.querySelector(".item-unidad")?.value.trim() || "",
+      cantidad: Number(row.querySelector(".item-cantidad")?.value) || 0,
+      precio: Number(row.querySelector(".item-precio")?.value) || 0,
+    })).filter(item => item.nombre);
+
+    if(!items.length){
+      Swal.fire("Falta información", "Agrega al menos un concepto antes de revisar.", "warning");
+      return;
+    }
+
+    const totals = recalcTotals();
+    const review = document.getElementById("quote-review-content");
+    if(!review) return;
+    review.innerHTML = `
+      <div class="quote-review-summary">
+        <section class="quote-review-block">
+          <h3>Cliente y proyecto</h3>
+          <div class="quote-review-grid">
+            <div><small>Cliente</small><strong>${escapeHtml(clienteField?.value || "Sin cliente")}</strong></div>
+            <div><small>Proyecto</small><strong>${escapeHtml(document.getElementById("proyecto")?.value || "No indicado")}</strong></div>
+            <div><small>Especialidad</small><strong>${escapeHtml(especialidadField?.value || "No indicada")}</strong></div>
+            <div><small>Región</small><strong>${escapeHtml(regionField?.value || "")}</strong></div>
+            <div><small>Moneda</small><strong>${escapeHtml(totals.currency)}</strong></div>
+            <div><small>Correo</small><strong>${escapeHtml(document.getElementById("correo")?.value || "No indicado")}</strong></div>
+          </div>
+        </section>
+        <section class="quote-review-block">
+          <h3>${items.length} concepto${items.length === 1 ? "" : "s"}</h3>
+          <ol class="quote-review-items">${items.map(item => `<li><strong>${escapeHtml(item.nombre)}</strong> · ${escapeHtml(item.unidad || "Sin unidad")} · ${item.cantidad} × ${fmt(item.precio)}</li>`).join("")}</ol>
+        </section>
+        <section class="quote-review-block">
+          <div class="quote-review-grid">
+            <div><small>Subtotal</small><strong>${fmt(totals.subtotal)}</strong></div>
+            <div><small>Descuento</small><strong>−${fmt(totals.descuento)}</strong></div>
+            <div><small>IVA</small><strong>${fmt(totals.iva)}</strong></div>
+          </div>
+          <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top"><strong>Total</strong><strong class="quote-review-total">${fmt(totals.total)} ${escapeHtml(totals.currency)}</strong></div>
+        </section>
+      </div>`;
+    bootstrap.Modal.getOrCreateInstance(document.getElementById("quoteReviewModal")).show();
+  }
+
+  document.getElementById("btn-review-quote")?.addEventListener("click", openQuoteReview);
 
   // ============================================================
   // 🔹 ENVÍO + ABRIR PDF NUEVA PESTAÑA
@@ -460,7 +592,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
     }
 
     function money(n){
-      return (Number(n)||0).toLocaleString("es-MX", { style:"currency", currency:"MXN" });
+      return (Number(n)||0).toLocaleString("es-MX", { style:"currency", currency:currentCurrency() });
     }
 
     function renderVoicePreview(preview){
@@ -514,9 +646,12 @@ document.addEventListener("DOMContentLoaded", ()=>{
           tr.querySelector(".item-sistema").value = item.sistema || "";
           const descField = tr.querySelector('textarea[name="item_descripcion[]"]');
           if(descField) descField.value = item.descripcion || "";
+          const previewField = tr.querySelector(".quote-item-preview");
+          if(previewField) previewField.textContent = item.nombre || "Concepto sin nombre";
         });
       }
       recalcTotals();
+      updateClientSectionState();
       setStatus("La captura por voz se aplicó al cotizador.", "success");
     }
 

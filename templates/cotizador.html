@@ -1,227 +1,129 @@
 {% extends "base.html" %}
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
-  <h2 class="mb-0 fw-bold text-primary">💰 Cotizador de Poliutech</h2>
-  <button type="button" id="btn-open-voice-web" class="voice-launch-btn">
-    <span class="voice-launch-icon">🎙</span>
-    <span class="voice-launch-text">
-      <strong>Voz</strong>
-      <small>Captura inteligente</small>
-    </span>
-  </button>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/cotizador-workspace.css', v='1') }}">
+
+<div class="quote-workspace-shell">
+  <header class="quote-workspace-header">
+    <div class="quote-workspace-heading">
+      <div class="quote-kicker">Comercial · Nueva propuesta</div>
+      <h1>Crear cotización</h1>
+      <p>Captura el proyecto, agrega los conceptos y revisa el importe antes de generar.</p>
+    </div>
+    <div class="quote-header-actions">
+      <div class="quote-context-chips" aria-label="Contexto de la cotización">
+        <span class="quote-status-chip quote-status-draft"><span class="quote-chip-dot"></span>Borrador</span>
+        <span class="quote-status-chip" id="quote-region-chip">México</span>
+        <span class="quote-status-chip" id="quote-currency-chip">MXN</span>
+      </div>
+      <div class="d-flex flex-wrap justify-content-end gap-2">
+        <button type="button" id="btn-open-voice-web" class="btn btn-outline-primary quote-voice-trigger"><span aria-hidden="true">◉</span> Dictar cotización</button>
+        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">Volver</a>
+      </div>
+    </div>
+  </header>
+
+  <nav class="quote-step-nav" aria-label="Etapas de la cotización">
+    <a href="#quote-step-client"><span>1</span><strong>Cliente y proyecto</strong></a>
+    <a href="#quote-step-items"><span>2</span><strong>Conceptos e importes</strong></a>
+    <a href="#quote-step-review"><span>3</span><strong>Revisar y generar</strong></a>
+  </nav>
+
+  <form id="frm-cotizacion" method="POST" action="{{ url_for('crear_cotizacion') }}">
+    <section class="quote-section-card d-none" id="voice-web-panel" aria-labelledby="voice-panel-title">
+      <div class="quote-section-heading">
+        <div class="quote-section-number quote-section-number-voice">V</div>
+        <div class="flex-grow-1">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+            <div><h2 id="voice-panel-title">Captura por voz</h2><p>Dicta los datos y revisa la interpretación antes de aplicarla al cotizador.</p></div>
+            <div class="d-flex gap-2"><button type="button" id="btn-voice-web-hide" class="btn btn-sm btn-outline-secondary">Ocultar</button><button type="button" id="btn-voice-web-clear" class="btn btn-sm btn-outline-danger">Vaciar</button></div>
+          </div>
+        </div>
+      </div>
+      <div id="voice-web-status" class="alert alert-secondary d-none align-items-center gap-2 py-2 mb-3"><span id="voice-web-dot" class="rounded-circle bg-danger d-inline-block" style="width:12px;height:12px;"></span><div id="voice-web-spinner" class="spinner-border spinner-border-sm text-primary d-none" role="status"></div><span id="voice-web-status-text" class="fw-semibold">Listo para grabar.</span></div>
+      <div class="row g-3">
+        <div class="col-lg-8"><label for="voice_command_input" class="form-label fw-semibold">Comando de voz</label><textarea id="voice_command_input" class="form-control" rows="5" placeholder="Cliente, proyecto, conceptos, unidades, cantidades, precios y sistemas."></textarea></div>
+        <div class="col-lg-4"><label for="voice_conditions_input" class="form-label fw-semibold">Condiciones comerciales</label><textarea id="voice_conditions_input" class="form-control" rows="5" placeholder="Vigencia, forma de pago, tiempos o condiciones adicionales."></textarea></div>
+      </div>
+      <div class="d-flex flex-wrap gap-2 mt-3"><button type="button" id="btn-voice-record-command" class="btn btn-outline-primary">Grabar comando</button><button type="button" id="btn-voice-record-conditions" class="btn btn-outline-primary">Grabar condiciones</button><button type="button" id="btn-voice-preview-web" class="btn btn-primary">Previsualizar voz</button><button type="button" id="btn-voice-apply-web" class="btn btn-success">Aplicar al cotizador</button></div>
+      <div id="voice-web-preview" class="small text-muted mt-3"></div>
+    </section>
+
+    <section class="quote-section-card" id="quote-step-client" aria-labelledby="client-section-title">
+      <div class="quote-section-heading">
+        <div class="quote-section-number">1</div>
+        <div><h2 id="client-section-title">Cliente y proyecto</h2><p>Define primero el contexto comercial. Los datos de contacto se completan al seleccionar un cliente.</p></div>
+        <span class="quote-section-state" id="client-section-state">Pendiente</span>
+      </div>
+      <div class="quote-primary-fields">
+        <div class="quote-field quote-field-client position-relative"><label for="cliente_input">Cliente <span aria-hidden="true">*</span></label><input type="text" id="cliente_input" name="cliente" class="form-control" required placeholder="Buscar cliente…" autocomplete="off"><div id="cliente_suggestions" class="list-group position-absolute w-100 quote-suggestions"></div></div>
+        <div class="quote-field"><label for="proyecto">Proyecto</label><input type="text" id="proyecto" name="proyecto" class="form-control" placeholder="Nombre del proyecto" list="proyectos_list" autocomplete="off"><datalist id="proyectos_list">{% for proyecto in proyectos or [] %}<option value="{{ proyecto }}"></option>{% endfor %}</datalist></div>
+        <div class="quote-field"><label for="especialidad">Especialidad <span aria-hidden="true">*</span></label><select id="especialidad" name="especialidad" class="form-select" required><option value="" selected disabled>Seleccionar…</option>{% for especialidad in especialidades_cotizacion %}<option value="{{ especialidad }}">{{ especialidad }}</option>{% endfor %}</select></div>
+        <div class="quote-field quote-field-compact"><label for="region">Región <span aria-hidden="true">*</span></label><select id="region" name="region" class="form-select" required>{% for region in regiones_cotizacion %}<option value="{{ region }}" {% if region == 'MÉXICO' %}selected{% endif %}>{{ region }}</option>{% endfor %}</select></div>
+        <div class="quote-field quote-field-compact"><label for="moneda">Moneda</label><select id="moneda" name="moneda" class="form-select"><option value="MXN" selected>MXN · Pesos</option><option value="USD">USD · Dólares</option></select></div>
+      </div>
+      <details class="quote-disclosure mt-3">
+        <summary><span>Datos de contacto y ubicación</span><small>Empresa, correo, teléfono y dirección</small></summary>
+        <div class="quote-disclosure-body"><div class="row g-3">
+          <div class="col-lg-4 col-md-6"><label for="empresa" class="form-label">Empresa</label><input type="text" id="empresa" name="empresa" class="form-control" placeholder="Empresa o razón social"></div>
+          <div class="col-lg-4 col-md-6"><label for="correo" class="form-label">Correo</label><input type="email" id="correo" name="correo" class="form-control" multiple placeholder="correo@dominio.com"></div>
+          <div class="col-lg-4 col-md-6"><label for="telefono" class="form-label">Teléfono</label><input type="text" id="telefono" name="telefono" class="form-control"></div>
+          <div class="col-lg-4 col-md-6"><label for="direccion" class="form-label">Dirección</label><input type="text" id="direccion" name="direccion" class="form-control"></div>
+          <div class="col-lg-4 col-md-6"><label for="ciudad_trabajo" class="form-label">Ciudad</label><input type="text" id="ciudad_trabajo" name="ciudad_trabajo" class="form-control text-uppercase" placeholder="CIUDAD DE MÉXICO" autocomplete="off"></div>
+          <div class="col-lg-4 col-md-6"><label for="especialidad_descripcion" class="form-label">Descripción de la especialidad</label><input type="text" id="especialidad_descripcion" name="especialidad_descripcion" class="form-control" placeholder="Alcance o variante" autocomplete="off"></div>
+          <div class="col-lg-4 col-md-6"><label class="form-label">Responsable</label><input type="text" class="form-control" value="{{ current_user.nombre_representante }}" readonly aria-readonly="true"></div>
+        </div></div>
+      </details>
+      <input type="hidden" name="estatus" value="0%"><input type="hidden" name="estatus_aprobacion" value="EN REVISIÓN">
+    </section>
+
+    <div class="quote-builder-layout" id="quote-step-items">
+      <section class="quote-section-card quote-items-workspace" aria-labelledby="items-section-title">
+        <div class="quote-section-heading quote-section-heading-items">
+          <div class="quote-section-number">2</div>
+          <div class="flex-grow-1"><h2 id="items-section-title">Conceptos e importes</h2><p>Agrega conceptos del catálogo y abre “Más detalles” sólo cuando necesites capítulo, sistema o descripción.</p></div>
+          <button type="button" id="btn-add-row" class="btn btn-primary">Agregar concepto</button>
+        </div>
+        <div class="quote-items-toolbar"><span><strong id="quote-items-count">0</strong> conceptos</span><span>Enter: siguiente concepto</span><span>Shift + Enter: salto de línea</span></div>
+        <div id="items-body" class="quote-create-items" role="list" aria-label="Conceptos de la cotización"></div>
+        <div id="quote-items-empty" class="quote-empty-state d-none">No hay conceptos. Agrega uno para comenzar.</div>
+        <button type="button" id="btn-add-row-bottom" class="quote-add-another">＋ Agregar otro concepto</button>
+      </section>
+
+      <aside class="quote-summary-card" aria-labelledby="summary-title">
+        <div class="quote-summary-sticky">
+          <div class="quote-summary-header"><div><div class="quote-kicker">Importes</div><h2 id="summary-title">Resumen</h2></div><span id="quote-summary-currency">MXN</span></div>
+          <div class="quote-summary-controls">
+            <div><label for="zona">Zona</label><select id="zona" name="zona" class="form-select"><option value="" selected>Sin zona</option><option value="Zona Norte">Zona Norte</option><option value="Zona Centro">Zona Centro</option><option value="Bajío">Bajío</option><option value="Zona Sur">Zona Sur</option><option value="Frontera">Frontera</option></select></div>
+            <div><label for="descuento_total">Descuento %</label><input type="number" id="descuento_total" name="descuento_total" class="form-control text-end" step="0.01" min="0" max="100" value="0"></div>
+            <div><label for="iva_porc">IVA %</label><input type="number" id="iva_porc" name="iva_porc" class="form-control text-end" value="16"></div>
+          </div>
+          <dl class="quote-totals-list"><div><dt>Subtotal</dt><dd id="ui-subtotal">$0.00</dd></div><div><dt>Subtotal con descuento</dt><dd id="ui-subtotal-desc">$0.00</dd></div><div><dt>IVA</dt><dd id="ui-iva">$0.00</dd></div><div class="quote-total-emphasis"><dt>Total</dt><dd id="ui-total">$0.00</dd></div></dl>
+          <div class="quote-summary-note"><span aria-hidden="true">i</span> Los importes se recalculan automáticamente.</div>
+        </div>
+      </aside>
+    </div>
+
+    <section class="quote-section-card quote-conditions-card">
+      <details class="quote-disclosure" id="quote-conditions-details"><summary><span>Condiciones comerciales</span><small>Vigencia, forma de pago, tiempos y observaciones</small></summary><div class="quote-disclosure-body"><label for="notas" class="form-label fw-semibold">Condiciones de la propuesta</label><div class="small text-muted mb-2">Cada Enter crea un nuevo punto. Usa dos saltos para separar grupos.</div><textarea id="notas" name="notas" class="form-control" rows="5" placeholder="Escribe las condiciones comerciales que correspondan."></textarea></div></details>
+    </section>
+
+    <section class="quote-review-bar" id="quote-step-review">
+      <div><div class="quote-kicker">Paso final</div><strong>Revisa la información antes de generar el documento.</strong></div>
+      <div class="d-flex flex-wrap gap-2"><a href="{{ url_for('index') }}" class="btn btn-outline-secondary">Cancelar</a><button type="button" class="btn btn-primary px-4" id="btn-review-quote">Revisar cotización</button></div>
+    </section>
+
+    <div class="modal fade" id="quoteReviewModal" tabindex="-1" aria-labelledby="quoteReviewModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"><div class="modal-content quote-review-modal">
+        <div class="modal-header"><div><div class="quote-kicker">Confirmación</div><h2 class="modal-title fs-4" id="quoteReviewModalLabel">Revisar cotización</h2></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+        <div class="modal-body" id="quote-review-content"></div>
+        <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Seguir editando</button><button type="submit" class="btn btn-success px-4" id="btn-generate-quote">Generar cotización</button></div>
+      </div></div>
+    </div>
+  </form>
 </div>
 
-<form id="frm-cotizacion" method="POST" action="{{ url_for('crear_cotizacion') }}">
-  <section class="panel mb-4 d-none" id="voice-web-panel">
-    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-      <h5 class="mb-0 text-secondary">Captura por voz</h5>
-      <div class="d-flex gap-2">
-        <button type="button" id="btn-voice-web-hide" class="btn btn-sm btn-outline-secondary">Ocultar</button>
-        <button type="button" id="btn-voice-web-clear" class="btn btn-sm btn-outline-danger">Vaciar</button>
-      </div>
-    </div>
-
-    <div id="voice-web-status" class="alert alert-secondary d-none align-items-center gap-2 py-2 mb-3">
-      <span id="voice-web-dot" class="rounded-circle bg-danger d-inline-block" style="width:12px;height:12px;"></span>
-      <div id="voice-web-spinner" class="spinner-border spinner-border-sm text-primary d-none" role="status"></div>
-      <span id="voice-web-status-text" class="fw-semibold">Listo para grabar.</span>
-    </div>
-
-    <div class="row g-3">
-      <div class="col-lg-8">
-        <label for="voice_command_input" class="form-label fw-semibold">Comando de voz</label>
-        <textarea id="voice_command_input" class="form-control" rows="6" placeholder="CLIENTE:&#10;EMPRESA:&#10;CORREO:&#10;TELEFONO:&#10;CIUDAD:&#10;&#10;CONCEPTO:&#10;UNIDAD:&#10;CANTIDAD:&#10;PRECIO:&#10;SISTEMA:&#10;&#10;OTRO CONCEPTO:&#10;UNIDAD:&#10;CANTIDAD:&#10;PRECIO:&#10;SISTEMA:"></textarea>
-      </div>
-      <div class="col-lg-4">
-        <label for="voice_conditions_input" class="form-label fw-semibold">Condiciones por voz</label>
-        <textarea id="voice_conditions_input" class="form-control" rows="6" placeholder="OTRA CONDICION ES QUE..."></textarea>
-      </div>
-    </div>
-
-    <div class="d-flex flex-wrap gap-2 mt-3">
-      <button type="button" id="btn-voice-record-command" class="btn btn-outline-primary">Grabar comando</button>
-      <button type="button" id="btn-voice-record-conditions" class="btn btn-outline-primary">Grabar condiciones</button>
-      <button type="button" id="btn-voice-preview-web" class="btn btn-primary">Previsualizar voz</button>
-      <button type="button" id="btn-voice-apply-web" class="btn btn-success">Aplicar al cotizador</button>
-    </div>
-
-    <div id="voice-web-preview" class="small text-muted mt-3"></div>
-  </section>
-
-  <!-- DATOS DEL CLIENTE -->
-  <section class="panel mb-4">
-    <h5 class="mb-3 text-secondary">Datos del Cliente</h5>
-    <div class="row g-3">
-      <div class="col-md-6 position-relative">
-        <label for="cliente_input" class="form-label fw-semibold">Cliente</label>
-        <input type="text" id="cliente_input" name="cliente" class="form-control" required
-               placeholder="Escribe para buscar cliente..." autocomplete="off">
-        <div id="cliente_suggestions" class="list-group position-absolute w-100" 
-             style="z-index:1000; max-height:200px; overflow:auto;"></div>
-      </div>
-
-      <div class="col-md-6">
-        <label for="empresa" class="form-label fw-semibold">Empresa</label>
-        <input type="text" id="empresa" name="empresa" class="form-control" placeholder="Empresa o razón social">
-      </div>
-    </div>
-
-    <div class="row g-3 mt-2">
-      <div class="col-md-4">
-        <label for="correo" class="form-label fw-semibold">Correo</label>
-        <input type="email" id="correo" name="correo" class="form-control" multiple placeholder="correo1@dominio.com, correo2@dominio.com">
-      </div>
-      <div class="col-md-4">
-        <label for="telefono" class="form-label fw-semibold">Teléfono</label>
-        <input type="text" id="telefono" name="telefono" class="form-control">
-      </div>
-      <div class="col-md-4">
-        <label class="form-label fw-semibold">Usuario que realiza la cotización</label>
-        <input type="text" class="form-control" value="{{ current_user.nombre_representante }}" readonly aria-readonly="true">
-      </div>
-    </div>
-
-    <div class="row g-3 mt-2">
-      <div class="col-md-4">
-        <label for="proyecto" class="form-label fw-semibold">Proyecto</label>
-        <input type="text" id="proyecto" name="proyecto" class="form-control"
-               placeholder="Nombre del proyecto" list="proyectos_list" autocomplete="off">
-        <datalist id="proyectos_list">
-          {% for proyecto in proyectos or [] %}
-          <option value="{{ proyecto }}"></option>
-          {% endfor %}
-        </datalist>
-      </div>
-      <div class="col-md-4">
-        <label for="especialidad" class="form-label fw-semibold">Especialidad</label>
-        <select id="especialidad" name="especialidad" class="form-select" required>
-          <option value="" selected disabled>Selecciona una especialidad</option>
-          {% for especialidad in especialidades_cotizacion %}
-          <option value="{{ especialidad }}">{{ especialidad }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-4">
-        <label for="especialidad_descripcion" class="form-label fw-semibold">Descripción</label>
-        <input type="text" id="especialidad_descripcion" name="especialidad_descripcion" class="form-control" placeholder="Descripción de la especialidad" autocomplete="off">
-      </div>
-      <div class="col-md-4">
-        <label for="direccion" class="form-label fw-semibold">Dirección</label>
-        <input type="text" id="direccion" name="direccion" class="form-control">
-      </div>
-      <div class="col-md-4">
-        <label for="ciudad_trabajo" class="form-label fw-semibold">Ciudad</label>
-        <input type="text" id="ciudad_trabajo" name="ciudad_trabajo" class="form-control text-uppercase"
-               placeholder="CIUDAD DE MÉXICO" autocomplete="off">
-      </div>
-      <div class="col-md-4">
-        <label for="moneda" class="form-label fw-semibold">Moneda</label>
-        <select id="moneda" name="moneda" class="form-select">
-          <option value="MXN" selected>Pesos (MXN)</option>
-          <option value="USD">Dólares (USD)</option>
-        </select>
-      </div>
-      <div class="col-md-4">
-        <label for="region" class="form-label fw-semibold">Región</label>
-        <select id="region" name="region" class="form-select" required>
-          {% for region in regiones_cotizacion %}
-          <option value="{{ region }}" {% if region == 'MÉXICO' %}selected{% endif %}>{{ region }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <input type="hidden" name="estatus" value="0%">
-      <input type="hidden" name="estatus_aprobacion" value="EN REVISIÓN">
-    </div>
-  </section>
-
-  <!-- LISTA DE CONCEPTOS -->
-  <section class="panel mb-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <div>
-        <h5 class="text-secondary mb-0">Conceptos de Cotización</h5>
-        <div class="small text-muted">Enter pasa al siguiente renglón; Shift + Enter agrega una línea dentro de Concepto o Descripción.</div>
-      </div>
-      <button type="button" id="btn-add-row" class="btn btn-outline-primary btn-sm">➕ Agregar Concepto</button>
-    </div>
-
-    <div class="table-responsive">
-      <table class="table table-bordered align-middle quote-items-table">
-        <thead class="table-light">
-          <tr>
-            <th>Capítulo</th>
-            <th class="item-concept-col">Concepto</th>
-            <th>Unidad</th>
-            <th>Cantidad</th>
-            <th>Precio Unitario</th>
-            <th>Sistema</th>
-            <th>Subtotal</th>
-            <th class="item-desc-col">Descripción</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="items-body">
-        </tbody>
-      </table>
-    </div>
-  </section>
-
-  <!-- TOTALES -->
-  <section class="panel mb-4">
-    <div class="row g-3 text-end">
-      <div class="col-md-3 ms-auto">
-        <label class="form-label fw-semibold">Zona (descuento):</label>
-        <select id="zona" name="zona" class="form-select">
-          <option value="" selected>Selecciona...</option>
-          <option value="Zona Norte">Zona Norte</option>
-          <option value="Zona Centro">Zona Centro</option>
-          <option value="Bajío">Bajío</option>
-          <option value="Zona Sur">Zona Sur</option>
-          <option value="Frontera">Frontera</option>
-        </select>
-      </div>
-      <div class="col-md-3 ms-auto">
-        <label class="form-label fw-semibold">IVA %:</label>
-        <input type="number" id="iva_porc" name="iva_porc" class="form-control text-end" value="16">
-      </div>
-      <div class="col-md-3">
-        <label class="form-label fw-semibold">Subtotal:</label>
-        <div id="ui-subtotal" class="form-control-plaintext text-end">$0.00</div>
-      </div>
-      <div class="col-md-3">
-        <label class="form-label fw-semibold">Descuento %:</label>
-        <input type="number" id="descuento_total" name="descuento_total" class="form-control text-end" step="0.01" min="0" max="100" value="0">
-      </div>
-      <div class="col-md-3">
-        <label class="form-label fw-semibold">Subtotal c/ desc.:</label>
-        <div id="ui-subtotal-desc" class="form-control-plaintext text-end">$0.00</div>
-      </div>
-      <div class="col-md-3">
-        <label class="form-label fw-semibold">IVA:</label>
-        <div id="ui-iva" class="form-control-plaintext text-end">$0.00</div>
-      </div>
-      <div class="col-md-3">
-        <label class="form-label fw-semibold">Total:</label>
-        <div id="ui-total" class="form-control-plaintext fw-bold text-success text-end">$0.00</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- CONDICIONES COMERCIALES -->
-  <section class="panel mb-4">
-    <h5 class="mb-3 text-secondary">Condiciones comerciales</h5>
-    <label for="notas" class="form-label fw-semibold">Captura libre</label>
-    <div class="small text-muted mb-2">Cada Enter crea un nuevo punto. Para dejar un renglon en blanco entre puntos, presiona Enter dos veces.</div>
-    <textarea id="notas" name="notas" class="form-control" rows="4" placeholder="Escribe aqui las condiciones comerciales que correspondan para esta cotizacion."></textarea>
-  </section>
-
-  <div class="d-flex justify-content-between">
-    <button type="submit" class="btn btn-success fw-bold px-4">💾 Guardar Cotización</button>
-    <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">⬅ Volver al Dashboard</a>
-  </div>
-</form>
-
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="{{ url_for('static', filename='js/cotizador2.js', v='20260915-enter-row') }}"></script>
+<script src="{{ url_for('static', filename='js/cotizador2.js', v='20261030-workspace') }}"></script>
 
 {% endblock %}
