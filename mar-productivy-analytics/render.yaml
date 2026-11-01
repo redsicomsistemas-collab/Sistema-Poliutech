@@ -11,6 +11,8 @@ services:
         sync: false
       - key: MAR_DATA_PATH
         value: /var/data
+      - key: NEXO_INTEGRATION_TOKEN
+        sync: false
     disk:
       name: mar-productivy-data
       mountPath: /var/data
