@@ -16,6 +16,17 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 app.Use(async (context, next) => {
     var path=context.Request.Path.Value??"";
+    if(path.StartsWith("/api/integration/nexo",StringComparison.OrdinalIgnoreCase)){
+        var expected=Environment.GetEnvironmentVariable("NEXO_INTEGRATION_TOKEN")??"";
+        var authorization=context.Request.Headers.Authorization.ToString();
+        var supplied=authorization.StartsWith("Bearer ",StringComparison.OrdinalIgnoreCase)?authorization[7..].Trim():"";
+        var expectedHash=SHA256.HashData(Encoding.UTF8.GetBytes(expected));
+        var suppliedHash=SHA256.HashData(Encoding.UTF8.GetBytes(supplied));
+        if(string.IsNullOrWhiteSpace(expected)||string.IsNullOrWhiteSpace(supplied)||!CryptographicOperations.FixedTimeEquals(expectedHash,suppliedHash)){
+            context.Response.StatusCode=401;await context.Response.WriteAsJsonAsync(new{error="Integración no autorizada"});return;
+        }
+        await next();return;
+    }
     var isEmployeeRegistration=context.Request.Method=="POST"&&path=="/api/devices";
     if(!path.StartsWith("/api/")||path is "/api/login" or "/api/ingest" or "/api/heartbeat"||isEmployeeRegistration){await next();return;}
     var security=context.RequestServices.GetRequiredService<SecurityStore>();var session=security.Validate(context.Request.Cookies["mar_session"]);
@@ -58,6 +69,8 @@ app.MapGet("/api/applications", (LocalStore store) => Results.Ok(store.Applicati
 app.MapGet("/api/websites", (LocalStore store) => Results.Ok(store.Websites()));
 app.MapGet("/api/report", (DateTimeOffset? from, DateTimeOffset? to, string? deviceId, LocalStore store) => Results.Ok(store.Report(from, to, deviceId)));
 app.MapGet("/api/report.csv", (DateTimeOffset? from, DateTimeOffset? to, string? deviceId, LocalStore store) => Results.File(Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(store.ReportCsv(from, to, deviceId))).ToArray(), "text/csv; charset=utf-8", $"MAR-reporte-{DateTime.Now:yyyyMMdd}.csv"));
+app.MapGet("/api/integration/nexo/status", (LocalStore store) => Results.Ok(store.IntegrationStatus()));
+app.MapGet("/api/integration/nexo/activity", (DateTimeOffset? from, string? cursor, int? limit, LocalStore store) => Results.Ok(store.IntegrationActivity(from, cursor, limit)));
 app.MapGet("/api/settings", (LocalStore store) => Results.Ok(store.Settings()));
 app.MapPut("/api/settings", async (SystemSettings input, LocalStore store) => Results.Ok(store.SaveSettings(input)));
 app.MapPut("/api/applications/{name}/category", async (string name, AppCategoryInput input, LocalStore store) => Results.Ok(store.SetCategory(name, input.Category)));
@@ -272,6 +285,50 @@ sealed class LocalStore {
         var apps = recent.GroupBy(e => new { e.AppName, e.Category }).Select(g => new { name=g.Key.AppName, category=g.Key.Category, seconds=g.Sum(e => Math.Max(0, e.DurationSeconds-e.IdleSeconds)) }).OrderByDescending(a => a.seconds).Take(8);
         return new { live=true, summary=new { activeSeconds=active, focusSeconds=focus, productivity=active == 0 ? 0 : focus*100.0/active, activePeople=devices.Count(d => d.LastSeenAt > DateTimeOffset.UtcNow.AddMinutes(-5)), totalPeople=devices.Count }, people, apps };
     }}
+    public object IntegrationStatus() { lock (gate) {
+        return new {
+            source="MAR Productivy Analytics",
+            readOnly=true,
+            totalRecords=events.Count,
+            totalDevices=devices.Count,
+            oldestAt=events.Count==0?(DateTimeOffset?)null:events.Min(item=>item.StartedAt),
+            newestAt=events.Count==0?(DateTimeOffset?)null:events.Max(item=>item.EndedAt),
+            generatedAt=DateTimeOffset.UtcNow
+        };
+    }}
+    public object IntegrationActivity(DateTimeOffset? from, string? cursor, int? requestedLimit) { lock (gate) {
+        var take=Math.Clamp(requestedLimit??5000,100,5000);
+        var decoded=DecodeCursor(cursor);
+        var selected=events
+            .Where(item=>from is null||item.StartedAt>=from)
+            .Where(item=>decoded is null||item.StartedAt>decoded.Value.at||(item.StartedAt==decoded.Value.at&&string.CompareOrdinal(item.Id,decoded.Value.id)>0))
+            .OrderBy(item=>item.StartedAt).ThenBy(item=>item.Id).ToList();
+        var page=selected.Take(take).ToList();
+        var names=devices.ToDictionary(item=>item.Id);
+        var rows=page.Select(item=>{names.TryGetValue(item.DeviceId,out var device);return new{
+            item.Id,item.DeviceId,
+            employeeName=device?.EmployeeName??"Desconocido",computerName=device?.ComputerName??"",team=device?.Team??"",
+            item.AppName,item.WindowTitle,item.Domain,item.StartedAt,item.EndedAt,item.DurationSeconds,item.IdleSeconds,
+            activeSeconds=Math.Max(0,item.DurationSeconds-item.IdleSeconds),item.Category,item.ProductivityScore
+        };}).ToList();
+        var last=page.LastOrDefault();
+        return new {
+            rows,
+            totalRecords=events.Count(item=>from is null||item.StartedAt>=from),
+            hasMore=selected.Count>page.Count,
+            nextCursor=last is null?null:EncodeCursor(last.StartedAt,last.Id),
+            generatedAt=DateTimeOffset.UtcNow
+        };
+    }}
+    static string EncodeCursor(DateTimeOffset at,string id) => Convert.ToBase64String(Encoding.UTF8.GetBytes($"{at:O}\n{id}")).TrimEnd('=').Replace('+','-').Replace('/','_');
+    static (DateTimeOffset at,string id)? DecodeCursor(string? value) {
+        if(string.IsNullOrWhiteSpace(value))return null;
+        try{
+            var encoded=value.Replace('-','+').Replace('_','/');encoded=encoded.PadRight(encoded.Length+(4-encoded.Length%4)%4,'=');
+            var parts=Encoding.UTF8.GetString(Convert.FromBase64String(encoded)).Split('\n',2);
+            return parts.Length==2&&DateTimeOffset.TryParse(parts[0],out var at)?(at,parts[1]):null;
+        }catch{return null;}
+    }
 }
 
 record ActivityEventRecord(string Id, string DeviceId, string AppName, string WindowTitle, DateTimeOffset StartedAt, DateTimeOffset EndedAt, int DurationSeconds, int IdleSeconds, string Category, double ProductivityScore, string? Domain = null);
