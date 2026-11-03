@@ -463,7 +463,12 @@ def _registro_obras_filters_from_request() -> dict[str, str]:
 
 def _registro_obra_matches_filters(row: dict, filters: dict[str, str]) -> bool:
     for field, needle in filters.items():
-        if needle and needle not in str(row.get(field, "")).strip().lower():
+        if not needle:
+            continue
+        value = str(row.get(field, "")).strip().lower()
+        if field == "responsable" and value != needle:
+            return False
+        if field != "responsable" and needle not in value:
             return False
     return True
 
@@ -518,7 +523,7 @@ def _send_registro_obra_email(row: dict) -> None:
         raise FileNotFoundError(f"No se encontró el adjunto requerido: {REGISTRO_MAIL_ATTACHMENT.name}")
 
     msg = EmailMessage()
-    msg["Subject"] = "Te visitamos recientemente"
+    msg["Subject"] = "En poliutech queremos trabajar a tu lado"
     msg["From"] = f"Poliutech <{REGISTRO_MAIL_FROM}>"
     msg["To"] = ", ".join(recipients)
     msg.set_content(_registro_obra_email_body())
@@ -3362,7 +3367,7 @@ REGISTRO_MAIL_PORT = int(os.getenv("REGISTRO_MAIL_PORT", "26"))
 REGISTRO_MAIL_USERNAME = os.getenv("REGISTRO_MAIL_USERNAME", "info@poliutech.com").strip()
 REGISTRO_MAIL_PASSWORD = os.getenv("REGISTRO_MAIL_PASSWORD", "Info@2025?").strip()
 REGISTRO_MAIL_FROM = os.getenv("REGISTRO_MAIL_FROM", REGISTRO_MAIL_USERNAME).strip()
-REGISTRO_MAIL_ATTACHMENT = Path(__file__).resolve().parent / "presentacion2026OK.pdf"
+REGISTRO_MAIL_ATTACHMENT = Path(__file__).resolve().parent / "portafolio.pdf"
 
 
 def _smtp_quota_rejected(exc: Exception) -> bool:
@@ -9661,12 +9666,22 @@ def registro_obras():
 
     filters = _registro_obras_filters_from_request()
     filtered_rows = _filter_registro_obras(rows, filters)
+    accessible_rows = _filter_registro_obras(rows, {"obra": "", "responsable": ""})
+    responsables_registrados = sorted(
+        {
+            str(row.get("responsable") or "").strip()
+            for row in accessible_rows
+            if str(row.get("responsable") or "").strip()
+        },
+        key=str.casefold,
+    )
     return render_template(
         "registro_obras.html",
         title="Registro de obras",
         rows=rows,
         filtered_rows=filtered_rows,
         filters=filters,
+        responsables_registrados=responsables_registrados,
         default_responsable=responsable_actual() or "",
         default_numero=str(len(rows) + 1),
     )
