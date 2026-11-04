@@ -983,6 +983,14 @@
             {% endfor %}
           </select>
         </div>
+        <div class="col-xl-2 col-lg-3 col-md-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Monto mayor que</label>
+          <input type="number" min="0" step="0.01" inputmode="decimal" id="filtro-monto-mayor" class="form-control form-control-sm" placeholder="Ej. 500000" value="{{ dashboard_filters.monto_mayor }}">
+        </div>
+        <div class="col-xl-2 col-lg-3 col-md-6">
+          <label class="form-label small fw-bold text-secondary mb-1">Monto menor que</label>
+          <input type="number" min="0" step="0.01" inputmode="decimal" id="filtro-monto-menor" class="form-control form-control-sm" placeholder="Ej. 3000000" value="{{ dashboard_filters.monto_menor }}">
+        </div>
         <div class="col-xl-2 col-12">
           <div class="filter-actions">
             <button id="btn-exportar-excel" type="button" class="btn btn-success btn-sm">Exportar Excel</button>
@@ -1213,6 +1221,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const responsable = document.getElementById("filtro-responsable");
   const asignadoA = document.getElementById("filtro-asignado-a");
   const region = document.getElementById("filtro-region");
+  const montoMayor = document.getElementById("filtro-monto-mayor");
+  const montoMenor = document.getElementById("filtro-monto-menor");
   const limpiar = document.getElementById("btn-limpiar-filtros");
   const exportarExcel = document.getElementById("btn-exportar-excel");
   const exportarSeguimientosPdf = document.getElementById("btn-exportar-seguimientos-pdf");
@@ -1345,6 +1355,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (responsable?.value.trim()) params.set("responsable", responsable.value.trim());
     if (asignadoA?.value) params.set("asignado_a", asignadoA.value);
     if (region?.value) params.set("region", region.value);
+    if (montoMayor?.value.trim()) params.set("monto_mayor", montoMayor.value.trim());
+    if (montoMenor?.value.trim()) params.set("monto_menor", montoMenor.value.trim());
     return params;
   }
 
@@ -1827,6 +1839,8 @@ document.addEventListener("DOMContentLoaded", () => {
             especialidad_descripcion: (especialidadDescripcion?.value || ""),
             responsable: (responsable?.value || ""),
             region: (region?.value || ""),
+            monto_mayor: (montoMayor?.value || ""),
+            monto_menor: (montoMenor?.value || ""),
             vista: {{ dashboard_filters.vista|tojson }},
           }
         }),
@@ -1936,7 +1950,7 @@ document.addEventListener("DOMContentLoaded", () => {
   [desde, hasta, estatus, proyecto, especialidad, responsable, asignadoA, region].forEach((el) => {
     el?.addEventListener("change", aplicarFiltrosDashboard);
   });
-  [folio, cliente, especialidadDescripcion].forEach((el) => el?.addEventListener("input", () => {
+  [folio, cliente, especialidadDescripcion, montoMayor, montoMenor].forEach((el) => el?.addEventListener("input", () => {
     window.clearTimeout(clienteFilterTimer);
     clienteFilterTimer = window.setTimeout(aplicarFiltrosDashboard, 450);
   }));

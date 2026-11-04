@@ -5781,6 +5781,8 @@ def _build_dashboard_cotizaciones_query(
     especialidad_descripcion: str = "",
     responsable: str = "",
     asignado_a: str = "",
+    monto_mayor: str = "",
+    monto_menor: str = "",
     region: str = "",
     vista: str = "todos",
 ):
@@ -5839,6 +5841,31 @@ def _build_dashboard_cotizaciones_query(
 
     if estatus:
         q = q.filter(Cotizacion.estatus == estatus)
+
+    def _parse_monto_filtro(value, label):
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        try:
+            amount = float(raw.replace("$", "").replace(",", ""))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Filtro '{label}' inválido") from exc
+        if not math.isfinite(amount) or amount < 0:
+            raise ValueError(f"Filtro '{label}' inválido")
+        return amount
+
+    monto_mayor_valor = _parse_monto_filtro(monto_mayor, "Monto mayor que")
+    monto_menor_valor = _parse_monto_filtro(monto_menor, "Monto menor que")
+    if (
+        monto_mayor_valor is not None
+        and monto_menor_valor is not None
+        and monto_mayor_valor >= monto_menor_valor
+    ):
+        raise ValueError("El monto 'Mayor que' debe ser menor al monto 'Menor que'")
+    if monto_mayor_valor is not None:
+        q = q.filter(Cotizacion.total > monto_mayor_valor)
+    if monto_menor_valor is not None:
+        q = q.filter(Cotizacion.total < monto_menor_valor)
 
     region = normalize_region(region, default="")
     if region:
@@ -7812,6 +7839,8 @@ def index():
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
     asignado_a = (request.args.get("asignado_a") or "").strip()
+    monto_mayor = (request.args.get("monto_mayor") or "").strip()
+    monto_menor = (request.args.get("monto_menor") or "").strip()
     region = normalize_region(request.args.get("region"))
     vista = (request.args.get("vista") or "todos").strip().lower()
     if vista not in {"todos", "activas", "ganadas", "perdidas"}:
@@ -7830,6 +7859,8 @@ def index():
         "especialidad_descripcion": especialidad_descripcion,
         "responsable": responsable,
         "asignado_a": asignado_a,
+        "monto_mayor": monto_mayor,
+        "monto_menor": monto_menor,
         "region": region,
         "bandeja": bandeja,
         "vista": vista,
@@ -7847,12 +7878,14 @@ def index():
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
             asignado_a=asignado_a,
+            monto_mayor=monto_mayor,
+            monto_menor=monto_menor,
             region=region,
             vista=vista,
         )
     except ValueError:
         base_query = _build_dashboard_cotizaciones_query(region="MÉXICO", vista=vista)
-        dashboard_filters = {"folio": "", "desde": "", "hasta": "", "estatus": "", "cliente": "", "proyecto": "", "especialidad": "", "especialidad_descripcion": "", "responsable": "", "asignado_a": "", "region": "MÉXICO", "bandeja": bandeja, "vista": vista}
+        dashboard_filters = {"folio": "", "desde": "", "hasta": "", "estatus": "", "cliente": "", "proyecto": "", "especialidad": "", "especialidad_descripcion": "", "responsable": "", "asignado_a": "", "monto_mayor": "", "monto_menor": "", "region": "MÉXICO", "bandeja": bandeja, "vista": vista}
 
     ahora = now_cdmx_naive()
     inicio_hoy = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -7870,6 +7903,8 @@ def index():
         "especialidad_descripcion": dashboard_filters["especialidad_descripcion"],
         "responsable": dashboard_filters["responsable"],
         "asignado_a": dashboard_filters["asignado_a"],
+        "monto_mayor": dashboard_filters["monto_mayor"],
+        "monto_menor": dashboard_filters["monto_menor"],
     }
     dashboard_summary = _build_dashboard_summary(
         bandeja=bandeja,
@@ -11485,6 +11520,8 @@ def bulk_eliminar_filtradas():
     especialidad_s = (filters.get("especialidad") or "").strip()
     especialidad_descripcion_s = (filters.get("especialidad_descripcion") or "").strip()
     responsable_s = (filters.get("responsable") or "").strip()
+    monto_mayor_s = (filters.get("monto_mayor") or "").strip()
+    monto_menor_s = (filters.get("monto_menor") or "").strip()
     region_s = normalize_region(filters.get("region"))
     vista_s = (filters.get("vista") or "todos").strip().lower()
 
@@ -11499,6 +11536,8 @@ def bulk_eliminar_filtradas():
             especialidad=especialidad_s,
             especialidad_descripcion=especialidad_descripcion_s,
             responsable=responsable_s,
+            monto_mayor=monto_mayor_s,
+            monto_menor=monto_menor_s,
             region=region_s,
             vista=vista_s,
         )
@@ -13190,6 +13229,8 @@ def export_dashboard_cotizaciones_xlsx():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
+    monto_mayor = (request.args.get("monto_mayor") or "").strip()
+    monto_menor = (request.args.get("monto_menor") or "").strip()
     region = normalize_region(request.args.get("region"))
     vista = (request.args.get("vista") or "todos").strip().lower()
 
@@ -13204,6 +13245,8 @@ def export_dashboard_cotizaciones_xlsx():
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
+            monto_mayor=monto_mayor,
+            monto_menor=monto_menor,
             region=region,
             vista=vista,
         ).order_by(Cotizacion.fecha.desc()).all())
@@ -13246,6 +13289,10 @@ def export_dashboard_cotizaciones_xlsx():
         filtros_texto.append(f"Descripción: {especialidad_descripcion}")
     if responsable:
         filtros_texto.append(f"Usuario: {responsable}")
+    if monto_mayor:
+        filtros_texto.append(f"Monto > ${monto_mayor}")
+    if monto_menor:
+        filtros_texto.append(f"Monto < ${monto_menor}")
     if region:
         filtros_texto.append(f"Región: {region}")
     if not filtros_texto:
@@ -13468,6 +13515,8 @@ def export_dashboard_followups_pdf():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
+    monto_mayor = (request.args.get("monto_mayor") or "").strip()
+    monto_menor = (request.args.get("monto_menor") or "").strip()
     region = normalize_region(request.args.get("region"))
     vista = (request.args.get("vista") or "todos").strip().lower()
 
@@ -13483,6 +13532,8 @@ def export_dashboard_followups_pdf():
                 especialidad=especialidad,
                 especialidad_descripcion=especialidad_descripcion,
                 responsable=responsable,
+                monto_mayor=monto_mayor,
+                monto_menor=monto_menor,
                 region=region,
                 vista=vista,
             )
@@ -13561,6 +13612,10 @@ def export_dashboard_followups_pdf():
         filtros_texto.append(f"Proyecto: {proyecto}")
     if especialidad:
         filtros_texto.append(f"Especialidad: {especialidad}")
+    if monto_mayor:
+        filtros_texto.append(f"Monto > ${monto_mayor}")
+    if monto_menor:
+        filtros_texto.append(f"Monto < ${monto_menor}")
     if region:
         filtros_texto.append(f"Región: {region}")
     if not filtros_texto:
@@ -13663,6 +13718,8 @@ def api_dashboard_filter_summary():
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
     asignado_a = (request.args.get("asignado_a") or "").strip()
+    monto_mayor = (request.args.get("monto_mayor") or "").strip()
+    monto_menor = (request.args.get("monto_menor") or "").strip()
     vista = (request.args.get("vista") or "todos").strip().lower()
     bandeja = (request.args.get("bandeja") or "").strip().lower()
 
@@ -13680,6 +13737,8 @@ def api_dashboard_filter_summary():
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
             asignado_a=asignado_a,
+            monto_mayor=monto_mayor,
+            monto_menor=monto_menor,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -14064,6 +14123,8 @@ def api_dashboard_metrics():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
+    monto_mayor = (request.args.get("monto_mayor") or "").strip()
+    monto_menor = (request.args.get("monto_menor") or "").strip()
     region = normalize_region(request.args.get("region"))
     vista = (request.args.get("vista") or "todos").strip().lower()
     bandeja = (request.args.get("bandeja") or "").strip().lower()
@@ -14079,6 +14140,8 @@ def api_dashboard_metrics():
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
+            monto_mayor=monto_mayor,
+            monto_menor=monto_menor,
             region=region,
             vista=vista,
         )
@@ -14121,6 +14184,8 @@ def api_dashboard_status_breakdown():
     especialidad = (request.args.get("especialidad") or "").strip()
     especialidad_descripcion = (request.args.get("especialidad_descripcion") or "").strip()
     responsable = (request.args.get("responsable") or "").strip()
+    monto_mayor = (request.args.get("monto_mayor") or "").strip()
+    monto_menor = (request.args.get("monto_menor") or "").strip()
     region = normalize_region(request.args.get("region"))
     vista = (request.args.get("vista") or "todos").strip().lower()
     bandeja = (request.args.get("bandeja") or "").strip().lower()
@@ -14136,6 +14201,8 @@ def api_dashboard_status_breakdown():
             especialidad=especialidad,
             especialidad_descripcion=especialidad_descripcion,
             responsable=responsable,
+            monto_mayor=monto_mayor,
+            monto_menor=monto_menor,
             region=region,
             vista=vista,
         )
@@ -14168,6 +14235,8 @@ def api_dashboard_outcome_breakdown():
         "especialidad": (request.args.get("especialidad") or "").strip(),
         "especialidad_descripcion": (request.args.get("especialidad_descripcion") or "").strip(),
         "responsable": (request.args.get("responsable") or "").strip(),
+        "monto_mayor": (request.args.get("monto_mayor") or "").strip(),
+        "monto_menor": (request.args.get("monto_menor") or "").strip(),
         "region": normalize_region(request.args.get("region")),
     }
 
