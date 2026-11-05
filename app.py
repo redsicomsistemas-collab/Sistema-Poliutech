@@ -3556,36 +3556,13 @@ except ImportError:
 # ---------------------------------------------------------
 app = Flask(__name__)
 MIGRATION_TARGET_URL = os.getenv("MIGRATION_TARGET_URL", "").strip().rstrip("/")
-MIGRATION_EXPORT_TOKEN = os.getenv("MIGRATION_EXPORT_TOKEN", "")
 
 @app.before_request
 def redirect_migrated_service():
-    if request.path == "/__migration/export" and MIGRATION_EXPORT_TOKEN and secrets.compare_digest(
-        request.headers.get("Authorization", ""), f"Bearer {MIGRATION_EXPORT_TOKEN}"
-    ):
-        return None
     if not MIGRATION_TARGET_URL:
         return None
     suffix = request.full_path if request.query_string else request.path
     return redirect(f"{MIGRATION_TARGET_URL}{suffix}", code=308)
-
-@app.get("/__migration/export")
-def export_render_disk():
-    if not MIGRATION_EXPORT_TOKEN or not secrets.compare_digest(
-        request.headers.get("Authorization", ""), f"Bearer {MIGRATION_EXPORT_TOKEN}"
-    ):
-        abort(404)
-    source = Path("/data")
-    if not source.is_dir():
-        abort(404)
-    archive = Path("/tmp/sistema-poliutech-render-final.zip")
-    if archive.exists():
-        archive.unlink()
-    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
-        for item in source.rglob("*"):
-            if item.is_file():
-                bundle.write(item, item.relative_to(source))
-    return send_file(archive, as_attachment=True, download_name=archive.name)
 
 app.secret_key = os.getenv("FLASK_SECRET_KEY", DEFAULT_SECRET_KEY)
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
