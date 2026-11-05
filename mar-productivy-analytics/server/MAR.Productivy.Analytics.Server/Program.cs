@@ -13,7 +13,7 @@ builder.Services.AddSingleton<LocalStore>();
 builder.Services.AddSingleton<SecurityStore>();
 var app = builder.Build();
 var migrationTarget=(Environment.GetEnvironmentVariable("MIGRATION_TARGET_URL")??"").Trim().TrimEnd('/');
-if(!string.IsNullOrWhiteSpace(migrationTarget)) app.Use(async (context, _) => {
+if(!string.IsNullOrWhiteSpace(migrationTarget)) app.Use(async (HttpContext context, RequestDelegate _) => {
     context.Response.StatusCode=308;
     context.Response.Headers.Location=$"{migrationTarget}{context.Request.Path}{context.Request.QueryString}";
     context.Response.Headers.CacheControl="no-store";
