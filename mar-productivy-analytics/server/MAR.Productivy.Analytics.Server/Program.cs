@@ -13,9 +13,7 @@ builder.Services.AddSingleton<LocalStore>();
 builder.Services.AddSingleton<SecurityStore>();
 var app = builder.Build();
 var migrationTarget=(Environment.GetEnvironmentVariable("MIGRATION_TARGET_URL")??"").Trim().TrimEnd('/');
-var migrationExportToken=Environment.GetEnvironmentVariable("MIGRATION_EXPORT_TOKEN")??"";
-if(!string.IsNullOrWhiteSpace(migrationTarget)) app.Use(async (HttpContext context, RequestDelegate next) => {
-    if(context.Request.Path=="/__migration/export"&&!string.IsNullOrWhiteSpace(migrationExportToken)&&context.Request.Headers.Authorization==$"Bearer {migrationExportToken}") { await next(context); return; }
+if(!string.IsNullOrWhiteSpace(migrationTarget)) app.Use(async (HttpContext context, RequestDelegate _) => {
     context.Response.StatusCode=308;
     context.Response.Headers.Location=$"{migrationTarget}{context.Request.Path}{context.Request.QueryString}";
     context.Response.Headers.CacheControl="no-store";
@@ -23,15 +21,6 @@ if(!string.IsNullOrWhiteSpace(migrationTarget)) app.Use(async (HttpContext conte
 });
 app.UseDefaultFiles();
 app.UseStaticFiles();
-app.MapGet("/__migration/export", (HttpRequest request) => {
-    if(string.IsNullOrWhiteSpace(migrationExportToken)||request.Headers.Authorization!=$"Bearer {migrationExportToken}") return Results.NotFound();
-    var source="/var/data";
-    if(!Directory.Exists(source)) return Results.NotFound();
-    var archive=Path.Combine(Path.GetTempPath(),"mar-productivy-render-final.zip");
-    if(File.Exists(archive))File.Delete(archive);
-    ZipFile.CreateFromDirectory(source,archive,CompressionLevel.Optimal,false);
-    return Results.File(archive,"application/zip","mar-productivy-render-final.zip");
-});
 app.Use(async (context, next) => {
     var path=context.Request.Path.Value??"";
     if(path.StartsWith("/api/integration/nexo",StringComparison.OrdinalIgnoreCase)){
