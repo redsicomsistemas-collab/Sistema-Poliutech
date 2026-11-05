@@ -299,7 +299,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showServerDialog(force: Boolean) {
         val input = EditText(this).apply {
-            hint = "https://tu-app.onrender.com"
+            hint = "https://sistema.poliutech.com"
             setText(getBaseUrl())
             setSelection(text.length)
         }
@@ -1137,7 +1137,7 @@ class MainActivity : AppCompatActivity() {
         private const val KEY_TOKEN = "token"
         private const val KEY_USER_NAME = "user_name"
         private const val KEY_USER_ROLE = "user_role"
-        private const val DEFAULT_BASE_URL = "https://sistema-poliutech.onrender.com"
+        private const val DEFAULT_BASE_URL = "https://sistema.poliutech.com"
         const val EXTRA_OPEN_PDF_URL = "open_pdf_url"
         const val EXTRA_OPEN_FOLLOWUP_COTIZACION_ID = "open_followup_cotizacion_id"
         const val EXTRA_OPEN_FOLLOWUP_ID = "open_followup_id"

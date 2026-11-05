@@ -3451,7 +3451,7 @@ FIREBASE_CREDENTIALS_FILE = os.getenv("FIREBASE_CREDENTIALS_FILE", "").strip()
 FIREBASE_CREDENTIALS_JSON = os.getenv("FIREBASE_CREDENTIALS_JSON", "").strip()
 PUSH_NOTIFICATIONS_ENABLED = os.getenv("PUSH_NOTIFICATIONS_ENABLED", "1").strip().lower() not in {"0", "false", "no"}
 POLIUTECH_MESSENGER_URL = (
-    os.getenv("POLIUTECH_MESSENGER_URL", "https://poliutech-connect.onrender.com").strip().rstrip("/")
+    os.getenv("POLIUTECH_MESSENGER_URL", "https://connect.poliutech.com").strip().rstrip("/")
 )
 MAR_MESSENGER_SHARED_SECRET = os.getenv("MAR_MESSENGER_SHARED_SECRET", "").strip()
 MESSENGER_REQUEST_TIMEOUT_SECONDS = max(
@@ -3555,6 +3555,15 @@ except ImportError:
 # Flask + DB + Login
 # ---------------------------------------------------------
 app = Flask(__name__)
+MIGRATION_TARGET_URL = os.getenv("MIGRATION_TARGET_URL", "").strip().rstrip("/")
+
+@app.before_request
+def redirect_migrated_service():
+    if not MIGRATION_TARGET_URL:
+        return None
+    suffix = request.full_path if request.query_string else request.path
+    return redirect(f"{MIGRATION_TARGET_URL}{suffix}", code=308)
+
 app.secret_key = os.getenv("FLASK_SECRET_KEY", DEFAULT_SECRET_KEY)
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
