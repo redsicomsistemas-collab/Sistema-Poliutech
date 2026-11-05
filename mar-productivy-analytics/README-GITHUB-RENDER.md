@@ -7,7 +7,7 @@ Aplicación local y centralizada de analítica laboral para Windows 10 y 11. Inc
 El servicio usa `PORT` automáticamente. Configure estos secretos en Render:
 
 - `MAR_ADMIN_PASSWORD`: contraseña inicial del administrador.
-- `MAR_PUBLIC_URL`: URL HTTPS completa, por ejemplo `https://mar-productivy-analytics.onrender.com`.
+- `MAR_PUBLIC_URL`: URL HTTPS completa, `https://analytics.poliutech.com`.
 - `MAR_DATA_PATH=/var/data`.
 
 El `render.yaml` declara un disco persistente en `/var/data`. No ejecute el servidor sin PostgreSQL o disco persistente: el sistema de archivos normal de Render es efímero.

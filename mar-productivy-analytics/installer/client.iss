@@ -69,7 +69,7 @@ begin
   DetailsPage.Add('Nombre del empleado:', False);
   DetailsPage.Add('Nombre de la computadora:', False);
   DetailsPage.Add('Equipo o departamento:', False);
-  DetailsPage.Values[0] := 'https://mar-productivy-analytics.onrender.com';
+  DetailsPage.Values[0] := 'https://analytics.poliutech.com';
   DetailsPage.Values[2] := GetComputerNameString;
   DetailsPage.Values[3] := 'General';
   ConsentPage := CreateInputOptionPage(DetailsPage.ID, 'Privacidad y consentimiento', 'Aviso para el empleado', 'MAR Productivy Analytics registra aplicaciones utilizadas, títulos de ventana, dominios web visitados, tiempo activo e inactividad. No guarda rutas web, búsquedas, contenido, teclas, contraseñas, audio ni cámara. La información se envía al panel protegido de la organización.', True, True);
