@@ -3563,17 +3563,7 @@ def redirect_migrated_service():
     if request.path == "/__migration/export" and MIGRATION_EXPORT_TOKEN and secrets.compare_digest(
         request.headers.get("Authorization", ""), f"Bearer {MIGRATION_EXPORT_TOKEN}"
     ):
-        source = Path("/data")
-        if not source.is_dir():
-            abort(404)
-        archive = Path("/tmp/sistema-poliutech-render-final.zip")
-        if archive.exists():
-            archive.unlink()
-        with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
-            for item in source.rglob("*"):
-                if item.is_file():
-                    bundle.write(item, item.relative_to(source))
-        return send_file(archive, as_attachment=True, download_name=archive.name)
+        return None
     if not MIGRATION_TARGET_URL:
         return None
     suffix = request.full_path if request.query_string else request.path
