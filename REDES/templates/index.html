@@ -1,0 +1,228 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema MAR Redes Sociales</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-group">
+      <div class="brand-mark">
+        <img src="/static/logo-poliutech.png" alt="Logo Poliutech">
+      </div>
+      <div class="brand-copy">
+        <strong>Sistema MAR Redes Sociales</strong>
+        <span>Poliutech</span>
+      </div>
+    </div>
+    <nav class="topnav">
+      <a href="/"><span class="nav-icon">⌂</span><span>Dashboard</span></a>
+      <a href="/"><span class="nav-icon">✎</span><span>Generador</span></a>
+      <a href="/"><span class="nav-icon">▤</span><span>Borradores</span></a>
+      <a href="/"><span class="nav-icon">⇪</span><span>Publicación</span></a>
+      <a href="/"><span class="nav-icon">⚙</span><span>Ajustes</span></a>
+    </nav>
+  </header>
+
+  <main class="layout">
+    <section class="stats-grid">
+      <article class="stat-card stat-green">
+        <p>Borradores totales</p>
+        <strong>{{ drafts|length }}</strong>
+      </article>
+      <article class="stat-card stat-blue">
+        <p>Último estado</p>
+        <strong>{{ result_status or 'listo' }}</strong>
+      </article>
+      <article class="stat-card stat-cyan">
+        <p>Canales conectados</p>
+        <strong>2</strong>
+      </article>
+    </section>
+
+    <section class="module module-summary">
+      <div class="summary-card summary-blue">
+        <p>Flujo activo</p>
+        <strong>Interpretación visual + copy</strong>
+      </div>
+      <div class="summary-card summary-green">
+        <p>Modo de trabajo</p>
+        <strong>Editar antes de publicar</strong>
+      </div>
+      <div class="summary-card summary-cyan">
+        <p>Salida</p>
+        <strong>Facebook y LinkedIn</strong>
+      </div>
+    </section>
+
+    <section class="dashboard-grid">
+      <section class="module module-form">
+        <div class="module-head">
+          <div>
+            <p class="eyebrow">Módulo de captura</p>
+            <h1>Generador de copy</h1>
+          </div>
+          <div class="module-kicker">Operación activa</div>
+        </div>
+
+        {% if message %}
+        <div class="notice">{{ message }}</div>
+        {% endif %}
+        {% if result_text %}
+        <div class="result-box result-{{ result_status or 'published' }} result-banner">
+          <p><strong>Último resultado</strong></p>
+          <p>{{ result_text }}</p>
+        </div>
+        {% endif %}
+
+        <form action="/generate" method="post" enctype="multipart/form-data" class="compose-form">
+          <label>
+            <span>Imagen</span>
+            <input type="file" name="image" accept="image/*" required>
+          </label>
+          <div class="field-grid">
+            <label>
+              <span>Enfoque</span>
+              <input type="text" name="focus" placeholder="Ejemplo: resaltar el problema visible o interpretar la nota como denuncia">
+            </label>
+            <label>
+              <span>Tono</span>
+              <input type="text" name="tone" placeholder="Ejemplo: incisivo, serio, neutral, institucional, duro">
+            </label>
+          </div>
+          <label>
+            <span>Intención</span>
+            <input type="text" name="intention" placeholder="Ejemplo: informar, cuestionar, denunciar, explicar, persuadir sin vender">
+          </label>
+          <label>
+            <span>Indicaciones extra</span>
+            <textarea name="extra_notes" rows="4" placeholder="Ejemplo: no uses lenguaje de marketing, no pongas hashtags, enfócate en lo que se ve y no inventes contexto"></textarea>
+          </label>
+          <div class="form-actions">
+            <button type="submit">Generar borrador</button>
+            <p class="form-hint">El sistema guarda la guía y el borrador para que puedas editar y publicar después.</p>
+          </div>
+        </form>
+      </section>
+
+      <section class="module module-preview">
+        {% if detail %}
+          <div class="module-head">
+            <div>
+              <p class="eyebrow">Panel de revisión</p>
+              <h2>Borrador #{{ detail['id'] }}</h2>
+            </div>
+            <div class="detail-actions">
+              <a href="/" class="ghost-link">Nuevo borrador</a>
+              <span class="status status-{{ detail['status'] }}">{{ detail['status'] }}</span>
+            </div>
+          </div>
+
+          <div class="preview-grid">
+            <div class="image-wrap">
+              <img src="/uploads/{{ detail['image_path'].split('/')[-1] }}" alt="{{ detail['alt_text'] }}">
+            </div>
+
+            <div class="meta-card">
+              <p><strong>Guía aplicada</strong></p>
+              <p>{{ detail['user_guide'] }}</p>
+              <p><strong>Resumen</strong></p>
+              <p>{{ detail['image_summary'] }}</p>
+              <div class="meta-split">
+                <div>
+                  <p><strong>Hashtags</strong></p>
+                  <p>{{ detail['hashtags'] or 'Sin hashtags' }}</p>
+                </div>
+                <div>
+                  <p><strong>CTA</strong></p>
+                  <p>{{ detail['cta'] or 'Sin CTA' }}</p>
+                </div>
+              </div>
+              <p><strong>Alt text</strong></p>
+              <p>{{ detail['alt_text'] }}</p>
+              {% if detail['publish_result'] %}
+              <div class="result-box result-{{ detail['status'] }}">
+                <p><strong>Resultado</strong></p>
+                <p>{{ detail['publish_result'] }}</p>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+
+          <form action="/drafts/{{ detail['id'] }}/update" method="post" class="edit-form">
+            <label>
+              <span>Copy Facebook</span>
+              <textarea name="facebook_copy" rows="6" required>{{ detail['facebook_copy'] }}</textarea>
+            </label>
+            <label>
+              <span>Copy LinkedIn</span>
+              <textarea name="linkedin_copy" rows="6" required>{{ detail['linkedin_copy'] }}</textarea>
+            </label>
+            <button type="submit" class="secondary">Guardar cambios</button>
+          </form>
+
+          <div class="action-row">
+            <form action="/drafts/{{ detail['id'] }}/delete" method="post" onsubmit="return confirm('¿Eliminar este borrador?');">
+              <button type="submit" class="danger">Eliminar borrador</button>
+            </form>
+          </div>
+
+          <form action="/drafts/{{ detail['id'] }}/publish" method="post" class="publish-form">
+            <label class="check">
+              <input type="checkbox" name="publish_facebook">
+              <span>Facebook</span>
+            </label>
+            <label class="check">
+              <input type="checkbox" name="publish_linkedin">
+              <span>LinkedIn</span>
+            </label>
+            <button type="submit">Publicar selección</button>
+          </form>
+        {% else %}
+          <div class="empty-state">
+            <p class="eyebrow">Panel de revisión</p>
+            <h2>Sin borrador seleccionado</h2>
+            <p>Genera un nuevo borrador para editarlo, publicarlo o eliminarlo desde aquí.</p>
+          </div>
+        {% endif %}
+      </section>
+    </section>
+
+    <section class="module module-history">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Bitácora</p>
+          <h2>Borradores</h2>
+        </div>
+        <span class="pill">{{ drafts|length }} recientes</span>
+      </div>
+      {% if drafts %}
+        <ul class="draft-list system-history">
+          {% for draft in drafts %}
+          <li class="draft-item">
+            <a href="/drafts/{{ draft['id'] }}" class="draft-card">
+              <div class="draft-topline">
+                <strong>#{{ draft['id'] }}</strong>
+                <em class="status-{{ draft['status'] }}">{{ draft['status'] }}</em>
+              </div>
+              <span>{{ draft['user_guide'] or 'Sin guía capturada.' }}</span>
+            </a>
+            <form action="/drafts/{{ draft['id'] }}/delete" method="post" class="draft-delete-form" onsubmit="return confirm('¿Eliminar este borrador?');">
+              <button type="submit" class="mini-delete" aria-label="Eliminar borrador {{ draft['id'] }}">Eliminar</button>
+            </form>
+          </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">Todavía no hay borradores.</p>
+      {% endif %}
+    </section>
+  </main>
+</body>
+</html>
+

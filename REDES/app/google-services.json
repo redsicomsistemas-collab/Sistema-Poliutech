@@ -1,0 +1,67 @@
+{
+  "project_info": {
+    "project_number": "883069025896",
+    "project_id": "sistema-mar-poliutech",
+    "storage_bucket": "sistema-mar-poliutech.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:883069025896:android:559920877e1e89f16505dd",
+        "android_client_info": {
+          "package_name": "com.poliutech.marstatuscotizacion"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAS6IkQEs0Ai4txdWDwq6_bpvBOjhnvuY8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:883069025896:android:522656d0647785056505dd",
+        "android_client_info": {
+          "package_name": "com.poliutech.registroobras"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAS6IkQEs0Ai4txdWDwq6_bpvBOjhnvuY8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:883069025896:android:be0524273a569e1e6505dd",
+        "android_client_info": {
+          "package_name": "com.poliutech.sistemamarredessociales"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAS6IkQEs0Ai4txdWDwq6_bpvBOjhnvuY8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
