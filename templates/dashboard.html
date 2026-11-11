@@ -682,16 +682,7 @@
     </div>
   </div>
   <div class="row g-3 text-center dashboard-metrics-row">
-    <div class="col-md-6 col-xl-3">
-      <div class="card border-success shadow-sm dashboard-metric-card h-100">
-        <div class="card-body">
-          <h6 class="text-success">Importe de todas las cotizaciones</h6>
-          <h3 class="fw-bold text-dark" data-summary-scope="general" data-summary-metric="total_importe" data-currency="MXN">MXN ${{ "{:,.2f}".format(general_metrics['total_importe']) }}</h3>
-          <div class="small text-muted">Todos los países · convertido a MXN</div>
-        </div>
-      </div>
-    </div>
-    <div class="col-md-6 col-xl-3">
+    <div class="col-md-4">
       <div class="card border-primary shadow-sm dashboard-metric-card h-100">
         <div class="card-body">
           <h6 class="text-primary">Cotizaciones Totales</h6>
@@ -699,20 +690,20 @@
         </div>
       </div>
     </div>
-    <div class="col-md-6 col-xl-3">
+    <div class="col-md-4">
+      <div class="card border-warning shadow-sm dashboard-metric-card h-100">
+        <div class="card-body">
+          <h6 class="text-warning-emphasis">Importe histórico global (MXN)</h6>
+          <h3 class="fw-bold text-dark" data-summary-scope="general" data-summary-metric="total_importe_historico" data-currency="MXN">MXN ${{ "{:,.2f}".format(general_metrics['total_importe_historico']) }}</h3>
+          <div class="small text-muted">Todas las regiones y todos los estatus · <span data-summary-scope="general" data-summary-metric="total_cotizaciones_historico">{{ general_metrics['total_cotizaciones_historico'] }}</span> cotizaciones desde marzo de 2026</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
       <div class="card border-info shadow-sm dashboard-metric-card h-100">
         <div class="card-body">
           <h6 class="text-info">Conceptos Registrados</h6>
           <h3 class="fw-bold text-dark" data-summary-scope="general" data-summary-metric="total_conceptos">{{ general_metrics['total_conceptos'] }}</h3>
-        </div>
-      </div>
-    </div>
-    <div class="col-md-6 col-xl-3">
-      <div class="card border-warning shadow-sm dashboard-metric-card h-100">
-        <div class="card-body">
-          <h6 class="text-warning-emphasis">Importe histórico (MXN)</h6>
-          <h3 class="fw-bold text-dark" data-summary-scope="general" data-summary-metric="total_importe_historico" data-currency="MXN">MXN ${{ "{:,.2f}".format(general_metrics['total_importe_historico']) }}</h3>
-          <div class="small text-muted">A partir de marzo de 2026 · <span data-summary-scope="general" data-summary-metric="total_cotizaciones_historico">{{ general_metrics['total_cotizaciones_historico'] }}</span> cotizaciones, incluidas rechazadas y perdidas</div>
         </div>
       </div>
     </div>
@@ -749,8 +740,9 @@
       <div class="col-md-6 col-xl-3">
         <div class="card border-success shadow-sm dashboard-metric-card dashboard-regional-metric-card h-100">
           <div class="card-body">
-            <h6 class="text-success">Importe Total ({{ 'USD' if region_uses_usd else 'MXN' }})</h6>
+            <h6 class="text-success">IMPORTE REAL ({{ 'USD' if region_uses_usd else 'MXN' }})</h6>
             <h4 class="fw-bold text-dark" data-summary-scope="region" data-summary-region="{{ region_name }}" data-summary-metric="total_importe" data-currency="{{ 'USD' if region_uses_usd else 'MXN' }}">{{ 'USD' if region_uses_usd else 'MXN' }} ${{ "{:,.2f}".format(region_metrics['total_importe']) }}</h4>
+            <div class="small text-muted">Solo cotizaciones vivas</div>
           </div>
         </div>
       </div>
@@ -775,7 +767,7 @@
           <div class="card-body">
             <h6 class="text-warning-emphasis">Importe histórico ({{ 'USD' if region_uses_usd else 'MXN' }})</h6>
             <h4 class="fw-bold text-dark" data-summary-scope="region" data-summary-region="{{ region_name }}" data-summary-metric="total_importe_historico" data-currency="{{ 'USD' if region_uses_usd else 'MXN' }}">{{ 'USD' if region_uses_usd else 'MXN' }} ${{ "{:,.2f}".format(region_metrics['total_importe_historico']) }}</h4>
-            <div class="small text-muted">A partir de marzo de 2026 · <span data-summary-scope="region" data-summary-region="{{ region_name }}" data-summary-metric="total_cotizaciones_historico">{{ region_metrics['total_cotizaciones_historico'] }}</span> cotizaciones, incluidas rechazadas y perdidas</div>
+            <div class="small text-muted">Todas: vivas, aprobadas, rechazadas y perdidas · <span data-summary-scope="region" data-summary-region="{{ region_name }}" data-summary-metric="total_cotizaciones_historico">{{ region_metrics['total_cotizaciones_historico'] }}</span> cotizaciones</div>
           </div>
         </div>
       </div>

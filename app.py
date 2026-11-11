@@ -63,8 +63,8 @@ VALID_ESTATUS_APROBACION = [
     "EN REVISIÓN",
 ]
 VALID_ESTATUS = VALID_ESTATUS_SEGUIMIENTO
-ESTATUS_COTIZACION_GANADA = {"100%", "GANADA", "CONTRATADA", "CON CONTRATO", "CONTRATO"}
-ESTATUS_COTIZACION_PERDIDA = {"0%", "0 %", "PERDIDA", "PÉRDIDA"}
+ESTATUS_COTIZACION_GANADA = {"100%", "GANADA", "CONTRATADA", "CON CONTRATO", "CONTRATO", "APROBADA", "APROBADO"}
+ESTATUS_COTIZACION_PERDIDA = {"0%", "0 %", "PERDIDA", "PÉRDIDA", "RECHAZADA", "RECHAZADO", "DECLINADA", "DECLINADO"}
 ESPECIALIDADES_COTIZACION = [
     "Waterproofing",
     "Pisos",
@@ -1726,12 +1726,14 @@ def _create_mobile_voice_quote(preview: dict, user: Usuario) -> Cotizacion:
     iva = fmt(subtotal * 0.16)
     total = fmt(subtotal + iva)
 
+    especialidad = (header_data.get("especialidad") or preview.get("especialidad") or "").strip()
     cot = Cotizacion(
-        folio=generar_folio(),
+        folio=generar_folio(especialidad),
         fecha=now_cdmx_naive(),
         cliente_id=cliente.id if cliente else None,
         estatus="0%",
         estatus_aprobacion="EN REVISIÓN",
+        especialidad=especialidad or None,
         notas="\n".join(part for part in notes_parts if part).strip() or None,
         responsable=responsible,
         region=normalize_region(header_data.get("region")),
@@ -5800,13 +5802,16 @@ def _build_dashboard_cotizaciones_query(
 
     estatus_normalizado = db.func.upper(db.func.trim(db.func.coalesce(Cotizacion.estatus, "")))
     resultado_normalizado = db.func.upper(db.func.trim(db.func.coalesce(Cotizacion.resultado, "")))
+    aprobacion_normalizada = db.func.upper(db.func.trim(db.func.coalesce(Cotizacion.estatus_aprobacion, "")))
     es_ganada = or_(
         estatus_normalizado.in_(ESTATUS_COTIZACION_GANADA),
         resultado_normalizado.in_(ESTATUS_COTIZACION_GANADA),
+        aprobacion_normalizada == "APROBADA",
     )
     es_perdida = or_(
         estatus_normalizado.in_(ESTATUS_COTIZACION_PERDIDA),
         resultado_normalizado.in_(ESTATUS_COTIZACION_PERDIDA),
+        aprobacion_normalizada == "RECHAZADA",
     )
     if vista == "todos":
         # Listado maestro: incluye cada cotizacion no eliminada, sin importar
@@ -6050,6 +6055,10 @@ def _dashboard_metric_set(*, region="", bandeja="", vista="todos", **filters):
         _build_dashboard_cotizaciones_query(region=region, vista=vista, **filters),
         bandeja,
     )
+    active_query = _apply_dashboard_bandeja(
+        _build_dashboard_cotizaciones_query(region=region, vista="activas", **filters),
+        bandeja,
+    )
 
     quote_ids = quote_query.with_entities(Cotizacion.id).subquery()
     total_conceptos = (
@@ -6059,7 +6068,7 @@ def _dashboard_metric_set(*, region="", bandeja="", vista="todos", **filters):
         or 0
     )
     total_importe = (
-        quote_query.with_entities(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar()
+        active_query.with_entities(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar()
         or 0
     )
 
@@ -6256,12 +6265,28 @@ def _known_project_names(limit: int = 100) -> list[str]:
 
     return sorted(names.values(), key=str.lower)[:limit]
 
-def generar_folio() -> str:
-    prefix = "PTCH-"
+def _especialidad_folio_codigo(especialidad: Optional[str]) -> str:
+    normalized = unicodedata.normalize("NFKD", str(especialidad or ""))
+    letters = re.sub(r"[^A-Z]", "", "".join(
+        char for char in normalized if not unicodedata.combining(char)
+    ).upper())
+    return (letters[:3] or "GEN").ljust(3, "X")
+
+
+def _folio_con_especialidad(folio: Optional[str], especialidad: Optional[str]) -> str:
+    current = (folio or "").strip().upper()
+    match = re.fullmatch(r"PTCH-(?:[A-Z]{3}-)?(\d{4,14})", current)
+    if not match:
+        return current
+    return f"PTCH-{_especialidad_folio_codigo(especialidad)}-{match.group(1)}"
+
+
+def generar_folio(especialidad: Optional[str] = None) -> str:
+    prefix = f"PTCH-{_especialidad_folio_codigo(especialidad)}-"
     maxn = 0
     rows = db.session.execute(text("SELECT folio FROM cotizacion WHERE folio LIKE 'PTCH-%'")).fetchall()
     for (folio,) in rows:
-        m = re.match(r"PTCH-(\d{4})$", str(folio))
+        m = re.fullmatch(r"PTCH-(?:[A-Z]{3}-)?(\d{4})", str(folio or "").strip().upper())
         if m:
             n = int(m.group(1))
             maxn = max(maxn, n)
@@ -7203,13 +7228,13 @@ def _find_or_create_cliente_import(cliente_data: dict, responsable_final: Option
     return cliente
 
 
-def _pick_import_folio(preferred_folio: Optional[str]) -> str:
+def _pick_import_folio(preferred_folio: Optional[str], especialidad: Optional[str] = None) -> str:
     preferred = (preferred_folio or "").strip()
-    if preferred:
+    if re.fullmatch(r"PTCH-[A-Z]{3}-\d{4,14}", preferred.upper()):
         exists = db.session.execute(text("SELECT 1 FROM cotizacion WHERE folio=:f LIMIT 1"), {"f": preferred}).fetchone()
         if not exists:
-            return preferred
-    return generar_folio()
+            return preferred.upper()
+    return generar_folio(especialidad)
 
 
 def import_external_quote_payload(payload: dict, source_label: Optional[str] = None) -> Cotizacion:
@@ -7250,7 +7275,7 @@ def import_external_quote_payload(payload: dict, source_label: Optional[str] = N
         notas = _append_note(notas, f"Zona: {zona} ({int(desc_porc)}% descuento)")
 
     cot = Cotizacion(
-        folio=_pick_import_folio(normalized["folio"]),
+        folio=_pick_import_folio(normalized["folio"], normalized.get("especialidad")),
         fecha=normalized["fecha"],
         cliente_id=cliente.id,
         estatus=normalized["estatus"],
@@ -10914,7 +10939,7 @@ def crear_cotizacion():
     desc_porc = float(ZONA_PORC.get(zona, 0.0))
 
     cot = Cotizacion(
-        folio=generar_folio(),
+        folio=generar_folio(especialidad_form),
         fecha=now_cdmx_naive(),
         cliente_id=cliente.id if cliente else None,
         estatus=(f.get("estatus") or "0%").upper(),
@@ -11150,6 +11175,7 @@ def actualizar_cotizacion(cot_id: int):
     c.fecha = fecha_cotizacion
     aprobacion_anterior = (c.estatus_aprobacion or "EN REVISIÓN").strip().upper()
     c.estatus_aprobacion = "APROBADA" if aprobacion_anterior in {"APROBADA", "APROBADO", "AUTORIZADO"} else "EN REVISIÓN"
+    c.folio = _folio_con_especialidad(c.folio, especialidad_form)
     c.especialidad = especialidad_form
     c.region = region_form
     c.especialidad_descripcion = (f.get("especialidad_descripcion") or "").strip()[:500] or None
@@ -14055,7 +14081,14 @@ def export_cotizacion_pdf_by_folio(folio: str):
     folio = (folio or "").strip()
     if not folio:
         abort(404)
-    c = _cotizaciones_activas_query().filter(Cotizacion.folio == folio).first_or_404()
+    query = _cotizaciones_activas_query()
+    c = query.filter(Cotizacion.folio == folio).first()
+    if not c:
+        legacy_match = re.fullmatch(r"PTCH-(?:[A-Z]{3}-)?(\d{4,14})", folio.upper())
+        if legacy_match:
+            c = query.filter(Cotizacion.folio.like(f"PTCH-___-{legacy_match.group(1)}")).first()
+    if not c:
+        abort(404)
     require_owner_or_admin(c)
     return export_cotizacion_pdf(c.id)
 

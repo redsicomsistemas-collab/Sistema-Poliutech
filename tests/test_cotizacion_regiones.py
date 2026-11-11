@@ -9,6 +9,8 @@ os.environ["DISABLE_BACKGROUND_SCHEDULER"] = "1"
 try:
     from app import (
         REGIONES_COTIZACION,
+        _especialidad_folio_codigo,
+        _folio_con_especialidad,
         _build_dashboard_cotizaciones_query,
         app,
         ensure_schema,
@@ -113,6 +115,7 @@ class CotizacionRegionesTest(unittest.TestCase):
         with app.app_context():
             quote = db.session.get(Cotizacion, quote_id)
             self.assertEqual(quote.region, "LATAM")
+            self.assertRegex(quote.folio, r"^PTCH-CON-\d{4}$")
             with patch("app.is_admin", return_value=True):
                 self.assertEqual(_build_dashboard_cotizaciones_query(region="PANAMA").count(), 1)
                 self.assertEqual(_build_dashboard_cotizaciones_query(region="USA").count(), 0)
@@ -290,27 +293,45 @@ class CotizacionRegionesTest(unittest.TestCase):
         self.assertIn("USD $200.00", body)
         self.assertIn("MXN $10,100.00", body)
         self.assertIn("20.0000 MXN por USD", body)
+        self.assertNotIn("Importe de todas las cotizaciones", body)
+        self.assertLess(body.index("Cotizaciones Totales"), body.index("Importe histórico global (MXN)"))
+        self.assertLess(body.index("Importe histórico global (MXN)"), body.index("Conceptos Registrados"))
+        self.assertEqual(body.count("IMPORTE REAL ("), 3)
+        self.assertIn("Todas: vivas, aprobadas, rechazadas y perdidas", body)
         self.assertEqual(body.count("<details class=\"dashboard-region-block"), 3)
         self.assertNotIn("<details class=\"dashboard-region-block dashboard-region-mexico\" open", body)
 
-    def test_importe_general_incluye_todas_las_cotizaciones_y_paises(self):
+    def test_importe_real_solo_incluye_vivas_y_historico_incluye_todas(self):
         with app.app_context():
             db.session.add_all([
                 Cotizacion(folio="MX-ACTIVA", region="MÉXICO", total=100, estatus="50%"),
                 Cotizacion(folio="US-PERDIDA", region="USA", total=200, estatus="PERDIDA"),
                 Cotizacion(folio="LA-RECHAZADA", region="LATAM", total=300, estatus="RECHAZADA"),
+                Cotizacion(folio="MX-APROBADA", region="MÉXICO", total=50, estatus="50%", estatus_aprobacion="APROBADA"),
             ])
             db.session.commit()
 
         response = self.client.get("/api/dashboard/filter-summary")
         self.assertEqual(response.status_code, 200)
         summary = response.get_json()
-        self.assertEqual(summary["general"]["total_importe"], 10100.0)
-        self.assertEqual(summary["general"]["total_cotizaciones"], 3)
+        self.assertEqual(summary["general"]["total_importe"], 100.0)
+        self.assertEqual(summary["general"]["total_importe_historico"], 10150.0)
+        self.assertEqual(summary["general"]["total_cotizaciones"], 4)
+        self.assertEqual(summary["regions"]["MÉXICO"]["total_importe"], 100.0)
+        self.assertEqual(summary["regions"]["USA"]["total_importe"], 0.0)
+        self.assertEqual(summary["regions"]["LATAM"]["total_importe"], 0.0)
 
         dashboard = self.client.get("/").get_data(as_text=True)
-        self.assertIn("Importe de todas las cotizaciones", dashboard)
-        self.assertIn("Todos los países · convertido a MXN", dashboard)
+        self.assertNotIn("Importe de todas las cotizaciones", dashboard)
+        self.assertIn("Importe histórico global (MXN)", dashboard)
+        self.assertIn("Todas las regiones y todos los estatus", dashboard)
+
+    def test_codigo_de_especialidad_se_integra_al_folio(self):
+        self.assertEqual(_especialidad_folio_codigo("Construcción"), "CON")
+        self.assertEqual(_especialidad_folio_codigo("Inyección"), "INY")
+        self.assertEqual(_especialidad_folio_codigo("Waterproofing"), "WAT")
+        self.assertEqual(_folio_con_especialidad("PTCH-0382", "Pisos"), "PTCH-PIS-0382")
+        self.assertEqual(_folio_con_especialidad("PTCH-CON-0382", "Pisos"), "PTCH-PIS-0382")
 
 
 if __name__ == "__main__":
