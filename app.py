@@ -6050,10 +6050,6 @@ def _dashboard_metric_set(*, region="", bandeja="", vista="todos", **filters):
         _build_dashboard_cotizaciones_query(region=region, vista=vista, **filters),
         bandeja,
     )
-    active_query = _apply_dashboard_bandeja(
-        _build_dashboard_cotizaciones_query(region=region, vista="activas", **filters),
-        bandeja,
-    )
 
     quote_ids = quote_query.with_entities(Cotizacion.id).subquery()
     total_conceptos = (
@@ -6063,7 +6059,7 @@ def _dashboard_metric_set(*, region="", bandeja="", vista="todos", **filters):
         or 0
     )
     total_importe = (
-        active_query.with_entities(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar()
+        quote_query.with_entities(db.func.coalesce(db.func.sum(Cotizacion.total), 0)).scalar()
         or 0
     )
 

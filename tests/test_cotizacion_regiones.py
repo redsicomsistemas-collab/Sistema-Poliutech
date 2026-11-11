@@ -293,6 +293,25 @@ class CotizacionRegionesTest(unittest.TestCase):
         self.assertEqual(body.count("<details class=\"dashboard-region-block"), 3)
         self.assertNotIn("<details class=\"dashboard-region-block dashboard-region-mexico\" open", body)
 
+    def test_importe_general_incluye_todas_las_cotizaciones_y_paises(self):
+        with app.app_context():
+            db.session.add_all([
+                Cotizacion(folio="MX-ACTIVA", region="MÉXICO", total=100, estatus="50%"),
+                Cotizacion(folio="US-PERDIDA", region="USA", total=200, estatus="PERDIDA"),
+                Cotizacion(folio="LA-RECHAZADA", region="LATAM", total=300, estatus="RECHAZADA"),
+            ])
+            db.session.commit()
+
+        response = self.client.get("/api/dashboard/filter-summary")
+        self.assertEqual(response.status_code, 200)
+        summary = response.get_json()
+        self.assertEqual(summary["general"]["total_importe"], 10100.0)
+        self.assertEqual(summary["general"]["total_cotizaciones"], 3)
+
+        dashboard = self.client.get("/").get_data(as_text=True)
+        self.assertIn("Importe de todas las cotizaciones", dashboard)
+        self.assertIn("Todos los países · convertido a MXN", dashboard)
+
 
 if __name__ == "__main__":
     unittest.main()
